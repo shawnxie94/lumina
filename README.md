@@ -24,6 +24,7 @@
 - SQLAlchemy 2.x
 - OpenAI API
 - SQLite
+- uv（Python 包管理器）
 
 ### 浏览器扩展
 - WXT
@@ -39,7 +40,7 @@ article-database/
 │   ├── ai_client.py     # AI 客户端
 │   ├── article_service.py  # 文章服务
 │   ├── main.py         # FastAPI 主应用
-│   ├── requirements.txt
+│   ├── pyproject.toml  # 项目配置和依赖
 │   └── Dockerfile
 ├── frontend/            # Next.js 前端应用
 │   ├── pages/          # 页面组件
@@ -63,6 +64,7 @@ article-database/
 
 - Docker 和 Docker Compose
 - OpenAI API Key
+- uv（Python 包管理器）
 
 ### 1. 克隆项目
 
@@ -158,10 +160,8 @@ npm run build
 
 ```bash
 cd backend
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-pip install -r requirements.txt
-uvicorn main:app --reload
+uv sync
+uv run uvicorn main:app --reload
 ```
 
 ### 前端开发
