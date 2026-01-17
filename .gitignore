@@ -1,1 +1,15 @@
+node_modules
+.next
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.pyc
+__pycache__
+*.db
+*.log
 .DS_Store
+data/
+dist/
+.wxt/
