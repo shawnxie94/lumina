@@ -1,4 +1,4 @@
-# 文章知识库系统 - TRD（优化版）
+# 文章知识库系统 - 完整技术方案
 
 ## 1. 需求澄清记录
 
@@ -291,10 +291,12 @@ graph TB
 | | RabbitMQ | 功能强大、可靠 | 复杂、重 | ❌ | 过度设计 |
 | **任务队列** | Celery | 成熟、功能全 | 重、依赖多 | ✅ | Python生态 |
 | | RQ | 轻量、简单 | 功能较少 | ❌ | 功能不足 |
-| **浏览器扩展** | Plasmo | React支持、开发体验好 | 新项目 | ✅ | 与Next.js统一 |
+| **浏览器扩展** | WXT | 轻量、灵活、TypeScript友好 | 相对较新 | ✅ | 开发效率高 |
+| | Plasmo | React支持、开发体验好 | 依赖重 | ❌ | 过度设计 |
 | | Vanilla JS | 无依赖 | 开发效率低 | ❌ | 维护成本高 |
-| **AI集成** | LangChain | 功能全、抽象好 | 过度设计 | ✅ | 灵活性好 |
-| | 直接调用API | 简单、可控 | 需自己管理 | ❌ | 缺少抽象 |
+| **AI集成** | 轻量级封装 | 简单、可控、性能好 | 需自己管理 | ✅ | 满足需求 |
+| | LangChain | 功能全、抽象好 | 过度设计、重 | ❌ | 过度设计 |
+| | 直接调用API | 最简单 | 无抽象 | ❌ | 缺少封装 |
 | **思维导图** | Markmap | Markdown转SVG、轻量 | 功能单一 | ✅ | 满足需求 |
 | | D3.js | 功能强大 | 复杂、学习成本高 | ❌ | 过度设计 |
 | **图片存储** | 数据库存储 | 成本低、简单可靠 | 存储空间限制 | ✅ | 初期成本低 |
@@ -310,17 +312,219 @@ graph TB
 | | Tailwind CSS | 3.x | 样式框架 |
 | | shadcn/ui | latest | UI组件库 |
 | | Markmap | latest | 思维导图渲染 |
-| 浏览器扩展 | Plasmo | latest | 扩展开发框架 |
+| 浏览器扩展 | WXT | latest | 扩展开发框架 |
 | | @mozilla/readability | latest | 正文提取 |
 | 后端 | FastAPI | 0.104.x | API框架 |
 | | Celery | 5.x | 任务队列 |
-| | LangChain | 0.1.x | AI集成 |
+| | openai | 1.x | OpenAI API客户端 |
+| | anthropic | 0.x | Claude API客户端 |
 | | httpx | 0.25.x | HTTP客户端 |
 | 数据库 | PostgreSQL | 15.x | 主数据库 |
 | | Redis | 7.x | 缓存+队列 |
 | ORM | Prisma | 5.x | 数据库ORM |
 | 存储 | PostgreSQL | 15.x | 图片存储（BYTEA） |
 | 部署 | Docker Compose | latest | 容器编排 |
+
+### 4.3 AI集成实现方案
+
+#### 4.3.1 轻量级封装设计
+
+采用轻量级封装，直接调用OpenAI/Claude API，避免LangChain的复杂性。
+
+**核心优势：**
+- 性能更好，减少依赖
+- 代码更简洁，易于维护
+- 成本更低，无需额外依赖
+- 更灵活，易于定制
+
+#### 4.3.2 实现示例
+
+```python
+# ai/client.py
+from typing import Optional, Dict, Any
+import httpx
+from openai import OpenAI
+from anthropic import Anthropic
+
+class AIClient:
+    """轻量级AI客户端封装"""
+    
+    def __init__(self, config: Dict[str, Any]):
+        self.config = config
+        self.openai_client = None
+        self.anthropic_client = None
+        
+        if config.get('openai_api_key'):
+            self.openai_client = OpenAI(api_key=config['openai_api_key'])
+        
+        if config.get('anthropic_api_key'):
+            self.anthropic_client = Anthropic(api_key=config['anthropic_api_key'])
+    
+    async def generate_completion(
+        self,
+        prompt: str,
+        model: str = "gpt-4o",
+        max_tokens: int = 1000,
+        temperature: float = 0.7,
+        response_format: Optional[str] = None
+    ) -> str:
+        """生成文本完成"""
+        
+        if model.startswith("gpt"):
+            return await self._openai_completion(
+                prompt, model, max_tokens, temperature, response_format
+            )
+        elif model.startswith("claude"):
+            return await self._anthropic_completion(
+                prompt, model, max_tokens, temperature
+            )
+        else:
+            raise ValueError(f"Unsupported model: {model}")
+    
+    async def _openai_completion(
+        self,
+        prompt: str,
+        model: str,
+        max_tokens: int,
+        temperature: float,
+        response_format: Optional[str]
+    ) -> str:
+        """OpenAI API调用"""
+        kwargs = {
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        }
+        
+        if response_format == "json":
+            kwargs["response_format"] = {"type": "json_object"}
+        
+        response = self.openai_client.chat.completions.create(**kwargs)
+        return response.choices[0].message.content
+    
+    async def _anthropic_completion(
+        self,
+        prompt: str,
+        model: str,
+        max_tokens: int,
+        temperature: float
+    ) -> str:
+        """Anthropic API调用"""
+        response = self.anthropic_client.messages.create(
+            model=model,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        return response.content[0].text
+
+# ai/services.py
+from typing import Dict, Any
+from .client import AIClient
+
+class AIService:
+    """AI服务"""
+    
+    def __init__(self, client: AIClient):
+        self.client = client
+    
+    async def generate_summary(
+        self,
+        article_content: str,
+        config: Dict[str, Any]
+    ) -> str:
+        """生成摘要"""
+        prompt = config['prompt_template'].format(content=article_content)
+        return await self.client.generate_completion(
+            prompt=prompt,
+            model=config['model_name'],
+            max_tokens=config['parameters'].get('max_tokens', 500),
+            temperature=config['parameters'].get('temperature', 0.7)
+        )
+    
+    async def generate_outline(
+        self,
+        article_content: str,
+        config: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """生成大纲"""
+        prompt = config['prompt_template'].format(content=article_content)
+        response = await self.client.generate_completion(
+            prompt=prompt,
+            model=config['model_name'],
+            max_tokens=config['parameters'].get('max_tokens', 1000),
+            temperature=config['parameters'].get('temperature', 0.5),
+            response_format="json"
+        )
+        return json.loads(response)
+    
+    async def generate_key_points(
+        self,
+        article_content: str,
+        config: Dict[str, Any]
+    ) -> list:
+        """生成关键信息"""
+        prompt = config['prompt_template'].format(content=article_content)
+        response = await self.client.generate_completion(
+            prompt=prompt,
+            model=config['model_name'],
+            max_tokens=config['parameters'].get('max_tokens', 300),
+            temperature=config['parameters'].get('temperature', 0.3),
+            response_format="json"
+        )
+        return json.loads(response)
+    
+    async def generate_mindmap(
+        self,
+        article_content: str,
+        config: Dict[str, Any]
+    ) -> str:
+        """生成思维导图"""
+        prompt = config['prompt_template'].format(content=article_content)
+        return await self.client.generate_completion(
+            prompt=prompt,
+            model=config['model_name'],
+            max_tokens=config['parameters'].get('max_tokens', 1500),
+            temperature=config['parameters'].get('temperature', 0.5)
+        )
+```
+
+#### 4.3.3 使用示例
+
+```python
+# 在Worker中使用
+from ai.client import AIClient
+from ai.services import AIService
+
+async def process_article(article_id: str):
+    # 初始化客户端
+    config = {
+        'openai_api_key': os.getenv('OPENAI_API_KEY'),
+        'anthropic_api_key': os.getenv('ANTHROPIC_API_KEY')
+    }
+    client = AIClient(config)
+    service = AIService(client)
+    
+    # 获取AI配置
+    ai_config = await get_ai_config(article.category_id)
+    
+    # 并行生成
+    summary, outline, key_points, mindmap = await asyncio.gather(
+        service.generate_summary(article.content, ai_config['summary']),
+        service.generate_outline(article.content, ai_config['outline']),
+        service.generate_key_points(article.content, ai_config['key_points']),
+        service.generate_mindmap(article.content, ai_config['mindmap'])
+    )
+    
+    # 保存结果
+    await save_ai_analysis(article_id, {
+        'summary': summary,
+        'outline': outline,
+        'key_points': key_points,
+        'mindmap': mindmap
+    })
+```
 
 ## 5. 架构设计
 
@@ -350,7 +554,7 @@ graph TB
 graph TB
     subgraph "客户端层"
         Browser[浏览器]
-        Extension[浏览器扩展<br/>Plasmo]
+        Extension[浏览器扩展<br/>WXT]
     end
     
     subgraph "Web应用层"
@@ -1402,5 +1606,6 @@ groups:
 | Next.js文档 | https://nextjs.org/docs |
 | FastAPI文档 | https://fastapi.tiangolo.com |
 | Prisma文档 | https://www.prisma.io/docs |
-| Plasmo文档 | https://docs.plasmo.com |
-| LangChain文档 | https://python.langchain.com |
+| WXT文档 | https://wxt.dev |
+| OpenAI API文档 | https://platform.openai.com/docs |
+| Anthropic API文档 | https://docs.anthropic.com |
