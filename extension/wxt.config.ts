@@ -1,7 +1,6 @@
 import { defineConfig } from 'wxt';
 
 export default defineConfig({
-  modules: ['@wxt-dev/module-react'],
   manifest: {
     name: '文章知识库采集器',
     description: '一键采集网页文章到知识库',
