@@ -100,6 +100,12 @@ class PopupController {
         func: () => {
           const title = document.title;
           const metaAuthor = document.querySelector('meta[name="author"]')?.content || '';
+          const metaPublishedAt = document.querySelector('meta[property="article:published_time"]')?.content ||
+                                 document.querySelector('meta[name="article:published_time"]')?.content ||
+                                 document.querySelector('meta[name="published_time"]')?.content ||
+                                 document.querySelector('meta[property="article:published"]')?.content ||
+                                 document.querySelector('meta[name="article:published"]')?.content ||
+                                 '';
 
           const articleElement = document.querySelector('article') ||
                                 document.querySelector('[role="main"]') ||
@@ -118,7 +124,7 @@ class PopupController {
             source_url: window.location.href,
             top_image: topImage,
             author: metaAuthor,
-            published_at: '',
+            published_at: metaPublishedAt,
             source_domain: new URL(window.location.href).hostname,
           };
         },

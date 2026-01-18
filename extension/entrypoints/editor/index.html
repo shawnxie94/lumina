@@ -31,38 +31,37 @@
       <input type="text" id="sourceUrlInput" readonly />
     </div>
 
-    <div class="form-group" id="topImageGroup" style="display: none;">
-      <label>头图</label>
-      <div id="topImagePreview" class="top-image-preview"></div>
-    </div>
-
     <div class="form-group" id="publishedAtGroup" style="display: none;">
       <label for="publishedAtInput">发表时间</label>
-      <input type="text" id="publishedAtInput" readonly />
+      <input type="date" id="publishedAtInput" />
+    </div>
+
+    <div class="form-group" id="topImageGroup" style="display: none;">
+      <label>头图</label>
+      <div class="top-image-selector">
+        <select id="topImageSelect">
+          <option value="">无头图</option>
+        </select>
+        <div id="topImagePreview" class="top-image-preview empty">未选择图片</div>
+      </div>
     </div>
 
     <div class="form-group content-section">
       <div class="section-header">
         <label for="contentHtml">HTML内容</label>
-        <div class="section-actions">
-          <button id="toggleHtmlBtn" class="btn-toggle" data-collapsed="false">折叠</button>
-          <button id="previewHtmlBtn" class="btn-preview">预览</button>
-        </div>
+        <button id="toggleHtmlBtn" class="btn-preview">编辑</button>
       </div>
-      <textarea id="contentHtml" rows="20"></textarea>
-      <div id="htmlPreview" class="preview-panel hidden"></div>
+      <textarea id="contentHtml" rows="20" class="hidden"></textarea>
+      <div id="htmlPreview" class="preview-panel"></div>
     </div>
 
     <div class="form-group content-section">
       <div class="section-header">
         <label for="contentMd">Markdown内容</label>
-        <div class="section-actions">
-          <button id="toggleMdBtn" class="btn-toggle" data-collapsed="false">折叠</button>
-          <button id="previewMdBtn" class="btn-preview">预览</button>
-        </div>
+        <button id="toggleMdBtn" class="btn-preview">编辑</button>
       </div>
-      <textarea id="contentMd" rows="20"></textarea>
-      <div id="mdPreview" class="preview-panel hidden"></div>
+      <textarea id="contentMd" rows="20" class="hidden"></textarea>
+      <div id="mdPreview" class="preview-panel"></div>
     </div>
   </div>
 

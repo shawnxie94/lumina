@@ -7,7 +7,6 @@ class EditorController {
 
   constructor() {
     this.#apiClient = new ApiClient();
-    this.setupPreviewToggles();
   }
 
   async init() {
@@ -15,6 +14,7 @@ class EditorController {
       await this.loadConfig();
       await this.loadArticleData();
       await this.setupEventListeners();
+      this.setupPreviewToggles();
       this.populateForm();
       this.updateStatus('idle', '准备就绪');
     } catch (error) {
@@ -65,6 +65,8 @@ class EditorController {
     const contentHtml = document.getElementById('contentHtml');
     const contentMd = document.getElementById('contentMd');
     const publishedAtInput = document.getElementById('publishedAtInput');
+    const htmlPreview = document.getElementById('htmlPreview');
+    const mdPreview = document.getElementById('mdPreview');
 
     if (titleInput) {
       titleInput.value = this.#articleData.title || '';
@@ -79,41 +81,227 @@ class EditorController {
     }
 
     if (contentHtml) {
-      contentHtml.value = this.#articleData.content_html || '';
+      const rawHtml = this.#articleData.content_html || '';
+      contentHtml.value = this.formatHtmlString(rawHtml);
     }
 
     if (contentMd) {
       contentMd.value = this.#articleData.content_md || '';
     }
 
-    if (this.#articleData.top_image) {
-      this.showTopImage(this.#articleData.top_image);
+    if (htmlPreview) {
+      htmlPreview.innerHTML = this.#articleData.content_html || '<p>无内容</p>';
     }
 
-    if (this.#articleData.published_at) {
-      this.showPublishedAt(this.#articleData.published_at);
+    if (mdPreview) {
+      try {
+        const mdContent = this.#articleData.content_md || '';
+        if (mdContent.trim()) {
+          mdPreview.innerHTML = marked.parse(mdContent);
+        } else {
+          mdPreview.innerHTML = '<p>无内容</p>';
+        }
+      } catch (error) {
+        console.error('Failed to parse Markdown:', error);
+        mdPreview.innerHTML = '<p>Markdown 解析失败</p>';
+      }
+    }
+
+    if (this.#articleData.top_image) {
+      this.setupTopImageSelector(this.#articleData.content_html, this.#articleData.top_image);
     }
 
     if (publishedAtInput) {
-      publishedAtInput.value = this.#articleData.published_at || '';
+      this.showPublishedAt();
+      if (this.#articleData.published_at) {
+        const publishedAt = this.normalizeDate(this.#articleData.published_at);
+        if (publishedAt) {
+          publishedAtInput.value = publishedAt;
+        }
+      } 
     }
   }
 
-  showTopImage(imageUrl) {
-    const topImageGroup = document.getElementById('topImageGroup');
-    const topImagePreview = document.getElementById('topImagePreview');
-
-    if (topImageGroup && topImagePreview) {
-      topImageGroup.style.display = 'block';
-      topImagePreview.innerHTML = `<img src="${imageUrl}" alt="头图" />`;
-    }
-  }
-
-  showPublishedAt(publishedAt) {
+  showPublishedAt() {
     const publishedAtGroup = document.getElementById('publishedAtGroup');
 
     if (publishedAtGroup) {
       publishedAtGroup.style.display = 'block';
+    }
+  }
+
+  normalizeDate(dateStr) {
+    if (!dateStr) return null;
+
+    try {
+      const date = new Date(dateStr);
+      if (isNaN(date.getTime())) return null;
+
+      const year = date.getFullYear();
+      const month = String(date.getMonth() +1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+
+      return `${year}-${month}-${day}`;
+    } catch (error) {
+      console.error('Failed to normalize date:', error);
+      return null;
+    }
+  }
+
+  setupTopImageSelector(htmlContent, defaultImage) {
+    const topImageGroup = document.getElementById('topImageGroup');
+    const topImageSelect = document.getElementById('topImageSelect');
+    const topImagePreview = document.getElementById('topImagePreview');
+
+    if (!topImageGroup || !topImageSelect || !topImagePreview) return;
+
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(htmlContent, 'text/html');
+    const images = Array.from(doc.querySelectorAll('img'));
+
+    const uniqueImages = new Set();
+    images.forEach(img => {
+      if (img.src) {
+        uniqueImages.add(img.src);
+      }
+    });
+
+    const imageArray = Array.from(uniqueImages);
+
+    imageArray.forEach((imageUrl, index) => {
+      const option = document.createElement('option');
+      option.value = imageUrl;
+      option.textContent = `图片 ${index + 1}`;
+      if (imageUrl === defaultImage) {
+        option.selected = true;
+      }
+      topImageSelect.appendChild(option);
+    });
+
+    if (imageArray.length > 0) {
+      topImageGroup.style.display = 'block';
+      this.updateTopImagePreview(defaultImage || imageArray[0]);
+    }
+
+    topImageSelect.addEventListener('change', (e) => {
+      this.updateTopImagePreview(e.target.value);
+    });
+  }
+
+  updateTopImagePreview(imageUrl) {
+    const topImagePreview = document.getElementById('topImagePreview');
+    if (!topImagePreview) return;
+
+    if (imageUrl) {
+      topImagePreview.innerHTML = `<img src="${imageUrl}" alt="头图预览" />`;
+      topImagePreview.classList.remove('empty');
+    } else {
+      topImagePreview.innerHTML = '未选择图片';
+      topImagePreview.classList.add('empty');
+    }
+  }
+
+  showPublishedAt() {
+    const publishedAtGroup = document.getElementById('publishedAtGroup');
+
+    if (publishedAtGroup) {
+      publishedAtGroup.style.display = 'block';
+    }
+  }
+
+  formatHtmlString(html) {
+    if (!html) return '';
+
+    try {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, 'text/html');
+
+      const formatNode = (node, indent = 0) => {
+        const prefix = '  '.repeat(indent);
+        let result = '';
+
+        if (node.nodeType === Node.TEXT_NODE) {
+          const text = node.textContent.trim();
+          if (text) {
+            result += prefix + text + '\n';
+          }
+        } else if (node.nodeType === Node.ELEMENT_NODE) {
+          const tag = node.tagName.toLowerCase();
+          result += prefix + '<' + tag;
+
+          if (node.attributes.length > 0) {
+            for (const attr of node.attributes) {
+              result += ` ${attr.name}="${attr.value}"`;
+            }
+          }
+
+          result += '>\n';
+
+          for (const child of node.childNodes) {
+            result += formatNode(child, indent + 1);
+          }
+
+          result += prefix + '</' + tag + '>\n';
+        }
+
+        return result;
+      };
+
+      const formattedHtml = formatNode(doc.body, 0);
+      return formattedHtml.trim();
+    } catch (error) {
+      console.error('Failed to format HTML:', error);
+
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, 'text/html');
+
+      const formatNodeSimple = (node, indent = 0) => {
+        const prefix = '  '.repeat(indent);
+        let result = '';
+
+        if (node.nodeType === Node.TEXT_NODE) {
+          const text = node.textContent.trim();
+          if (text) {
+            result += text;
+          }
+        } else if (node.nodeType === Node.ELEMENT_NODE) {
+          const tag = node.tagName.toLowerCase();
+          const isInline = ['span', 'a', 'strong', 'em', 'code', 'b', 'i', 'img', 'br'].includes(tag);
+
+          if (!isInline) {
+            result += '\n' + prefix;
+          }
+
+          result += '<' + tag;
+
+          if (node.attributes.length > 0) {
+            for (const attr of node.attributes) {
+              result += ` ${attr.name}="${attr.value}"`;
+            }
+          }
+
+          result += '>';
+
+          for (const child of node.childNodes) {
+            result += formatNodeSimple(child, indent + (isInline ? 0 : 1));
+          }
+
+          result += '</' + tag + '>';
+
+          if (!isInline) {
+            result += '\n';
+          }
+        }
+
+        return result;
+      };
+
+      let formattedHtml = '';
+      for (const child of doc.body.childNodes) {
+        formattedHtml += formatNodeSimple(child, 0);
+      }
+
+      return formattedHtml.trim();
     }
   }
 
@@ -127,62 +315,32 @@ class EditorController {
 
   setupPreviewToggles() {
     const toggleHtmlBtn = document.getElementById('toggleHtmlBtn');
-    const previewHtmlBtn = document.getElementById('previewHtmlBtn');
     const toggleMdBtn = document.getElementById('toggleMdBtn');
-    const previewMdBtn = document.getElementById('previewMdBtn');
     const contentHtml = document.getElementById('contentHtml');
     const contentMd = document.getElementById('contentMd');
     const htmlPreview = document.getElementById('htmlPreview');
     const mdPreview = document.getElementById('mdPreview');
 
-    if (toggleHtmlBtn && contentHtml) {
+    if (toggleHtmlBtn && contentHtml && htmlPreview) {
       toggleHtmlBtn.addEventListener('click', () => {
-        const isCollapsed = toggleHtmlBtn.getAttribute('data-collapsed') === 'true';
-        if (isCollapsed) {
-          contentHtml.classList.remove('hidden');
-          toggleHtmlBtn.setAttribute('data-collapsed', 'false');
-          toggleHtmlBtn.textContent = '折叠';
-        } else {
-          contentHtml.classList.add('hidden');
-          toggleHtmlBtn.setAttribute('data-collapsed', 'true');
-          toggleHtmlBtn.textContent = '展开';
-        }
-      });
-    }
-
-    if (toggleMdBtn && contentMd) {
-      toggleMdBtn.addEventListener('click', () => {
-        const isCollapsed = toggleMdBtn.getAttribute('data-collapsed') === 'true';
-        if (isCollapsed) {
-          contentMd.classList.remove('hidden');
-          toggleMdBtn.setAttribute('data-collapsed', 'false');
-          toggleMdBtn.textContent = '折叠';
-        } else {
-          contentMd.classList.add('hidden');
-          toggleMdBtn.setAttribute('data-collapsed', 'true');
-          toggleMdBtn.textContent = '展开';
-        }
-      });
-    }
-
-    if (previewHtmlBtn && htmlPreview && contentHtml) {
-      previewHtmlBtn.addEventListener('click', () => {
-        const isHidden = htmlPreview.classList.contains('hidden');
-        if (isHidden) {
+        const isEditingMode = !contentHtml.classList.contains('hidden');
+        if (isEditingMode) {
           htmlPreview.innerHTML = contentHtml.value || '<p>无内容</p>';
+          contentHtml.classList.add('hidden');
           htmlPreview.classList.remove('hidden');
-          previewHtmlBtn.textContent = '关闭预览';
+          toggleHtmlBtn.textContent = '编辑';
         } else {
+          contentHtml.classList.remove('hidden');
           htmlPreview.classList.add('hidden');
-          previewHtmlBtn.textContent = '预览';
+          toggleHtmlBtn.textContent = '预览';
         }
       });
     }
 
-    if (previewMdBtn && mdPreview && contentMd) {
-      previewMdBtn.addEventListener('click', () => {
-        const isHidden = mdPreview.classList.contains('hidden');
-        if (isHidden) {
+    if (toggleMdBtn && contentMd && mdPreview) {
+      toggleMdBtn.addEventListener('click', () => {
+        const isEditingMode = !contentMd.classList.contains('hidden');
+        if (isEditingMode) {
           try {
             const mdContent = contentMd.value || '';
             if (mdContent.trim()) {
@@ -190,17 +348,17 @@ class EditorController {
             } else {
               mdPreview.innerHTML = '<p>无内容</p>';
             }
-            mdPreview.classList.remove('hidden');
-            previewMdBtn.textContent = '关闭预览';
           } catch (error) {
             console.error('Failed to parse Markdown:', error);
             mdPreview.innerHTML = '<p>Markdown 解析失败</p>';
-            mdPreview.classList.remove('hidden');
-            previewMdBtn.textContent = '关闭预览';
           }
+          contentMd.classList.add('hidden');
+          mdPreview.classList.remove('hidden');
+          toggleMdBtn.textContent = '编辑';
         } else {
+          contentMd.classList.remove('hidden');
           mdPreview.classList.add('hidden');
-          previewMdBtn.textContent = '预览';
+          toggleMdBtn.textContent = '预览';
         }
       });
     }
@@ -216,11 +374,15 @@ class EditorController {
     const authorInput = document.getElementById('authorInput');
     const contentHtml = document.getElementById('contentHtml');
     const contentMd = document.getElementById('contentMd');
+    const publishedAtInput = document.getElementById('publishedAtInput');
+    const topImageSelect = document.getElementById('topImageSelect');
 
     const title = titleInput?.value?.trim();
     const author = authorInput?.value?.trim();
     const htmlContent = contentHtml?.value;
     const mdContent = contentMd?.value;
+    const publishedAt = publishedAtInput?.value || '';
+    const topImage = topImageSelect?.value || null;
 
     if (!title) {
       this.updateStatus('error', '请输入标题');
@@ -241,8 +403,8 @@ class EditorController {
         content_html: htmlContent || '',
         content_md: mdContent || '',
         source_url: this.#articleData.source_url,
-        top_image: this.#articleData.top_image,
-        published_at: this.#articleData.published_at || '',
+        top_image: topImage,
+        published_at: publishedAt,
         source_domain: this.#articleData.source_domain,
         category_id: this.#articleData.category_id,
       };
