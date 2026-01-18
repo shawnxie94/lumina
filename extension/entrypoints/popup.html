@@ -27,6 +27,7 @@
       margin-bottom: 16px;
       padding-bottom: 12px;
       border-bottom: 1px solid #e5e7eb;
+      position: relative;
     }
     
     .header h1 {
@@ -151,6 +152,12 @@
 <body>
   <div class="header">
     <h1>📚 文章采集器</h1>
+    <button 
+      id="configBtn"
+      style="padding: 8px 16px; background: #f3f4f6; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; cursor: pointer; color: #6b7280;"
+    >
+      ⚙️ 配置
+    </button>
     <button class="close-btn" id="closeBtn">×</button>
   </div>
   
@@ -174,26 +181,100 @@
     <button class="btn btn-primary" id="collectBtn">确定采集</button>
   </div>
   
+  <div id="configModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.5); align-items: center; justify-content: center; z-index: 1000;">
+    <div style="background: white; padding: 24px; border-radius: 12px; width: 320px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);">
+      <h2 style="margin: 0 0 16px 0; font-size: 18px; color: #111827;">⚙️ 配置</h2>
+      
+      <div style="margin-bottom: 16px;">
+        <label style="display: block; font-size: 13px; font-weight: 500; color: #374151; margin-bottom: 6px;">API 地址</label>
+        <input 
+          type="text" 
+          id="apiHostInput"
+          placeholder="localhost:8000"
+          style="width: 100%; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; background: white;"
+        />
+      </div>
+      
+      <div style="display: flex; gap: 8px; justify-content: flex-end;">
+        <button 
+          id="saveConfigBtn"
+          style="flex: 1; padding: 10px 16px; border: none; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer; background: #3b82f6; color: white;"
+        >
+          保存
+        </button>
+        <button 
+          id="cancelConfigBtn"
+          style="flex: 1; padding: 10px 16px; border: none; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer; background: white; border: 1px solid #d1d5db; color: #374151;"
+        >
+          取消
+        </button>
+      </div>
+    </div>
+  </div>
+  
   <script>
-    const API_URL = 'http://localhost:8000';
+    const API_HOST = localStorage.getItem('apiHost') || 'localhost:8000';
+    const API_URL = `http://${API_HOST}`;
     
     let currentTab = null;
     let articleData = null;
     
-    document.addEventListener('DOMContentLoaded', async () => {
-      await loadCategories();
-      await extractArticle();
-      
-      document.getElementById('closeBtn').addEventListener('click', () => {
-        window.close();
-      });
-      
-      document.getElementById('cancelBtn').addEventListener('click', () => {
-        window.close();
-      });
-      
-      document.getElementById('collectBtn').addEventListener('click', collectArticle);
+    const DEFAULT_CATEGORIES = [
+      { id: 'default-1', name: '业界资讯' },
+      { id: 'default-2', name: '技术博客' },
+    ];
+    
+    document.addEventListener('DOMContentLoaded', () => {
+      setTimeout(async () => {
+        await loadCategories();
+        await extractArticle();
+        
+        const apiHostInput = document.getElementById('apiHostInput');
+        if (apiHostInput) {
+          apiHostInput.value = API_HOST;
+        }
+        
+        document.getElementById('closeBtn').addEventListener('click', () => {
+          window.close();
+        });
+        
+        document.getElementById('cancelBtn').addEventListener('click', () => {
+          window.close();
+        });
+        
+        document.getElementById('collectBtn').addEventListener('click', collectArticle);
+        
+        document.getElementById('configBtn').addEventListener('click', openConfigModal);
+        
+        document.getElementById('saveConfigBtn').addEventListener('click', saveConfig);
+        
+        document.getElementById('cancelConfigBtn').addEventListener('click', closeConfigModal);
+      }, 100);
     });
+    
+    function openConfigModal() {
+      const modal = document.getElementById('configModal');
+      modal.style.display = 'flex';
+    }
+    
+    function closeConfigModal() {
+      const modal = document.getElementById('configModal');
+      modal.style.display = 'none';
+    }
+    
+    function saveConfig() {
+      const apiHostInput = document.getElementById('apiHostInput');
+      const newApiHost = apiHostInput.value.trim();
+      
+      if (newApiHost) {
+        localStorage.setItem('apiHost', newApiHost);
+        alert('配置已保存');
+        closeConfigModal();
+        location.reload();
+      } else {
+        alert('请输入有效的 API 地址');
+      }
+    }
     
     async function loadCategories() {
       try {
@@ -201,17 +282,39 @@
         const categories = await response.json();
         
         const select = document.getElementById('categorySelect');
+        if (categories && categories.length > 0) {
+          select.innerHTML = '<option value="">选择分类...</option>';
+          
+          categories.forEach(category => {
+            const option = document.createElement('option');
+            option.value = category.id;
+            option.textContent = category.name;
+            select.appendChild(option);
+          });
+        } else {
+          console.warn('分类列表为空，使用默认分类');
+          select.innerHTML = '<option value="">选择分类...</option>';
+          
+          DEFAULT_CATEGORIES.forEach(category => {
+            const option = document.createElement('option');
+            option.value = category.id;
+            option.textContent = category.name;
+            select.appendChild(option);
+          });
+        }
+      } catch (error) {
+        console.error('加载分类失败:', error);
+        updateStatus('warning', '加载分类失败，使用默认分类');
+        
+        const select = document.getElementById('categorySelect');
         select.innerHTML = '<option value="">选择分类...</option>';
         
-        categories.forEach(category => {
+        DEFAULT_CATEGORIES.forEach(category => {
           const option = document.createElement('option');
           option.value = category.id;
           option.textContent = category.name;
           select.appendChild(option);
         });
-      } catch (error) {
-        console.error('加载分类失败:', error);
-        updateStatus('error', '加载分类失败');
       }
     }
     
@@ -230,6 +333,7 @@
         articleData = results[0].result;
         
         document.getElementById('previewTitle').textContent = articleData.title;
+        document.getElementById('contentEdit').value = articleData.content_md || '';
         updateStatus('idle', '准备就绪');
       } catch (error) {
         console.error('提取文章失败:', error);
@@ -239,20 +343,48 @@
     
     function extractContent() {
       const doc = document.cloneNode(true);
+      const article = new Readability(doc).parse();
       
-      const title = document.querySelector('h1, h2, h3')?.textContent || document.title;
-      const content = document.body?.innerHTML || '';
+      if (!article) {
+        return {
+          title: document.title,
+          content_html: document.body?.innerHTML || '',
+          content_md: '',
+          source_url: window.location.href,
+          top_image: null,
+          author: '',
+          published_at: '',
+          source_domain: new URL(window.location.href).hostname,
+        };
+      }
+      
+      const turndownService = new TurndownService();
+      const contentMd = turndownService.turndown(article.content);
+      
+      const topImage = extractTopImage(article.content);
       
       return {
-        title: title,
-        content_html: content,
-        content_md: content.replace(/<[^>]*>/g, ''),
+        title: article.title,
+        content_html: article.content,
+        content_md: contentMd,
         source_url: window.location.href,
-        top_image: null,
-        author: '',
-        published_at: '',
+        top_image: topImage,
+        author: article.byline || '',
+        published_at: article.publishedTime || '',
         source_domain: new URL(window.location.href).hostname,
       };
+    }
+    
+    function extractTopImage(content) {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(content, 'text/html');
+      const img = doc.querySelector('img');
+      
+      if (img && img.src) {
+        return img.src;
+      }
+      
+      return null;
     }
     
     async function collectArticle() {
@@ -266,6 +398,8 @@
       updateStatus('loading', '正在上传文章...');
       
       try {
+        const editedContent = document.getElementById('contentEdit').value;
+        
         const response = await fetch(`${API_URL}/api/articles`, {
           method: 'POST',
           headers: {
@@ -273,6 +407,7 @@
           },
           body: JSON.stringify({
             ...articleData,
+            content_md: editedContent || articleData.content_md,
             category_id: categoryId,
           }),
         });
@@ -281,9 +416,25 @@
           const result = await response.json();
           updateStatus('success', `采集成功！文章ID: ${result.id}`);
           
-          setTimeout(() => {
+          const buttonsDiv = document.querySelector('.buttons');
+          buttonsDiv.innerHTML = '';
+          
+          const editBtn = document.createElement('button');
+          editBtn.className = 'btn btn-primary';
+          editBtn.textContent = '编辑文章';
+          editBtn.style.flex = '1';
+          editBtn.onclick = () => {
+            chrome.tabs.create({ url: `${API_URL.replace('http://', '').replace(':8000', ':3000')}/article/${result.id}` });
             window.close();
-          }, 2000);
+          };
+          buttonsDiv.appendChild(editBtn);
+          
+          const closeBtn = document.createElement('button');
+          closeBtn.className = 'btn btn-secondary';
+          closeBtn.textContent = '关闭';
+          closeBtn.style.flex = '1';
+          closeBtn.onclick = () => window.close();
+          buttonsDiv.appendChild(closeBtn);
         } else {
           throw new Error('上传失败');
         }

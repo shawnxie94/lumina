@@ -118,12 +118,6 @@ npm run build
    - 点击"加载已解压的扩展程序"
    - 选择 `extension/.output/chrome-mv3` 目录
 
-5. 准备图标文件：
-   - 在 `extension/icon/` 目录下放置以下尺寸的图标：
-     - 16.png (16x16 像素)
-     - 48.png (48x48 像素)
-     - 128.png (128x128 像素)
-
 ## 使用指南
 
 ### 采集文章

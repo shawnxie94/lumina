@@ -13,3 +13,4 @@ __pycache__
 data/
 dist/
 .wxt/
+.output/
