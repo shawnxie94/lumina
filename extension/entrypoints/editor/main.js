@@ -1,4 +1,5 @@
 import { ApiClient } from '../../utils/api';
+import { marked } from 'marked';
 
 class EditorController {
   #apiClient;
@@ -6,6 +7,7 @@ class EditorController {
 
   constructor() {
     this.#apiClient = new ApiClient();
+    this.setupPreviewToggles();
   }
 
   async init() {
@@ -62,6 +64,7 @@ class EditorController {
     const sourceUrlInput = document.getElementById('sourceUrlInput');
     const contentHtml = document.getElementById('contentHtml');
     const contentMd = document.getElementById('contentMd');
+    const publishedAtInput = document.getElementById('publishedAtInput');
 
     if (titleInput) {
       titleInput.value = this.#articleData.title || '';
@@ -82,6 +85,36 @@ class EditorController {
     if (contentMd) {
       contentMd.value = this.#articleData.content_md || '';
     }
+
+    if (this.#articleData.top_image) {
+      this.showTopImage(this.#articleData.top_image);
+    }
+
+    if (this.#articleData.published_at) {
+      this.showPublishedAt(this.#articleData.published_at);
+    }
+
+    if (publishedAtInput) {
+      publishedAtInput.value = this.#articleData.published_at || '';
+    }
+  }
+
+  showTopImage(imageUrl) {
+    const topImageGroup = document.getElementById('topImageGroup');
+    const topImagePreview = document.getElementById('topImagePreview');
+
+    if (topImageGroup && topImagePreview) {
+      topImageGroup.style.display = 'block';
+      topImagePreview.innerHTML = `<img src="${imageUrl}" alt="头图" />`;
+    }
+  }
+
+  showPublishedAt(publishedAt) {
+    const publishedAtGroup = document.getElementById('publishedAtGroup');
+
+    if (publishedAtGroup) {
+      publishedAtGroup.style.display = 'block';
+    }
   }
 
   async setupEventListeners() {
@@ -90,6 +123,87 @@ class EditorController {
     document.getElementById('cancelBtn')?.addEventListener('click', () => {
       window.close();
     });
+  }
+
+  setupPreviewToggles() {
+    const toggleHtmlBtn = document.getElementById('toggleHtmlBtn');
+    const previewHtmlBtn = document.getElementById('previewHtmlBtn');
+    const toggleMdBtn = document.getElementById('toggleMdBtn');
+    const previewMdBtn = document.getElementById('previewMdBtn');
+    const contentHtml = document.getElementById('contentHtml');
+    const contentMd = document.getElementById('contentMd');
+    const htmlPreview = document.getElementById('htmlPreview');
+    const mdPreview = document.getElementById('mdPreview');
+
+    if (toggleHtmlBtn && contentHtml) {
+      toggleHtmlBtn.addEventListener('click', () => {
+        const isCollapsed = toggleHtmlBtn.getAttribute('data-collapsed') === 'true';
+        if (isCollapsed) {
+          contentHtml.classList.remove('hidden');
+          toggleHtmlBtn.setAttribute('data-collapsed', 'false');
+          toggleHtmlBtn.textContent = '折叠';
+        } else {
+          contentHtml.classList.add('hidden');
+          toggleHtmlBtn.setAttribute('data-collapsed', 'true');
+          toggleHtmlBtn.textContent = '展开';
+        }
+      });
+    }
+
+    if (toggleMdBtn && contentMd) {
+      toggleMdBtn.addEventListener('click', () => {
+        const isCollapsed = toggleMdBtn.getAttribute('data-collapsed') === 'true';
+        if (isCollapsed) {
+          contentMd.classList.remove('hidden');
+          toggleMdBtn.setAttribute('data-collapsed', 'false');
+          toggleMdBtn.textContent = '折叠';
+        } else {
+          contentMd.classList.add('hidden');
+          toggleMdBtn.setAttribute('data-collapsed', 'true');
+          toggleMdBtn.textContent = '展开';
+        }
+      });
+    }
+
+    if (previewHtmlBtn && htmlPreview && contentHtml) {
+      previewHtmlBtn.addEventListener('click', () => {
+        const isHidden = htmlPreview.classList.contains('hidden');
+        if (isHidden) {
+          htmlPreview.innerHTML = contentHtml.value || '<p>无内容</p>';
+          htmlPreview.classList.remove('hidden');
+          previewHtmlBtn.textContent = '关闭预览';
+        } else {
+          htmlPreview.classList.add('hidden');
+          previewHtmlBtn.textContent = '预览';
+        }
+      });
+    }
+
+    if (previewMdBtn && mdPreview && contentMd) {
+      previewMdBtn.addEventListener('click', () => {
+        const isHidden = mdPreview.classList.contains('hidden');
+        if (isHidden) {
+          try {
+            const mdContent = contentMd.value || '';
+            if (mdContent.trim()) {
+              mdPreview.innerHTML = marked.parse(mdContent);
+            } else {
+              mdPreview.innerHTML = '<p>无内容</p>';
+            }
+            mdPreview.classList.remove('hidden');
+            previewMdBtn.textContent = '关闭预览';
+          } catch (error) {
+            console.error('Failed to parse Markdown:', error);
+            mdPreview.innerHTML = '<p>Markdown 解析失败</p>';
+            mdPreview.classList.remove('hidden');
+            previewMdBtn.textContent = '关闭预览';
+          }
+        } else {
+          mdPreview.classList.add('hidden');
+          previewMdBtn.textContent = '预览';
+        }
+      });
+    }
   }
 
   async submitArticle() {

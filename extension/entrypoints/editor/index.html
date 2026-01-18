@@ -31,14 +31,38 @@
       <input type="text" id="sourceUrlInput" readonly />
     </div>
 
-    <div class="form-group">
-      <label for="contentHtml">HTML内容</label>
-      <textarea id="contentHtml" rows="20"></textarea>
+    <div class="form-group" id="topImageGroup" style="display: none;">
+      <label>头图</label>
+      <div id="topImagePreview" class="top-image-preview"></div>
     </div>
 
-    <div class="form-group">
-      <label for="contentMd">Markdown内容</label>
+    <div class="form-group" id="publishedAtGroup" style="display: none;">
+      <label for="publishedAtInput">发表时间</label>
+      <input type="text" id="publishedAtInput" readonly />
+    </div>
+
+    <div class="form-group content-section">
+      <div class="section-header">
+        <label for="contentHtml">HTML内容</label>
+        <div class="section-actions">
+          <button id="toggleHtmlBtn" class="btn-toggle" data-collapsed="false">折叠</button>
+          <button id="previewHtmlBtn" class="btn-preview">预览</button>
+        </div>
+      </div>
+      <textarea id="contentHtml" rows="20"></textarea>
+      <div id="htmlPreview" class="preview-panel hidden"></div>
+    </div>
+
+    <div class="form-group content-section">
+      <div class="section-header">
+        <label for="contentMd">Markdown内容</label>
+        <div class="section-actions">
+          <button id="toggleMdBtn" class="btn-toggle" data-collapsed="false">折叠</button>
+          <button id="previewMdBtn" class="btn-preview">预览</button>
+        </div>
+      </div>
       <textarea id="contentMd" rows="20"></textarea>
+      <div id="mdPreview" class="preview-panel hidden"></div>
     </div>
   </div>
 
