@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>文章采集器</title>
+</head>
+<body>
+  <div class="header">
+    <h1>📚 文章采集器</h1>
+    <button id="configBtn" class="config-btn">⚙️ 配置</button>
+    <button class="close-btn" id="closeBtn">×</button>
+  </div>
+
+  <div class="preview">
+    <div class="preview-title" id="previewTitle">正在加载...</div>
+  </div>
+
+  <div class="form-group">
+    <label for="categorySelect">分类</label>
+    <select id="categorySelect">
+      <option value="">选择分类...</option>
+    </select>
+  </div>
+
+  <div class="status idle" id="status">
+    准备就绪
+  </div>
+
+  <div class="buttons">
+    <button class="btn btn-secondary" id="cancelBtn">取消</button>
+    <button class="btn btn-primary" id="collectBtn">确定采集</button>
+  </div>
+
+  <div id="configModal" class="config-modal">
+    <div class="modal-content">
+      <h2>⚙️ 配置</h2>
+
+      <div class="form-group">
+        <label for="apiHostInput">API 地址</label>
+        <input type="text" id="apiHostInput" placeholder="localhost:8000" />
+      </div>
+
+      <div class="modal-buttons">
+        <button id="saveConfigBtn" class="btn btn-primary">保存</button>
+        <button id="cancelConfigBtn" class="btn btn-secondary">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="./main.js"></script>
+</body>
+</html>

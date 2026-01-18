@@ -5,7 +5,7 @@ export default defineConfig({
     name: '文章知识库采集器',
     description: '一键采集网页文章到知识库',
     version: '1.0.0',
-    permissions: ['activeTab', 'scripting'],
+    permissions: ['activeTab', 'scripting', 'storage'],
     action: {
       default_popup: 'popup.html',
       default_icon: {
@@ -20,4 +20,15 @@ export default defineConfig({
       '128': 'icon/128.png',
     },
   },
+  runner: {
+    disabled: false,
+  },
+  devtools: {
+    enabled: true,
+  },
+  vite: () => ({
+    build: {
+      target: 'esnext',
+    },
+  }),
 });
