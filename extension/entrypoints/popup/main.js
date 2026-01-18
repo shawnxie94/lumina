@@ -1,13 +1,16 @@
 import '../../styles/popup.css';
 import { ApiClient, DEFAULT_CATEGORIES } from '../../utils/api';
+import TurndownService from 'turndown';
 
 class PopupController {
   #apiClient;
+  #turndown;
   #articleData = null;
   #currentTab = null;
 
   constructor() {
     this.#apiClient = new ApiClient();
+    this.#turndown = new TurndownService();
   }
 
   async init() {
@@ -43,6 +46,8 @@ class PopupController {
 
     document.getElementById('collectBtn')?.addEventListener('click', () => this.collectArticle());
 
+    document.getElementById('editAndCollectBtn')?.addEventListener('click', () => this.openEditorPage());
+
     document.getElementById('configBtn')?.addEventListener('click', () => this.openConfigModal());
 
     document.getElementById('saveConfigBtn')?.addEventListener('click', () => this.saveConfig());
@@ -73,6 +78,10 @@ class PopupController {
       option.textContent = category.name;
       select.appendChild(option);
     });
+
+    if (categories.length > 0) {
+      select.value = categories[0].id;
+    }
   }
 
   async extractArticle() {
@@ -89,9 +98,7 @@ class PopupController {
       const results = await chrome.scripting.executeScript({
         target: { tabId: tab.id },
         func: () => {
-          const doc = document.cloneNode(true);
           const title = document.title;
-          const metaDescription = document.querySelector('meta[name="description"]')?.content || '';
           const metaAuthor = document.querySelector('meta[name="author"]')?.content || '';
 
           const articleElement = document.querySelector('article') ||
@@ -108,7 +115,6 @@ class PopupController {
           return {
             title: title,
             content_html: content,
-            content_md: '',
             source_url: window.location.href,
             top_image: topImage,
             author: metaAuthor,
@@ -118,7 +124,13 @@ class PopupController {
         },
       });
 
-      this.#articleData = results[0].result;
+      const extractedData = results[0].result;
+      const contentMd = this.#turndown.turndown(extractedData.content_html);
+
+      this.#articleData = {
+        ...extractedData,
+        content_md: contentMd,
+      };
 
       const previewTitle = document.getElementById('previewTitle');
       if (previewTitle && this.#articleData) {
@@ -171,6 +183,48 @@ class PopupController {
     } catch (error) {
       console.error('Failed to collect article:', error);
       this.updateStatus('error', '采集失败，请重试');
+    }
+  }
+
+  async openEditorPage() {
+    const categoryIdSelect = document.getElementById('categorySelect');
+    const categoryId = categoryIdSelect?.value;
+
+    if (!categoryId) {
+      this.updateStatus('error', '请选择分类');
+      return;
+    }
+
+    if (!this.#articleData) {
+      this.updateStatus('error', '没有文章数据');
+      return;
+    }
+
+    try {
+      const articleData = {
+        ...this.#articleData,
+        category_id: categoryId,
+      };
+
+      const articleId = `editor_${Date.now()}`;
+
+      await new Promise((resolve, reject) => {
+        chrome.storage.local.set({ [articleId]: articleData }, () => {
+          if (chrome.runtime.lastError) {
+            reject(chrome.runtime.lastError);
+          } else {
+            resolve();
+          }
+        });
+      });
+
+      const editorUrl = `${chrome.runtime.getURL('editor.html')}?id=${articleId}`;
+
+      chrome.tabs.create({ url: editorUrl });
+      window.close();
+    } catch (error) {
+      console.error('Failed to open editor:', error);
+      this.updateStatus('error', '打开编辑页面失败');
     }
   }
 
