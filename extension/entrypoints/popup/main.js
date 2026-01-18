@@ -86,24 +86,62 @@ class PopupController {
         throw new Error('No active tab found');
       }
 
-      const response = await chrome.tabs.sendMessage(tab.id, { action: 'extractArticle' });
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: () => {
+          const doc = document.cloneNode(true);
+          const title = document.title;
+          const metaDescription = document.querySelector('meta[name="description"]')?.content || '';
+          const metaAuthor = document.querySelector('meta[name="author"]')?.content || '';
 
-      if (response.success) {
-        this.#articleData = response.data;
+          const articleElement = document.querySelector('article') ||
+                                document.querySelector('[role="main"]') ||
+                                document.querySelector('main') ||
+                                document.querySelector('.content') ||
+                                document.body;
 
-        const previewTitle = document.getElementById('previewTitle');
-        if (previewTitle && this.#articleData) {
-          previewTitle.textContent = this.#articleData.title;
-        }
+          const content = articleElement?.innerHTML || document.body?.innerHTML || '';
 
-        this.updateStatus('idle', '准备就绪');
-      } else {
-        throw new Error(response.error || 'Failed to extract article');
+          const img = articleElement?.querySelector('img');
+          const topImage = img?.src || null;
+
+          return {
+            title: title,
+            content_html: content,
+            content_md: '',
+            source_url: window.location.href,
+            top_image: topImage,
+            author: metaAuthor,
+            published_at: '',
+            source_domain: new URL(window.location.href).hostname,
+          };
+        },
+      });
+
+      this.#articleData = results[0].result;
+
+      const previewTitle = document.getElementById('previewTitle');
+      if (previewTitle && this.#articleData) {
+        previewTitle.textContent = this.#articleData.title;
       }
+
+      this.updateStatus('idle', '准备就绪');
     } catch (error) {
       console.error('Failed to extract article:', error);
       this.updateStatus('error', '提取文章失败');
     }
+  }
+
+  extractTopImage(content) {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(content, 'text/html');
+    const img = doc.querySelector('img');
+
+    if (img && img.src) {
+      return img.src;
+    }
+
+    return null;
   }
 
   async collectArticle() {
