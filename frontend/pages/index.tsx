@@ -10,6 +10,7 @@ export default function Home() {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [selectedArticleIds, setSelectedArticleIds] = useState<Set<string>>(new Set());
 
   const fetchArticles = async () => {
     setLoading(true);
@@ -54,7 +55,7 @@ export default function Home() {
 
   const handleDelete = async (id: string) => {
     if (!confirm('确定要删除这篇文章吗？')) return;
-    
+
     try {
       await articleApi.deleteArticle(id);
       fetchArticles();
@@ -64,18 +65,78 @@ export default function Home() {
     }
   };
 
+  const handleToggleSelect = (id: string) => {
+    setSelectedArticleIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const handleSelectAll = () => {
+    if (selectedArticleIds.size === articles.length) {
+      setSelectedArticleIds(new Set());
+    } else {
+      setSelectedArticleIds(new Set(articles.map((a) => a.id)));
+    }
+  };
+
+  const handleExport = async () => {
+    if (selectedArticleIds.size === 0) {
+      alert('请先选择要导出的文章');
+      return;
+    }
+
+    try {
+      const data = await articleApi.exportArticles(Array.from(selectedArticleIds));
+      const blob = new Blob([data.content], { type: 'text/markdown' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = data.filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      setSelectedArticleIds(new Set());
+    } catch (error) {
+      console.error('Failed to export articles:', error);
+      alert('导出失败');
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       <nav className="bg-white shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <h1 className="text-2xl font-bold text-gray-900">📚 文章知识库</h1>
-            <Link
-              href="/categories"
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
-            >
-              管理分类
-            </Link>
+            <div className="flex gap-2">
+              {selectedArticleIds.size > 0 && (
+                <button
+                  onClick={handleExport}
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
+                >
+                  导出选中 ({selectedArticleIds.size})
+                </button>
+              )}
+              <Link
+                href="/config"
+                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition"
+              >
+                AI配置
+              </Link>
+              <Link
+                href="/categories"
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+              >
+                管理分类
+              </Link>
+            </div>
           </div>
         </div>
       </nav>
@@ -132,59 +193,76 @@ export default function Home() {
               <div className="text-center py-12 text-gray-500">加载中...</div>
             ) : articles.length === 0 ? (
               <div className="text-center py-12 text-gray-500">暂无文章</div>
-            ) : (
-              <>
-                <div className="space-y-4">
-                  {articles.map((article) => (
-                    <div
-                      key={article.id}
-                      className="bg-white rounded-lg shadow-sm p-6 hover:shadow-md transition"
-                    >
-                      <div className="flex gap-4">
-                        {article.top_image && (
-                          <img
-                            src={article.top_image}
-                            alt={article.title}
-                            className="w-32 h-32 object-cover rounded-lg"
-                          />
-                        )}
-                        <div className="flex-1">
-                          <Link href={`/article/${article.id}`}>
-                            <h3 className="text-xl font-semibold text-gray-900 hover:text-blue-600 transition cursor-pointer">
-                              {article.title}
-                            </h3>
-                          </Link>
-                          <div className="mt-2 flex items-center gap-4 text-sm text-gray-600">
-                            {article.category && (
-                              <span className="px-2 py-1 bg-gray-100 rounded">
-                                {article.category.name}
-                              </span>
-                            )}
-                            {article.author && <span>作者: {article.author}</span>}
-                            <span>{new Date(article.created_at).toLocaleDateString('zh-CN')}</span>
-                          </div>
-                          {article.summary && (
-                            <p className="mt-2 text-gray-600 line-clamp-2">{article.summary}</p>
-                          )}
-                          <div className="mt-4 flex gap-2">
-                            <Link
-                              href={`/article/${article.id}`}
-                              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
-                            >
-                              查看详情
-                            </Link>
-                            <button
-                              onClick={() => handleDelete(article.id)}
-                              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition"
-                            >
-                              删除
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+             ) : (
+               <>
+                 <div className="mb-4">
+                   <label className="flex items-center gap-2 cursor-pointer">
+                     <input
+                       type="checkbox"
+                       checked={selectedArticleIds.size === articles.length}
+                       onChange={handleSelectAll}
+                       className="w-4 h-4 text-blue-600 rounded"
+                     />
+                     <span className="text-sm text-gray-600">全选 ({selectedArticleIds.size}/{articles.length})</span>
+                   </label>
+                 </div>
+                 <div className="space-y-4">
+                   {articles.map((article) => (
+                     <div
+                       key={article.id}
+                       className="bg-white rounded-lg shadow-sm p-6 hover:shadow-md transition"
+                     >
+                       <div className="flex gap-4">
+                         <input
+                           type="checkbox"
+                           checked={selectedArticleIds.has(article.id)}
+                           onChange={() => handleToggleSelect(article.id)}
+                           className="w-4 h-4 text-blue-600 rounded mt-1"
+                         />
+                         {article.top_image && (
+                           <img
+                             src={article.top_image}
+                             alt={article.title}
+                             className="w-32 h-32 object-cover rounded-lg"
+                           />
+                         )}
+                         <div className="flex-1">
+                           <Link href={`/article/${article.id}`}>
+                             <h3 className="text-xl font-semibold text-gray-900 hover:text-blue-600 transition cursor-pointer">
+                               {article.title}
+                             </h3>
+                           </Link>
+                           <div className="mt-2 flex items-center gap-4 text-sm text-gray-600">
+                             {article.category && (
+                               <span className="px-2 py-1 bg-gray-100 rounded">
+                                 {article.category.name}
+                               </span>
+                             )}
+                             {article.author && <span>作者: {article.author}</span>}
+                             <span>{new Date(article.created_at).toLocaleDateString('zh-CN')}</span>
+                           </div>
+                           {article.summary && (
+                             <p className="mt-2 text-gray-600 line-clamp-2">{article.summary}</p>
+                           )}
+                           <div className="mt-4 flex gap-2">
+                             <Link
+                               href={`/article/${article.id}`}
+                               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                             >
+                               查看详情
+                             </Link>
+                             <button
+                               onClick={() => handleDelete(article.id)}
+                               className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition"
+                             >
+                               删除
+                             </button>
+                           </div>
+                         </div>
+                       </div>
+                     </div>
+                   ))}
+                 </div>
 
                 <div className="mt-6 flex justify-center gap-2">
                   <button

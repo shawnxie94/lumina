@@ -162,6 +162,45 @@ class PopupController {
     return null;
   }
 
+  async convertImageToBase64(imageUrl) {
+    if (!imageUrl) return null;
+
+    try {
+      if (imageUrl.startsWith('data:')) {
+        return imageUrl;
+      }
+
+      const response = await fetch(imageUrl, {
+        method: 'GET',
+        mode: 'cors',
+        cache: 'no-cache',
+      });
+
+      if (!response.ok) {
+        console.warn('Failed to fetch image:', imageUrl, response.status);
+        return imageUrl;
+      }
+
+      const blob = await response.blob();
+
+      const MAX_SIZE = 2 * 1024 * 1024;
+      if (blob.size > MAX_SIZE) {
+        console.warn('Image too large, skipping conversion:', blob.size);
+        return imageUrl;
+      }
+
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    } catch (error) {
+      console.warn('Failed to convert image to base64:', error);
+      return imageUrl;
+    }
+  }
+
   async collectArticle() {
     const categoryIdSelect = document.getElementById('categorySelect');
     const categoryId = categoryIdSelect?.value;
@@ -179,8 +218,11 @@ class PopupController {
     this.updateStatus('loading', '正在上传文章...');
 
     try {
+      const topImageBase64 = await this.convertImageToBase64(this.#articleData.top_image);
+
       const result = await this.#apiClient.createArticle({
         ...this.#articleData,
+        top_image: topImageBase64,
         category_id: categoryId,
       });
 

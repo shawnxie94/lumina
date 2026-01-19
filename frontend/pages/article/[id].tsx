@@ -30,6 +30,19 @@ export default function ArticleDetail() {
     }
   };
 
+  const handleRetry = async () => {
+    if (!id || !article) return;
+
+    try {
+      await articleApi.retryArticle(id as string);
+      alert('已提交重新生成AI分析请求');
+      fetchArticle();
+    } catch (error) {
+      console.error('Failed to retry article:', error);
+      alert('重试失败');
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -110,7 +123,17 @@ export default function ArticleDetail() {
           </div>
 
           <div className="bg-white rounded-lg shadow-sm p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-6">🤖 AI 解读</h2>
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-lg font-semibold text-gray-900">🤖 AI 解读</h2>
+              {(article.status === 'failed' || article.status === 'completed') && (
+                <button
+                  onClick={handleRetry}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm"
+                >
+                  重新生成
+                </button>
+              )}
+            </div>
 
             {article.ai_analysis?.summary && (
               <div className="mb-6">

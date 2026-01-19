@@ -61,6 +61,33 @@ export const articleApi = {
     const response = await api.post('/api/export', { article_ids: articleIds });
     return response.data;
   },
+
+  retryArticle: async (id: string) => {
+    const response = await api.post(`/api/articles/${id}/retry`);
+    return response.data;
+  },
+
+  getAIConfigs: async (categoryId?: string) => {
+    const response = await api.get('/api/configs/ai', {
+      params: categoryId ? { category_id: categoryId } : undefined,
+    });
+    return response.data;
+  },
+
+  updateAIConfig: async (
+    configId: string,
+    data: {
+      category_id?: string;
+      dimension: string;
+      is_enabled?: boolean;
+      model_name?: string;
+      prompt_template?: string;
+      parameters?: string;
+    },
+  ) => {
+    const response = await api.put(`/api/configs/ai/${configId}`, data);
+    return response.data;
+  },
 };
 
 export const categoryApi = {
