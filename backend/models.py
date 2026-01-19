@@ -84,12 +84,17 @@ class AIConfig(Base):
     __tablename__ = "ai_configs"
 
     id = Column(String, primary_key=True, default=generate_uuid)
-    category_id = Column(String, ForeignKey("categories.id", ondelete="CASCADE"))
+    category_id = Column(
+        String, ForeignKey("categories.id", ondelete="CASCADE"), nullable=True
+    )
     dimension = Column(String, nullable=False)
     is_enabled = Column(Boolean, default=True)
+    base_url = Column(String, nullable=False, default="https://api.openai.com/v1")
+    api_key = Column(String, nullable=False)
     model_name = Column(String, default="gpt-4o")
     prompt_template = Column(Text)
     parameters = Column(Text)
+    is_default = Column(Boolean, default=False)
     created_at = Column(String, default=lambda: datetime.utcnow().isoformat())
     updated_at = Column(String, default=lambda: datetime.utcnow().isoformat())
 
@@ -99,28 +104,33 @@ class AIConfig(Base):
 def init_db():
     Base.metadata.create_all(bind=engine)
 
+    from sqlalchemy import text
+
     # Create indexes for better query performance
     with engine.connect() as conn:
         # Article table indexes
-        conn.execute("""
-            CREATE INDEX IF NOT EXISTS idx_articles_category
-            ON articles(category_id)
-        """)
-        conn.execute("""
-            CREATE INDEX IF NOT EXISTS idx_articles_status
-            ON articles(status)
-        """)
-        conn.execute("""
-            CREATE INDEX IF NOT EXISTS idx_articles_created_at
-            ON articles(created_at DESC)
-        """)
-        conn.execute("""
-            CREATE INDEX IF NOT EXISTS idx_articles_source_url
-            ON articles(source_url)
-        """)
+        conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS idx_articles_category ON articles(category_id)"
+            )
+        )
+        conn.execute(
+            text("CREATE INDEX IF NOT EXISTS idx_articles_status ON articles(status)")
+        )
+        conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS idx_articles_created_at ON articles(created_at DESC)"
+            )
+        )
+        conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS idx_articles_source_url ON articles(source_url)"
+            )
+        )
         # AI Analysis table indexes
-        conn.execute("""
-            CREATE INDEX IF NOT EXISTS idx_ai_analysis_article_id
-            ON ai_analyses(article_id)
-        """)
+        conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS idx_ai_analysis_article_id ON ai_analyses(article_id)"
+            )
+        )
         conn.commit()

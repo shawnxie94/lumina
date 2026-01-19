@@ -74,18 +74,41 @@ export const articleApi = {
     return response.data;
   },
 
+  createAIConfig: async (data: {
+    category_id?: string;
+    dimension: string;
+    is_enabled?: boolean;
+    base_url: string;
+    api_key: string;
+    model_name?: string;
+    prompt_template?: string;
+    parameters?: string;
+    is_default?: boolean;
+  }) => {
+    const response = await api.post('/api/configs/ai', data);
+    return response.data;
+  },
+
   updateAIConfig: async (
     configId: string,
     data: {
       category_id?: string;
-      dimension: string;
+      dimension?: string;
       is_enabled?: boolean;
+      base_url?: string;
+      api_key?: string;
       model_name?: string;
       prompt_template?: string;
       parameters?: string;
+      is_default?: boolean;
     },
   ) => {
     const response = await api.put(`/api/configs/ai/${configId}`, data);
+    return response.data;
+  },
+
+  deleteAIConfig: async (configId: string) => {
+    const response = await api.delete(`/api/configs/ai/${configId}`);
     return response.data;
   },
 };

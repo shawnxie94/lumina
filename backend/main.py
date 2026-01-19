@@ -46,9 +46,12 @@ class AIConfigBase(BaseModel):
     category_id: Optional[str] = None
     dimension: str
     is_enabled: bool = True
+    base_url: str
+    api_key: str
     model_name: str = "gpt-4o"
     prompt_template: Optional[str] = None
     parameters: Optional[str] = None
+    is_default: bool = False
 
 
 @app.on_event("startup")
@@ -213,12 +216,38 @@ async def get_ai_configs(
             "category_id": c.category_id,
             "dimension": c.dimension,
             "is_enabled": c.is_enabled,
+            "base_url": c.base_url,
+            "api_key": c.api_key,
             "model_name": c.model_name,
             "prompt_template": c.prompt_template,
             "parameters": c.parameters,
+            "is_default": c.is_default,
         }
         for c in configs
     ]
+
+
+@app.post("/api/configs/ai")
+async def create_ai_config(config: AIConfigBase, db: Session = Depends(get_db)):
+    try:
+        new_config = AIConfig(**config.dict())
+        db.add(new_config)
+        db.commit()
+        db.refresh(new_config)
+        return {
+            "id": new_config.id,
+            "category_id": new_config.category_id,
+            "dimension": new_config.dimension,
+            "is_enabled": new_config.is_enabled,
+            "base_url": new_config.base_url,
+            "api_key": new_config.api_key,
+            "model_name": new_config.model_name,
+            "prompt_template": new_config.prompt_template,
+            "parameters": new_config.parameters,
+            "is_default": new_config.is_default,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.put("/api/configs/ai/{config_id}")
@@ -233,9 +262,12 @@ async def update_ai_config(
     ai_config.category_id = config.category_id
     ai_config.dimension = config.dimension
     ai_config.is_enabled = config.is_enabled
+    ai_config.base_url = config.base_url
+    ai_config.api_key = config.api_key
     ai_config.model_name = config.model_name
     ai_config.prompt_template = config.prompt_template
     ai_config.parameters = config.parameters
+    ai_config.is_default = config.is_default
 
     db.commit()
     db.refresh(ai_config)
@@ -245,10 +277,26 @@ async def update_ai_config(
         "category_id": ai_config.category_id,
         "dimension": ai_config.dimension,
         "is_enabled": ai_config.is_enabled,
+        "base_url": ai_config.base_url,
+        "api_key": ai_config.api_key,
         "model_name": ai_config.model_name,
         "prompt_template": ai_config.prompt_template,
         "parameters": ai_config.parameters,
+        "is_default": ai_config.is_default,
     }
+
+
+@app.delete("/api/configs/ai/{config_id}")
+async def delete_ai_config(config_id: str, db: Session = Depends(get_db)):
+    ai_config = db.query(AIConfig).filter(AIConfig.id == config_id).first()
+
+    if not ai_config:
+        raise HTTPException(status_code=404, detail="AI配置不存在")
+
+    db.delete(ai_config)
+    db.commit()
+
+    return {"message": "删除成功"}
 
 
 @app.get("/")

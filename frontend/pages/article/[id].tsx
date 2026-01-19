@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
-import { articleApi, ArticleDetail } from '@/lib/api';
+import { articleApi, type ArticleDetail } from '@/lib/api';
 import Link from 'next/link';
 import { marked } from 'marked';
 
-export default function ArticleDetail() {
+export default function ArticleDetailPage() {
   const router = useRouter();
   const { id } = router.query;
   const [article, setArticle] = useState<ArticleDetail | null>(null);

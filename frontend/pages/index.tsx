@@ -125,16 +125,10 @@ export default function Home() {
                 </button>
               )}
               <Link
-                href="/config"
-                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition"
+                href="/settings"
+                className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition"
               >
-                AI配置
-              </Link>
-              <Link
-                href="/categories"
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
-              >
-                管理分类
+                ⚙️ 设置
               </Link>
             </div>
           </div>

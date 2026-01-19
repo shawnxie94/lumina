@@ -1,11 +1,38 @@
-from ai_client import SimpleAIClient
-from models import Article, AIAnalysis, Category, SessionLocal
+from ai_client import ConfigurableAIClient
+from models import Article, AIAnalysis, Category, SessionLocal, AIConfig
 from sqlalchemy.orm import Session
+import json
 
 
 class ArticleService:
     def __init__(self):
-        self.ai_client = SimpleAIClient()
+        pass
+
+    def get_ai_config(self, db: Session, category_id: str = None) -> AIConfig:
+        query = db.query(AIConfig).filter(AIConfig.is_enabled == True)
+
+        if category_id:
+            category_config = query.filter(AIConfig.category_id == category_id).first()
+            if category_config:
+                return category_config
+
+        default_config = query.filter(AIConfig.is_default == True).first()
+        if default_config:
+            return default_config
+
+        fallback_config = query.filter(AIConfig.category_id.is_(None)).first()
+        if fallback_config:
+            return fallback_config
+
+        return None
+
+    def create_ai_client(self, config: AIConfig) -> ConfigurableAIClient:
+        parameters = json.loads(config.parameters) if config.parameters else {}
+        return ConfigurableAIClient(
+            base_url=config.base_url,
+            api_key=config.api_key,
+            model_name=config.model_name,
+        )
 
     def create_article(self, article_data: dict, db: Session) -> str:
         category = (
@@ -32,7 +59,19 @@ class ArticleService:
         db.refresh(article)
 
         try:
-            summary = self.ai_client.generate_summary(article.content_md)
+            ai_config = self.get_ai_config(db, article_data.get("category_id"))
+            if not ai_config:
+                raise ValueError("未配置AI服务，请先在配置页面设置AI参数")
+
+            ai_client = self.create_ai_client(ai_config)
+            parameters = (
+                json.loads(ai_config.parameters) if ai_config.parameters else {}
+            )
+            prompt = ai_config.prompt_template if ai_config.prompt_template else None
+
+            summary = ai_client.generate_summary(
+                article.content_md, prompt=prompt, parameters=parameters
+            )
 
             ai_analysis = AIAnalysis(article_id=article.id, summary=summary)
             db.add(ai_analysis)
@@ -99,7 +138,19 @@ class ArticleService:
         db.commit()
 
         try:
-            summary = self.ai_client.generate_summary(article.content_md)
+            ai_config = self.get_ai_config(db, article.category_id)
+            if not ai_config:
+                raise ValueError("未配置AI服务，请先在配置页面设置AI参数")
+
+            ai_client = self.create_ai_client(ai_config)
+            parameters = (
+                json.loads(ai_config.parameters) if ai_config.parameters else {}
+            )
+            prompt = ai_config.prompt_template if ai_config.prompt_template else None
+
+            summary = ai_client.generate_summary(
+                article.content_md, prompt=prompt, parameters=parameters
+            )
 
             if article.ai_analysis:
                 article.ai_analysis.summary = summary
