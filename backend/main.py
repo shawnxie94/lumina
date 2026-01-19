@@ -179,6 +179,37 @@ async def create_category(category: CategoryCreate, db: Session = Depends(get_db
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@app.put("/api/categories/{category_id}")
+async def update_category(
+    category_id: str, category: CategoryCreate, db: Session = Depends(get_db)
+):
+    existing_category = db.query(Category).filter(Category.id == category_id).first()
+    if not existing_category:
+        raise HTTPException(status_code=404, detail="分类不存在")
+
+    try:
+        if category.name is not None:
+            existing_category.name = category.name
+        if category.description is not None:
+            existing_category.description = category.description
+        if category.color is not None:
+            existing_category.color = category.color
+        if category.sort_order is not None:
+            existing_category.sort_order = category.sort_order
+
+        db.commit()
+        db.refresh(existing_category)
+        return {
+            "id": existing_category.id,
+            "name": existing_category.name,
+            "description": existing_category.description,
+            "color": existing_category.color,
+            "sort_order": existing_category.sort_order,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @app.delete("/api/categories/{category_id}")
 async def delete_category(category_id: str, db: Session = Depends(get_db)):
     category = db.query(Category).filter(Category.id == category_id).first()

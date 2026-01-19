@@ -133,4 +133,17 @@ export const categoryApi = {
     const response = await api.delete(`/api/categories/${id}`);
     return response.data;
   },
+
+  updateCategory: async (
+    id: string,
+    data: {
+      name?: string;
+      description?: string;
+      color?: string;
+      sort_order?: number;
+    },
+  ) => {
+    const response = await api.put(`/api/categories/${id}`, data);
+    return response.data;
+  },
 };

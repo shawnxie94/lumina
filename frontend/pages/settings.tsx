@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/router';
-import { articleApi } from '@/lib/api';
+import { articleApi, categoryApi } from '@/lib/api';
 
 type SettingSection = 'ai' | 'categories';
 
@@ -18,15 +17,27 @@ interface AIConfig {
   is_default: boolean;
 }
 
+interface Category {
+  id: string;
+  name: string;
+  description: string | null;
+  color: string;
+  sort_order: number;
+  article_count: number;
+}
+
 export default function SettingsPage() {
-  const router = useRouter();
   const [activeSection, setActiveSection] = useState<SettingSection>('ai');
   const [aiConfigs, setAiConfigs] = useState<AIConfig[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
-  const [editingConfig, setEditingConfig] = useState<AIConfig | null>(null);
+  const [showAIModal, setShowAIModal] = useState(false);
+  const [showCategoryModal, setShowCategoryModal] = useState(false);
+  const [editingAIConfig, setEditingAIConfig] = useState<AIConfig | null>(null);
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string>('');
-  const [formData, setFormData] = useState({
+
+  const [aiFormData, setAIFormData] = useState({
     dimension: 'summary',
     is_enabled: true,
     base_url: 'https://api.openai.com/v1',
@@ -37,25 +48,46 @@ export default function SettingsPage() {
     is_default: false,
   });
 
+  const [categoryFormData, setCategoryFormData] = useState({
+    name: '',
+    description: '',
+    color: '#3B82F6',
+    sort_order: 0,
+  });
+
   const fetchAIConfigs = async () => {
-    setLoading(true);
     try {
       const data = await articleApi.getAIConfigs(selectedCategory || undefined);
       setAiConfigs(data);
     } catch (error) {
       console.error('Failed to fetch AI configs:', error);
+    }
+  };
+
+  const fetchCategories = async () => {
+    setLoading(true);
+    try {
+      const data = await categoryApi.getCategories();
+      setCategories(data);
+    } catch (error) {
+      console.error('Failed to fetch categories:', error);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchAIConfigs();
-  }, [selectedCategory]);
+    if (activeSection === 'categories') {
+      fetchCategories();
+    } else {
+      fetchAIConfigs();
+    }
+  }, [activeSection, selectedCategory]);
 
-  const handleCreateNew = () => {
-    setEditingConfig(null);
-    setFormData({
+  // AI Config handlers
+  const handleCreateAInew = () => {
+    setEditingAIConfig(null);
+    setAIFormData({
       dimension: 'summary',
       is_enabled: true,
       base_url: 'https://api.openai.com/v1',
@@ -65,12 +97,12 @@ export default function SettingsPage() {
       parameters: '',
       is_default: false,
     });
-    setShowModal(true);
+    setShowAIModal(true);
   };
 
-  const handleEdit = (config: AIConfig) => {
-    setEditingConfig(config);
-    setFormData({
+  const handleEditAI = (config: AIConfig) => {
+    setEditingAIConfig(config);
+    setAIFormData({
       dimension: config.dimension,
       is_enabled: config.is_enabled,
       base_url: config.base_url,
@@ -80,30 +112,30 @@ export default function SettingsPage() {
       parameters: config.parameters || '',
       is_default: config.is_default,
     });
-    setShowModal(true);
+    setShowAIModal(true);
   };
 
-  const handleSave = async () => {
+  const handleSaveAI = async () => {
     try {
-      if (editingConfig) {
-        await articleApi.updateAIConfig(editingConfig.id, formData);
+      if (editingAIConfig) {
+        await articleApi.updateAIConfig(editingAIConfig.id, aiFormData);
       } else {
         await articleApi.createAIConfig({
-          ...formData,
+          ...aiFormData,
           category_id: selectedCategory || undefined,
         });
       }
-      alert(editingConfig ? '配置已更新' : '配置已创建');
+      alert(editingAIConfig ? '配置已更新' : '配置已创建');
       fetchAIConfigs();
-      setShowModal(false);
-      setEditingConfig(null);
+      setShowAIModal(false);
+      setEditingAIConfig(null);
     } catch (error) {
-      console.error('Failed to save config:', error);
+      console.error('Failed to save AI config:', error);
       alert('保存失败');
     }
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDeleteAI = async (id: string) => {
     if (!confirm('确定要删除这个AI配置吗？')) return;
 
     try {
@@ -116,7 +148,7 @@ export default function SettingsPage() {
     }
   };
 
-  const handleToggleEnabled = async (id: string, isEnabled: boolean) => {
+  const handleToggleAIEnabled = async (id: string, isEnabled: boolean) => {
     try {
       await articleApi.updateAIConfig(id, { is_enabled: !isEnabled });
       fetchAIConfigs();
@@ -126,7 +158,7 @@ export default function SettingsPage() {
     }
   };
 
-  const handleSetDefault = async (id: string) => {
+  const handleSetAIDefault = async (id: string) => {
     try {
       await articleApi.updateAIConfig(id, { is_default: true });
       alert('已设置为默认配置');
@@ -134,6 +166,59 @@ export default function SettingsPage() {
     } catch (error) {
       console.error('Failed to set default:', error);
       alert('操作失败');
+    }
+  };
+
+  // Category handlers
+  const handleCreateCategoryNew = () => {
+    setEditingCategory(null);
+    setCategoryFormData({
+      name: '',
+      description: '',
+      color: '#3B82F6',
+      sort_order: 0,
+    });
+    setShowCategoryModal(true);
+  };
+
+  const handleEditCategory = (category: Category) => {
+    setEditingCategory(category);
+    setCategoryFormData({
+      name: category.name,
+      description: category.description || '',
+      color: category.color,
+      sort_order: category.sort_order,
+    });
+    setShowCategoryModal(true);
+  };
+
+  const handleSaveCategory = async () => {
+    try {
+      if (editingCategory) {
+        await categoryApi.updateCategory(editingCategory.id, categoryFormData);
+      } else {
+        await categoryApi.createCategory(categoryFormData);
+      }
+      alert(editingCategory ? '分类已更新' : '分类已创建');
+      fetchCategories();
+      setShowCategoryModal(false);
+      setEditingCategory(null);
+    } catch (error) {
+      console.error('Failed to save category:', error);
+      alert('保存失败');
+    }
+  };
+
+  const handleDeleteCategory = async (id: string) => {
+    if (!confirm('确定要删除这个分类吗？')) return;
+
+    try {
+      await categoryApi.deleteCategory(id);
+      alert('删除成功');
+      fetchCategories();
+    } catch (error) {
+      console.error('Failed to delete category:', error);
+      alert('删除失败');
     }
   };
 
@@ -182,12 +267,26 @@ export default function SettingsPage() {
               <div className="bg-white rounded-lg shadow-sm p-6">
                 <div className="flex items-center justify-between mb-6">
                   <h2 className="text-lg font-semibold text-gray-900">AI配置列表</h2>
-                  <button
-                    onClick={handleCreateNew}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
-                  >
-                    + 创建新配置
-                  </button>
+                  <div className="flex gap-2">
+                    <select
+                      value={selectedCategory}
+                      onChange={(e) => setSelectedCategory(e.target.value)}
+                      className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">全部配置</option>
+                      {categories.map((cat) => (
+                        <option key={cat.id} value={cat.id}>
+                          {cat.name}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={handleCreateAInew}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                    >
+                      + 创建新配置
+                    </button>
+                  </div>
                 </div>
 
                 {loading ? (
@@ -246,10 +345,8 @@ export default function SettingsPage() {
                               </div>
                               {config.category_id && (
                                 <div>
-                                  <span className="font-medium">分类ID：</span>
-                                  <code className="px-2 py-1 bg-gray-50 rounded text-xs">
-                                    {config.category_id}
-                                  </code>
+                                  <span className="font-medium">分类：</span>
+                                  {categories.find(c => c.id === config.category_id)?.name}
                                 </div>
                               )}
                             </div>
@@ -257,7 +354,7 @@ export default function SettingsPage() {
 
                           <div className="flex gap-2">
                             <button
-                              onClick={() => handleToggleEnabled(config.id, config.is_enabled)}
+                              onClick={() => handleToggleAIEnabled(config.id, config.is_enabled)}
                               className="px-3 py-1 text-sm bg-gray-100 rounded hover:bg-gray-200 transition"
                               title={config.is_enabled ? '禁用' : '启用'}
                             >
@@ -265,7 +362,7 @@ export default function SettingsPage() {
                             </button>
                             {!config.is_default && (
                               <button
-                                onClick={() => handleSetDefault(config.id)}
+                                onClick={() => handleSetAIDefault(config.id)}
                                 className="px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition"
                                 title="设为默认"
                               >
@@ -273,14 +370,14 @@ export default function SettingsPage() {
                               </button>
                             )}
                             <button
-                              onClick={() => handleEdit(config)}
+                              onClick={() => handleEditAI(config)}
                               className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition"
                               title="编辑"
                             >
                               ✏️
                             </button>
                             <button
-                              onClick={() => handleDelete(config.id)}
+                              onClick={() => handleDeleteAI(config.id)}
                               className="px-3 py-1 text-sm bg-red-600 text-white rounded hover:bg-red-700 transition"
                               title="删除"
                             >
@@ -297,148 +394,282 @@ export default function SettingsPage() {
 
             {activeSection === 'categories' && (
               <div className="bg-white rounded-lg shadow-sm p-6">
-                <h2 className="text-lg font-semibold text-gray-900 mb-4">分类管理</h2>
-                <div className="text-gray-600">
-                  <p className="mb-4">管理文章分类、颜色和排序。</p>
-                  <div className="space-y-2">
-                    <Link
-                      href="/categories"
-                      className="block px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-center"
-                    >
-                      进入分类管理页面 →
-                    </Link>
-                    <p className="text-sm text-gray-500">
-                      创建、编辑、删除分类
-                    </p>
-                  </div>
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-lg font-semibold text-gray-900">分类列表</h2>
+                  <button
+                    onClick={handleCreateCategoryNew}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                  >
+                    + 新增分类
+                  </button>
                 </div>
+
+                {loading ? (
+                  <div className="text-center py-12 text-gray-500">加载中...</div>
+                ) : categories.length === 0 ? (
+                  <div className="text-center py-12 text-gray-500">
+                    暂无分类，点击"新增分类"按钮开始
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {categories.map((category) => (
+                      <div
+                        key={category.id}
+                        className="border rounded-lg p-4 hover:shadow-md transition flex items-center justify-between"
+                      >
+                        <div className="flex items-center gap-4">
+                          <div
+                            className="w-10 h-10 rounded flex items-center justify-center text-white font-bold text-lg"
+                            style={{ backgroundColor: category.color }}
+                          >
+                            {category.name.charAt(0).toUpperCase()}
+                          </div>
+                          <div>
+                            <h3 className="font-semibold text-gray-900">{category.name}</h3>
+                            <p className="text-sm text-gray-600">{category.description || '暂无描述'}</p>
+                            <p className="text-xs text-gray-500 mt-1">
+                              文章数: {category.article_count}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleEditCategory(category)}
+                            className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition"
+                            title="编辑"
+                          >
+                            ✏️
+                          </button>
+                          <button
+                            onClick={() => handleDeleteCategory(category.id)}
+                            className="px-3 py-1 text-sm bg-red-600 text-white rounded hover:bg-red-700 transition"
+                            title="删除"
+                          >
+                            🗑️
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </main>
         </div>
+      </div>
 
-        {showModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-              <div className="flex items-center justify-between p-6 border-b">
-                <h3 className="text-lg font-semibold text-gray-900">
-                  {editingConfig ? '编辑AI配置' : '创建新AI配置'}
-                </h3>
-                <button
-                  onClick={() => setShowModal(false)}
-                  className="text-gray-500 hover:text-gray-700 text-2xl"
-                >
-                  ×
-                </button>
+      {/* AI Config Modal */}
+      {showAIModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-6 border-b">
+              <h3 className="text-lg font-semibold text-gray-900">
+                {editingAIConfig ? '编辑AI配置' : '创建新AI配置'}
+              </h3>
+              <button
+                onClick={() => setShowAIModal(false)}
+                className="text-gray-500 hover:text-gray-700 text-2xl"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  API地址（Base URL）
+                </label>
+                <input
+                  type="text"
+                  value={aiFormData.base_url}
+                  onChange={(e) => setAIFormData({ ...aiFormData, base_url: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="https://api.openai.com/v1"
+                />
+                <p className="text-xs text-gray-500 mt-1">例如: https://api.openai.com/v1 或 https://api.siliconflow.cn/v1</p>
               </div>
 
-              <div className="p-6 space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    API地址（Base URL）
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.base_url}
-                    onChange={(e) => setFormData({ ...formData, base_url: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="https://api.openai.com/v1"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    API密钥
-                  </label>
-                  <input
-                    type="password"
-                    value={formData.api_key}
-                    onChange={(e) => setFormData({ ...formData, api_key: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="sk-..."
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    模型名称
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.model_name}
-                    onChange={(e) => setFormData({ ...formData, model_name: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="gpt-4o"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    提示词模板
-                  </label>
-                  <textarea
-                    value={formData.prompt_template}
-                    onChange={(e) => setFormData({ ...formData, prompt_template: e.target.value })}
-                    rows={4}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="请为以下文章生成摘要..."
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    参数（JSON格式）
-                  </label>
-                  <textarea
-                    value={formData.parameters}
-                    onChange={(e) => setFormData({ ...formData, parameters: e.target.value })}
-                    rows={3}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
-                    placeholder='{"max_tokens": 500, "temperature": 0.7}'
-                  />
-                </div>
-
-                <div className="flex items-center gap-4">
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={formData.is_enabled}
-                      onChange={(e) => setFormData({ ...formData, is_enabled: e.target.checked })}
-                      className="w-4 h-4 text-blue-600 rounded"
-                    />
-                    <span className="text-sm text-gray-700">启用此配置</span>
-                  </label>
-
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={formData.is_default}
-                      onChange={(e) => setFormData({ ...formData, is_default: e.target.checked })}
-                      className="w-4 h-4 text-blue-600 rounded"
-                    />
-                    <span className="text-sm text-gray-700">设为默认配置</span>
-                  </label>
-                </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  API密钥
+                </label>
+                <input
+                  type="password"
+                  value={aiFormData.api_key}
+                  onChange={(e) => setAIFormData({ ...aiFormData, api_key: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="sk-..."
+                />
               </div>
 
-              <div className="flex justify-end gap-2 p-6 border-t bg-gray-50">
-                <button
-                  onClick={() => setShowModal(false)}
-                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
-                >
-                  取消
-                </button>
-                <button
-                  onClick={handleSave}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
-                >
-                  {editingConfig ? '保存' : '创建'}
-                </button>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  模型名称
+                </label>
+                <input
+                  type="text"
+                  value={aiFormData.model_name}
+                  onChange={(e) => setAIFormData({ ...aiFormData, model_name: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="gpt-4o"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  提示词模板
+                </label>
+                <textarea
+                  value={aiFormData.prompt_template}
+                  onChange={(e) => setAIFormData({ ...aiFormData, prompt_template: e.target.value })}
+                  rows={4}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="请为以下文章生成摘要..."
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  参数（JSON格式）
+                </label>
+                <textarea
+                  value={aiFormData.parameters}
+                  onChange={(e) => setAIFormData({ ...aiFormData, parameters: e.target.value })}
+                  rows={3}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+                  placeholder='{"max_tokens": 500, "temperature": 0.7}'
+                />
+              </div>
+
+              <div className="flex items-center gap-4">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={aiFormData.is_enabled}
+                    onChange={(e) => setAIFormData({ ...aiFormData, is_enabled: e.target.checked })}
+                    className="w-4 h-4 text-blue-600 rounded"
+                  />
+                  <span className="text-sm text-gray-700">启用此配置</span>
+                </label>
+
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={aiFormData.is_default}
+                    onChange={(e) => setAIFormData({ ...aiFormData, is_default: e.target.checked })}
+                    className="w-4 h-4 text-blue-600 rounded"
+                  />
+                  <span className="text-sm text-gray-700">设为默认配置</span>
+                </label>
               </div>
             </div>
+
+            <div className="flex justify-end gap-2 p-6 border-t bg-gray-50">
+              <button
+                onClick={() => setShowAIModal(false)}
+                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleSaveAI}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+              >
+                {editingAIConfig ? '保存' : '创建'}
+              </button>
+            </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
+
+      {/* Category Modal */}
+      {showCategoryModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-6 border-b">
+              <h3 className="text-lg font-semibold text-gray-900">
+                {editingCategory ? '编辑分类' : '新增分类'}
+              </h3>
+              <button
+                onClick={() => setShowCategoryModal(false)}
+                className="text-gray-500 hover:text-gray-700 text-2xl"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  分类名称
+                </label>
+                <input
+                  type="text"
+                  value={categoryFormData.name}
+                  onChange={(e) => setCategoryFormData({ ...categoryFormData, name: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  描述
+                </label>
+                <textarea
+                  value={categoryFormData.description}
+                  onChange={(e) => setCategoryFormData({ ...categoryFormData, description: e.target.value })}
+                  rows={3}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  颜色
+                </label>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="color"
+                    value={categoryFormData.color}
+                    onChange={(e) => setCategoryFormData({ ...categoryFormData, color: e.target.value })}
+                    className="w-20 h-10 border border-gray-300 rounded-lg cursor-pointer"
+                  />
+                  <span className="text-sm text-gray-600">{categoryFormData.color}</span>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  排序
+                </label>
+                <input
+                  type="number"
+                  value={categoryFormData.sort_order}
+                  onChange={(e) => setCategoryFormData({ ...categoryFormData, sort_order: parseInt(e.target.value) || 0 })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 p-6 border-t bg-gray-50">
+              <button
+                onClick={() => setShowCategoryModal(false)}
+                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleSaveCategory}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+              >
+                {editingCategory ? '保存' : '创建'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
