@@ -42,14 +42,14 @@ docker-compose down     # Stop all services
 ```bash
 npm install --save-dev vitest
 # Add to package.json: "test": "vitest"
-# Run single test: npx vitest path/to/test.spec.ts
+# Run single test: npx vitest path/to/test.spec.ts -t "test_name"
 ```
 
 **Backend:**
 ```bash
 uv add pytest pytest-asyncio httpx
-# Run single test: uv run pytest tests/test_file.py
-# Run filtered tests: uv run pytest tests/ -k "test_name"
+# Run single test: uv run pytest tests/test_file.py::test_function_name
+# Run filtered: uv run pytest tests/ -k "test_name"
 ```
 
 ---
@@ -58,11 +58,17 @@ uv add pytest pytest-asyncio httpx
 
 ### TypeScript/JavaScript (Frontend & Extension)
 
-**Imports:** Named imports, type imports with `import type`, path alias `@/` for frontend root. Group: React → Third-party → Local (blank lines between).
+**Imports:** React → Third-party → Local with blank lines between groups. Use `@/` alias for frontend root paths. Type imports: `import type { Name }`.
+
+```typescript
+import { useState, useEffect } from 'react';
+import axios from 'axios';
+import { articleApi, type Article } from '@/lib/api';
+```
 
 **Naming:** Components: PascalCase, Functions: camelCase, Variables: camelCase, Constants: UPPER_SNAKE_CASE, Interfaces: PascalCase. Files: camelCase for utilities, PascalCase for components.
 
-**Formatting:** 2-space indentation for JSX/TSX, semicolons consistent, line length <100 chars, Tailwind CSS for styling.
+**Formatting:** 2-space indentation, semicolons consistent, line length <100 chars, Tailwind CSS for styling.
 
 **TypeScript:** `interface` for objects, `type` for unions/primitives, type all params/returns, avoid `any` - use `unknown`, strict mode enabled.
 
@@ -74,16 +80,17 @@ catch (error) { console.error('Failed:', error); alert('操作失败'); }
 
 ### Python (Backend)
 
-**Imports:** Standard lib → Third-party → Local (blank lines between).
+**Imports:** Standard lib → Third-party → Local with blank lines between.
 
-**Naming:** Classes: PascalCase, Functions: snake_case, Variables: snake_case, Constants: UPPER_SNAKE_CASE.
+**Naming:** Classes: PascalCase, Functions: snake_case, Variables: snake_case, Constants: UPPER_SNAKE_CASE. Files: snake_case.
 
 **Formatting:** 4-space indentation, max line length 88 chars (PEP 8), type hints required on all functions: `def func(x: str) -> int:`
 
 **Error Handling:**
 ```python
 try: result = do_something()
-except Exception as e: print(f"操作失败: {e}"); raise HTTPException(status_code=400, detail=str(e))
+except ValueError as e: raise HTTPException(status_code=404, detail=str(e))
+except Exception as e: raise HTTPException(status_code=400, detail=str(e))
 ```
 
 ---
@@ -94,7 +101,7 @@ except Exception as e: print(f"操作失败: {e}"); raise HTTPException(status_c
 
 **Database Operations (Backend):** SQLAlchemy ORM, session from `get_db()` dependency injection, always `db.commit()` after changes, use relationships: `article.category.name`.
 
-**React Components:** Functional components with hooks, state for data, effects for side effects, destructure props.
+**React Components:** Functional components with hooks, state for data, effects for side effects, destructure props. Event handlers: `handle*` (handleDelete, handleSave). Fetch functions: `fetch*` (fetchArticles, fetchCategories).
 
 ---
 
@@ -118,6 +125,8 @@ article-database/
 
 **Adding Features:** 1. Modify `backend/models.py`, 2. Add routes in `backend/main.py`, 3. Add service methods in `backend/article_service.py`, 4. Update types in `frontend/lib/api.ts`, 5. Update frontend components.
 
+**UI Language:** All user-facing text and error messages in Chinese (e.g., "操作失败", "删除成功").
+
 ---
 
 ## Important Warnings
@@ -140,4 +149,4 @@ article-database/
 | Extension dev | `cd extension && npm run dev` |
 | Lint frontend | `cd frontend && npm run lint` |
 | Load extension | Chrome: `chrome://extensions/` → Load unpacked → `.output/chrome-mv3` |
-| Run single test (after setup) | `uv run pytest tests/test_file.py` |
+| Run single test (after setup) | `uv run pytest tests/test_file.py::test_function_name` |

@@ -161,6 +161,7 @@ async def get_categories(db: Session = Depends(get_db)):
             "name": c.name,
             "description": c.description,
             "color": c.color,
+            "sort_order": c.sort_order,
             "article_count": len(c.articles),
         }
         for c in categories

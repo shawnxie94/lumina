@@ -56,11 +56,14 @@ export default function SettingsPage() {
   });
 
   const fetchAIConfigs = async () => {
+    setLoading(true);
     try {
       const data = await articleApi.getAIConfigs(selectedCategory || undefined);
       setAiConfigs(data);
     } catch (error) {
       console.error('Failed to fetch AI configs:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
