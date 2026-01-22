@@ -1,6 +1,7 @@
 from ai_client import ConfigurableAIClient
 from models import Article, AIAnalysis, Category, SessionLocal, AIConfig
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 import json
 
 
@@ -54,9 +55,15 @@ class ArticleService:
             status="processing",
         )
 
-        db.add(article)
-        db.commit()
-        db.refresh(article)
+        try:
+            db.add(article)
+            db.commit()
+            db.refresh(article)
+        except IntegrityError as e:
+            db.rollback()
+            if "source_url" in str(e):
+                raise ValueError("该文章已存在，请勿重复提交")
+            raise ValueError(f"数据完整性错误: {str(e)}")
 
         try:
             ai_config = self.get_ai_config(db, article_data.get("category_id"))

@@ -421,7 +421,8 @@ class EditorController {
       }, 1000);
     } catch (error) {
       console.error('Failed to submit article:', error);
-      this.updateStatus('error', '提交失败，请重试');
+      const errorMessage = error.message || '提交失败，请重试';
+      this.updateStatus('error', errorMessage);
     }
   }
 

@@ -62,7 +62,8 @@ export class ApiClient {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to create article');
+        const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
+        throw new Error(`Failed to create article: ${errorData.detail || 'Unknown error'}`);
       }
 
       return await response.json();
