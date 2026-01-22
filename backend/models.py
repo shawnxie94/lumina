@@ -76,6 +76,7 @@ class AIAnalysis(Base):
     outline = Column(Text)
     key_points = Column(Text)
     mindmap = Column(Text)
+    error_message = Column(Text, nullable=True)
     updated_at = Column(String, default=lambda: datetime.utcnow().isoformat())
 
     article = relationship("Article", back_populates="ai_analysis")

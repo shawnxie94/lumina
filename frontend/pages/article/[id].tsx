@@ -162,9 +162,25 @@ export default function ArticleDetailPage() {
               {article.status === 'failed' && (
                 <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
                   <h3 className="font-semibold text-red-900 mb-2">⚠️ AI 解读失败</h3>
-                  <p className="text-red-700 text-sm">
-                    文章AI分析生成失败，请检查API配置是否正确，或点击"重新生成"按钮重试。
+                  {article.ai_analysis?.error_message && (
+                    <div className="space-y-2">
+                      <p className="text-red-700 text-sm">
+                        错误原因：
+                      </p>
+                      <p className="text-red-700 text-sm font-mono bg-red-100 p-3 rounded">
+                        {article.ai_analysis.error_message}
+                      </p>
+                    </div>
+                  )}
+                  <p className="text-red-700 text-sm mt-3">
+                    请检查以下配置：
                   </p>
+                  <ul className="text-red-700 text-sm list-disc list-inside ml-4 mt-2 space-y-1">
+                    <li>API配置是否正确（API地址、密钥、模型名称）</li>
+                    <li>API Key是否有效且有足够额度</li>
+                    <li>网络连接是否正常</li>
+                    <li>点击"重新生成"按钮重试</li>
+                  </ul>
                 </div>
               )}
 

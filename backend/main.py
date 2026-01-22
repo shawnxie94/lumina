@@ -89,7 +89,7 @@ async def startup_event():
 @app.post("/api/articles")
 async def create_article(article: ArticleCreate, db: Session = Depends(get_db)):
     try:
-        article_id = article_service.create_article(article.dict(), db)
+        article_id = await article_service.create_article(article.dict(), db)
         return {"id": article_id, "status": "processing"}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -150,7 +150,10 @@ async def get_article(article_id: str, db: Session = Depends(get_db)):
         "status": article.status,
         "created_at": article.created_at,
         "ai_analysis": {
-            "summary": article.ai_analysis.summary if article.ai_analysis else None
+            "summary": article.ai_analysis.summary if article.ai_analysis else None,
+            "error_message": article.ai_analysis.error_message
+            if article.ai_analysis
+            else None,
         }
         if article.ai_analysis
         else None,
@@ -171,7 +174,7 @@ async def delete_article(article_id: str, db: Session = Depends(get_db)):
 @app.post("/api/articles/{article_id}/retry")
 async def retry_article_ai(article_id: str, db: Session = Depends(get_db)):
     try:
-        article_id = article_service.retry_article_ai(db, article_id)
+        article_id = await article_service.retry_article_ai(db, article_id)
         return {"id": article_id, "status": "processing"}
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))

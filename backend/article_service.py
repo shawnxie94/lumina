@@ -1,5 +1,12 @@
 from ai_client import ConfigurableAIClient
-from models import Article, AIAnalysis, Category, SessionLocal, AIConfig
+from models import (
+    Article,
+    AIAnalysis,
+    Category,
+    SessionLocal,
+    ModelAPIConfig,
+    PromptConfig,
+)
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 import json
@@ -9,33 +16,95 @@ class ArticleService:
     def __init__(self):
         pass
 
-    def get_ai_config(self, db: Session, category_id: str = None) -> AIConfig:
-        query = db.query(AIConfig).filter(AIConfig.is_enabled == True)
+    def get_ai_config(self, db: Session, category_id: str = None):
+        query = db.query(ModelAPIConfig).filter(ModelAPIConfig.is_enabled == True)
+        prompt_query = db.query(PromptConfig).filter(PromptConfig.is_enabled == True)
 
         if category_id:
-            category_config = query.filter(AIConfig.category_id == category_id).first()
-            if category_config:
-                return category_config
+            category_prompt = prompt_query.filter(
+                PromptConfig.category_id == category_id
+            ).first()
+            if category_prompt:
+                result = {
+                    "prompt_template": category_prompt.prompt,
+                    "parameters": None,
+                }
+                if category_prompt.model_api_config_id:
+                    model_config = query.filter(
+                        ModelAPIConfig.id == category_prompt.model_api_config_id
+                    ).first()
+                    if model_config:
+                        result.update(
+                            {
+                                "base_url": model_config.base_url,
+                                "api_key": model_config.api_key,
+                                "model_name": model_config.model_name,
+                            }
+                        )
+                else:
+                    default_model = query.filter(
+                        ModelAPIConfig.is_default == True
+                    ).first()
+                    if default_model:
+                        result.update(
+                            {
+                                "base_url": default_model.base_url,
+                                "api_key": default_model.api_key,
+                                "model_name": default_model.model_name,
+                            }
+                        )
+                return result
 
-        default_config = query.filter(AIConfig.is_default == True).first()
-        if default_config:
-            return default_config
+        generic_prompt = prompt_query.filter(PromptConfig.category_id.is_(None)).first()
+        if generic_prompt:
+            result = {
+                "prompt_template": generic_prompt.prompt,
+                "parameters": None,
+            }
+            if generic_prompt.model_api_config_id:
+                model_config = query.filter(
+                    ModelAPIConfig.id == generic_prompt.model_api_config_id
+                ).first()
+                if model_config:
+                    result.update(
+                        {
+                            "base_url": model_config.base_url,
+                            "api_key": model_config.api_key,
+                            "model_name": model_config.model_name,
+                        }
+                    )
+            else:
+                default_model = query.filter(ModelAPIConfig.is_default == True).first()
+                if default_model:
+                    result.update(
+                        {
+                            "base_url": default_model.base_url,
+                            "api_key": default_model.api_key,
+                            "model_name": default_model.model_name,
+                        }
+                    )
+            return result
 
-        fallback_config = query.filter(AIConfig.category_id.is_(None)).first()
-        if fallback_config:
-            return fallback_config
+        default_model = query.filter(ModelAPIConfig.is_default == True).first()
+        if default_model:
+            return {
+                "base_url": default_model.base_url,
+                "api_key": default_model.api_key,
+                "model_name": default_model.model_name,
+                "prompt_template": None,
+                "parameters": None,
+            }
 
         return None
 
-    def create_ai_client(self, config: AIConfig) -> ConfigurableAIClient:
-        parameters = json.loads(config.parameters) if config.parameters else {}
+    def create_ai_client(self, config: dict) -> ConfigurableAIClient:
         return ConfigurableAIClient(
-            base_url=config.base_url,
-            api_key=config.api_key,
-            model_name=config.model_name,
+            base_url=config["base_url"],
+            api_key=config["api_key"],
+            model_name=config["model_name"],
         )
 
-    def create_article(self, article_data: dict, db: Session) -> str:
+    async def create_article(self, article_data: dict, db: Session) -> str:
         category = (
             db.query(Category)
             .filter(Category.id == article_data.get("category_id"))
@@ -71,12 +140,10 @@ class ArticleService:
                 raise ValueError("未配置AI服务，请先在配置页面设置AI参数")
 
             ai_client = self.create_ai_client(ai_config)
-            parameters = (
-                json.loads(ai_config.parameters) if ai_config.parameters else {}
-            )
-            prompt = ai_config.prompt_template if ai_config.prompt_template else None
+            parameters = ai_config.get("parameters", {})
+            prompt = ai_config.get("prompt_template")
 
-            summary = ai_client.generate_summary(
+            summary = await ai_client.generate_summary(
                 article.content_md, prompt=prompt, parameters=parameters
             )
 
@@ -87,8 +154,19 @@ class ArticleService:
             db.commit()
         except Exception as e:
             print(f"AI生成失败: {e}")
+            error_message = str(e)
             article.status = "failed"
-            db.commit()
+
+            if article.ai_analysis:
+                article.ai_analysis.error_message = error_message
+                db.commit()
+            else:
+                ai_analysis = AIAnalysis(
+                    article_id=article.id, error_message=error_message
+                )
+                db.add(ai_analysis)
+                article.ai_analysis = ai_analysis
+                db.commit()
 
         return article.id
 
@@ -135,7 +213,7 @@ class ArticleService:
 
         return markdown_content
 
-    def retry_article_ai(self, db: Session, article_id: str) -> str:
+    async def retry_article_ai(self, db: Session, article_id: str) -> str:
         article = db.query(Article).filter(Article.id == article_id).first()
 
         if not article:
@@ -150,12 +228,16 @@ class ArticleService:
                 raise ValueError("未配置AI服务，请先在配置页面设置AI参数")
 
             ai_client = self.create_ai_client(ai_config)
-            parameters = (
-                json.loads(ai_config.parameters) if ai_config.parameters else {}
-            )
-            prompt = ai_config.prompt_template if ai_config.prompt_template else None
+            parameters = ai_config.get("parameters", {})
+            prompt = ai_config.get("prompt_template")
 
-            summary = ai_client.generate_summary(
+            summary = await ai_client.generate_summary(
+                article.content_md, prompt=prompt, parameters=parameters
+            )
+            parameters = ai_config.get("parameters", {})
+            prompt = ai_config.get("prompt_template")
+
+            summary = await ai_client.generate_summary(
                 article.content_md, prompt=prompt, parameters=parameters
             )
 
@@ -169,7 +251,18 @@ class ArticleService:
             db.commit()
         except Exception as e:
             print(f"AI生成失败: {e}")
+            error_message = str(e)
             article.status = "failed"
-            db.commit()
+
+            if article.ai_analysis:
+                article.ai_analysis.error_message = error_message
+                db.commit()
+            else:
+                ai_analysis = AIAnalysis(
+                    article_id=article.id, error_message=error_message
+                )
+                db.add(ai_analysis)
+                article.ai_analysis = ai_analysis
+                db.commit()
 
         return article.id

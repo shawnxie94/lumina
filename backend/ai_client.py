@@ -1,4 +1,4 @@
-from openai import OpenAI
+from openai import AsyncOpenAI
 import json
 from typing import Optional, Dict, Any
 
@@ -13,9 +13,9 @@ class ConfigurableAIClient:
         self.base_url = base_url
         self.api_key = api_key
         self.model_name = model_name
-        self.client = OpenAI(base_url=base_url, api_key=api_key)
+        self.client = AsyncOpenAI(base_url=base_url, api_key=api_key)
 
-    def generate_summary(
+    async def generate_summary(
         self,
         content: str,
         prompt: Optional[str] = None,
@@ -24,9 +24,14 @@ class ConfigurableAIClient:
         parameters: Optional[Dict[str, Any]] = None,
     ) -> str:
         if not prompt:
-            prompt = (
-                f"请为以下文章生成一个简洁的摘要（100-200字）：\n\n{content[:4000]}"
-            )
+            prompt = f"请为以下文章生成一个简洁的摘要（100-200字）：\n\n{content}"
+        else:
+            # If prompt contains {content} placeholder, replace it
+            # Otherwise, append content to end
+            if "{content}" in prompt:
+                prompt = prompt.replace("{content}", content)
+            else:
+                prompt = f"{prompt}\n\n{content}"
 
         if parameters is None:
             parameters = {}
@@ -42,7 +47,7 @@ class ConfigurableAIClient:
             request_params["top_p"] = parameters["top_p"]
 
         try:
-            response = self.client.chat.completions.create(**request_params)
+            response = await self.client.chat.completions.create(**request_params)
             return response.choices[0].message.content
         except Exception as e:
             print(f"AI生成失败: {e}")
