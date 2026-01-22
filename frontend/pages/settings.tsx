@@ -1,21 +1,9 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { articleApi, categoryApi } from '@/lib/api';
+import { articleApi, categoryApi, type ModelAPIConfig, type PromptConfig } from '@/lib/api';
 
 type SettingSection = 'ai' | 'categories';
-
-interface AIConfig {
-  id: string;
-  category_id: string | null;
-  dimension: string;
-  is_enabled: boolean;
-  base_url: string;
-  api_key: string;
-  model_name: string;
-  prompt_template: string | null;
-  parameters: string | null;
-  is_default: boolean;
-}
+type AISubSection = 'model-api' | 'prompt';
 
 interface Category {
   id: string;
@@ -28,23 +16,36 @@ interface Category {
 
 export default function SettingsPage() {
   const [activeSection, setActiveSection] = useState<SettingSection>('ai');
-  const [aiConfigs, setAiConfigs] = useState<AIConfig[]>([]);
+  const [aiSubSection, setAISubSection] = useState<AISubSection>('model-api');
+  const [modelAPIConfigs, setModelAPIConfigs] = useState<ModelAPIConfig[]>([]);
+  const [promptConfigs, setPromptConfigs] = useState<PromptConfig[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showAIModal, setShowAIModal] = useState(false);
-  const [showCategoryModal, setShowCategoryModal] = useState(false);
-  const [editingAIConfig, setEditingAIConfig] = useState<AIConfig | null>(null);
-  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
-  const [selectedCategory, setSelectedCategory] = useState<string>('');
 
-  const [aiFormData, setAIFormData] = useState({
-    dimension: 'summary',
-    is_enabled: true,
+  const [showModelAPIModal, setShowModelAPIModal] = useState(false);
+  const [showPromptModal, setShowPromptModal] = useState(false);
+  const [showCategoryModal, setShowCategoryModal] = useState(false);
+
+  const [editingModelAPIConfig, setEditingModelAPIConfig] = useState<ModelAPIConfig | null>(null);
+  const [editingPromptConfig, setEditingPromptConfig] = useState<PromptConfig | null>(null);
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+
+  const [modelAPIFormData, setModelAPIFormData] = useState({
+    name: '',
     base_url: 'https://api.openai.com/v1',
     api_key: '',
     model_name: 'gpt-4o',
-    prompt_template: '',
-    parameters: '',
+    is_enabled: true,
+    is_default: false,
+  });
+
+  const [promptFormData, setPromptFormData] = useState({
+    name: '',
+    category_id: '',
+    type: 'summary',
+    prompt: '',
+    model_api_config_id: '',
+    is_enabled: true,
     is_default: false,
   });
 
@@ -55,13 +56,25 @@ export default function SettingsPage() {
     sort_order: 0,
   });
 
-  const fetchAIConfigs = async () => {
+  const fetchModelAPIConfigs = async () => {
     setLoading(true);
     try {
-      const data = await articleApi.getAIConfigs(selectedCategory || undefined);
-      setAiConfigs(data);
+      const data = await articleApi.getModelAPIConfigs();
+      setModelAPIConfigs(data);
     } catch (error) {
-      console.error('Failed to fetch AI configs:', error);
+      console.error('Failed to fetch model API configs:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchPromptConfigs = async () => {
+    setLoading(true);
+    try {
+      const data = await articleApi.getPromptConfigs();
+      setPromptConfigs(data);
+    } catch (error) {
+      console.error('Failed to fetch prompt configs:', error);
     } finally {
       setLoading(false);
     }
@@ -83,89 +96,184 @@ export default function SettingsPage() {
     if (activeSection === 'categories') {
       fetchCategories();
     } else {
-      fetchAIConfigs();
+      if (aiSubSection === 'model-api') {
+        fetchModelAPIConfigs();
+      } else {
+        fetchPromptConfigs();
+      }
     }
-  }, [activeSection, selectedCategory]);
+  }, [activeSection, aiSubSection]);
 
-  // AI Config handlers
-  const handleCreateAInew = () => {
-    setEditingAIConfig(null);
-    setAIFormData({
-      dimension: 'summary',
-      is_enabled: true,
+  const handleCreateModelAPINew = () => {
+    setEditingModelAPIConfig(null);
+    setModelAPIFormData({
+      name: '',
       base_url: 'https://api.openai.com/v1',
       api_key: '',
       model_name: 'gpt-4o',
-      prompt_template: '',
-      parameters: '',
+      is_enabled: true,
       is_default: false,
     });
-    setShowAIModal(true);
+    setShowModelAPIModal(true);
   };
 
-  const handleEditAI = (config: AIConfig) => {
-    setEditingAIConfig(config);
-    setAIFormData({
-      dimension: config.dimension,
-      is_enabled: config.is_enabled,
+  const handleEditModelAPI = (config: ModelAPIConfig) => {
+    setEditingModelAPIConfig(config);
+    setModelAPIFormData({
+      name: config.name,
       base_url: config.base_url,
       api_key: config.api_key,
       model_name: config.model_name,
-      prompt_template: config.prompt_template || '',
-      parameters: config.parameters || '',
+      is_enabled: config.is_enabled,
       is_default: config.is_default,
     });
-    setShowAIModal(true);
+    setShowModelAPIModal(true);
   };
 
-  const handleSaveAI = async () => {
+  const handleSaveModelAPI = async () => {
     try {
-      if (editingAIConfig) {
-        await articleApi.updateAIConfig(editingAIConfig.id, aiFormData);
+      if (editingModelAPIConfig) {
+        await articleApi.updateModelAPIConfig(editingModelAPIConfig.id, modelAPIFormData);
       } else {
-        await articleApi.createAIConfig({
-          ...aiFormData,
-          category_id: selectedCategory || undefined,
-        });
+        await articleApi.createModelAPIConfig(modelAPIFormData);
       }
-      alert(editingAIConfig ? '配置已更新' : '配置已创建');
-      fetchAIConfigs();
-      setShowAIModal(false);
-      setEditingAIConfig(null);
+      alert(editingModelAPIConfig ? '配置已更新' : '配置已创建');
+      fetchModelAPIConfigs();
+      setShowModelAPIModal(false);
+      setEditingModelAPIConfig(null);
     } catch (error) {
-      console.error('Failed to save AI config:', error);
+      console.error('Failed to save model API config:', error);
       alert('保存失败');
     }
   };
 
-  const handleDeleteAI = async (id: string) => {
-    if (!confirm('确定要删除这个AI配置吗？')) return;
+  const handleDeleteModelAPI = async (id: string) => {
+    if (!confirm('确定要删除这个模型API配置吗？')) return;
 
     try {
-      await articleApi.deleteAIConfig(id);
+      await articleApi.deleteModelAPIConfig(id);
       alert('删除成功');
-      fetchAIConfigs();
+      fetchModelAPIConfigs();
     } catch (error) {
-      console.error('Failed to delete AI config:', error);
+      console.error('Failed to delete model API config:', error);
       alert('删除失败');
     }
   };
 
-  const handleToggleAIEnabled = async (id: string, isEnabled: boolean) => {
+  const handleTestModelAPI = async (id: string) => {
     try {
-      await articleApi.updateAIConfig(id, { is_enabled: !isEnabled });
-      fetchAIConfigs();
+      const result = await articleApi.testModelAPIConfig(id);
+      if (result.success) {
+        alert('连接测试成功');
+      } else {
+        alert(`连接测试失败: ${result.message}`);
+      }
+    } catch (error) {
+      console.error('Failed to test model API config:', error);
+      alert('测试失败');
+    }
+  };
+
+  const handleToggleModelAPIEnabled = async (id: string, isEnabled: boolean) => {
+    try {
+      await articleApi.updateModelAPIConfig(id, { is_enabled: !isEnabled });
+      fetchModelAPIConfigs();
     } catch (error) {
       console.error('Failed to toggle enabled:', error);
       alert('操作失败');
     }
   };
 
-  const handleSetAIDefault = async (id: string) => {
+  const handleSetModelAPIDefault = async (id: string) => {
     try {
-      await articleApi.updateAIConfig(id, { is_default: true });
+      await articleApi.updateModelAPIConfig(id, { is_default: true });
       alert('已设置为默认配置');
-      fetchAIConfigs();
+      fetchModelAPIConfigs();
+    } catch (error) {
+      console.error('Failed to set default:', error);
+      alert('操作失败');
+    }
+  };
+
+  const handleCreatePromptNew = () => {
+    setEditingPromptConfig(null);
+    setPromptFormData({
+      name: '',
+      category_id: '',
+      type: 'summary',
+      prompt: '',
+      model_api_config_id: '',
+      is_enabled: true,
+      is_default: false,
+    });
+    setShowPromptModal(true);
+  };
+
+  const handleEditPrompt = (config: PromptConfig) => {
+    setEditingPromptConfig(config);
+    setPromptFormData({
+      name: config.name,
+      category_id: config.category_id || '',
+      type: config.type,
+      prompt: config.prompt,
+      model_api_config_id: config.model_api_config_id || '',
+      is_enabled: config.is_enabled,
+      is_default: config.is_default,
+    });
+    setShowPromptModal(true);
+  };
+
+  const handleSavePrompt = async () => {
+    try {
+      const data = {
+        ...promptFormData,
+        category_id: promptFormData.category_id || undefined,
+        model_api_config_id: promptFormData.model_api_config_id || undefined,
+      };
+
+      if (editingPromptConfig) {
+        await articleApi.updatePromptConfig(editingPromptConfig.id, data);
+      } else {
+        await articleApi.createPromptConfig(data);
+      }
+      alert(editingPromptConfig ? '配置已更新' : '配置已创建');
+      fetchPromptConfigs();
+      setShowPromptModal(false);
+      setEditingPromptConfig(null);
+    } catch (error) {
+      console.error('Failed to save prompt config:', error);
+      alert('保存失败');
+    }
+  };
+
+  const handleDeletePrompt = async (id: string) => {
+    if (!confirm('确定要删除这个提示词配置吗？')) return;
+
+    try {
+      await articleApi.deletePromptConfig(id);
+      alert('删除成功');
+      fetchPromptConfigs();
+    } catch (error) {
+      console.error('Failed to delete prompt config:', error);
+      alert('删除失败');
+    }
+  };
+
+  const handleTogglePromptEnabled = async (id: string, isEnabled: boolean) => {
+    try {
+      await articleApi.updatePromptConfig(id, { is_enabled: !isEnabled });
+      fetchPromptConfigs();
+    } catch (error) {
+      console.error('Failed to toggle enabled:', error);
+      alert('操作失败');
+    }
+  };
+
+  const handleSetPromptDefault = async (id: string) => {
+    try {
+      await articleApi.updatePromptConfig(id, { is_default: true });
+      alert('已设置为默认配置');
+      fetchPromptConfigs();
     } catch (error) {
       console.error('Failed to set default:', error);
       alert('操作失败');
@@ -253,6 +361,26 @@ export default function SettingsPage() {
                 >
                   🤖 AI配置
                 </button>
+                {activeSection === 'ai' && (
+                  <>
+                    <button
+                      onClick={() => setAISubSection('model-api')}
+                      className={`w-full text-left px-6 py-2 text-sm rounded-lg transition ${
+                        aiSubSection === 'model-api' ? 'bg-blue-50 text-blue-700' : 'hover:bg-gray-50'
+                      }`}
+                    >
+                      🔌 模型API配置
+                    </button>
+                    <button
+                      onClick={() => setAISubSection('prompt')}
+                      className={`w-full text-left px-6 py-2 text-sm rounded-lg transition ${
+                        aiSubSection === 'prompt' ? 'bg-blue-50 text-blue-700' : 'hover:bg-gray-50'
+                      }`}
+                    >
+                      📝 提示词配置
+                    </button>
+                  </>
+                )}
                 <button
                   onClick={() => setActiveSection('categories')}
                   className={`w-full text-left px-4 py-3 rounded-lg transition ${
@@ -266,41 +394,27 @@ export default function SettingsPage() {
           </aside>
 
           <main className="flex-1">
-            {activeSection === 'ai' && (
+            {activeSection === 'ai' && aiSubSection === 'model-api' && (
               <div className="bg-white rounded-lg shadow-sm p-6">
                 <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-lg font-semibold text-gray-900">AI配置列表</h2>
-                  <div className="flex gap-2">
-                    <select
-                      value={selectedCategory}
-                      onChange={(e) => setSelectedCategory(e.target.value)}
-                      className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="">全部配置</option>
-                      {categories.map((cat) => (
-                        <option key={cat.id} value={cat.id}>
-                          {cat.name}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      onClick={handleCreateAInew}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
-                    >
-                      + 创建新配置
-                    </button>
-                  </div>
+                  <h2 className="text-lg font-semibold text-gray-900">模型API配置列表</h2>
+                  <button
+                    onClick={handleCreateModelAPINew}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                  >
+                    + 创建新配置
+                  </button>
                 </div>
 
                 {loading ? (
                   <div className="text-center py-12 text-gray-500">加载中...</div>
-                ) : aiConfigs.length === 0 ? (
+                ) : modelAPIConfigs.length === 0 ? (
                   <div className="text-center py-12 text-gray-500">
-                    暂无AI配置，点击"创建新配置"按钮开始
+                    暂无模型API配置，点击"创建新配置"按钮开始
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    {aiConfigs.map((config) => (
+                    {modelAPIConfigs.map((config) => (
                       <div
                         key={config.id}
                         className="border rounded-lg p-4 hover:shadow-md transition"
@@ -309,7 +423,7 @@ export default function SettingsPage() {
                           <div className="flex-1">
                             <div className="flex items-center gap-2 mb-2">
                               <h3 className="font-semibold text-gray-900">
-                                {config.dimension}
+                                {config.name}
                               </h3>
                               {config.is_default && (
                                 <span className="ml-2 px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">
@@ -329,35 +443,40 @@ export default function SettingsPage() {
 
                             <div className="space-y-1 text-sm text-gray-600">
                               <div>
-                                <span className="font-medium">API：</span>
+                                <span className="font-medium">名称：</span>
+                                <span>{config.name}</span>
+                              </div>
+                              <div>
+                                <span className="font-medium">API地址：</span>
                                 <code className="px-2 py-1 bg-gray-50 rounded text-xs">
                                   {config.base_url}
                                 </code>
                               </div>
                               <div>
-                                <span className="font-medium">模型：</span>
+                                <span className="font-medium">模型名称：</span>
                                 <code className="px-2 py-1 bg-gray-50 rounded text-xs">
                                   {config.model_name}
                                 </code>
                               </div>
                               <div>
-                                <span className="font-medium">密钥：</span>
+                                <span className="font-medium">API密钥：</span>
                                 <code className="px-2 py-1 bg-gray-50 rounded text-xs">
                                   {config.api_key.slice(0, 8)}***
                                 </code>
                               </div>
-                              {config.category_id && (
-                                <div>
-                                  <span className="font-medium">分类：</span>
-                                  {categories.find(c => c.id === config.category_id)?.name}
-                                </div>
-                              )}
                             </div>
                           </div>
 
                           <div className="flex gap-2">
                             <button
-                              onClick={() => handleToggleAIEnabled(config.id, config.is_enabled)}
+                              onClick={() => handleTestModelAPI(config.id)}
+                              className="px-3 py-1 text-sm bg-purple-100 text-purple-700 rounded hover:bg-purple-200 transition"
+                              title="测试连接"
+                            >
+                              🔗
+                            </button>
+                            <button
+                              onClick={() => handleToggleModelAPIEnabled(config.id, config.is_enabled)}
                               className="px-3 py-1 text-sm bg-gray-100 rounded hover:bg-gray-200 transition"
                               title={config.is_enabled ? '禁用' : '启用'}
                             >
@@ -365,7 +484,7 @@ export default function SettingsPage() {
                             </button>
                             {!config.is_default && (
                               <button
-                                onClick={() => handleSetAIDefault(config.id)}
+                                onClick={() => handleSetModelAPIDefault(config.id)}
                                 className="px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition"
                                 title="设为默认"
                               >
@@ -373,14 +492,128 @@ export default function SettingsPage() {
                               </button>
                             )}
                             <button
-                              onClick={() => handleEditAI(config)}
+                              onClick={() => handleEditModelAPI(config)}
                               className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition"
                               title="编辑"
                             >
                               ✏️
                             </button>
                             <button
-                              onClick={() => handleDeleteAI(config.id)}
+                              onClick={() => handleDeleteModelAPI(config.id)}
+                              className="px-3 py-1 text-sm bg-red-600 text-white rounded hover:bg-red-700 transition"
+                              title="删除"
+                            >
+                              🗑️
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {activeSection === 'ai' && aiSubSection === 'prompt' && (
+              <div className="bg-white rounded-lg shadow-sm p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-lg font-semibold text-gray-900">提示词配置列表</h2>
+                  <button
+                    onClick={handleCreatePromptNew}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                  >
+                    + 创建新配置
+                  </button>
+                </div>
+
+                {loading ? (
+                  <div className="text-center py-12 text-gray-500">加载中...</div>
+                ) : promptConfigs.length === 0 ? (
+                  <div className="text-center py-12 text-gray-500">
+                    暂无提示词配置，点击"创建新配置"按钮开始
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {promptConfigs.map((config) => (
+                      <div
+                        key={config.id}
+                        className="border rounded-lg p-4 hover:shadow-md transition"
+                      >
+                        <div className="flex items-start justify-between mb-3">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-2">
+                              <h3 className="font-semibold text-gray-900">
+                                {config.name}
+                              </h3>
+                              {config.is_default && (
+                                <span className="ml-2 px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">
+                                  默认
+                                </span>
+                              )}
+                              <span
+                                className={`px-2 py-1 rounded text-xs ${
+                                  config.is_enabled
+                                    ? 'bg-green-100 text-green-700'
+                                    : 'bg-gray-100 text-gray-600'
+                                }`}
+                              >
+                                {config.is_enabled ? '启用' : '禁用'}
+                              </span>
+                              <span className="ml-2 px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs">
+                                {config.type}
+                              </span>
+                            </div>
+
+                            <div className="space-y-1 text-sm text-gray-600">
+                              <div>
+                                <span className="font-medium">分类：</span>
+                                <span>{config.category_name || '通用'}</span>
+                              </div>
+                              <div>
+                                <span className="font-medium">类型：</span>
+                                <span>{config.type}</span>
+                              </div>
+                              {config.model_api_config_name && (
+                                <div>
+                                  <span className="font-medium">关联模型API：</span>
+                                  <span>{config.model_api_config_name}</span>
+                                </div>
+                              )}
+                              <div>
+                                <span className="font-medium">提示词：</span>
+                                <code className="px-2 py-1 bg-gray-50 rounded text-xs block mt-1 max-h-20 overflow-y-auto">
+                                  {config.prompt.slice(0, 100)}{config.prompt.length > 100 ? '...' : ''}
+                                </code>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleTogglePromptEnabled(config.id, config.is_enabled)}
+                              className="px-3 py-1 text-sm bg-gray-100 rounded hover:bg-gray-200 transition"
+                              title={config.is_enabled ? '禁用' : '启用'}
+                            >
+                              {config.is_enabled ? '🔌' : '🔆'}
+                            </button>
+                            {!config.is_default && (
+                              <button
+                                onClick={() => handleSetPromptDefault(config.id)}
+                                className="px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition"
+                                title="设为默认"
+                              >
+                                ⭐
+                              </button>
+                            )}
+                            <button
+                              onClick={() => handleEditPrompt(config)}
+                              className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition"
+                              title="编辑"
+                            >
+                              ✏️
+                            </button>
+                            <button
+                              onClick={() => handleDeletePrompt(config.id)}
                               className="px-3 py-1 text-sm bg-red-600 text-white rounded hover:bg-red-700 transition"
                               title="删除"
                             >
@@ -462,16 +695,15 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* AI Config Modal */}
-      {showAIModal && (
+      {showModelAPIModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between p-6 border-b">
               <h3 className="text-lg font-semibold text-gray-900">
-                {editingAIConfig ? '编辑AI配置' : '创建新AI配置'}
+                {editingModelAPIConfig ? '编辑模型API配置' : '创建新模型API配置'}
               </h3>
               <button
-                onClick={() => setShowAIModal(false)}
+                onClick={() => setShowModelAPIModal(false)}
                 className="text-gray-500 hover:text-gray-700 text-2xl"
               >
                 ×
@@ -481,12 +713,26 @@ export default function SettingsPage() {
             <div className="p-6 space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
+                  配置名称
+                </label>
+                <input
+                  type="text"
+                  value={modelAPIFormData.name}
+                  onChange={(e) => setModelAPIFormData({ ...modelAPIFormData, name: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="OpenAI GPT-4o"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
                   API地址（Base URL）
                 </label>
                 <input
                   type="text"
-                  value={aiFormData.base_url}
-                  onChange={(e) => setAIFormData({ ...aiFormData, base_url: e.target.value })}
+                  value={modelAPIFormData.base_url}
+                  onChange={(e) => setModelAPIFormData({ ...modelAPIFormData, base_url: e.target.value })}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="https://api.openai.com/v1"
                 />
@@ -499,10 +745,11 @@ export default function SettingsPage() {
                 </label>
                 <input
                   type="password"
-                  value={aiFormData.api_key}
-                  onChange={(e) => setAIFormData({ ...aiFormData, api_key: e.target.value })}
+                  value={modelAPIFormData.api_key}
+                  onChange={(e) => setModelAPIFormData({ ...modelAPIFormData, api_key: e.target.value })}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="sk-..."
+                  required
                 />
               </div>
 
@@ -512,36 +759,11 @@ export default function SettingsPage() {
                 </label>
                 <input
                   type="text"
-                  value={aiFormData.model_name}
-                  onChange={(e) => setAIFormData({ ...aiFormData, model_name: e.target.value })}
+                  value={modelAPIFormData.model_name}
+                  onChange={(e) => setModelAPIFormData({ ...modelAPIFormData, model_name: e.target.value })}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="gpt-4o"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  提示词模板
-                </label>
-                <textarea
-                  value={aiFormData.prompt_template}
-                  onChange={(e) => setAIFormData({ ...aiFormData, prompt_template: e.target.value })}
-                  rows={4}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="请为以下文章生成摘要..."
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  参数（JSON格式）
-                </label>
-                <textarea
-                  value={aiFormData.parameters}
-                  onChange={(e) => setAIFormData({ ...aiFormData, parameters: e.target.value })}
-                  rows={3}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
-                  placeholder='{"max_tokens": 500, "temperature": 0.7}'
+                  required
                 />
               </div>
 
@@ -549,8 +771,8 @@ export default function SettingsPage() {
                 <label className="flex items-center gap-2">
                   <input
                     type="checkbox"
-                    checked={aiFormData.is_enabled}
-                    onChange={(e) => setAIFormData({ ...aiFormData, is_enabled: e.target.checked })}
+                    checked={modelAPIFormData.is_enabled}
+                    onChange={(e) => setModelAPIFormData({ ...modelAPIFormData, is_enabled: e.target.checked })}
                     className="w-4 h-4 text-blue-600 rounded"
                   />
                   <span className="text-sm text-gray-700">启用此配置</span>
@@ -559,8 +781,8 @@ export default function SettingsPage() {
                 <label className="flex items-center gap-2">
                   <input
                     type="checkbox"
-                    checked={aiFormData.is_default}
-                    onChange={(e) => setAIFormData({ ...aiFormData, is_default: e.target.checked })}
+                    checked={modelAPIFormData.is_default}
+                    onChange={(e) => setModelAPIFormData({ ...modelAPIFormData, is_default: e.target.checked })}
                     className="w-4 h-4 text-blue-600 rounded"
                   />
                   <span className="text-sm text-gray-700">设为默认配置</span>
@@ -570,16 +792,154 @@ export default function SettingsPage() {
 
             <div className="flex justify-end gap-2 p-6 border-t bg-gray-50">
               <button
-                onClick={() => setShowAIModal(false)}
+                onClick={() => setShowModelAPIModal(false)}
                 className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
               >
                 取消
               </button>
               <button
-                onClick={handleSaveAI}
+                onClick={handleSaveModelAPI}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
               >
-                {editingAIConfig ? '保存' : '创建'}
+                {editingModelAPIConfig ? '保存' : '创建'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showPromptModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-6 border-b">
+              <h3 className="text-lg font-semibold text-gray-900">
+                {editingPromptConfig ? '编辑提示词配置' : '创建新提示词配置'}
+              </h3>
+              <button
+                onClick={() => setShowPromptModal(false)}
+                className="text-gray-500 hover:text-gray-700 text-2xl"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  配置名称
+                </label>
+                <input
+                  type="text"
+                  value={promptFormData.name}
+                  onChange={(e) => setPromptFormData({ ...promptFormData, name: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="文章摘要提示词"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  分类
+                </label>
+                <select
+                  value={promptFormData.category_id}
+                  onChange={(e) => setPromptFormData({ ...promptFormData, category_id: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">通用</option>
+                  {categories.map((cat) => (
+                    <option key={cat.id} value={cat.id}>
+                      {cat.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  类型
+                </label>
+                <select
+                  value={promptFormData.type}
+                  onChange={(e) => setPromptFormData({ ...promptFormData, type: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                >
+                  <option value="summary">摘要</option>
+                  <option value="outline">大纲</option>
+                  <option value="key_points">关键点</option>
+                  <option value="mindmap">思维导图</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  提示词
+                </label>
+                <textarea
+                  value={promptFormData.prompt}
+                  onChange={(e) => setPromptFormData({ ...promptFormData, prompt: e.target.value })}
+                  rows={6}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="请为以下文章生成摘要..."
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  关联模型API配置（可选）
+                </label>
+                <select
+                  value={promptFormData.model_api_config_id}
+                  onChange={(e) => setPromptFormData({ ...promptFormData, model_api_config_id: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">使用默认</option>
+                  {modelAPIConfigs.map((config) => (
+                    <option key={config.id} value={config.id}>
+                      {config.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-center gap-4">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={promptFormData.is_enabled}
+                    onChange={(e) => setPromptFormData({ ...promptFormData, is_enabled: e.target.checked })}
+                    className="w-4 h-4 text-blue-600 rounded"
+                  />
+                  <span className="text-sm text-gray-700">启用此配置</span>
+                </label>
+
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={promptFormData.is_default}
+                    onChange={(e) => setPromptFormData({ ...promptFormData, is_default: e.target.checked })}
+                    className="w-4 h-4 text-blue-600 rounded"
+                  />
+                  <span className="text-sm text-gray-700">设为默认配置</span>
+                </label>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 p-6 border-t bg-gray-50">
+              <button
+                onClick={() => setShowPromptModal(false)}
+                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleSavePrompt}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+              >
+                {editingPromptConfig ? '保存' : '创建'}
               </button>
             </div>
           </div>

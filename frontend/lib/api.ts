@@ -36,6 +36,33 @@ export interface Category {
   article_count: number;
 }
 
+export interface ModelAPIConfig {
+  id: string;
+  name: string;
+  base_url: string;
+  api_key: string;
+  model_name: string;
+  is_enabled: boolean;
+  is_default: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PromptConfig {
+  id: string;
+  name: string;
+  category_id: string | null;
+  category_name: string | null;
+  type: string;
+  prompt: string;
+  model_api_config_id: string | null;
+  model_api_config_name: string | null;
+  is_enabled: boolean;
+  is_default: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export const articleApi = {
   getArticles: async (params?: {
     page?: number;
@@ -109,6 +136,100 @@ export const articleApi = {
 
   deleteAIConfig: async (configId: string) => {
     const response = await api.delete(`/api/configs/ai/${configId}`);
+    return response.data;
+  },
+
+  getModelAPIConfigs: async () => {
+    const response = await api.get('/api/model-api-configs');
+    return response.data;
+  },
+
+  getModelAPIConfig: async (configId: string) => {
+    const response = await api.get(`/api/model-api-configs/${configId}`);
+    return response.data;
+  },
+
+  createModelAPIConfig: async (data: {
+    name: string;
+    base_url: string;
+    api_key: string;
+    model_name?: string;
+    is_enabled?: boolean;
+    is_default?: boolean;
+  }) => {
+    const response = await api.post('/api/model-api-configs', data);
+    return response.data;
+  },
+
+  updateModelAPIConfig: async (
+    configId: string,
+    data: {
+      name?: string;
+      base_url?: string;
+      api_key?: string;
+      model_name?: string;
+      is_enabled?: boolean;
+      is_default?: boolean;
+    },
+  ) => {
+    const response = await api.put(`/api/model-api-configs/${configId}`, data);
+    return response.data;
+  },
+
+  deleteModelAPIConfig: async (configId: string) => {
+    const response = await api.delete(`/api/model-api-configs/${configId}`);
+    return response.data;
+  },
+
+  testModelAPIConfig: async (configId: string) => {
+    const response = await api.post(`/api/model-api-configs/${configId}/test`);
+    return response.data;
+  },
+
+  getPromptConfigs: async (params?: {
+    category_id?: string;
+    type?: string;
+  }) => {
+    const response = await api.get('/api/prompt-configs', { params });
+    return response.data;
+  },
+
+  getPromptConfig: async (configId: string) => {
+    const response = await api.get(`/api/prompt-configs/${configId}`);
+    return response.data;
+  },
+
+  createPromptConfig: async (data: {
+    name: string;
+    category_id?: string;
+    type: string;
+    prompt: string;
+    model_api_config_id?: string;
+    is_enabled?: boolean;
+    is_default?: boolean;
+  }) => {
+    const response = await api.post('/api/prompt-configs', data);
+    return response.data;
+  },
+
+  updatePromptConfig: async (
+    configId: string,
+    data: {
+      name?: string;
+      category_id?: string;
+      type?: string;
+      prompt?: string;
+      model_api_config_id?: string;
+      is_enabled?: boolean;
+      is_default?: boolean;
+    },
+  ) => {
+    const response = await api.put(`/api/prompt-configs/${configId}`, data);
+    return response.data;
+  },
+
+  deletePromptConfig: async (configId: string) => {
+    const response = await api.delete(`/api/prompt-configs/${configId}`);
     return response.data;
   },
 };

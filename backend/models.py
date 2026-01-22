@@ -37,6 +37,7 @@ class Category(Base):
 
     articles = relationship("Article", back_populates="category")
     ai_configs = relationship("AIConfig", back_populates="category")
+    prompt_configs = relationship("PromptConfig", back_populates="category")
 
 
 class Article(Base):
@@ -80,6 +81,43 @@ class AIAnalysis(Base):
     article = relationship("Article", back_populates="ai_analysis")
 
 
+class ModelAPIConfig(Base):
+    __tablename__ = "model_api_configs"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    name = Column(String, nullable=False)
+    base_url = Column(String, nullable=False, default="https://api.openai.com/v1")
+    api_key = Column(String, nullable=False)
+    model_name = Column(String, nullable=False, default="gpt-4o")
+    is_enabled = Column(Boolean, default=True)
+    is_default = Column(Boolean, default=False)
+    created_at = Column(String, default=lambda: datetime.utcnow().isoformat())
+    updated_at = Column(String, default=lambda: datetime.utcnow().isoformat())
+
+
+class PromptConfig(Base):
+    __tablename__ = "prompt_configs"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    name = Column(String, nullable=False)
+    category_id = Column(
+        String, ForeignKey("categories.id", ondelete="CASCADE"), nullable=True
+    )
+    type = Column(String, nullable=False)  # summary, outline, key_points, mindmap, etc.
+    prompt = Column(Text, nullable=False)
+    model_api_config_id = Column(
+        String, ForeignKey("model_api_configs.id", ondelete="SET NULL"), nullable=True
+    )
+    is_enabled = Column(Boolean, default=True)
+    is_default = Column(Boolean, default=False)
+    created_at = Column(String, default=lambda: datetime.utcnow().isoformat())
+    updated_at = Column(String, default=lambda: datetime.utcnow().isoformat())
+
+    category = relationship("Category", back_populates="prompt_configs")
+    model_api_config = relationship("ModelAPIConfig", backref="prompt_configs")
+
+
+# Keep AIConfig for backwards compatibility (deprecated)
 class AIConfig(Base):
     __tablename__ = "ai_configs"
 

@@ -2,7 +2,15 @@ from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List
-from models import get_db, init_db, Category, Article, AIConfig
+from models import (
+    get_db,
+    init_db,
+    Category,
+    Article,
+    AIConfig,
+    ModelAPIConfig,
+    PromptConfig,
+)
 from article_service import ArticleService
 from sqlalchemy.orm import Session
 
@@ -51,6 +59,25 @@ class AIConfigBase(BaseModel):
     model_name: str = "gpt-4o"
     prompt_template: Optional[str] = None
     parameters: Optional[str] = None
+    is_default: bool = False
+
+
+class ModelAPIConfigBase(BaseModel):
+    name: str
+    base_url: str
+    api_key: str
+    model_name: str = "gpt-4o"
+    is_enabled: bool = True
+    is_default: bool = False
+
+
+class PromptConfigBase(BaseModel):
+    name: str
+    category_id: Optional[str] = None
+    type: str  # summary, outline, key_points, mindmap, etc.
+    prompt: str
+    model_api_config_id: Optional[str] = None
+    is_enabled: bool = True
     is_default: bool = False
 
 
@@ -326,6 +353,335 @@ async def delete_ai_config(config_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="AI配置不存在")
 
     db.delete(ai_config)
+    db.commit()
+
+    return {"message": "删除成功"}
+
+
+# Model API Config endpoints
+@app.get("/api/model-api-configs")
+async def get_model_api_configs(db: Session = Depends(get_db)):
+    configs = db.query(ModelAPIConfig).order_by(ModelAPIConfig.created_at.desc()).all()
+
+    return [
+        {
+            "id": c.id,
+            "name": c.name,
+            "base_url": c.base_url,
+            "api_key": c.api_key,
+            "model_name": c.model_name,
+            "is_enabled": c.is_enabled,
+            "is_default": c.is_default,
+            "created_at": c.created_at,
+            "updated_at": c.updated_at,
+        }
+        for c in configs
+    ]
+
+
+@app.get("/api/model-api-configs/{config_id}")
+async def get_model_api_config(config_id: str, db: Session = Depends(get_db)):
+    config = db.query(ModelAPIConfig).filter(ModelAPIConfig.id == config_id).first()
+
+    if not config:
+        raise HTTPException(status_code=404, detail="模型API配置不存在")
+
+    return {
+        "id": config.id,
+        "name": config.name,
+        "base_url": config.base_url,
+        "api_key": config.api_key,
+        "model_name": config.model_name,
+        "is_enabled": config.is_enabled,
+        "is_default": config.is_default,
+        "created_at": config.created_at,
+        "updated_at": config.updated_at,
+    }
+
+
+@app.post("/api/model-api-configs")
+async def create_model_api_config(
+    config: ModelAPIConfigBase, db: Session = Depends(get_db)
+):
+    try:
+        # If this is set as default, unset other defaults
+        if config.is_default:
+            db.query(ModelAPIConfig).filter(ModelAPIConfig.is_default == True).update(
+                {"is_default": False}
+            )
+
+        new_config = ModelAPIConfig(**config.dict())
+        db.add(new_config)
+        db.commit()
+        db.refresh(new_config)
+        return {
+            "id": new_config.id,
+            "name": new_config.name,
+            "base_url": new_config.base_url,
+            "api_key": new_config.api_key,
+            "model_name": new_config.model_name,
+            "is_enabled": new_config.is_enabled,
+            "is_default": new_config.is_default,
+            "created_at": new_config.created_at,
+            "updated_at": new_config.updated_at,
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.put("/api/model-api-configs/{config_id}")
+async def update_model_api_config(
+    config_id: str, config: ModelAPIConfigBase, db: Session = Depends(get_db)
+):
+    existing_config = (
+        db.query(ModelAPIConfig).filter(ModelAPIConfig.id == config_id).first()
+    )
+
+    if not existing_config:
+        raise HTTPException(status_code=404, detail="模型API配置不存在")
+
+    try:
+        # If this is set as default, unset other defaults
+        if config.is_default:
+            db.query(ModelAPIConfig).filter(ModelAPIConfig.is_default == True).filter(
+                ModelAPIConfig.id != config_id
+            ).update({"is_default": False})
+
+        existing_config.name = config.name
+        existing_config.base_url = config.base_url
+        existing_config.api_key = config.api_key
+        existing_config.model_name = config.model_name
+        existing_config.is_enabled = config.is_enabled
+        existing_config.is_default = config.is_default
+
+        db.commit()
+        db.refresh(existing_config)
+
+        return {
+            "id": existing_config.id,
+            "name": existing_config.name,
+            "base_url": existing_config.base_url,
+            "api_key": existing_config.api_key,
+            "model_name": existing_config.model_name,
+            "is_enabled": existing_config.is_enabled,
+            "is_default": existing_config.is_default,
+            "created_at": existing_config.created_at,
+            "updated_at": existing_config.updated_at,
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.delete("/api/model-api-configs/{config_id}")
+async def delete_model_api_config(config_id: str, db: Session = Depends(get_db)):
+    config = db.query(ModelAPIConfig).filter(ModelAPIConfig.id == config_id).first()
+
+    if not config:
+        raise HTTPException(status_code=404, detail="模型API配置不存在")
+
+    db.delete(config)
+    db.commit()
+
+    return {"message": "删除成功"}
+
+
+@app.post("/api/model-api-configs/{config_id}/test")
+async def test_model_api_config(config_id: str, db: Session = Depends(get_db)):
+    config = db.query(ModelAPIConfig).filter(ModelAPIConfig.id == config_id).first()
+
+    if not config:
+        raise HTTPException(status_code=404, detail="模型API配置不存在")
+
+    try:
+        # Test API connection by making a simple request
+        import httpx
+
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{config.base_url}/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {config.api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": config.model_name,
+                    "messages": [{"role": "user", "content": "test"}],
+                    "max_tokens": 5,
+                },
+                timeout=10.0,
+            )
+
+            if response.status_code in [200, 201]:
+                return {"success": True, "message": "连接测试成功"}
+            else:
+                return {
+                    "success": False,
+                    "message": f"连接测试失败: {response.status_code}",
+                }
+    except Exception as e:
+        return {"success": False, "message": f"连接测试失败: {str(e)}"}
+
+
+# Prompt Config endpoints
+@app.get("/api/prompt-configs")
+async def get_prompt_configs(
+    category_id: Optional[str] = None,
+    type: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    query = db.query(PromptConfig)
+
+    if category_id:
+        query = query.filter(PromptConfig.category_id == category_id)
+    if type:
+        query = query.filter(PromptConfig.type == type)
+
+    configs = query.order_by(PromptConfig.created_at.desc()).all()
+
+    return [
+        {
+            "id": c.id,
+            "name": c.name,
+            "category_id": c.category_id,
+            "category_name": c.category.name if c.category else None,
+            "type": c.type,
+            "prompt": c.prompt,
+            "model_api_config_id": c.model_api_config_id,
+            "model_api_config_name": c.model_api_config.name
+            if c.model_api_config
+            else None,
+            "is_enabled": c.is_enabled,
+            "is_default": c.is_default,
+            "created_at": c.created_at,
+            "updated_at": c.updated_at,
+        }
+        for c in configs
+    ]
+
+
+@app.get("/api/prompt-configs/{config_id}")
+async def get_prompt_config(config_id: str, db: Session = Depends(get_db)):
+    config = db.query(PromptConfig).filter(PromptConfig.id == config_id).first()
+
+    if not config:
+        raise HTTPException(status_code=404, detail="提示词配置不存在")
+
+    return {
+        "id": config.id,
+        "name": config.name,
+        "category_id": config.category_id,
+        "category_name": config.category.name if config.category else None,
+        "type": config.type,
+        "prompt": config.prompt,
+        "model_api_config_id": config.model_api_config_id,
+        "model_api_config_name": config.model_api_config.name
+        if config.model_api_config
+        else None,
+        "is_enabled": config.is_enabled,
+        "is_default": config.is_default,
+        "created_at": config.created_at,
+        "updated_at": config.updated_at,
+    }
+
+
+@app.post("/api/prompt-configs")
+async def create_prompt_config(config: PromptConfigBase, db: Session = Depends(get_db)):
+    try:
+        # If this is set as default, unset other defaults of same type
+        if config.is_default:
+            db.query(PromptConfig).filter(
+                PromptConfig.type == config.type, PromptConfig.is_default == True
+            ).update({"is_default": False})
+
+        new_config = PromptConfig(**config.dict())
+        db.add(new_config)
+        db.commit()
+        db.refresh(new_config)
+        return {
+            "id": new_config.id,
+            "name": new_config.name,
+            "category_id": new_config.category_id,
+            "category_name": new_config.category.name if new_config.category else None,
+            "type": new_config.type,
+            "prompt": new_config.prompt,
+            "model_api_config_id": new_config.model_api_config_id,
+            "model_api_config_name": new_config.model_api_config.name
+            if new_config.model_api_config
+            else None,
+            "is_enabled": new_config.is_enabled,
+            "is_default": new_config.is_default,
+            "created_at": new_config.created_at,
+            "updated_at": new_config.updated_at,
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.put("/api/prompt-configs/{config_id}")
+async def update_prompt_config(
+    config_id: str, config: PromptConfigBase, db: Session = Depends(get_db)
+):
+    existing_config = (
+        db.query(PromptConfig).filter(PromptConfig.id == config_id).first()
+    )
+
+    if not existing_config:
+        raise HTTPException(status_code=404, detail="提示词配置不存在")
+
+    try:
+        # If this is set as default, unset other defaults of same type
+        if config.is_default:
+            db.query(PromptConfig).filter(
+                PromptConfig.type == config.type,
+                PromptConfig.is_default == True,
+                PromptConfig.id != config_id,
+            ).update({"is_default": False})
+
+        existing_config.name = config.name
+        existing_config.category_id = config.category_id
+        existing_config.type = config.type
+        existing_config.prompt = config.prompt
+        existing_config.model_api_config_id = config.model_api_config_id
+        existing_config.is_enabled = config.is_enabled
+        existing_config.is_default = config.is_default
+
+        db.commit()
+        db.refresh(existing_config)
+
+        return {
+            "id": existing_config.id,
+            "name": existing_config.name,
+            "category_id": existing_config.category_id,
+            "category_name": existing_config.category.name
+            if existing_config.category
+            else None,
+            "type": existing_config.type,
+            "prompt": existing_config.prompt,
+            "model_api_config_id": existing_config.model_api_config_id,
+            "model_api_config_name": existing_config.model_api_config.name
+            if existing_config.model_api_config
+            else None,
+            "is_enabled": existing_config.is_enabled,
+            "is_default": existing_config.is_default,
+            "created_at": existing_config.created_at,
+            "updated_at": existing_config.updated_at,
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.delete("/api/prompt-configs/{config_id}")
+async def delete_prompt_config(config_id: str, db: Session = Depends(get_db)):
+    config = db.query(PromptConfig).filter(PromptConfig.id == config_id).first()
+
+    if not config:
+        raise HTTPException(status_code=404, detail="提示词配置不存在")
+
+    db.delete(config)
     db.commit()
 
     return {"message": "删除成功"}
