@@ -62,14 +62,39 @@ export default function ArticleDetailPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <nav className="bg-white shadow-sm border-b">
+       <nav className="bg-white shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between mb-3">
             <Link href="/" className="text-blue-600 hover:text-blue-700 transition">
               ← 返回列表
             </Link>
             <h1 className="text-xl font-bold text-gray-900 truncate">{article.title}</h1>
             <div className="w-20"></div>
+          </div>
+          <div className="flex flex-wrap gap-4 text-sm text-gray-600 pb-3 border-b border-gray-100">
+            {article.author && (
+              <div>
+                <span className="font-medium text-gray-700">作者：</span>
+                {article.author}
+              </div>
+            )}
+            {article.source_url && (
+              <div>
+                <span className="font-medium text-gray-700">来源：</span>
+                <a
+                  href={article.source_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:underline"
+                >
+                  点击查看
+                </a>
+              </div>
+            )}
+            <div>
+              <span className="font-medium text-gray-700">创建时间：</span>
+              {new Date(article.created_at).toLocaleString('zh-CN')}
+            </div>
           </div>
         </div>
       </nav>
@@ -112,7 +137,7 @@ export default function ArticleDetailPage() {
               </div>
             </div>
 
-            {!analysisCollapsed && (
+             {!analysisCollapsed && (
             <div className="bg-white rounded-lg shadow-sm p-6">
               <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-3">
@@ -134,6 +159,15 @@ export default function ArticleDetailPage() {
                 )}
               </div>
 
+              {article.status === 'failed' && (
+                <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+                  <h3 className="font-semibold text-red-900 mb-2">⚠️ AI 解读失败</h3>
+                  <p className="text-red-700 text-sm">
+                    文章AI分析生成失败，请检查API配置是否正确，或点击"重新生成"按钮重试。
+                  </p>
+                </div>
+              )}
+
               {article.ai_analysis?.summary && (
                 <div className="mb-6">
                   <h3 className="font-semibold text-gray-900 mb-2">📝 摘要</h3>
@@ -141,52 +175,19 @@ export default function ArticleDetailPage() {
                 </div>
               )}
 
-              <div className="mt-6 pt-6 border-t">
-                <h3 className="font-semibold text-gray-900 mb-2">📊 文章信息</h3>
-                <div className="space-y-2 text-sm text-gray-600">
-                  {article.author && (
+              {article.status === 'completed' && article.ai_analysis?.summary && (
+                <div className="mt-6 pt-6 border-t">
+                  <h3 className="font-semibold text-gray-900 mb-2">📊 处理信息</h3>
+                  <div className="space-y-2 text-sm text-gray-600">
                     <div>
-                      <span className="font-medium">作者：</span>
-                      {article.author}
+                      <span className="font-medium">状态：</span>
+                      <span className="px-2 py-1 rounded bg-green-100 text-green-700">
+                        已完成
+                      </span>
                     </div>
-                  )}
-                  {article.source_url && (
-                    <div>
-                      <span className="font-medium">来源：</span>
-                      <a
-                        href={article.source_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-600 hover:underline"
-                      >
-                        {article.source_url}
-                      </a>
-                    </div>
-                  )}
-                  <div>
-                    <span className="font-medium">状态：</span>
-                    <span
-                      className={`px-2 py-1 rounded ${
-                        article.status === 'completed'
-                          ? 'bg-green-100 text-green-700'
-                          : article.status === 'processing'
-                          ? 'bg-yellow-100 text-yellow-700'
-                          : 'bg-red-100 text-red-700'
-                      }`}
-                    >
-                      {article.status === 'completed'
-                        ? '已完成'
-                        : article.status === 'processing'
-                        ? '处理中'
-                        : '失败'}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="font-medium">创建时间：</span>
-                    {new Date(article.created_at).toLocaleString('zh-CN')}
                   </div>
                 </div>
-              </div>
+              )}
             </div>
             )}
 
