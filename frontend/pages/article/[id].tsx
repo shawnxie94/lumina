@@ -44,6 +44,19 @@ export default function ArticleDetailPage() {
     }
   };
 
+  const handleDelete = async () => {
+    if (!id) return;
+    if (!confirm('确定要删除这篇文章吗？')) return;
+
+    try {
+      await articleApi.deleteArticle(id as string);
+      router.push('/');
+    } catch (error) {
+      console.error('Failed to delete article:', error);
+      alert('删除失败');
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -69,7 +82,13 @@ export default function ArticleDetailPage() {
               ← 返回列表
             </Link>
             <h1 className="text-xl font-bold text-gray-900 truncate">{article.title}</h1>
-            <div className="w-20"></div>
+            <button
+              onClick={handleDelete}
+              className="text-gray-400 hover:text-red-600 transition"
+              title="删除文章"
+            >
+              ✕
+            </button>
           </div>
           <div className="flex flex-wrap gap-4 text-sm text-gray-600 pb-3 border-b border-gray-100">
             {article.author && (

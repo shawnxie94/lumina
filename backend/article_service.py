@@ -287,18 +287,41 @@ class ArticleService:
     def export_articles(self, db: Session, article_ids: list):
         articles = db.query(Article).filter(Article.id.in_(article_ids)).all()
 
-        markdown_content = ""
+        categories_dict = {}
+        uncategorized = []
+
         for article in articles:
-            markdown_content += f"# {article.title}\n\n"
-            if article.author:
-                markdown_content += f"**作者**: {article.author}\n\n"
-            if article.source_url:
-                markdown_content += f"**来源**: {article.source_url}\n\n"
-            if article.ai_analysis:
-                markdown_content += f"**摘要**: {article.ai_analysis.summary}\n\n"
-            if article.content_md:
-                markdown_content += article.content_md + "\n\n"
-            markdown_content += "---\n\n"
+            if article.category:
+                cat_name = article.category.name
+                if cat_name not in categories_dict:
+                    categories_dict[cat_name] = []
+                categories_dict[cat_name].append(article)
+            else:
+                uncategorized.append(article)
+
+        markdown_content = ""
+
+        for cat_name, cat_articles in categories_dict.items():
+            markdown_content += f"## {cat_name}\n\n"
+            for article in cat_articles:
+                markdown_content += (
+                    f"### [{article.title}]({article.source_url or ''})\n\n"
+                )
+                if article.top_image:
+                    markdown_content += f"![]({article.top_image})\n\n"
+                if article.ai_analysis and article.ai_analysis.summary:
+                    markdown_content += f"{article.ai_analysis.summary}\n\n"
+
+        if uncategorized:
+            markdown_content += "## 未分类\n\n"
+            for article in uncategorized:
+                markdown_content += (
+                    f"### [{article.title}]({article.source_url or ''})\n\n"
+                )
+                if article.top_image:
+                    markdown_content += f"![]({article.top_image})\n\n"
+                if article.ai_analysis and article.ai_analysis.summary:
+                    markdown_content += f"{article.ai_analysis.summary}\n\n"
 
         return markdown_content
 
