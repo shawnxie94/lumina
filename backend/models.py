@@ -1,7 +1,7 @@
 from sqlalchemy import Column, String, Text, Integer, Boolean, ForeignKey, create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker
-from datetime import date
+from datetime import date, datetime
 import uuid
 import os
 
@@ -29,6 +29,10 @@ def today_str():
     return date.today().isoformat()
 
 
+def now_str():
+    return datetime.now().isoformat()
+
+
 class Category(Base):
     __tablename__ = "categories"
 
@@ -49,7 +53,7 @@ class Article(Base):
 
     id = Column(String, primary_key=True, default=generate_uuid)
     title = Column(String, nullable=False)
-    content_html = Column(Text, nullable=False)
+    content_html = Column(Text, nullable=True)
     content_md = Column(Text)
     content_trans = Column(Text)
     source_url = Column(String, unique=True, nullable=False)
@@ -59,8 +63,8 @@ class Article(Base):
     source_domain = Column(String)
     status = Column(String, default="pending")
     category_id = Column(String, ForeignKey("categories.id"))
-    created_at = Column(String, default=today_str)
-    updated_at = Column(String, default=today_str)
+    created_at = Column(String, default=now_str)
+    updated_at = Column(String, default=now_str)
 
     category = relationship("Category", back_populates="articles")
     ai_analysis = relationship("AIAnalysis", back_populates="article", uselist=False)

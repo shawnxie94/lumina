@@ -29,7 +29,7 @@ article_service = ArticleService()
 
 class ArticleCreate(BaseModel):
     title: str
-    content_html: str
+    content_html: Optional[str] = None
     content_md: str
     source_url: str
     top_image: Optional[str] = None

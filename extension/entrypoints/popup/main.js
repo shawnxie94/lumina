@@ -221,8 +221,13 @@ class PopupController {
       const topImageBase64 = await this.convertImageToBase64(this.#articleData.top_image);
 
       const result = await this.#apiClient.createArticle({
-        ...this.#articleData,
+        title: this.#articleData.title,
+        content_md: this.#articleData.content_md,
+        source_url: this.#articleData.source_url,
         top_image: topImageBase64,
+        author: this.#articleData.author,
+        published_at: this.#articleData.published_at,
+        source_domain: this.#articleData.source_domain,
         category_id: categoryId,
       });
 

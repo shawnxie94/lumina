@@ -62,10 +62,8 @@ class EditorController {
     const titleInput = document.getElementById('titleInput');
     const authorInput = document.getElementById('authorInput');
     const sourceUrlInput = document.getElementById('sourceUrlInput');
-    const contentHtml = document.getElementById('contentHtml');
     const contentMd = document.getElementById('contentMd');
     const publishedAtInput = document.getElementById('publishedAtInput');
-    const htmlPreview = document.getElementById('htmlPreview');
     const mdPreview = document.getElementById('mdPreview');
 
     if (titleInput) {
@@ -80,17 +78,8 @@ class EditorController {
       sourceUrlInput.value = this.#articleData.source_url || '';
     }
 
-    if (contentHtml) {
-      const rawHtml = this.#articleData.content_html || '';
-      contentHtml.value = this.formatHtmlString(rawHtml);
-    }
-
     if (contentMd) {
       contentMd.value = this.#articleData.content_md || '';
-    }
-
-    if (htmlPreview) {
-      htmlPreview.innerHTML = this.#articleData.content_html || '<p>无内容</p>';
     }
 
     if (mdPreview) {
@@ -108,7 +97,7 @@ class EditorController {
     }
 
     if (this.#articleData.top_image) {
-      this.setupTopImageSelector(this.#articleData.content_html, this.#articleData.top_image);
+      this.setupTopImageSelector(this.#articleData.content_md, this.#articleData.top_image);
     }
 
     if (publishedAtInput) {
@@ -148,23 +137,25 @@ class EditorController {
     }
   }
 
-  setupTopImageSelector(htmlContent, defaultImage) {
+  setupTopImageSelector(mdContent, defaultImage) {
     const topImageGroup = document.getElementById('topImageGroup');
     const topImageSelect = document.getElementById('topImageSelect');
     const topImagePreview = document.getElementById('topImagePreview');
 
     if (!topImageGroup || !topImageSelect || !topImagePreview) return;
 
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(htmlContent, 'text/html');
-    const images = Array.from(doc.querySelectorAll('img'));
-
     const uniqueImages = new Set();
-    images.forEach(img => {
-      if (img.src) {
-        uniqueImages.add(img.src);
+    const imgRegex = /!\[.*?\]\((.*?)\)/g;
+    let match;
+    while ((match = imgRegex.exec(mdContent)) !== null) {
+      if (match[1]) {
+        uniqueImages.add(match[1]);
       }
-    });
+    }
+
+    if (defaultImage) {
+      uniqueImages.add(defaultImage);
+    }
 
     const imageArray = Array.from(uniqueImages);
 
@@ -201,110 +192,6 @@ class EditorController {
     }
   }
 
-  showPublishedAt() {
-    const publishedAtGroup = document.getElementById('publishedAtGroup');
-
-    if (publishedAtGroup) {
-      publishedAtGroup.style.display = 'block';
-    }
-  }
-
-  formatHtmlString(html) {
-    if (!html) return '';
-
-    try {
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(html, 'text/html');
-
-      const formatNode = (node, indent = 0) => {
-        const prefix = '  '.repeat(indent);
-        let result = '';
-
-        if (node.nodeType === Node.TEXT_NODE) {
-          const text = node.textContent.trim();
-          if (text) {
-            result += prefix + text + '\n';
-          }
-        } else if (node.nodeType === Node.ELEMENT_NODE) {
-          const tag = node.tagName.toLowerCase();
-          result += prefix + '<' + tag;
-
-          if (node.attributes.length > 0) {
-            for (const attr of node.attributes) {
-              result += ` ${attr.name}="${attr.value}"`;
-            }
-          }
-
-          result += '>\n';
-
-          for (const child of node.childNodes) {
-            result += formatNode(child, indent + 1);
-          }
-
-          result += prefix + '</' + tag + '>\n';
-        }
-
-        return result;
-      };
-
-      const formattedHtml = formatNode(doc.body, 0);
-      return formattedHtml.trim();
-    } catch (error) {
-      console.error('Failed to format HTML:', error);
-
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(html, 'text/html');
-
-      const formatNodeSimple = (node, indent = 0) => {
-        const prefix = '  '.repeat(indent);
-        let result = '';
-
-        if (node.nodeType === Node.TEXT_NODE) {
-          const text = node.textContent.trim();
-          if (text) {
-            result += text;
-          }
-        } else if (node.nodeType === Node.ELEMENT_NODE) {
-          const tag = node.tagName.toLowerCase();
-          const isInline = ['span', 'a', 'strong', 'em', 'code', 'b', 'i', 'img', 'br'].includes(tag);
-
-          if (!isInline) {
-            result += '\n' + prefix;
-          }
-
-          result += '<' + tag;
-
-          if (node.attributes.length > 0) {
-            for (const attr of node.attributes) {
-              result += ` ${attr.name}="${attr.value}"`;
-            }
-          }
-
-          result += '>';
-
-          for (const child of node.childNodes) {
-            result += formatNodeSimple(child, indent + (isInline ? 0 : 1));
-          }
-
-          result += '</' + tag + '>';
-
-          if (!isInline) {
-            result += '\n';
-          }
-        }
-
-        return result;
-      };
-
-      let formattedHtml = '';
-      for (const child of doc.body.childNodes) {
-        formattedHtml += formatNodeSimple(child, 0);
-      }
-
-      return formattedHtml.trim();
-    }
-  }
-
   async setupEventListeners() {
     document.getElementById('submitBtn')?.addEventListener('click', () => this.submitArticle());
 
@@ -314,28 +201,9 @@ class EditorController {
   }
 
   setupPreviewToggles() {
-    const toggleHtmlBtn = document.getElementById('toggleHtmlBtn');
     const toggleMdBtn = document.getElementById('toggleMdBtn');
-    const contentHtml = document.getElementById('contentHtml');
     const contentMd = document.getElementById('contentMd');
-    const htmlPreview = document.getElementById('htmlPreview');
     const mdPreview = document.getElementById('mdPreview');
-
-    if (toggleHtmlBtn && contentHtml && htmlPreview) {
-      toggleHtmlBtn.addEventListener('click', () => {
-        const isEditingMode = !contentHtml.classList.contains('hidden');
-        if (isEditingMode) {
-          htmlPreview.innerHTML = contentHtml.value || '<p>无内容</p>';
-          contentHtml.classList.add('hidden');
-          htmlPreview.classList.remove('hidden');
-          toggleHtmlBtn.textContent = '编辑';
-        } else {
-          contentHtml.classList.remove('hidden');
-          htmlPreview.classList.add('hidden');
-          toggleHtmlBtn.textContent = '预览';
-        }
-      });
-    }
 
     if (toggleMdBtn && contentMd && mdPreview) {
       toggleMdBtn.addEventListener('click', () => {
@@ -372,14 +240,12 @@ class EditorController {
 
     const titleInput = document.getElementById('titleInput');
     const authorInput = document.getElementById('authorInput');
-    const contentHtml = document.getElementById('contentHtml');
     const contentMd = document.getElementById('contentMd');
     const publishedAtInput = document.getElementById('publishedAtInput');
     const topImageSelect = document.getElementById('topImageSelect');
 
     const title = titleInput?.value?.trim();
     const author = authorInput?.value?.trim();
-    const htmlContent = contentHtml?.value;
     const mdContent = contentMd?.value;
     const publishedAt = publishedAtInput?.value || '';
     const topImage = topImageSelect?.value || null;
@@ -389,7 +255,7 @@ class EditorController {
       return;
     }
 
-    if (!htmlContent && !mdContent) {
+    if (!mdContent) {
       this.updateStatus('error', '请输入文章内容');
       return;
     }
@@ -400,7 +266,6 @@ class EditorController {
       const articleData = {
         title,
         author,
-        content_html: htmlContent || '',
         content_md: mdContent || '',
         source_url: this.#articleData.source_url,
         top_image: topImage,

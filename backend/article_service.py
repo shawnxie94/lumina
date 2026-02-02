@@ -130,8 +130,15 @@ class ArticleService:
             db.refresh(article)
         except IntegrityError as e:
             db.rollback()
-            if "source_url" in str(e):
-                raise ValueError("该文章已存在，请勿重复提交")
+            error_str = str(e).lower()
+            if "source_url" in error_str or "unique constraint" in error_str:
+                existing = (
+                    db.query(Article)
+                    .filter(Article.source_url == article_data.get("source_url"))
+                    .first()
+                )
+                if existing:
+                    raise ValueError("该文章已存在，请勿重复提交")
             raise ValueError(f"数据完整性错误: {str(e)}")
 
         try:
