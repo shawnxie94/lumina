@@ -4,6 +4,7 @@ import { marked } from 'marked';
 class EditorController {
   #apiClient;
   #articleData = null;
+  #categories = [];
 
   constructor() {
     this.#apiClient = new ApiClient();
@@ -13,6 +14,7 @@ class EditorController {
     try {
       await this.loadConfig();
       await this.loadArticleData();
+      await this.loadCategories();
       await this.setupEventListeners();
       this.setupPreviewToggles();
       this.populateForm();
@@ -26,6 +28,32 @@ class EditorController {
   async loadConfig() {
     const apiHost = await ApiClient.loadApiHost();
     this.#apiClient = new ApiClient(apiHost);
+  }
+
+  async loadCategories() {
+    try {
+      this.#categories = await this.#apiClient.getCategories();
+      this.populateCategories();
+    } catch (error) {
+      console.error('Failed to load categories:', error);
+    }
+  }
+
+  populateCategories() {
+    const select = document.getElementById('categorySelect');
+    if (!select) return;
+
+    select.innerHTML = '<option value="">选择分类...</option>';
+
+    this.#categories.forEach((category) => {
+      const option = document.createElement('option');
+      option.value = category.id;
+      option.textContent = category.name;
+      if (this.#articleData && this.#articleData.category_id === category.id) {
+        option.selected = true;
+      }
+      select.appendChild(option);
+    });
   }
 
   async loadArticleData() {
@@ -240,18 +268,25 @@ class EditorController {
 
     const titleInput = document.getElementById('titleInput');
     const authorInput = document.getElementById('authorInput');
+    const categorySelect = document.getElementById('categorySelect');
     const contentMd = document.getElementById('contentMd');
     const publishedAtInput = document.getElementById('publishedAtInput');
     const topImageSelect = document.getElementById('topImageSelect');
 
     const title = titleInput?.value?.trim();
     const author = authorInput?.value?.trim();
+    const categoryId = categorySelect?.value;
     const mdContent = contentMd?.value;
     const publishedAt = publishedAtInput?.value || '';
     const topImage = topImageSelect?.value || null;
 
     if (!title) {
       this.updateStatus('error', '请输入标题');
+      return;
+    }
+
+    if (!categoryId) {
+      this.updateStatus('error', '请选择分类');
       return;
     }
 
@@ -271,7 +306,7 @@ class EditorController {
         top_image: topImage,
         published_at: publishedAt,
         source_domain: this.#articleData.source_domain,
-        category_id: this.#articleData.category_id,
+        category_id: categoryId,
       };
 
       const result = await this.#apiClient.createArticle(articleData);

@@ -121,7 +121,7 @@ class ArticleService:
             published_at=article_data.get("published_at"),
             source_domain=article_data.get("source_domain"),
             category_id=article_data.get("category_id"),
-            status="processing",
+            status="pending",
         )
 
         try:
@@ -141,10 +141,36 @@ class ArticleService:
                     raise ValueError("该文章已存在，请勿重复提交")
             raise ValueError(f"数据完整性错误: {str(e)}")
 
+        import asyncio
+
+        asyncio.create_task(
+            self.process_article_ai(article.id, article_data.get("category_id"))
+        )
+
+        return article.id
+
+    async def process_article_ai(self, article_id: str, category_id: str):
+        from models import SessionLocal
+
+        db = SessionLocal()
         try:
-            ai_config = self.get_ai_config(db, article_data.get("category_id"))
+            article = db.query(Article).filter(Article.id == article_id).first()
+            if not article:
+                return
+
+            article.status = "processing"
+            db.commit()
+
+            ai_config = self.get_ai_config(db, category_id)
             if not ai_config:
-                raise ValueError("未配置AI服务，请先在配置页面设置AI参数")
+                article.status = "failed"
+                ai_analysis = AIAnalysis(
+                    article_id=article.id,
+                    error_message="未配置AI服务，请先在配置页面设置AI参数",
+                )
+                db.add(ai_analysis)
+                db.commit()
+                return
 
             ai_client = self.create_ai_client(ai_config)
             parameters = ai_config.get("parameters", {})
@@ -162,20 +188,19 @@ class ArticleService:
         except Exception as e:
             print(f"AI生成失败: {e}")
             error_message = str(e)
-            article.status = "failed"
-
-            if article.ai_analysis:
-                article.ai_analysis.error_message = error_message
+            article = db.query(Article).filter(Article.id == article_id).first()
+            if article:
+                article.status = "failed"
+                if article.ai_analysis:
+                    article.ai_analysis.error_message = error_message
+                else:
+                    ai_analysis = AIAnalysis(
+                        article_id=article.id, error_message=error_message
+                    )
+                    db.add(ai_analysis)
                 db.commit()
-            else:
-                ai_analysis = AIAnalysis(
-                    article_id=article.id, error_message=error_message
-                )
-                db.add(ai_analysis)
-                article.ai_analysis = ai_analysis
-                db.commit()
-
-        return article.id
+        finally:
+            db.close()
 
     def get_articles(
         self,
