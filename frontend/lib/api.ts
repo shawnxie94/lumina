@@ -14,7 +14,7 @@ export interface Article {
   title: string;
   summary: string;
   top_image: string;
-  category: { id: string; name: string } | null;
+  category: { id: string; name: string; color?: string } | null;
   author: string;
   status: string;
   published_at: string | null;
@@ -71,6 +71,7 @@ export const articleApi = {
     size?: number;
     category_id?: string;
     search?: string;
+    source_domain?: string;
     author?: string;
     published_at_start?: string;
     published_at_end?: string;
@@ -103,6 +104,11 @@ export const articleApi = {
 
   getAuthors: async () => {
     const response = await api.get('/api/authors');
+    return response.data as string[];
+  },
+
+  getSources: async () => {
+    const response = await api.get('/api/sources');
     return response.data as string[];
   },
 

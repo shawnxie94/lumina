@@ -16,8 +16,10 @@ export default function Home() {
   const [articles, setArticles] = useState<Article[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [authors, setAuthors] = useState<string[]>([]);
+  const [sources, setSources] = useState<string[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState<string>('');
+  const [sourceDomain, setSourceDomain] = useState<string>('');
   const [author, setAuthor] = useState<string>('');
   const [publishedDateRange, setPublishedDateRange] = useState<[Date | null, Date | null]>([null, null]);
   const [createdDateRange, setCreatedDateRange] = useState<[Date | null, Date | null]>([null, null]);
@@ -39,6 +41,7 @@ export default function Home() {
         size: pageSize,
         category_id: selectedCategory || undefined,
         search: searchTerm || undefined,
+        source_domain: sourceDomain || undefined,
         author: author || undefined,
         published_at_start: formatDate(publishedStartDate) || undefined,
         published_at_end: formatDate(publishedEndDate) || undefined,
@@ -72,13 +75,23 @@ export default function Home() {
     }
   };
 
+  const fetchSources = async () => {
+    try {
+      const data = await articleApi.getSources();
+      setSources(data);
+    } catch (error) {
+      console.error('Failed to fetch sources:', error);
+    }
+  };
+
   useEffect(() => {
     fetchArticles();
-  }, [page, pageSize, selectedCategory, searchTerm, author, publishedStartDate, publishedEndDate, createdStartDate, createdEndDate]);
+  }, [page, pageSize, selectedCategory, searchTerm, sourceDomain, author, publishedStartDate, publishedEndDate, createdStartDate, createdEndDate]);
 
   useEffect(() => {
     fetchCategories();
     fetchAuthors();
+    fetchSources();
   }, []);
 
   const handleSearch = (e: React.FormEvent) => {
@@ -88,6 +101,7 @@ export default function Home() {
   };
 
   const handleClearFilters = () => {
+    setSourceDomain('');
     setAuthor('');
     setPublishedDateRange([null, null]);
     setCreatedDateRange([null, null]);
@@ -234,6 +248,19 @@ export default function Home() {
                 <div className="mt-4 pt-4 border-t border-gray-200">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">来源</label>
+                      <select
+                        value={sourceDomain}
+                        onChange={(e) => { setSourceDomain(e.target.value); setPage(1); }}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">全部来源</option>
+                        {sources.map((s) => (
+                          <option key={s} value={s}>{s}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">作者</label>
                       <select
                         value={author}
@@ -274,15 +301,15 @@ export default function Home() {
                         wrapperClassName="w-full"
                       />
                     </div>
-                    <div className="flex items-end">
-                      <button
-                        type="button"
-                        onClick={handleClearFilters}
-                        className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition"
-                      >
-                        清除筛选
-                      </button>
-                    </div>
+                  </div>
+                  <div className="mt-4 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={handleClearFilters}
+                      className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition"
+                    >
+                      清除筛选
+                    </button>
                   </div>
                 </div>
               )}
@@ -307,74 +334,73 @@ export default function Home() {
                  </div>
                  <div className="space-y-4">
                    {articles.map((article) => (
-                     <div
-                       key={article.id}
-                       className="bg-white rounded-lg shadow-sm p-6 hover:shadow-md transition"
-                     >
-                       <div className="flex gap-4">
-                         <input
-                           type="checkbox"
-                           checked={selectedArticleIds.has(article.id)}
-                           onChange={() => handleToggleSelect(article.id)}
-                           className="w-4 h-4 text-blue-600 rounded mt-1"
-                         />
-                         {article.top_image && (
-                           <img
-                             src={article.top_image}
-                             alt={article.title}
-                             className="w-32 h-32 object-cover rounded-lg"
-                           />
-                         )}
-                         <div className="flex-1">
-                           <Link href={`/article/${article.id}`}>
-                             <h3 className="text-xl font-semibold text-gray-900 hover:text-blue-600 transition cursor-pointer">
-                               {article.title}
-                             </h3>
-                           </Link>
-                            <div className="mt-2 flex items-center gap-4 text-sm text-gray-600">
-                              {article.category && (
-                                <span className="px-2 py-1 bg-gray-100 rounded">
-                                  {article.category.name}
-                                </span>
-                              )}
-                              {article.author && <span>作者: {article.author}</span>}
-                              <span>
-                                {article.published_at
-                                  ? new Date(article.published_at).toLocaleDateString('zh-CN')
-                                  : new Date(article.created_at).toLocaleDateString('zh-CN')}
-                              </span>
-                            </div>
-                            {article.summary && (
-                              <div className="relative group">
-                                <p className="mt-2 text-gray-600 line-clamp-2 cursor-pointer">
-                                  {article.summary}
-                                </p>
-                                <div className="absolute left-0 top-full mt-2 z-50 hidden group-hover:block w-full max-w-xl">
-                                  <div className="bg-gray-900 text-white text-sm rounded-lg p-4 shadow-lg">
-                                    {article.summary}
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-                           <div className="mt-4 flex gap-2">
-                             <Link
-                               href={`/article/${article.id}`}
-                               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
-                             >
-                               查看详情
-                             </Link>
-                             <button
-                               onClick={() => handleDelete(article.id)}
-                               className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition"
-                             >
-                               删除
-                             </button>
-                           </div>
-                         </div>
-                       </div>
-                     </div>
-                   ))}
-                 </div>
+                      <div
+                        key={article.id}
+                        className="bg-white rounded-lg shadow-sm p-6 hover:shadow-md transition relative"
+                      >
+                        <button
+                          onClick={() => handleDelete(article.id)}
+                          className="absolute top-3 right-3 w-6 h-6 flex items-center justify-center text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition"
+                          title="删除"
+                        >
+                          ✕
+                        </button>
+                        <div className="flex gap-4">
+                          <input
+                            type="checkbox"
+                            checked={selectedArticleIds.has(article.id)}
+                            onChange={() => handleToggleSelect(article.id)}
+                            className="w-4 h-4 text-blue-600 rounded mt-1"
+                          />
+                          {article.top_image && (
+                            <img
+                              src={article.top_image}
+                              alt={article.title}
+                              className="w-32 h-32 object-cover rounded-lg"
+                            />
+                          )}
+                          <div className="flex-1 pr-6">
+                            <Link href={`/article/${article.id}`}>
+                              <h3 className="text-xl font-semibold text-gray-900 hover:text-blue-600 transition cursor-pointer">
+                                {article.title}
+                              </h3>
+                            </Link>
+                             <div className="mt-2 flex items-center gap-4 text-sm text-gray-600">
+                               {article.category && (
+                                 <span 
+                                   className="px-2 py-1 rounded"
+                                   style={{
+                                     backgroundColor: article.category.color ? `${article.category.color}20` : '#f3f4f6',
+                                     color: article.category.color || '#4b5563',
+                                   }}
+                                 >
+                                   {article.category.name}
+                                 </span>
+                               )}
+                               {article.author && <span>作者: {article.author}</span>}
+                               <span>
+                                 {article.published_at
+                                   ? new Date(article.published_at).toLocaleDateString('zh-CN')
+                                   : new Date(article.created_at).toLocaleDateString('zh-CN')}
+                               </span>
+                             </div>
+                             {article.summary && (
+                               <div className="relative group">
+                                 <p className="mt-2 text-gray-600 line-clamp-2 cursor-pointer">
+                                   {article.summary}
+                                 </p>
+                                 <div className="absolute left-0 top-full mt-2 z-50 hidden group-hover:block w-full max-w-xl">
+                                   <div className="bg-gray-900 text-white text-sm rounded-lg p-4 shadow-lg">
+                                     {article.summary}
+                                   </div>
+                                 </div>
+                               </div>
+                             )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
 
                 <div className="mt-6 flex items-center justify-between">
                   <div className="flex items-center gap-2 text-sm text-gray-600">

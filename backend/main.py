@@ -101,6 +101,7 @@ async def get_articles(
     size: int = 20,
     category_id: Optional[str] = None,
     search: Optional[str] = None,
+    source_domain: Optional[str] = None,
     author: Optional[str] = None,
     published_at_start: Optional[str] = None,
     published_at_end: Optional[str] = None,
@@ -114,6 +115,7 @@ async def get_articles(
         size,
         category_id,
         search,
+        source_domain,
         author,
         published_at_start,
         published_at_end,
@@ -127,7 +129,11 @@ async def get_articles(
                 "title": a.title,
                 "summary": a.ai_analysis.summary if a.ai_analysis else "",
                 "top_image": a.top_image,
-                "category": {"id": a.category.id, "name": a.category.name}
+                "category": {
+                    "id": a.category.id,
+                    "name": a.category.name,
+                    "color": a.category.color,
+                }
                 if a.category
                 else None,
                 "author": a.author,
@@ -213,6 +219,19 @@ async def get_authors(db: Session = Depends(get_db)):
         .all()
     )
     return [a[0] for a in authors]
+
+
+@app.get("/api/sources")
+async def get_sources(db: Session = Depends(get_db)):
+    sources = (
+        db.query(Article.source_domain)
+        .filter(Article.source_domain.isnot(None))
+        .filter(Article.source_domain != "")
+        .distinct()
+        .order_by(Article.source_domain)
+        .all()
+    )
+    return [s[0] for s in sources]
 
 
 @app.get("/api/categories")

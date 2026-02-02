@@ -184,6 +184,7 @@ class ArticleService:
         size: int = 20,
         category_id: str = None,
         search: str = None,
+        source_domain: str = None,
         author: str = None,
         published_at_start: str = None,
         published_at_end: str = None,
@@ -198,6 +199,8 @@ class ArticleService:
             query = query.filter(Article.category_id == category_id)
         if search:
             query = query.filter(Article.title.contains(search))
+        if source_domain:
+            query = query.filter(Article.source_domain == source_domain)
         if author:
             query = query.filter(Article.author == author)
         if published_at_start:
