@@ -71,6 +71,11 @@ export const articleApi = {
     size?: number;
     category_id?: string;
     search?: string;
+    author?: string;
+    published_at_start?: string;
+    published_at_end?: string;
+    created_at_start?: string;
+    created_at_end?: string;
   }) => {
     const response = await api.get('/api/articles', { params });
     return response.data;
@@ -94,6 +99,11 @@ export const articleApi = {
   retryArticle: async (id: string) => {
     const response = await api.post(`/api/articles/${id}/retry`);
     return response.data;
+  },
+
+  getAuthors: async () => {
+    const response = await api.get('/api/authors');
+    return response.data as string[];
   },
 
   getAIConfigs: async (categoryId?: string) => {

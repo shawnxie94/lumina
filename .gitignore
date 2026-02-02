@@ -14,3 +14,4 @@ data/
 dist/
 .wxt/
 .output/
+frontend/tsconfig.tsbuildinfo

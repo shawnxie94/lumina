@@ -101,9 +101,25 @@ async def get_articles(
     size: int = 20,
     category_id: Optional[str] = None,
     search: Optional[str] = None,
+    author: Optional[str] = None,
+    published_at_start: Optional[str] = None,
+    published_at_end: Optional[str] = None,
+    created_at_start: Optional[str] = None,
+    created_at_end: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
-    articles, total = article_service.get_articles(db, page, size, category_id, search)
+    articles, total = article_service.get_articles(
+        db,
+        page,
+        size,
+        category_id,
+        search,
+        author,
+        published_at_start,
+        published_at_end,
+        created_at_start,
+        created_at_end,
+    )
     return {
         "data": [
             {
@@ -168,6 +184,8 @@ async def delete_article(article_id: str, db: Session = Depends(get_db)):
     if not article:
         raise HTTPException(status_code=404, detail="文章不存在")
 
+    if article.ai_analysis:
+        db.delete(article.ai_analysis)
     db.delete(article)
     db.commit()
     return {"message": "删除成功"}
@@ -182,6 +200,19 @@ async def retry_article_ai(article_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/authors")
+async def get_authors(db: Session = Depends(get_db)):
+    authors = (
+        db.query(Article.author)
+        .filter(Article.author.isnot(None))
+        .filter(Article.author != "")
+        .distinct()
+        .order_by(Article.author)
+        .all()
+    )
+    return [a[0] for a in authors]
 
 
 @app.get("/api/categories")

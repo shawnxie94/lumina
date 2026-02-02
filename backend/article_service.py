@@ -177,13 +177,38 @@ class ArticleService:
         size: int = 20,
         category_id: str = None,
         search: str = None,
+        author: str = None,
+        published_at_start: str = None,
+        published_at_end: str = None,
+        created_at_start: str = None,
+        created_at_end: str = None,
     ):
+        from sqlalchemy import func
+
         query = db.query(Article)
 
         if category_id:
             query = query.filter(Article.category_id == category_id)
         if search:
             query = query.filter(Article.title.contains(search))
+        if author:
+            query = query.filter(Article.author == author)
+        if published_at_start:
+            query = query.filter(
+                func.substr(Article.published_at, 1, 10) >= published_at_start
+            )
+        if published_at_end:
+            query = query.filter(
+                func.substr(Article.published_at, 1, 10) <= published_at_end
+            )
+        if created_at_start:
+            query = query.filter(
+                func.substr(Article.created_at, 1, 10) >= created_at_start
+            )
+        if created_at_end:
+            query = query.filter(
+                func.substr(Article.created_at, 1, 10) <= created_at_end
+            )
 
         total = query.count()
         query = query.order_by(Article.created_at.desc())

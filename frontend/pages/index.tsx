@@ -1,25 +1,49 @@
 import { useState, useEffect } from 'react';
 import { articleApi, categoryApi, Article, Category } from '@/lib/api';
 import Link from 'next/link';
+import DatePicker from 'react-datepicker';
+import 'react-datepicker/dist/react-datepicker.css';
+
+const formatDate = (date: Date | null): string => {
+  if (!date) return '';
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 
 export default function Home() {
   const [articles, setArticles] = useState<Article[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [authors, setAuthors] = useState<string[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState<string>('');
+  const [author, setAuthor] = useState<string>('');
+  const [publishedDateRange, setPublishedDateRange] = useState<[Date | null, Date | null]>([null, null]);
+  const [createdDateRange, setCreatedDateRange] = useState<[Date | null, Date | null]>([null, null]);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [selectedArticleIds, setSelectedArticleIds] = useState<Set<string>>(new Set());
+  const [showFilters, setShowFilters] = useState(false);
+
+  const [publishedStartDate, publishedEndDate] = publishedDateRange;
+  const [createdStartDate, createdEndDate] = createdDateRange;
 
   const fetchArticles = async () => {
     setLoading(true);
     try {
       const response = await articleApi.getArticles({
         page,
-        size: 20,
+        size: pageSize,
         category_id: selectedCategory || undefined,
         search: searchTerm || undefined,
+        author: author || undefined,
+        published_at_start: formatDate(publishedStartDate) || undefined,
+        published_at_end: formatDate(publishedEndDate) || undefined,
+        created_at_start: formatDate(createdStartDate) || undefined,
+        created_at_end: formatDate(createdEndDate) || undefined,
       });
       setArticles(response.data);
       setTotal(response.pagination.total);
@@ -39,18 +63,35 @@ export default function Home() {
     }
   };
 
+  const fetchAuthors = async () => {
+    try {
+      const data = await articleApi.getAuthors();
+      setAuthors(data);
+    } catch (error) {
+      console.error('Failed to fetch authors:', error);
+    }
+  };
+
   useEffect(() => {
     fetchArticles();
-  }, [page, selectedCategory, searchTerm]);
+  }, [page, pageSize, selectedCategory, searchTerm, author, publishedStartDate, publishedEndDate, createdStartDate, createdEndDate]);
 
   useEffect(() => {
     fetchCategories();
+    fetchAuthors();
   }, []);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     setPage(1);
     fetchArticles();
+  };
+
+  const handleClearFilters = () => {
+    setAuthor('');
+    setPublishedDateRange([null, null]);
+    setCreatedDateRange([null, null]);
+    setPage(1);
   };
 
   const handleDelete = async (id: string) => {
@@ -180,7 +221,71 @@ export default function Home() {
                 >
                   搜索
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setShowFilters(!showFilters)}
+                  className={`px-4 py-2 rounded-lg transition ${showFilters ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                >
+                  🔍 更多筛选
+                </button>
               </form>
+
+              {showFilters && (
+                <div className="mt-4 pt-4 border-t border-gray-200">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">作者</label>
+                      <select
+                        value={author}
+                        onChange={(e) => { setAuthor(e.target.value); setPage(1); }}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">全部作者</option>
+                        {authors.map((a) => (
+                          <option key={a} value={a}>{a}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">发布时间</label>
+                      <DatePicker
+                        selectsRange
+                        startDate={publishedStartDate}
+                        endDate={publishedEndDate}
+                        onChange={(update) => { setPublishedDateRange(update); setPage(1); }}
+                        isClearable
+                        placeholderText="选择日期范围"
+                        dateFormat="yyyy-MM-dd"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        wrapperClassName="w-full"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">创建时间</label>
+                      <DatePicker
+                        selectsRange
+                        startDate={createdStartDate}
+                        endDate={createdEndDate}
+                        onChange={(update) => { setCreatedDateRange(update); setPage(1); }}
+                        isClearable
+                        placeholderText="选择日期范围"
+                        dateFormat="yyyy-MM-dd"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        wrapperClassName="w-full"
+                      />
+                    </div>
+                    <div className="flex items-end">
+                      <button
+                        type="button"
+                        onClick={handleClearFilters}
+                        className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition"
+                      >
+                        清除筛选
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {loading ? (
@@ -271,24 +376,40 @@ export default function Home() {
                    ))}
                  </div>
 
-                <div className="mt-6 flex justify-center gap-2">
-                  <button
-                    onClick={() => setPage((p) => Math.max(1, p - 1))}
-                    disabled={page === 1}
-                    className="px-4 py-2 bg-white border rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    上一页
-                  </button>
-                  <span className="px-4 py-2 bg-white border rounded-lg">
-                    第 {page} 页
-                  </span>
-                  <button
-                    onClick={() => setPage((p) => p + 1)}
-                    disabled={articles.length < 20}
-                    className="px-4 py-2 bg-white border rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    下一页
-                  </button>
+                <div className="mt-6 flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                    <span>每页显示</span>
+                    <select
+                      value={pageSize}
+                      onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
+                      className="px-2 py-1 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value={10}>10</option>
+                      <option value={20}>20</option>
+                      <option value={50}>50</option>
+                      <option value={100}>100</option>
+                    </select>
+                    <span>条，共 {total} 条</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      disabled={page === 1}
+                      className="px-4 py-2 bg-white border rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      上一页
+                    </button>
+                    <span className="px-4 py-2 bg-white border rounded-lg">
+                      第 {page} / {Math.ceil(total / pageSize) || 1} 页
+                    </span>
+                    <button
+                      onClick={() => setPage((p) => p + 1)}
+                      disabled={articles.length < pageSize}
+                      className="px-4 py-2 bg-white border rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      下一页
+                    </button>
+                  </div>
                 </div>
               </>
             )}

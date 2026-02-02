@@ -1,7 +1,7 @@
 from sqlalchemy import Column, String, Text, Integer, Boolean, ForeignKey, create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker
-from datetime import datetime
+from datetime import date
 import uuid
 import os
 
@@ -25,6 +25,10 @@ def generate_uuid():
     return str(uuid.uuid4())
 
 
+def today_str():
+    return date.today().isoformat()
+
+
 class Category(Base):
     __tablename__ = "categories"
 
@@ -33,7 +37,7 @@ class Category(Base):
     description = Column(Text)
     color = Column(String)
     sort_order = Column(Integer, default=0)
-    created_at = Column(String, default=lambda: datetime.utcnow().isoformat())
+    created_at = Column(String, default=today_str)
 
     articles = relationship("Article", back_populates="category")
     ai_configs = relationship("AIConfig", back_populates="category")
@@ -55,8 +59,8 @@ class Article(Base):
     source_domain = Column(String)
     status = Column(String, default="pending")
     category_id = Column(String, ForeignKey("categories.id"))
-    created_at = Column(String, default=lambda: datetime.utcnow().isoformat())
-    updated_at = Column(String, default=lambda: datetime.utcnow().isoformat())
+    created_at = Column(String, default=today_str)
+    updated_at = Column(String, default=today_str)
 
     category = relationship("Category", back_populates="articles")
     ai_analysis = relationship("AIAnalysis", back_populates="article", uselist=False)
@@ -77,7 +81,7 @@ class AIAnalysis(Base):
     key_points = Column(Text)
     mindmap = Column(Text)
     error_message = Column(Text, nullable=True)
-    updated_at = Column(String, default=lambda: datetime.utcnow().isoformat())
+    updated_at = Column(String, default=today_str)
 
     article = relationship("Article", back_populates="ai_analysis")
 
@@ -92,8 +96,8 @@ class ModelAPIConfig(Base):
     model_name = Column(String, nullable=False, default="gpt-4o")
     is_enabled = Column(Boolean, default=True)
     is_default = Column(Boolean, default=False)
-    created_at = Column(String, default=lambda: datetime.utcnow().isoformat())
-    updated_at = Column(String, default=lambda: datetime.utcnow().isoformat())
+    created_at = Column(String, default=today_str)
+    updated_at = Column(String, default=today_str)
 
 
 class PromptConfig(Base):
@@ -111,8 +115,8 @@ class PromptConfig(Base):
     )
     is_enabled = Column(Boolean, default=True)
     is_default = Column(Boolean, default=False)
-    created_at = Column(String, default=lambda: datetime.utcnow().isoformat())
-    updated_at = Column(String, default=lambda: datetime.utcnow().isoformat())
+    created_at = Column(String, default=today_str)
+    updated_at = Column(String, default=today_str)
 
     category = relationship("Category", back_populates="prompt_configs")
     model_api_config = relationship("ModelAPIConfig", backref="prompt_configs")
@@ -134,8 +138,8 @@ class AIConfig(Base):
     prompt_template = Column(Text)
     parameters = Column(Text)
     is_default = Column(Boolean, default=False)
-    created_at = Column(String, default=lambda: datetime.utcnow().isoformat())
-    updated_at = Column(String, default=lambda: datetime.utcnow().isoformat())
+    created_at = Column(String, default=today_str)
+    updated_at = Column(String, default=today_str)
 
     category = relationship("Category", back_populates="ai_configs")
 
