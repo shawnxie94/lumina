@@ -36,7 +36,7 @@ export default function ArticleDetailPage() {
 
     try {
       await articleApi.retryArticle(id as string);
-      alert('已提交重新生成AI分析请求');
+      setArticle({ ...article, status: 'pending' });
       fetchArticle();
     } catch (error) {
       console.error('Failed to retry article:', error);
@@ -75,7 +75,12 @@ export default function ArticleDetailPage() {
             {article.author && (
               <div>
                 <span className="font-medium text-gray-700">作者：</span>
-                {article.author}
+                <Link
+                  href={`/?author=${encodeURIComponent(article.author)}`}
+                  className="text-blue-600 hover:underline"
+                >
+                  {article.author}
+                </Link>
               </div>
             )}
             {article.source_url && (
@@ -144,26 +149,6 @@ export default function ArticleDetailPage() {
               <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-3">
                   <h2 className="text-lg font-semibold text-gray-900">🤖 AI 解读</h2>
-                  {article.status === 'pending' && (
-                    <span className="px-2 py-1 rounded text-sm bg-gray-100 text-gray-600">
-                      等待处理
-                    </span>
-                  )}
-                  {article.status === 'processing' && (
-                    <span className="px-2 py-1 rounded text-sm bg-blue-100 text-blue-700">
-                      处理中...
-                    </span>
-                  )}
-                  {article.status === 'completed' && (
-                    <span className="px-2 py-1 rounded text-sm bg-green-100 text-green-700">
-                      已完成
-                    </span>
-                  )}
-                  {article.status === 'failed' && (
-                    <span className="px-2 py-1 rounded text-sm bg-red-100 text-red-700">
-                      处理失败
-                    </span>
-                  )}
                   <button
                     onClick={() => setAnalysisCollapsed(true)}
                     className="px-2 py-1 text-sm bg-gray-100 rounded hover:bg-gray-200 transition"
@@ -171,14 +156,6 @@ export default function ArticleDetailPage() {
                     → 折叠
                   </button>
                 </div>
-                {(article.status === 'failed' || article.status === 'completed') && (
-                  <button
-                    onClick={handleRetry}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm"
-                  >
-                    重新生成
-                  </button>
-                )}
               </div>
 
               {article.status === 'failed' && (
@@ -206,12 +183,45 @@ export default function ArticleDetailPage() {
                 </div>
               )}
 
-              {article.ai_analysis?.summary && (
-                <div className="mb-6">
-                  <h3 className="font-semibold text-gray-900 mb-2">📝 摘要</h3>
-                  <p className="text-gray-700">{article.ai_analysis.summary}</p>
+              <div className="mb-6">
+                <div className="flex items-center gap-2 mb-2">
+                  <h3 className="font-semibold text-gray-900">📝 摘要</h3>
+                  {article.status === 'pending' && (
+                    <span className="px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-600">
+                      等待处理
+                    </span>
+                  )}
+                  {article.status === 'processing' && (
+                    <span className="px-2 py-0.5 rounded text-xs bg-blue-100 text-blue-700">
+                      处理中...
+                    </span>
+                  )}
+                  {article.status === 'completed' && (
+                    <span className="px-2 py-0.5 rounded text-xs bg-green-100 text-green-700">
+                      已完成
+                    </span>
+                  )}
+                  {article.status === 'failed' && (
+                    <span className="px-2 py-0.5 rounded text-xs bg-red-100 text-red-700">
+                      失败
+                    </span>
+                  )}
+                  {(article.status === 'failed' || article.status === 'completed') && (
+                    <button
+                      onClick={handleRetry}
+                      className="w-6 h-6 flex items-center justify-center text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-full transition"
+                      title="重新生成"
+                    >
+                      🔄
+                    </button>
+                  )}
                 </div>
-              )}
+                {article.ai_analysis?.summary ? (
+                  <p className="text-gray-700">{article.ai_analysis.summary}</p>
+                ) : (
+                  <p className="text-gray-400 text-sm">暂无摘要</p>
+                )}
+              </div>
             </div>
             )}
 

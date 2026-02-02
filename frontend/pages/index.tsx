@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/router';
 import { articleApi, categoryApi, Article, Category } from '@/lib/api';
 import Link from 'next/link';
 import DatePicker from 'react-datepicker';
@@ -13,6 +14,7 @@ const formatDate = (date: Date | null): string => {
 };
 
 export default function Home() {
+  const router = useRouter();
   const [articles, setArticles] = useState<Article[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [categoryStats, setCategoryStats] = useState<{ id: string; name: string; color: string | null; article_count: number }[]>([]);
@@ -28,6 +30,7 @@ export default function Home() {
   const [pageSize, setPageSize] = useState(20);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [initialized, setInitialized] = useState(false);
   const [selectedArticleIds, setSelectedArticleIds] = useState<Set<string>>(new Set());
   const [showFilters, setShowFilters] = useState(false);
 
@@ -103,9 +106,22 @@ export default function Home() {
   };
 
   useEffect(() => {
-    fetchArticles();
-    fetchCategoryStats();
-  }, [page, pageSize, selectedCategory, searchTerm, sourceDomain, author, publishedStartDate, publishedEndDate, createdStartDate, createdEndDate]);
+    if (initialized) {
+      fetchArticles();
+      fetchCategoryStats();
+    }
+  }, [initialized, page, pageSize, selectedCategory, searchTerm, sourceDomain, author, publishedStartDate, publishedEndDate, createdStartDate, createdEndDate]);
+
+  useEffect(() => {
+    if (router.isReady) {
+      const { author: authorParam } = router.query;
+      if (authorParam && typeof authorParam === 'string') {
+        setAuthor(authorParam);
+        setShowFilters(true);
+      }
+      setInitialized(true);
+    }
+  }, [router.isReady, router.query]);
 
   useEffect(() => {
     fetchCategories();
@@ -293,7 +309,7 @@ export default function Home() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">发布时间</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">发表时间</label>
                       <DatePicker
                         selectsRange
                         startDate={publishedStartDate}
@@ -398,7 +414,7 @@ export default function Home() {
                                )}
                                {article.author && <span>作者: {article.author}</span>}
                                <span>
-                                发布时间：
+                                发表时间：
                                  {article.published_at
                                    ? new Date(article.published_at).toLocaleDateString('zh-CN')
                                    : new Date(article.created_at).toLocaleDateString('zh-CN')}

@@ -151,6 +151,7 @@ class ArticleService:
 
     async def process_article_ai(self, article_id: str, category_id: str):
         from models import SessionLocal
+        import asyncio
 
         db = SessionLocal()
         try:
@@ -164,11 +165,21 @@ class ArticleService:
             ai_config = self.get_ai_config(db, category_id)
             if not ai_config:
                 article.status = "failed"
-                ai_analysis = AIAnalysis(
-                    article_id=article.id,
-                    error_message="未配置AI服务，请先在配置页面设置AI参数",
+                existing_analysis = (
+                    db.query(AIAnalysis)
+                    .filter(AIAnalysis.article_id == article_id)
+                    .first()
                 )
-                db.add(ai_analysis)
+                if existing_analysis:
+                    existing_analysis.error_message = (
+                        "未配置AI服务，请先在配置页面设置AI参数"
+                    )
+                else:
+                    ai_analysis = AIAnalysis(
+                        article_id=article.id,
+                        error_message="未配置AI服务，请先在配置页面设置AI参数",
+                    )
+                    db.add(ai_analysis)
                 db.commit()
                 return
 
@@ -176,12 +187,25 @@ class ArticleService:
             parameters = ai_config.get("parameters", {})
             prompt = ai_config.get("prompt_template")
 
-            summary = await ai_client.generate_summary(
-                article.content_md, prompt=prompt, parameters=parameters
-            )
+            try:
+                summary = await asyncio.wait_for(
+                    ai_client.generate_summary(
+                        article.content_md, prompt=prompt, parameters=parameters
+                    ),
+                    timeout=60.0,
+                )
+            except asyncio.TimeoutError:
+                raise Exception("AI生成超时，请稍后重试")
 
-            ai_analysis = AIAnalysis(article_id=article.id, summary=summary)
-            db.add(ai_analysis)
+            existing_analysis = (
+                db.query(AIAnalysis).filter(AIAnalysis.article_id == article_id).first()
+            )
+            if existing_analysis:
+                existing_analysis.summary = summary
+                existing_analysis.error_message = None
+            else:
+                ai_analysis = AIAnalysis(article_id=article.id, summary=summary)
+                db.add(ai_analysis)
 
             article.status = "completed"
             db.commit()
@@ -191,8 +215,13 @@ class ArticleService:
             article = db.query(Article).filter(Article.id == article_id).first()
             if article:
                 article.status = "failed"
-                if article.ai_analysis:
-                    article.ai_analysis.error_message = error_message
+                existing_analysis = (
+                    db.query(AIAnalysis)
+                    .filter(AIAnalysis.article_id == article_id)
+                    .first()
+                )
+                if existing_analysis:
+                    existing_analysis.error_message = error_message
                 else:
                     ai_analysis = AIAnalysis(
                         article_id=article.id, error_message=error_message
@@ -279,50 +308,13 @@ class ArticleService:
         if not article:
             raise ValueError("Article not found")
 
-        article.status = "processing"
+        article.status = "pending"
+        if article.ai_analysis:
+            article.ai_analysis.error_message = None
         db.commit()
 
-        try:
-            ai_config = self.get_ai_config(db, article.category_id)
-            if not ai_config:
-                raise ValueError("未配置AI服务，请先在配置页面设置AI参数")
+        import asyncio
 
-            ai_client = self.create_ai_client(ai_config)
-            parameters = ai_config.get("parameters", {})
-            prompt = ai_config.get("prompt_template")
+        asyncio.create_task(self.process_article_ai(article_id, article.category_id))
 
-            summary = await ai_client.generate_summary(
-                article.content_md, prompt=prompt, parameters=parameters
-            )
-            parameters = ai_config.get("parameters", {})
-            prompt = ai_config.get("prompt_template")
-
-            summary = await ai_client.generate_summary(
-                article.content_md, prompt=prompt, parameters=parameters
-            )
-
-            if article.ai_analysis:
-                article.ai_analysis.summary = summary
-            else:
-                ai_analysis = AIAnalysis(article_id=article.id, summary=summary)
-                db.add(ai_analysis)
-
-            article.status = "completed"
-            db.commit()
-        except Exception as e:
-            print(f"AI生成失败: {e}")
-            error_message = str(e)
-            article.status = "failed"
-
-            if article.ai_analysis:
-                article.ai_analysis.error_message = error_message
-                db.commit()
-            else:
-                ai_analysis = AIAnalysis(
-                    article_id=article.id, error_message=error_message
-                )
-                db.add(ai_analysis)
-                article.ai_analysis = ai_analysis
-                db.commit()
-
-        return article.id
+        return article_id
