@@ -226,18 +226,31 @@ export default function Home() {
                                {article.title}
                              </h3>
                            </Link>
-                           <div className="mt-2 flex items-center gap-4 text-sm text-gray-600">
-                             {article.category && (
-                               <span className="px-2 py-1 bg-gray-100 rounded">
-                                 {article.category.name}
-                               </span>
-                             )}
-                             {article.author && <span>作者: {article.author}</span>}
-                             <span>{new Date(article.created_at).toLocaleDateString('zh-CN')}</span>
-                           </div>
-                           {article.summary && (
-                             <p className="mt-2 text-gray-600 line-clamp-2">{article.summary}</p>
-                           )}
+                            <div className="mt-2 flex items-center gap-4 text-sm text-gray-600">
+                              {article.category && (
+                                <span className="px-2 py-1 bg-gray-100 rounded">
+                                  {article.category.name}
+                                </span>
+                              )}
+                              {article.author && <span>作者: {article.author}</span>}
+                              <span>
+                                {article.published_at
+                                  ? new Date(article.published_at).toLocaleDateString('zh-CN')
+                                  : new Date(article.created_at).toLocaleDateString('zh-CN')}
+                              </span>
+                            </div>
+                            {article.summary && (
+                              <div className="relative group">
+                                <p className="mt-2 text-gray-600 line-clamp-2 cursor-pointer">
+                                  {article.summary}
+                                </p>
+                                <div className="absolute left-0 top-full mt-2 z-50 hidden group-hover:block w-full max-w-xl">
+                                  <div className="bg-gray-900 text-white text-sm rounded-lg p-4 shadow-lg">
+                                    {article.summary}
+                                  </div>
+                                </div>
+                              </div>
+                            )}
                            <div className="mt-4 flex gap-2">
                              <Link
                                href={`/article/${article.id}`}

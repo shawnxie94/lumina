@@ -17,6 +17,7 @@ export interface Article {
   category: { id: string; name: string } | null;
   author: string;
   status: string;
+  published_at: string | null;
   created_at: string;
 }
 

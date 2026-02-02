@@ -116,6 +116,7 @@ async def get_articles(
                 else None,
                 "author": a.author,
                 "status": a.status,
+                "published_at": a.published_at,
                 "created_at": a.created_at,
             }
             for a in articles
