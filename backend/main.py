@@ -250,6 +250,61 @@ async def get_categories(db: Session = Depends(get_db)):
     ]
 
 
+@app.get("/api/categories/stats")
+async def get_category_stats(
+    search: Optional[str] = None,
+    source_domain: Optional[str] = None,
+    author: Optional[str] = None,
+    published_at_start: Optional[str] = None,
+    published_at_end: Optional[str] = None,
+    created_at_start: Optional[str] = None,
+    created_at_end: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    from sqlalchemy import func
+
+    categories = db.query(Category).order_by(Category.sort_order).all()
+    result = []
+
+    for c in categories:
+        query = db.query(Article).filter(Article.category_id == c.id)
+
+        if search:
+            query = query.filter(Article.title.contains(search))
+        if source_domain:
+            query = query.filter(Article.source_domain == source_domain)
+        if author:
+            query = query.filter(Article.author == author)
+        if published_at_start:
+            query = query.filter(
+                func.substr(Article.published_at, 1, 10) >= published_at_start
+            )
+        if published_at_end:
+            query = query.filter(
+                func.substr(Article.published_at, 1, 10) <= published_at_end
+            )
+        if created_at_start:
+            query = query.filter(
+                func.substr(Article.created_at, 1, 10) >= created_at_start
+            )
+        if created_at_end:
+            query = query.filter(
+                func.substr(Article.created_at, 1, 10) <= created_at_end
+            )
+
+        count = query.count()
+        result.append(
+            {
+                "id": c.id,
+                "name": c.name,
+                "color": c.color,
+                "article_count": count,
+            }
+        )
+
+    return result
+
+
 @app.post("/api/categories")
 async def create_category(category: CategoryCreate, db: Session = Depends(get_db)):
     try:

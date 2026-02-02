@@ -258,6 +258,19 @@ export const categoryApi = {
     return response.data;
   },
 
+  getCategoryStats: async (params?: {
+    search?: string;
+    source_domain?: string;
+    author?: string;
+    published_at_start?: string;
+    published_at_end?: string;
+    created_at_start?: string;
+    created_at_end?: string;
+  }) => {
+    const response = await api.get('/api/categories/stats', { params });
+    return response.data as { id: string; name: string; color: string | null; article_count: number }[];
+  },
+
   createCategory: async (data: {
     name: string;
     description?: string;

@@ -15,6 +15,7 @@ const formatDate = (date: Date | null): string => {
 export default function Home() {
   const [articles, setArticles] = useState<Article[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [categoryStats, setCategoryStats] = useState<{ id: string; name: string; color: string | null; article_count: number }[]>([]);
   const [authors, setAuthors] = useState<string[]>([]);
   const [sources, setSources] = useState<string[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('');
@@ -66,6 +67,23 @@ export default function Home() {
     }
   };
 
+  const fetchCategoryStats = async () => {
+    try {
+      const data = await categoryApi.getCategoryStats({
+        search: searchTerm || undefined,
+        source_domain: sourceDomain || undefined,
+        author: author || undefined,
+        published_at_start: formatDate(publishedStartDate) || undefined,
+        published_at_end: formatDate(publishedEndDate) || undefined,
+        created_at_start: formatDate(createdStartDate) || undefined,
+        created_at_end: formatDate(createdEndDate) || undefined,
+      });
+      setCategoryStats(data);
+    } catch (error) {
+      console.error('Failed to fetch category stats:', error);
+    }
+  };
+
   const fetchAuthors = async () => {
     try {
       const data = await articleApi.getAuthors();
@@ -86,6 +104,7 @@ export default function Home() {
 
   useEffect(() => {
     fetchArticles();
+    fetchCategoryStats();
   }, [page, pageSize, selectedCategory, searchTerm, sourceDomain, author, publishedStartDate, publishedEndDate, createdStartDate, createdEndDate]);
 
   useEffect(() => {
@@ -202,9 +221,9 @@ export default function Home() {
                     selectedCategory === '' ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-100'
                   }`}
                 >
-                  全部文章
+                  全部文章 ({categoryStats.reduce((sum, c) => sum + c.article_count, 0)})
                 </button>
-                {categories.map((category) => (
+                {categoryStats.map((category) => (
                   <button
                     key={category.id}
                     onClick={() => setSelectedCategory(category.id)}
@@ -379,6 +398,7 @@ export default function Home() {
                                )}
                                {article.author && <span>作者: {article.author}</span>}
                                <span>
+                                发布时间：
                                  {article.published_at
                                    ? new Date(article.published_at).toLocaleDateString('zh-CN')
                                    : new Date(article.created_at).toLocaleDateString('zh-CN')}
