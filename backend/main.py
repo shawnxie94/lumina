@@ -148,6 +148,7 @@ async def get_article(article_id: str, db: Session = Depends(get_db)):
         else None,
         "author": article.author,
         "status": article.status,
+        "published_at": article.published_at,
         "created_at": article.created_at,
         "ai_analysis": {
             "summary": article.ai_analysis.summary if article.ai_analysis else None,

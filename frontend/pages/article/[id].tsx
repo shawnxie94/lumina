@@ -92,8 +92,10 @@ export default function ArticleDetailPage() {
               </div>
             )}
             <div>
-              <span className="font-medium text-gray-700">创建时间：</span>
-              {new Date(article.created_at).toLocaleString('zh-CN')}
+              <span className="font-medium text-gray-700">发表时间：</span>
+              {article.published_at
+                ? new Date(article.published_at).toLocaleDateString('zh-CN')
+                : new Date(article.created_at).toLocaleDateString('zh-CN')}
             </div>
           </div>
         </div>
@@ -142,6 +144,26 @@ export default function ArticleDetailPage() {
               <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-3">
                   <h2 className="text-lg font-semibold text-gray-900">🤖 AI 解读</h2>
+                  {article.status === 'pending' && (
+                    <span className="px-2 py-1 rounded text-sm bg-gray-100 text-gray-600">
+                      等待处理
+                    </span>
+                  )}
+                  {article.status === 'processing' && (
+                    <span className="px-2 py-1 rounded text-sm bg-blue-100 text-blue-700">
+                      处理中...
+                    </span>
+                  )}
+                  {article.status === 'completed' && (
+                    <span className="px-2 py-1 rounded text-sm bg-green-100 text-green-700">
+                      已完成
+                    </span>
+                  )}
+                  {article.status === 'failed' && (
+                    <span className="px-2 py-1 rounded text-sm bg-red-100 text-red-700">
+                      处理失败
+                    </span>
+                  )}
                   <button
                     onClick={() => setAnalysisCollapsed(true)}
                     className="px-2 py-1 text-sm bg-gray-100 rounded hover:bg-gray-200 transition"
@@ -188,20 +210,6 @@ export default function ArticleDetailPage() {
                 <div className="mb-6">
                   <h3 className="font-semibold text-gray-900 mb-2">📝 摘要</h3>
                   <p className="text-gray-700">{article.ai_analysis.summary}</p>
-                </div>
-              )}
-
-              {article.status === 'completed' && article.ai_analysis?.summary && (
-                <div className="mt-6 pt-6 border-t">
-                  <h3 className="font-semibold text-gray-900 mb-2">📊 处理信息</h3>
-                  <div className="space-y-2 text-sm text-gray-600">
-                    <div>
-                      <span className="font-medium">状态：</span>
-                      <span className="px-2 py-1 rounded bg-green-100 text-green-700">
-                        已完成
-                      </span>
-                    </div>
-                  </div>
                 </div>
               )}
             </div>

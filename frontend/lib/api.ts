@@ -25,6 +25,7 @@ export interface ArticleDetail extends Article {
   content_md: string;
   content_trans: string;
   source_url: string;
+  published_at: string | null;
   ai_analysis: { summary: string; error_message?: string | null } | null;
 }
 
