@@ -203,7 +203,7 @@ class PopupController {
 
         let alt = node.getAttribute('alt') || '';
         
-        if (!alt || alt === 'image' || alt === 'img' || alt === '图片' || alt.length < 2) {
+        if (!alt || alt === 'image' || alt === 'img' || alt === '图片' || alt === '图像' || alt.length < 2) {
           alt = node.getAttribute('title') ||
                 node.getAttribute('data-alt') ||
                 node.getAttribute('aria-label') ||
@@ -231,6 +231,27 @@ class PopupController {
         const titlePart = title && title !== alt ? ` "${title}"` : '';
         
         return `![${alt}](${src}${titlePart})`;
+      },
+    });
+
+    this.#turndown.addRule('imageOnlyLink', {
+      filter: (node) => {
+        if (node.nodeName !== 'A') return false;
+        const imgs = node.querySelectorAll('img');
+        if (imgs.length === 0) return false;
+        
+        const textContent = node.textContent?.trim() || '';
+        const imgAlts = Array.from(imgs).map(img => img.getAttribute('alt') || '').join(' ').trim();
+        const nonImgText = textContent.replace(imgAlts, '').trim();
+        
+        if (nonImgText.length > 0 && nonImgText !== '图像' && nonImgText !== '图片' && nonImgText !== 'image') {
+          return false;
+        }
+        
+        return true;
+      },
+      replacement: (content) => {
+        return content;
       },
     });
 
@@ -427,6 +448,18 @@ class PopupController {
       }
 
       await this.ensureContentScriptLoaded(tab.id);
+
+      try {
+        const xArticleCheck = await chrome.tabs.sendMessage(tab.id, { type: 'CHECK_X_ARTICLE' });
+        if (xArticleCheck?.shouldRedirect && xArticleCheck?.articleUrl) {
+          this.updateStatus('loading', '检测到 X 长文章，正在跳转到专注模式...');
+          await chrome.tabs.update(tab.id, { url: xArticleCheck.articleUrl });
+          await new Promise(resolve => setTimeout(resolve, 3000));
+          await this.ensureContentScriptLoaded(tab.id);
+        }
+      } catch (err) {
+        console.log('X article check failed:', err);
+      }
 
       let extractedData;
       let isSelection = false;

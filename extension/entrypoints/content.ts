@@ -18,6 +18,10 @@ export default defineContentScript({
       if (message.type === 'PING') {
         sendResponse({ pong: true });
       }
+      if (message.type === 'CHECK_X_ARTICLE') {
+        const result = checkXArticleRedirect();
+        sendResponse(result);
+      }
       if (message.type === 'EXTRACT_ARTICLE') {
         const forceRefresh = message.forceRefresh === true;
         const result = extractArticle(forceRefresh);
@@ -36,6 +40,35 @@ export default defineContentScript({
     });
   },
 });
+
+function checkXArticleRedirect(): { shouldRedirect: boolean; articleUrl?: string } {
+  const url = window.location.href;
+  const isTwitter = url.includes('twitter.com') || url.includes('x.com');
+  
+  if (!isTwitter) {
+    return { shouldRedirect: false };
+  }
+  
+  if (url.includes('/article/')) {
+    return { shouldRedirect: false };
+  }
+  
+  const statusMatch = url.match(/(?:twitter\.com|x\.com)\/([^/]+)\/status\/(\d+)/);
+  if (!statusMatch) {
+    return { shouldRedirect: false };
+  }
+  
+  const hasLongContent = document.querySelector('main h2, main [role="heading"][aria-level="2"]') !== null;
+  const hasArticleLink = document.querySelector('a[href*="/article/"]') !== null;
+  
+  if (hasLongContent || hasArticleLink) {
+    const [, username, statusId] = statusMatch;
+    const articleUrl = `https://x.com/${username}/article/${statusId}`;
+    return { shouldRedirect: true, articleUrl };
+  }
+  
+  return { shouldRedirect: false };
+}
 
 interface ExtractedArticle {
   title: string;
