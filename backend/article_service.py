@@ -519,7 +519,12 @@ class ArticleService:
             db.close()
 
     async def generate_ai_content(
-        self, db: Session, article_id: str, content_type: str
+        self,
+        db: Session,
+        article_id: str,
+        content_type: str,
+        model_config_id: str = None,
+        prompt_config_id: str = None,
     ):
         article = db.query(Article).filter(Article.id == article_id).first()
         if not article:
@@ -540,11 +545,22 @@ class ArticleService:
         import asyncio
 
         asyncio.create_task(
-            self.process_ai_content(article_id, article.category_id, content_type)
+            self.process_ai_content(
+                article_id,
+                article.category_id,
+                content_type,
+                model_config_id=model_config_id,
+                prompt_config_id=prompt_config_id,
+            )
         )
 
     async def process_ai_content(
-        self, article_id: str, category_id: str, content_type: str
+        self,
+        article_id: str,
+        category_id: str,
+        content_type: str,
+        model_config_id: str = None,
+        prompt_config_id: str = None,
     ):
         from models import SessionLocal
         import asyncio
@@ -558,7 +574,54 @@ class ArticleService:
             setattr(article.ai_analysis, f"{content_type}_status", "processing")
             db.commit()
 
-            ai_config = self.get_ai_config(db, category_id, prompt_type=content_type)
+            ai_config = None
+            prompt = None
+
+            if model_config_id:
+                model_config = (
+                    db.query(ModelAPIConfig)
+                    .filter(ModelAPIConfig.id == model_config_id)
+                    .first()
+                )
+                if model_config:
+                    ai_config = {
+                        "base_url": model_config.base_url,
+                        "api_key": model_config.api_key,
+                        "model_name": model_config.model_name,
+                    }
+
+            if prompt_config_id:
+                prompt_config = (
+                    db.query(PromptConfig)
+                    .filter(PromptConfig.id == prompt_config_id)
+                    .first()
+                )
+                if prompt_config:
+                    prompt = prompt_config.prompt
+                    if not ai_config and prompt_config.model_api_config_id:
+                        model_config = (
+                            db.query(ModelAPIConfig)
+                            .filter(
+                                ModelAPIConfig.id == prompt_config.model_api_config_id
+                            )
+                            .first()
+                        )
+                        if model_config:
+                            ai_config = {
+                                "base_url": model_config.base_url,
+                                "api_key": model_config.api_key,
+                                "model_name": model_config.model_name,
+                            }
+
+            if not ai_config:
+                default_config = self.get_ai_config(
+                    db, category_id, prompt_type=content_type
+                )
+                if default_config:
+                    ai_config = default_config
+                    if not prompt:
+                        prompt = default_config.get("prompt_template")
+
             if not ai_config:
                 setattr(article.ai_analysis, f"{content_type}_status", "failed")
                 article.ai_analysis.error_message = (
@@ -568,7 +631,6 @@ class ArticleService:
                 return
 
             ai_client = self.create_ai_client(ai_config)
-            prompt = ai_config.get("prompt_template")
             parameters = ai_config.get("parameters") or {}
 
             try:

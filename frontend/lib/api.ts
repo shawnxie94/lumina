@@ -121,8 +121,13 @@ export const articleApi = {
     return response.data;
   },
 
-  generateAIContent: async (id: string, contentType: string) => {
-    const response = await api.post(`/api/articles/${id}/generate/${contentType}`);
+  generateAIContent: async (id: string, contentType: string, modelConfigId?: string, promptConfigId?: string) => {
+    const params = new URLSearchParams();
+    if (modelConfigId) params.append('model_config_id', modelConfigId);
+    if (promptConfigId) params.append('prompt_config_id', promptConfigId);
+    const queryString = params.toString();
+    const url = `/api/articles/${id}/generate/${contentType}${queryString ? `?${queryString}` : ''}`;
+    const response = await api.post(url);
     return response.data;
   },
 

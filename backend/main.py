@@ -243,7 +243,11 @@ async def retry_article_translation(article_id: str, db: Session = Depends(get_d
 
 @app.post("/api/articles/{article_id}/generate/{content_type}")
 async def generate_ai_content(
-    article_id: str, content_type: str, db: Session = Depends(get_db)
+    article_id: str,
+    content_type: str,
+    model_config_id: str = None,
+    prompt_config_id: str = None,
+    db: Session = Depends(get_db),
 ):
     valid_types = ["summary", "key_points", "outline", "quotes"]
     if content_type not in valid_types:
@@ -252,7 +256,13 @@ async def generate_ai_content(
         )
 
     try:
-        await article_service.generate_ai_content(db, article_id, content_type)
+        await article_service.generate_ai_content(
+            db,
+            article_id,
+            content_type,
+            model_config_id=model_config_id,
+            prompt_config_id=prompt_config_id,
+        )
         return {"id": article_id, "content_type": content_type, "status": "processing"}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

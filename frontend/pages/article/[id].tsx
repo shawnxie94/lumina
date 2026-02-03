@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
-import { articleApi, type ArticleDetail } from '@/lib/api';
+import { articleApi, type ArticleDetail, type ModelAPIConfig, type PromptConfig } from '@/lib/api';
 import { useToast } from '@/components/Toast';
 import { BackToTop } from '@/components/BackToTop';
 import Link from 'next/link';
@@ -67,6 +67,13 @@ export default function ArticleDetailPage() {
   const [loading, setLoading] = useState(true);
   const [showTranslation, setShowTranslation] = useState(true);
   const [analysisCollapsed, setAnalysisCollapsed] = useState(false);
+  
+  const [showConfigModal, setShowConfigModal] = useState(false);
+  const [configModalContentType, setConfigModalContentType] = useState<string>('');
+  const [modelConfigs, setModelConfigs] = useState<ModelAPIConfig[]>([]);
+  const [promptConfigs, setPromptConfigs] = useState<PromptConfig[]>([]);
+  const [selectedModelConfigId, setSelectedModelConfigId] = useState<string>('');
+  const [selectedPromptConfigId, setSelectedPromptConfigId] = useState<string>('');
 
   useEffect(() => {
     if (id) {
@@ -84,6 +91,55 @@ export default function ArticleDetailPage() {
       showToast('加载文章失败', 'error');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchConfigs = async (contentType: string) => {
+    try {
+      const [models, prompts] = await Promise.all([
+        articleApi.getModelAPIConfigs(),
+        articleApi.getPromptConfigs(),
+      ]);
+      setModelConfigs(models.filter((m: ModelAPIConfig) => m.is_enabled));
+      setPromptConfigs(prompts.filter((p: PromptConfig) => p.is_enabled && p.type === contentType));
+    } catch (error) {
+      console.error('Failed to fetch configs:', error);
+    }
+  };
+
+  const openConfigModal = (contentType: string) => {
+    setConfigModalContentType(contentType);
+    setSelectedModelConfigId('');
+    setSelectedPromptConfigId('');
+    fetchConfigs(contentType);
+    setShowConfigModal(true);
+  };
+
+  const handleConfigModalGenerate = async () => {
+    if (!id || !article) return;
+    setShowConfigModal(false);
+    
+    try {
+      await articleApi.generateAIContent(
+        id as string,
+        configModalContentType,
+        selectedModelConfigId || undefined,
+        selectedPromptConfigId || undefined
+      );
+      if (article.ai_analysis) {
+        setArticle({
+          ...article,
+          ai_analysis: {
+            ...article.ai_analysis,
+            [`${configModalContentType}_status`]: 'pending'
+          }
+        });
+      }
+      showToast('已提交生成请求');
+      setTimeout(fetchArticle, 1000);
+    } catch (error: any) {
+      console.error('Failed to generate:', error);
+      showToast(error.response?.data?.detail || '生成失败', 'error');
     }
   };
 
@@ -115,26 +171,9 @@ export default function ArticleDetailPage() {
     }
   };
 
-  const handleGenerateContent = async (contentType: string) => {
+  const handleGenerateContent = (contentType: string) => {
     if (!id || !article) return;
-
-    try {
-      await articleApi.generateAIContent(id as string, contentType);
-      if (article.ai_analysis) {
-        setArticle({
-          ...article,
-          ai_analysis: {
-            ...article.ai_analysis,
-            [`${contentType}_status`]: 'pending'
-          }
-        });
-      }
-      showToast(`已提交${contentType === 'key_points' ? '关键内容' : contentType === 'outline' ? '文章大纲' : contentType === 'quotes' ? '文章金句' : '摘要'}生成请求`);
-      setTimeout(fetchArticle, 1000);
-    } catch (error: any) {
-      console.error(`Failed to generate ${contentType}:`, error);
-      showToast(error.response?.data?.detail || '生成失败', 'error');
-    }
+    openConfigModal(contentType);
   };
 
   const handleDelete = async () => {
@@ -337,6 +376,76 @@ export default function ArticleDetailPage() {
             </aside>
           </div>
         </div>
+
+      {showConfigModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div className="flex items-center justify-between p-4 border-b">
+              <h3 className="text-lg font-semibold text-gray-900">选择生成配置</h3>
+              <button
+                onClick={() => setShowConfigModal(false)}
+                className="text-gray-500 hover:text-gray-700 text-xl"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="p-4 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  模型配置
+                </label>
+                <select
+                  value={selectedModelConfigId}
+                  onChange={(e) => setSelectedModelConfigId(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">使用默认配置</option>
+                  {modelConfigs.map((config) => (
+                    <option key={config.id} value={config.id}>
+                      {config.name} ({config.model_name})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  提示词配置
+                </label>
+                <select
+                  value={selectedPromptConfigId}
+                  onChange={(e) => setSelectedPromptConfigId(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">使用默认配置</option>
+                  {promptConfigs.map((config) => (
+                    <option key={config.id} value={config.id}>
+                      {config.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 p-4 border-t bg-gray-50 rounded-b-lg">
+              <button
+                onClick={() => setShowConfigModal(false)}
+                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleConfigModalGenerate}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+              >
+                生成
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <BackToTop />
     </div>
   );
