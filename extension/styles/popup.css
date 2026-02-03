@@ -38,11 +38,32 @@ body {
 }
 
 .preview {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
   background: white;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
   padding: 12px;
   margin-bottom: 16px;
+}
+
+.preview-thumbnail {
+  width: 48px;
+  height: 48px;
+  border-radius: 6px;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: #f3f4f6;
+}
+
+.preview-thumbnail.hidden {
+  display: none;
+}
+
+.preview-info {
+  flex: 1;
+  min-width: 0;
 }
 
 .preview-title {
@@ -314,6 +335,19 @@ body {
 .history-item:hover {
   border-color: #3b82f6;
   background: #f0f9ff;
+}
+
+.history-item-thumbnail {
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: #f3f4f6;
+}
+
+.history-item-thumbnail.hidden {
+  display: none;
 }
 
 .history-item-content {

@@ -3,6 +3,7 @@ import { ApiClient, DEFAULT_CATEGORIES } from '../../utils/api';
 import TurndownService from 'turndown';
 import { gfm } from 'turndown-plugin-gfm';
 import { addToHistory, getHistory, clearHistory, formatHistoryDate } from '../../utils/history';
+import confetti from 'canvas-confetti';
 
 class PopupController {
   #apiClient;
@@ -452,6 +453,16 @@ class PopupController {
   updatePreview(isSelection = false) {
     const previewTitle = document.getElementById('previewTitle');
     const previewMeta = document.getElementById('previewMeta');
+    const previewThumbnail = document.getElementById('previewThumbnail');
+
+    if (previewThumbnail && this.#articleData) {
+      if (this.#articleData.top_image) {
+        previewThumbnail.src = this.#articleData.top_image;
+        previewThumbnail.classList.remove('hidden');
+      } else {
+        previewThumbnail.classList.add('hidden');
+      }
+    }
 
     if (previewTitle && this.#articleData) {
       const titlePrefix = isSelection ? '📋 ' : '';
@@ -709,10 +720,12 @@ class PopupController {
         url: this.#articleData.source_url,
         domain: this.#articleData.source_domain,
         categoryName: category?.name,
+        topImage: this.#articleData.top_image,
       });
       await this.loadHistory();
 
       this.updateStatus('success', `采集成功！文章ID: ${result.id}`);
+      this.triggerConfetti();
       this.showSuccessButtons(result.id);
     } catch (error) {
       console.error('Failed to collect article:', error);
@@ -786,6 +799,34 @@ class PopupController {
     buttonsDiv.appendChild(closeBtn);
   }
 
+  triggerConfetti() {
+    const duration = 2000;
+    const end = Date.now() + duration;
+
+    const frame = () => {
+      confetti({
+        particleCount: 3,
+        angle: 60,
+        spread: 55,
+        origin: { x: 0, y: 0.6 },
+        colors: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'],
+      });
+      confetti({
+        particleCount: 3,
+        angle: 120,
+        spread: 55,
+        origin: { x: 1, y: 0.6 },
+        colors: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'],
+      });
+
+      if (Date.now() < end) {
+        requestAnimationFrame(frame);
+      }
+    };
+
+    frame();
+  }
+
   openConfigModal() {
     const modal = document.getElementById('configModal');
     if (modal) {
@@ -851,7 +892,12 @@ class PopupController {
         chrome.tabs.create({ url: item.url });
       };
 
+      const thumbnailHtml = item.topImage 
+        ? `<img class="history-item-thumbnail" src="${this.escapeHtml(item.topImage)}" alt="" />`
+        : '';
+
       itemEl.innerHTML = `
+        ${thumbnailHtml}
         <div class="history-item-content">
           <div class="history-item-title">${this.escapeHtml(item.title)}</div>
           <div class="history-item-meta">

@@ -5,6 +5,7 @@ export interface HistoryItem {
   domain: string;
   collectedAt: string;
   categoryName?: string;
+  topImage?: string;
 }
 
 const HISTORY_KEY = 'collect_history';

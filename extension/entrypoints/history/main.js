@@ -71,8 +71,12 @@ class HistoryController {
       itemEl.className = 'history-item';
       itemEl.dataset.id = item.id;
 
+      const imageHtml = item.topImage
+        ? `<img class="history-item-image" src="${this.escapeHtml(item.topImage)}" alt="" />`
+        : `<div class="history-item-image placeholder">📄</div>`;
+
       itemEl.innerHTML = `
-        <div class="history-item-image placeholder">📄</div>
+        ${imageHtml}
         <div class="history-item-content">
           <div class="history-item-title">
             <a href="${this.escapeHtml(item.url)}" target="_blank">${this.escapeHtml(item.title)}</a>

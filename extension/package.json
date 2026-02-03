@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@mozilla/readability": "^0.5.0",
+    "canvas-confetti": "^1.9.4",
     "marked": "^17.0.1",
     "turndown": "^7.1.2",
     "turndown-plugin-gfm": "^1.0.2"
