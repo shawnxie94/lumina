@@ -267,3 +267,139 @@ body {
   opacity: 0;
   pointer-events: none;
 }
+
+.error-logs-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.error-logs-header > span {
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.error-logs-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-danger-text {
+  color: #dc2626;
+}
+
+.btn-danger-text:hover {
+  background: #fee2e2;
+  border-color: #fecaca;
+}
+
+.error-logs-container {
+  max-height: 400px;
+  overflow-y: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #f9fafb;
+}
+
+.empty-logs {
+  padding: 40px 20px;
+  text-align: center;
+  color: #9ca3af;
+  font-size: 14px;
+}
+
+.error-log-item {
+  padding: 12px;
+  border-bottom: 1px solid #e5e7eb;
+  background: white;
+}
+
+.error-log-item:last-child {
+  border-bottom: none;
+}
+
+.error-log-item:hover {
+  background: #f9fafb;
+}
+
+.error-log-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 6px;
+}
+
+.error-log-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.error-log-type {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.error-log-type.error {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.error-log-type.warning {
+  background: #fef3c7;
+  color: #d97706;
+}
+
+.error-log-type.info {
+  background: #dbeafe;
+  color: #2563eb;
+}
+
+.error-log-source {
+  font-size: 11px;
+  color: #6b7280;
+  background: #f3f4f6;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.error-log-time {
+  font-size: 11px;
+  color: #9ca3af;
+}
+
+.error-log-message {
+  font-size: 13px;
+  color: #111827;
+  word-break: break-word;
+  margin-bottom: 4px;
+}
+
+.error-log-context {
+  font-size: 11px;
+  color: #6b7280;
+  font-family: monospace;
+  background: #f3f4f6;
+  padding: 4px 8px;
+  border-radius: 4px;
+  margin-top: 6px;
+  word-break: break-all;
+}
+
+.error-log-stack {
+  font-size: 11px;
+  color: #6b7280;
+  font-family: monospace;
+  background: #fef2f2;
+  padding: 8px;
+  border-radius: 4px;
+  margin-top: 6px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 100px;
+  overflow-y: auto;
+}

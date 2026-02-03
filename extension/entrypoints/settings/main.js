@@ -6,6 +6,16 @@ import {
   resetCategoryKeywords,
   getDefaultKeywordsForCategory,
 } from '../../utils/categoryKeywords';
+import {
+  getErrorLogs,
+  clearErrorLogs,
+  exportErrorLogs,
+  formatLogTime,
+  setupGlobalErrorHandler,
+  logError,
+} from '../../utils/errorLogger';
+
+setupGlobalErrorHandler('settings');
 
 class SettingsController {
   #apiClient;
@@ -20,6 +30,7 @@ class SettingsController {
     this.setupEventListeners();
     this.checkApiHealth();
     await this.loadCategories();
+    await this.loadErrorLogs();
   }
 
   async loadConfig() {
@@ -39,6 +50,10 @@ class SettingsController {
     document.getElementById('resetKeywordsBtn')?.addEventListener('click', () => this.resetKeywords());
     
     document.getElementById('apiHostInput')?.addEventListener('change', () => this.checkApiHealth());
+
+    document.getElementById('refreshLogsBtn')?.addEventListener('click', () => this.loadErrorLogs());
+    document.getElementById('exportLogsBtn')?.addEventListener('click', () => this.exportLogs());
+    document.getElementById('clearLogsBtn')?.addEventListener('click', () => this.clearLogs());
   }
 
   async checkApiHealth() {
@@ -210,6 +225,84 @@ class SettingsController {
     setTimeout(() => {
       toast.classList.add('hidden');
     }, 3000);
+  }
+
+  async loadErrorLogs() {
+    const container = document.getElementById('errorLogsContainer');
+    const countEl = document.getElementById('errorLogCount');
+    if (!container) return;
+
+    try {
+      const logs = await getErrorLogs();
+      
+      if (countEl) {
+        countEl.textContent = `${logs.length} 条记录`;
+      }
+
+      if (logs.length === 0) {
+        container.innerHTML = '<div class="empty-logs">暂无错误日志</div>';
+        return;
+      }
+
+      container.innerHTML = logs.map(log => `
+        <div class="error-log-item">
+          <div class="error-log-header">
+            <div class="error-log-meta">
+              <span class="error-log-type ${log.type}">${log.type}</span>
+              <span class="error-log-source">${this.escapeHtml(log.source)}</span>
+            </div>
+            <span class="error-log-time">${formatLogTime(log.timestamp)}</span>
+          </div>
+          <div class="error-log-message">${this.escapeHtml(log.message)}</div>
+          ${log.context ? `<div class="error-log-context">${this.escapeHtml(JSON.stringify(log.context))}</div>` : ''}
+          ${log.stack ? `<div class="error-log-stack">${this.escapeHtml(log.stack)}</div>` : ''}
+        </div>
+      `).join('');
+    } catch (error) {
+      console.error('Failed to load error logs:', error);
+      container.innerHTML = '<div class="empty-logs">加载错误日志失败</div>';
+    }
+  }
+
+  async exportLogs() {
+    try {
+      const logsJson = await exportErrorLogs();
+      const blob = new Blob([logsJson], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `error-logs-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      this.showToast('日志已导出', 'success');
+    } catch (error) {
+      console.error('Failed to export logs:', error);
+      logError('settings', error, { action: 'exportLogs' });
+      this.showToast('导出失败', 'error');
+    }
+  }
+
+  async clearLogs() {
+    const logs = await getErrorLogs();
+    if (logs.length === 0) {
+      this.showToast('暂无日志可清空', 'error');
+      return;
+    }
+
+    if (!confirm(`确定要清空全部 ${logs.length} 条错误日志吗？`)) return;
+
+    try {
+      await clearErrorLogs();
+      this.showToast('日志已清空', 'success');
+      await this.loadErrorLogs();
+    } catch (error) {
+      console.error('Failed to clear logs:', error);
+      this.showToast('清空失败', 'error');
+    }
   }
 
   escapeHtml(text) {

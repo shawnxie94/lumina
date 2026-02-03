@@ -47,6 +47,24 @@
       </div>
     </section>
 
+    <section class="section">
+      <h2>📋 错误日志</h2>
+      <p class="section-desc">查看扩展运行时的错误记录，便于问题排查</p>
+      
+      <div class="error-logs-header">
+        <span id="errorLogCount">0 条记录</span>
+        <div class="error-logs-actions">
+          <button id="refreshLogsBtn" class="btn btn-secondary btn-small">刷新</button>
+          <button id="exportLogsBtn" class="btn btn-secondary btn-small">导出</button>
+          <button id="clearLogsBtn" class="btn btn-secondary btn-small btn-danger-text">清空</button>
+        </div>
+      </div>
+      
+      <div id="errorLogsContainer" class="error-logs-container">
+        <div class="empty-logs">暂无错误日志</div>
+      </div>
+    </section>
+
     <div class="toast hidden" id="toast"></div>
   </div>
 

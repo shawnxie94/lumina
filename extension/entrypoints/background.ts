@@ -1,3 +1,5 @@
+import { logError } from '../utils/errorLogger';
+
 export default defineBackground(() => {
   chrome.runtime.onInstalled.addListener(() => {
     chrome.contextMenus.create({
@@ -20,6 +22,7 @@ export default defineBackground(() => {
         return true;
       } catch (err) {
         console.error('Failed to inject content script:', err);
+        logError('background', err instanceof Error ? err : new Error(String(err)), { action: 'injectContentScript', tabId });
         return false;
       }
     }
@@ -76,6 +79,7 @@ export default defineBackground(() => {
 
     } catch (error) {
       console.error('Context menu extraction failed:', error);
+      logError('background', error instanceof Error ? error : new Error(String(error)), { action: 'contextMenuExtract', url: tab?.url });
       chrome.notifications.create({
         type: 'basic',
         iconUrl: 'icon/128.png',

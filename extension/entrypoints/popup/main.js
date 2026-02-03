@@ -5,6 +5,9 @@ import { gfm } from 'turndown-plugin-gfm';
 import { addToHistory, getHistory, clearHistory, formatHistoryDate } from '../../utils/history';
 import confetti from 'canvas-confetti';
 import { autoMatchCategory } from '../../utils/categoryKeywords';
+import { logError, setupGlobalErrorHandler } from '../../utils/errorLogger';
+
+setupGlobalErrorHandler('popup');
 
 class PopupController {
   #apiClient;
@@ -266,6 +269,7 @@ class PopupController {
       await this.extractArticle();
     } catch (error) {
       console.error('Failed to initialize popup:', error);
+      logError('popup', error, { action: 'init' });
       this.updateStatus('error', '初始化失败');
     }
   }
@@ -380,6 +384,7 @@ class PopupController {
       this.populateCategories(categories);
     } catch (error) {
       console.error('Failed to load categories:', error);
+      logError('popup', error, { action: 'loadCategories' });
       this.updateStatus('warning', '加载分类失败，使用默认分类');
       this.#categories = DEFAULT_CATEGORIES;
       this.populateCategories(DEFAULT_CATEGORIES);
@@ -473,6 +478,7 @@ class PopupController {
       this.updateStatus('idle', `${selectionHint}准备就绪 · 约 ${readingTime} 分钟阅读`);
     } catch (error) {
       console.error('Failed to extract article:', error);
+      logError('popup', error, { action: 'extractArticle', url: this.#currentTab?.url });
       this.handleExtractionError(error);
     }
   }
@@ -721,6 +727,7 @@ class PopupController {
       this.showSuccessButtons(result.id);
     } catch (error) {
       console.error('Failed to collect article:', error);
+      logError('popup', error, { action: 'collectArticle', title: this.#articleData?.title });
       this.updateStatus('error', '采集失败，请重试');
     }
   }
@@ -763,6 +770,7 @@ class PopupController {
       window.close();
     } catch (error) {
       console.error('Failed to open editor:', error);
+      logError('popup', error, { action: 'openEditorPage' });
       this.updateStatus('error', '打开编辑页面失败');
     }
   }
@@ -849,6 +857,7 @@ class PopupController {
       location.reload();
     } catch (error) {
       console.error('Failed to save config:', error);
+      logError('popup', error, { action: 'saveConfig' });
       alert('保存配置失败');
     }
   }

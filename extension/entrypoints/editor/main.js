@@ -3,6 +3,9 @@ import { marked } from 'marked';
 import TurndownService from 'turndown';
 import { gfm } from 'turndown-plugin-gfm';
 import { addToHistory } from '../../utils/history';
+import { logError, setupGlobalErrorHandler } from '../../utils/errorLogger';
+
+setupGlobalErrorHandler('editor');
 
 class EditorController {
   #apiClient;
@@ -36,6 +39,7 @@ class EditorController {
       this.updateStatus('idle', '准备就绪');
     } catch (error) {
       console.error('Failed to initialize editor:', error);
+      logError('editor', error, { action: 'init' });
       this.updateStatus('error', '初始化失败');
     }
   }
@@ -51,6 +55,7 @@ class EditorController {
       this.populateCategories();
     } catch (error) {
       console.error('Failed to load categories:', error);
+      logError('editor', error, { action: 'loadCategories' });
     }
   }
 
@@ -100,6 +105,7 @@ class EditorController {
       });
     } catch (error) {
       console.error('Failed to load article data:', error);
+      logError('editor', error, { action: 'loadArticleData' });
       throw error;
     }
   }
@@ -349,6 +355,7 @@ class EditorController {
       }, 1000);
     } catch (error) {
       console.error('Failed to submit article:', error);
+      logError('editor', error, { action: 'submitArticle', title: this.#articleData?.title });
       const errorMessage = error.message || '提交失败，请重试';
       this.updateStatus('error', errorMessage);
     }
