@@ -1,12 +1,24 @@
 import './history.css';
 import { getHistory, clearHistory, formatHistoryDate } from '../../utils/history';
+import { ApiClient } from '../../utils/api';
 
 class HistoryController {
   #history = [];
+  #apiClient;
+
+  constructor() {
+    this.#apiClient = new ApiClient();
+  }
 
   async init() {
+    await this.loadConfig();
     await this.loadHistory();
     this.setupEventListeners();
+  }
+
+  async loadConfig() {
+    const apiHost = await ApiClient.loadApiHost();
+    this.#apiClient = new ApiClient(apiHost);
   }
 
   setupEventListeners() {
@@ -75,11 +87,15 @@ class HistoryController {
         ? `<img class="history-item-image" src="${this.escapeHtml(item.topImage)}" alt="" />`
         : `<div class="history-item-image placeholder">📄</div>`;
 
+      const articleUrl = item.articleId 
+        ? `${this.#apiClient.frontendUrl}/article/${item.articleId}`
+        : item.url;
+
       itemEl.innerHTML = `
         ${imageHtml}
         <div class="history-item-content">
           <div class="history-item-title">
-            <a href="${this.escapeHtml(item.url)}" target="_blank">${this.escapeHtml(item.title)}</a>
+            <a href="${this.escapeHtml(articleUrl)}" target="_blank">${this.escapeHtml(item.title)}</a>
           </div>
           <div class="history-item-meta">
             <span>🔗 ${this.escapeHtml(item.domain)}</span>

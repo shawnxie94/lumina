@@ -15,7 +15,8 @@ export class ApiClient {
   }
 
   get frontendUrl(): string {
-    return this.apiHost.replace(':8000', ':3000');
+    const host = this.apiHost.replace(':8000', ':3000');
+    return `http://${host}`;
   }
 
   static async loadApiHost(): Promise<string> {

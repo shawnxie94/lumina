@@ -339,10 +339,12 @@ class EditorController {
 
       const category = this.#categories.find(c => c.id === categoryId);
       await addToHistory({
+        articleId: result.id,
         title: title,
         url: this.#articleData.source_url,
         domain: this.#articleData.source_domain,
         categoryName: category?.name,
+        topImage: topImage,
       });
 
       this.updateStatus('success', `提交成功！文章ID: ${result.id}`);

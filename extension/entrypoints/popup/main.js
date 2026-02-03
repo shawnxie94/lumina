@@ -713,6 +713,7 @@ class PopupController {
 
       const category = this.#categories.find(c => c.id === categoryId);
       await addToHistory({
+        articleId: result.id,
         title: this.#articleData.title,
         url: this.#articleData.source_url,
         domain: this.#articleData.source_domain,
@@ -898,7 +899,10 @@ class PopupController {
       const itemEl = document.createElement('div');
       itemEl.className = 'history-item';
       itemEl.onclick = () => {
-        chrome.tabs.create({ url: item.url });
+        const targetUrl = item.articleId 
+          ? `${this.#apiClient.frontendUrl}/article/${item.articleId}`
+          : item.url;
+        chrome.tabs.create({ url: targetUrl });
       };
 
       const thumbnailHtml = item.topImage 

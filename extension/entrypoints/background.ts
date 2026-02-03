@@ -4,7 +4,7 @@ export default defineBackground(() => {
   chrome.runtime.onInstalled.addListener(() => {
     chrome.contextMenus.create({
       id: 'collect-article',
-      title: '📚 采集到知识库',
+      title: '采集到知识库',
       contexts: ['page', 'selection'],
     });
   });

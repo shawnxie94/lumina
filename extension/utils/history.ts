@@ -1,5 +1,6 @@
 export interface HistoryItem {
   id: string;
+  articleId: string;
   title: string;
   url: string;
   domain: string;
