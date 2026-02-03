@@ -1,5 +1,8 @@
 import { Readability } from '@mozilla/readability';
 import { getSiteAdapter, extractWithAdapter } from '../utils/siteAdapters';
+import { parseDate } from '../utils/dateParser';
+
+let cachedResult: { url: string; data: ExtractedArticle } | null = null;
 
 export default defineContentScript({
   matches: ['<all_urls>'],
@@ -7,7 +10,8 @@ export default defineContentScript({
   main() {
     chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       if (message.type === 'EXTRACT_ARTICLE') {
-        const result = extractArticle();
+        const forceRefresh = message.forceRefresh === true;
+        const result = extractArticle(forceRefresh);
         sendResponse(result);
       }
       return true;
@@ -26,64 +30,76 @@ interface ExtractedArticle {
   excerpt: string;
 }
 
-function extractArticle(): ExtractedArticle {
+function extractArticle(forceRefresh = false): ExtractedArticle {
+  const currentUrl = window.location.href;
+  
+  if (!forceRefresh && cachedResult && cachedResult.url === currentUrl) {
+    return cachedResult.data;
+  }
   processLazyImages();
 
   const baseUrl = window.location.href;
   const meta = extractMetadata();
 
+  let result: ExtractedArticle;
+
   const adapter = getSiteAdapter(baseUrl);
   if (adapter) {
     const adapterResult = extractWithAdapter(adapter);
     const contentHtml = resolveRelativeUrls(adapterResult.contentHtml, baseUrl);
+    const rawDate = adapterResult.publishedAt || meta.publishedAt;
     
-    return {
+    result = {
       title: adapterResult.title || meta.title || document.title,
       content_html: contentHtml,
       source_url: baseUrl,
       top_image: meta.topImage || extractFirstImage(contentHtml),
       author: adapterResult.author || meta.author,
-      published_at: adapterResult.publishedAt || meta.publishedAt,
+      published_at: parseDate(rawDate),
       source_domain: new URL(baseUrl).hostname,
       excerpt: meta.description,
     };
+  } else {
+    const doc = document.cloneNode(true) as Document;
+    const reader = new Readability(doc, {
+      charThreshold: 100,
+    });
+    const article = reader.parse();
+
+    if (article) {
+      const contentHtml = resolveRelativeUrls(article.content, baseUrl);
+      const topImage = meta.topImage || extractFirstImage(contentHtml);
+      const rawDate = article.publishedTime || meta.publishedAt;
+
+      result = {
+        title: article.title || meta.title || document.title,
+        content_html: contentHtml,
+        source_url: baseUrl,
+        top_image: topImage,
+        author: article.byline || meta.author,
+        published_at: parseDate(rawDate),
+        source_domain: new URL(baseUrl).hostname,
+        excerpt: article.excerpt || meta.description,
+      };
+    } else {
+      const fallbackContent = extractFallbackContent();
+      const contentHtml = resolveRelativeUrls(fallbackContent, baseUrl);
+
+      result = {
+        title: meta.title || document.title,
+        content_html: contentHtml,
+        source_url: baseUrl,
+        top_image: meta.topImage || extractFirstImage(contentHtml),
+        author: meta.author,
+        published_at: parseDate(meta.publishedAt),
+        source_domain: new URL(baseUrl).hostname,
+        excerpt: meta.description,
+      };
+    }
   }
 
-  const doc = document.cloneNode(true) as Document;
-  const reader = new Readability(doc, {
-    charThreshold: 100,
-  });
-  const article = reader.parse();
-
-  if (article) {
-    const contentHtml = resolveRelativeUrls(article.content, baseUrl);
-    const topImage = meta.topImage || extractFirstImage(contentHtml);
-
-    return {
-      title: article.title || meta.title || document.title,
-      content_html: contentHtml,
-      source_url: baseUrl,
-      top_image: topImage,
-      author: article.byline || meta.author,
-      published_at: article.publishedTime || meta.publishedAt,
-      source_domain: new URL(baseUrl).hostname,
-      excerpt: article.excerpt || meta.description,
-    };
-  }
-
-  const fallbackContent = extractFallbackContent();
-  const contentHtml = resolveRelativeUrls(fallbackContent, baseUrl);
-
-  return {
-    title: meta.title || document.title,
-    content_html: contentHtml,
-    source_url: baseUrl,
-    top_image: meta.topImage || extractFirstImage(contentHtml),
-    author: meta.author,
-    published_at: meta.publishedAt,
-    source_domain: new URL(baseUrl).hostname,
-    excerpt: meta.description,
-  };
+  cachedResult = { url: currentUrl, data: result };
+  return result;
 }
 
 function processLazyImages(): void {

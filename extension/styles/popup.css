@@ -107,6 +107,26 @@ body {
   color: #92400e;
 }
 
+.retry-btn {
+  width: 100%;
+  padding: 8px 16px;
+  margin-bottom: 16px;
+  background: #fef3c7;
+  border: 1px solid #fcd34d;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  color: #92400e;
+}
+
+.retry-btn:hover {
+  background: #fde68a;
+}
+
+.retry-btn.hidden {
+  display: none;
+}
+
 .buttons {
   display: flex;
   gap: 8px;

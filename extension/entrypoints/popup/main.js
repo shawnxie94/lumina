@@ -292,6 +292,34 @@ class PopupController {
     document.getElementById('saveConfigBtn')?.addEventListener('click', () => this.saveConfig());
 
     document.getElementById('cancelConfigBtn')?.addEventListener('click', () => this.closeConfigModal());
+
+    document.getElementById('retryBtn')?.addEventListener('click', () => this.retryExtract());
+  }
+
+  async retryExtract() {
+    this.hideRetryButton();
+    if (this.#currentTab?.id) {
+      try {
+        await chrome.tabs.sendMessage(this.#currentTab.id, { type: 'EXTRACT_ARTICLE', forceRefresh: true });
+      } catch {
+        // Ignore, will use fallback
+      }
+    }
+    await this.extractArticle();
+  }
+
+  showRetryButton() {
+    const retryBtn = document.getElementById('retryBtn');
+    if (retryBtn) {
+      retryBtn.classList.remove('hidden');
+    }
+  }
+
+  hideRetryButton() {
+    const retryBtn = document.getElementById('retryBtn');
+    if (retryBtn) {
+      retryBtn.classList.add('hidden');
+    }
   }
 
   async loadCategories() {
@@ -324,23 +352,39 @@ class PopupController {
   }
 
   async extractArticle() {
-    this.updateStatus('loading', '正在提取文章内容...');
+    this.updateStatus('loading', '正在连接页面...');
 
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       this.#currentTab = tab;
 
       if (!tab.id) {
-        throw new Error('No active tab found');
+        this.updateStatus('error', '无法获取当前标签页');
+        return;
       }
+
+      if (tab.url?.startsWith('chrome://') || tab.url?.startsWith('chrome-extension://')) {
+        this.updateStatus('error', '无法在此页面提取内容');
+        return;
+      }
+
+      this.updateStatus('loading', '正在提取文章内容...');
 
       let extractedData;
       
       try {
         extractedData = await chrome.tabs.sendMessage(tab.id, { type: 'EXTRACT_ARTICLE' });
       } catch {
+        this.updateStatus('loading', '正在使用备用方式提取...');
         extractedData = await this.extractViaScript(tab.id);
       }
+
+      if (!extractedData || !extractedData.content_html) {
+        this.updateStatus('error', '未能提取到文章内容，请确认页面已加载完成');
+        return;
+      }
+
+      this.updateStatus('loading', '正在转换为 Markdown...');
 
       const contentMd = this.#turndown.turndown(extractedData.content_html);
 
@@ -351,13 +395,31 @@ class PopupController {
 
       const previewTitle = document.getElementById('previewTitle');
       if (previewTitle && this.#articleData) {
-        previewTitle.textContent = this.#articleData.title;
+        previewTitle.textContent = this.#articleData.title || '(无标题)';
       }
 
-      this.updateStatus('idle', '准备就绪');
+      const wordCount = contentMd.length;
+      const readingTime = Math.ceil(wordCount / 500);
+      this.updateStatus('idle', `准备就绪 · 约 ${readingTime} 分钟阅读`);
     } catch (error) {
       console.error('Failed to extract article:', error);
-      this.updateStatus('error', '提取文章失败');
+      this.handleExtractionError(error);
+    }
+  }
+
+  handleExtractionError(error) {
+    const message = error?.message || String(error);
+    
+    if (message.includes('Cannot access') || message.includes('not allowed')) {
+      this.updateStatus('error', '无权限访问此页面');
+    } else if (message.includes('No tab') || message.includes('No active')) {
+      this.updateStatus('error', '无法获取当前标签页');
+    } else if (message.includes('connection') || message.includes('Receiving end')) {
+      this.updateStatus('error', '页面连接失败，请刷新页面后重试');
+      this.showRetryButton();
+    } else {
+      this.updateStatus('error', '提取失败，请刷新页面后重试');
+      this.showRetryButton();
     }
   }
 
