@@ -385,8 +385,12 @@ class ArticleService:
                 )
                 if article.top_image:
                     markdown_content += f"![]({article.top_image})\n\n"
-                if article.ai_analysis and article.ai_analysis.summary:
-                    markdown_content += f"{article.ai_analysis.summary}\n\n"
+                if article.ai_analysis:
+                    # 优先使用关键内容，没有则使用摘要
+                    if article.ai_analysis.key_points:
+                        markdown_content += f"{article.ai_analysis.key_points}\n\n"
+                    elif article.ai_analysis.summary:
+                        markdown_content += f"{article.ai_analysis.summary}\n\n"
 
         if uncategorized:
             markdown_content += "## 未分类\n\n"
@@ -396,8 +400,12 @@ class ArticleService:
                 )
                 if article.top_image:
                     markdown_content += f"![]({article.top_image})\n\n"
-                if article.ai_analysis and article.ai_analysis.summary:
-                    markdown_content += f"{article.ai_analysis.summary}\n\n"
+                if article.ai_analysis:
+                    # 优先使用关键内容，没有则使用摘要
+                    if article.ai_analysis.key_points:
+                        markdown_content += f"{article.ai_analysis.key_points}\n\n"
+                    elif article.ai_analysis.summary:
+                        markdown_content += f"{article.ai_analysis.summary}\n\n"
 
         return markdown_content
 

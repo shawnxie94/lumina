@@ -310,7 +310,7 @@ export default function Home() {
       <div className="max-w-7xl mx-auto px-4 py-8">
         <div className="flex gap-6">
           <aside className={`flex-shrink-0 transition-all duration-300 ${sidebarCollapsed ? 'w-12' : 'w-64'}`}>
-            <div className="bg-white rounded-lg shadow-sm p-4">
+            <div className="sticky top-4 bg-white rounded-lg shadow-sm p-4 max-h-[calc(100vh-2rem)] overflow-y-auto">
               <div className="flex items-center justify-between mb-4">
                 {!sidebarCollapsed && <h2 className="font-semibold text-gray-900">🏷️ 分类筛选</h2>}
                 <button
