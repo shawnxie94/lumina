@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>设置 - 文章采集器</title>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>⚙️ 设置</h1>
+    </div>
+
+    <section class="section">
+      <h2>🔗 API 配置</h2>
+      <div class="form-group">
+        <label for="apiHostInput">知识库 API 地址</label>
+        <div class="input-with-status">
+          <input type="text" id="apiHostInput" placeholder="localhost:8000" />
+          <span class="connection-indicator" id="connectionIndicator">
+            <span class="status-dot checking"></span>
+            <span class="status-text">检测中...</span>
+          </span>
+        </div>
+      </div>
+      <button id="saveApiBtn" class="btn btn-primary">保存 API 配置</button>
+    </section>
+
+    <section class="section">
+      <h2>🏷️ 分类关键词配置</h2>
+      <p class="section-desc">为每个分类设置关键词，采集文章时会根据内容自动匹配分类</p>
+      
+      <div id="categoriesLoading" class="loading-state">
+        <span>正在加载分类...</span>
+      </div>
+      
+      <div id="categoriesError" class="error-state hidden">
+        <span>无法加载分类，请检查 API 连接</span>
+        <button id="retryLoadBtn" class="btn btn-secondary btn-small">重试</button>
+      </div>
+
+      <div id="categoryKeywordsContainer" class="category-keywords-container hidden"></div>
+      
+      <div id="keywordsActions" class="keywords-actions hidden">
+        <button id="saveKeywordsBtn" class="btn btn-primary">保存关键词配置</button>
+        <button id="resetKeywordsBtn" class="btn btn-secondary">恢复默认</button>
+      </div>
+    </section>
+
+    <div class="toast hidden" id="toast"></div>
+  </div>
+
+  <script type="module" src="./main.js"></script>
+</body>
+</html>

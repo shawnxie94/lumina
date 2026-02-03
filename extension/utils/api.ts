@@ -72,6 +72,26 @@ export class ApiClient {
       throw error;
     }
   }
+
+  async checkHealth(): Promise<{ ok: boolean; latency: number }> {
+    const start = Date.now();
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3000);
+      
+      const response = await fetch(`${this.baseUrl}/api/categories`, {
+        method: 'GET',
+        signal: controller.signal,
+      });
+      
+      clearTimeout(timeoutId);
+      const latency = Date.now() - start;
+      
+      return { ok: response.ok, latency };
+    } catch {
+      return { ok: false, latency: Date.now() - start };
+    }
+  }
 }
 
 export const DEFAULT_CATEGORIES: Category[] = [

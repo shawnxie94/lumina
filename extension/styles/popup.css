@@ -29,6 +29,43 @@ body {
   color: #111827;
 }
 
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.connection-status {
+  display: flex;
+  align-items: center;
+  cursor: help;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  transition: background-color 0.3s;
+}
+
+.status-dot.checking {
+  background: #9ca3af;
+  animation: pulse 1.5s infinite;
+}
+
+.status-dot.connected {
+  background: #10b981;
+}
+
+.status-dot.disconnected {
+  background: #ef4444;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
 .close-btn {
   background: none;
   border: none;
@@ -137,6 +174,17 @@ body {
 
 .status.success {
   background: #d1fae5;
+  color: #065f46;
+}
+
+.status-link {
+  color: #047857;
+  text-decoration: underline;
+  font-weight: 500;
+  margin-left: 4px;
+}
+
+.status-link:hover {
   color: #065f46;
 }
 

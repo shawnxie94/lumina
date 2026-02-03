@@ -8,7 +8,12 @@
 <body>
   <div class="header">
     <h1>📚 文章采集器</h1>
-    <button id="configBtn" class="config-btn">⚙️</button>
+    <div class="header-right">
+      <span class="connection-status" id="connectionStatus" title="检测中...">
+        <span class="status-dot checking"></span>
+      </span>
+      <button id="configBtn" class="config-btn">⚙️</button>
+    </div>
   </div>
 
   <div class="preview">
@@ -58,6 +63,7 @@
       </div>
 
       <div class="modal-buttons">
+        <button id="openSettingsBtn" class="btn btn-secondary">更多</button>
         <button id="saveConfigBtn" class="btn btn-primary">保存</button>
         <button id="cancelConfigBtn" class="btn btn-secondary">取消</button>
       </div>
