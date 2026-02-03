@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { articleApi, categoryApi, Article, Category } from '@/lib/api';
+import { useToast } from '@/components/Toast';
 import Link from 'next/link';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
@@ -51,6 +52,7 @@ const getDateRangeFromQuickOption = (option: QuickDateOption): [Date | null, Dat
 
 export default function Home() {
   const router = useRouter();
+  const { showToast } = useToast();
   const [articles, setArticles] = useState<Article[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [categoryStats, setCategoryStats] = useState<{ id: string; name: string; color: string | null; article_count: number }[]>([]);
@@ -71,6 +73,8 @@ export default function Home() {
   const [initialized, setInitialized] = useState(false);
   const [selectedArticleIds, setSelectedArticleIds] = useState<Set<string>>(new Set());
   const [showFilters, setShowFilters] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [jumpToPage, setJumpToPage] = useState('');
 
   const [publishedStartDate, publishedEndDate] = publishedDateRange;
   const [createdStartDate, createdEndDate] = createdDateRange;
@@ -196,10 +200,11 @@ export default function Home() {
 
     try {
       await articleApi.deleteArticle(id);
+      showToast('删除成功');
       fetchArticles();
     } catch (error) {
       console.error('Failed to delete article:', error);
-      alert('删除失败');
+      showToast('删除失败', 'error');
     }
   };
 
@@ -225,7 +230,7 @@ export default function Home() {
 
   const handleExport = async () => {
     if (selectedArticleIds.size === 0) {
-      alert('请先选择要导出的文章');
+      showToast('请先选择要导出的文章', 'info');
       return;
     }
 
@@ -241,9 +246,21 @@ export default function Home() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
       setSelectedArticleIds(new Set());
+      showToast('导出成功');
     } catch (error) {
       console.error('Failed to export articles:', error);
-      alert('导出失败');
+      showToast('导出失败', 'error');
+    }
+  };
+
+  const handleJumpToPage = () => {
+    const pageNum = parseInt(jumpToPage);
+    const totalPages = Math.ceil(total / pageSize) || 1;
+    if (pageNum >= 1 && pageNum <= totalPages) {
+      setPage(pageNum);
+      setJumpToPage('');
+    } else {
+      showToast(`请输入1-${totalPages}之间的页码`, 'error');
     }
   };
 
@@ -275,30 +292,41 @@ export default function Home() {
 
       <div className="max-w-7xl mx-auto px-4 py-8">
         <div className="flex gap-6">
-          <aside className="w-64 flex-shrink-0">
+          <aside className={`flex-shrink-0 transition-all duration-300 ${sidebarCollapsed ? 'w-12' : 'w-64'}`}>
             <div className="bg-white rounded-lg shadow-sm p-4">
-              <h2 className="font-semibold text-gray-900 mb-4">🏷️ 分类筛选</h2>
-              <div className="space-y-2">
+              <div className="flex items-center justify-between mb-4">
+                {!sidebarCollapsed && <h2 className="font-semibold text-gray-900">🏷️ 分类筛选</h2>}
                 <button
-                  onClick={() => setSelectedCategory('')}
-                  className={`w-full text-left px-3 py-2 rounded-lg transition ${
-                    selectedCategory === '' ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-100'
-                  }`}
+                  onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+                  className="text-gray-500 hover:text-gray-700 transition"
+                  title={sidebarCollapsed ? '展开' : '收起'}
                 >
-                  全部文章 ({categoryStats.reduce((sum, c) => sum + c.article_count, 0)})
+                  {sidebarCollapsed ? '»' : '«'}
                 </button>
-                {categoryStats.map((category) => (
+              </div>
+              {!sidebarCollapsed && (
+                <div className="space-y-2">
                   <button
-                    key={category.id}
-                    onClick={() => setSelectedCategory(category.id)}
+                    onClick={() => setSelectedCategory('')}
                     className={`w-full text-left px-3 py-2 rounded-lg transition ${
-                      selectedCategory === category.id ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-100'
+                      selectedCategory === '' ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-100'
                     }`}
                   >
-                    {category.name} ({category.article_count})
+                    全部文章 ({categoryStats.reduce((sum, c) => sum + c.article_count, 0)})
                   </button>
-                ))}
-              </div>
+                  {categoryStats.map((category) => (
+                    <button
+                      key={category.id}
+                      onClick={() => setSelectedCategory(category.id)}
+                      className={`w-full text-left px-3 py-2 rounded-lg transition ${
+                        selectedCategory === category.id ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-100'
+                      }`}
+                    >
+                      {category.name} ({category.article_count})
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </aside>
 
@@ -475,7 +503,7 @@ export default function Home() {
                                 {article.title}
                               </h3>
                             </Link>
-                             <div className="mt-2 flex items-center gap-4 text-sm text-gray-600">
+                             <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-gray-600">
                                {article.category && (
                                  <span 
                                    className="px-2 py-1 rounded"
@@ -485,6 +513,11 @@ export default function Home() {
                                    }}
                                  >
                                    {article.category.name}
+                                 </span>
+                               )}
+                               {article.source_domain && (
+                                 <span className="px-2 py-1 bg-gray-100 rounded text-gray-600">
+                                   🌐 {article.source_domain}
                                  </span>
                                )}
                                {article.author && <span>作者: {article.author}</span>}
@@ -528,7 +561,7 @@ export default function Home() {
                     </select>
                     <span>条，共 {total} 条</span>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex items-center gap-2">
                     <button
                       onClick={() => setPage((p) => Math.max(1, p - 1))}
                       disabled={page === 1}
@@ -546,6 +579,24 @@ export default function Home() {
                     >
                       下一页
                     </button>
+                    <div className="flex items-center gap-1 ml-2">
+                      <span className="text-sm text-gray-600">跳转</span>
+                      <input
+                        type="number"
+                        value={jumpToPage}
+                        onChange={(e) => setJumpToPage(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleJumpToPage()}
+                        className="w-16 px-2 py-1 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-center"
+                        min={1}
+                        max={Math.ceil(total / pageSize) || 1}
+                      />
+                      <button
+                        onClick={handleJumpToPage}
+                        className="px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm"
+                      >
+                        GO
+                      </button>
+                    </div>
                   </div>
                 </div>
               </>

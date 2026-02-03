@@ -140,6 +140,7 @@ async def get_articles(
                 else None,
                 "author": a.author,
                 "status": a.status,
+                "source_domain": a.source_domain,
                 "published_at": a.published_at,
                 "created_at": a.created_at,
             }

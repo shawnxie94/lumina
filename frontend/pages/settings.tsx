@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { articleApi, categoryApi, type ModelAPIConfig, type PromptConfig } from '@/lib/api';
+import { useToast } from '@/components/Toast';
 import {
   DndContext,
   closestCenter,
@@ -119,6 +120,7 @@ function SortableCategoryItem({ category, onEdit, onDelete }: SortableCategoryIt
 }
 
 export default function SettingsPage() {
+  const { showToast } = useToast();
   const [activeSection, setActiveSection] = useState<SettingSection>('categories');
   const [aiSubSection, setAISubSection] = useState<AISubSection>('model-api');
   const [modelAPIConfigs, setModelAPIConfigs] = useState<ModelAPIConfig[]>([]);
@@ -130,6 +132,7 @@ export default function SettingsPage() {
   const [showModelAPIModal, setShowModelAPIModal] = useState(false);
   const [showPromptModal, setShowPromptModal] = useState(false);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
+  const [showPromptPreview, setShowPromptPreview] = useState<PromptConfig | null>(null);
 
   const [editingModelAPIConfig, setEditingModelAPIConfig] = useState<ModelAPIConfig | null>(null);
   const [editingPromptConfig, setEditingPromptConfig] = useState<PromptConfig | null>(null);
@@ -273,13 +276,13 @@ export default function SettingsPage() {
       } else {
         await articleApi.createModelAPIConfig(modelAPIFormData);
       }
-      alert(editingModelAPIConfig ? '配置已更新' : '配置已创建');
+      showToast(editingModelAPIConfig ? '配置已更新' : '配置已创建');
       fetchModelAPIConfigs();
       setShowModelAPIModal(false);
       setEditingModelAPIConfig(null);
     } catch (error) {
       console.error('Failed to save model API config:', error);
-      alert('保存失败');
+      showToast('保存失败', 'error');
     }
   };
 
@@ -288,11 +291,11 @@ export default function SettingsPage() {
 
     try {
       await articleApi.deleteModelAPIConfig(id);
-      alert('删除成功');
+      showToast('删除成功');
       fetchModelAPIConfigs();
     } catch (error) {
       console.error('Failed to delete model API config:', error);
-      alert('删除失败');
+      showToast('删除失败', 'error');
     }
   };
 
@@ -300,13 +303,13 @@ export default function SettingsPage() {
     try {
       const result = await articleApi.testModelAPIConfig(id);
       if (result.success) {
-        alert('连接测试成功');
+        showToast('连接测试成功');
       } else {
-        alert(`连接测试失败: ${result.message}`);
+        showToast(`连接测试失败: ${result.message}`, 'error');
       }
     } catch (error) {
       console.error('Failed to test model API config:', error);
-      alert('测试失败');
+      showToast('测试失败', 'error');
     }
   };
 
@@ -316,18 +319,18 @@ export default function SettingsPage() {
       fetchModelAPIConfigs();
     } catch (error) {
       console.error('Failed to toggle enabled:', error);
-      alert('操作失败');
+      showToast('操作失败', 'error');
     }
   };
 
   const handleSetModelAPIDefault = async (id: string) => {
     try {
       await articleApi.updateModelAPIConfig(id, { is_default: true });
-      alert('已设置为默认配置');
+      showToast('已设置为默认配置');
       fetchModelAPIConfigs();
     } catch (error) {
       console.error('Failed to set default:', error);
-      alert('操作失败');
+      showToast('操作失败', 'error');
     }
   };
 
@@ -372,13 +375,13 @@ export default function SettingsPage() {
       } else {
         await articleApi.createPromptConfig(data);
       }
-      alert(editingPromptConfig ? '配置已更新' : '配置已创建');
+      showToast(editingPromptConfig ? '配置已更新' : '配置已创建');
       fetchPromptConfigs();
       setShowPromptModal(false);
       setEditingPromptConfig(null);
     } catch (error) {
       console.error('Failed to save prompt config:', error);
-      alert('保存失败');
+      showToast('保存失败', 'error');
     }
   };
 
@@ -387,11 +390,11 @@ export default function SettingsPage() {
 
     try {
       await articleApi.deletePromptConfig(id);
-      alert('删除成功');
+      showToast('删除成功');
       fetchPromptConfigs();
     } catch (error) {
       console.error('Failed to delete prompt config:', error);
-      alert('删除失败');
+      showToast('删除失败', 'error');
     }
   };
 
@@ -401,18 +404,18 @@ export default function SettingsPage() {
       fetchPromptConfigs();
     } catch (error) {
       console.error('Failed to toggle enabled:', error);
-      alert('操作失败');
+      showToast('操作失败', 'error');
     }
   };
 
   const handleSetPromptDefault = async (id: string) => {
     try {
       await articleApi.updatePromptConfig(id, { is_default: true });
-      alert('已设置为默认配置');
+      showToast('已设置为默认配置');
       fetchPromptConfigs();
     } catch (error) {
       console.error('Failed to set default:', error);
-      alert('操作失败');
+      showToast('操作失败', 'error');
     }
   };
 
@@ -449,13 +452,13 @@ export default function SettingsPage() {
       } else {
         await categoryApi.createCategory(categoryFormData);
       }
-      alert(editingCategory ? '分类已更新' : '分类已创建');
+      showToast(editingCategory ? '分类已更新' : '分类已创建');
       fetchCategories();
       setShowCategoryModal(false);
       setEditingCategory(null);
     } catch (error) {
       console.error('Failed to save category:', error);
-      alert('保存失败');
+      showToast('保存失败', 'error');
     }
   };
 
@@ -464,11 +467,11 @@ export default function SettingsPage() {
 
     try {
       await categoryApi.deleteCategory(id);
-      alert('删除成功');
+      showToast('删除成功');
       fetchCategories();
     } catch (error) {
       console.error('Failed to delete category:', error);
-      alert('删除失败');
+      showToast('删除失败', 'error');
     }
   };
 
@@ -725,6 +728,13 @@ export default function SettingsPage() {
 
                           <div className="flex gap-1">
                             <button
+                              onClick={() => setShowPromptPreview(config)}
+                              className="px-2 py-1 text-sm text-gray-500 rounded hover:bg-purple-100 hover:text-purple-600 transition"
+                              title="预览"
+                            >
+                              👁️
+                            </button>
+                            <button
                               onClick={() => handleEditPrompt(config)}
                               className="px-2 py-1 text-sm text-gray-500 rounded hover:bg-blue-100 hover:text-blue-600 transition"
                               title="编辑"
@@ -736,7 +746,7 @@ export default function SettingsPage() {
                               className="px-2 py-1 text-sm text-gray-500 rounded hover:bg-red-100 hover:text-red-600 transition"
                               title="删除"
                             >
-                              ✕
+                              🗑️
                             </button>
                           </div>
                         </div>
@@ -1103,6 +1113,67 @@ export default function SettingsPage() {
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
               >
                 {editingCategory ? '保存' : '创建'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showPromptPreview && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-6 border-b">
+              <h3 className="text-lg font-semibold text-gray-900">
+                提示词预览 - {showPromptPreview.name}
+              </h3>
+              <button
+                onClick={() => setShowPromptPreview(null)}
+                className="text-gray-500 hover:text-gray-700 text-2xl"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div className="flex flex-wrap gap-2">
+                <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-sm">
+                  {PROMPT_TYPES.find(t => t.value === showPromptPreview.type)?.label || showPromptPreview.type}
+                </span>
+                <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-sm">
+                  分类: {showPromptPreview.category_name || '通用'}
+                </span>
+                {showPromptPreview.model_api_config_name && (
+                  <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm">
+                    模型: {showPromptPreview.model_api_config_name}
+                  </span>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  完整提示词内容
+                </label>
+                <pre className="w-full p-4 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-800 whitespace-pre-wrap font-mono">
+                  {showPromptPreview.prompt}
+                </pre>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 p-6 border-t bg-gray-50">
+              <button
+                onClick={() => {
+                  handleEditPrompt(showPromptPreview);
+                  setShowPromptPreview(null);
+                }}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+              >
+                编辑此配置
+              </button>
+              <button
+                onClick={() => setShowPromptPreview(null)}
+                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
+              >
+                关闭
               </button>
             </div>
           </div>

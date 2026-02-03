@@ -17,6 +17,7 @@ export interface Article {
   category: { id: string; name: string; color?: string } | null;
   author: string;
   status: string;
+  source_domain: string | null;
   published_at: string | null;
   created_at: string;
 }
