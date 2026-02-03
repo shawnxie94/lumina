@@ -106,6 +106,20 @@ export const articleApi = {
     return response.data;
   },
 
+  updateArticle: async (
+    id: string,
+    data: {
+      title?: string;
+      author?: string;
+      top_image?: string;
+      content_md?: string;
+      content_trans?: string;
+    },
+  ) => {
+    const response = await api.put(`/api/articles/${id}`, data);
+    return response.data;
+  },
+
   exportArticles: async (articleIds: string[]) => {
     const response = await api.post('/api/export', { article_ids: articleIds });
     return response.data;

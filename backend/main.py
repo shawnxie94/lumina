@@ -39,6 +39,14 @@ class ArticleCreate(BaseModel):
     category_id: Optional[str] = None
 
 
+class ArticleUpdate(BaseModel):
+    title: Optional[str] = None
+    author: Optional[str] = None
+    top_image: Optional[str] = None
+    content_md: Optional[str] = None
+    content_trans: Optional[str] = None
+
+
 class CategoryCreate(BaseModel):
     name: str
     description: Optional[str] = None
@@ -217,6 +225,47 @@ async def delete_article(article_id: str, db: Session = Depends(get_db)):
     db.delete(article)
     db.commit()
     return {"message": "删除成功"}
+
+
+@app.put("/api/articles/{article_id}")
+async def update_article(
+    article_id: str, article_data: ArticleUpdate, db: Session = Depends(get_db)
+):
+    article = db.query(Article).filter(Article.id == article_id).first()
+    if not article:
+        raise HTTPException(status_code=404, detail="文章不存在")
+
+    try:
+        if article_data.title is not None:
+            article.title = article_data.title
+        if article_data.author is not None:
+            article.author = article_data.author
+        if article_data.top_image is not None:
+            article.top_image = article_data.top_image
+        if article_data.content_md is not None:
+            article.content_md = article_data.content_md
+        if article_data.content_trans is not None:
+            article.content_trans = article_data.content_trans
+
+        from models import now_str
+
+        article.updated_at = now_str()
+
+        db.commit()
+        db.refresh(article)
+
+        return {
+            "id": article.id,
+            "title": article.title,
+            "author": article.author,
+            "top_image": article.top_image,
+            "content_md": article.content_md,
+            "content_trans": article.content_trans,
+            "updated_at": article.updated_at,
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.post("/api/articles/{article_id}/retry")

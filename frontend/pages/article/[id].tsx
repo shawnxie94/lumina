@@ -75,6 +75,13 @@ export default function ArticleDetailPage() {
   const [selectedModelConfigId, setSelectedModelConfigId] = useState<string>('');
   const [selectedPromptConfigId, setSelectedPromptConfigId] = useState<string>('');
 
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editMode, setEditMode] = useState<'original' | 'translation'>('original');
+  const [editTitle, setEditTitle] = useState('');
+  const [editAuthor, setEditAuthor] = useState('');
+  const [editTopImage, setEditTopImage] = useState('');
+  const [editContent, setEditContent] = useState('');
+  const [saving, setSaving] = useState(false);
   useEffect(() => {
     if (id) {
       fetchArticle();
@@ -190,6 +197,51 @@ export default function ArticleDetailPage() {
     }
   };
 
+  const openEditModal = (mode: 'original' | 'translation') => {
+    if (!article) return;
+    setEditMode(mode);
+    setEditTitle(article.title || '');
+    setEditAuthor(article.author || '');
+    setEditTopImage(article.top_image || '');
+    setEditContent(mode === 'translation' ? (article.content_trans || '') : (article.content_md || ''));
+    setShowEditModal(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!id || !article) return;
+    setSaving(true);
+
+    try {
+      const updateData: {
+        title?: string;
+        author?: string;
+        top_image?: string;
+        content_md?: string;
+        content_trans?: string;
+      } = {
+        title: editTitle,
+        author: editAuthor,
+        top_image: editTopImage,
+      };
+
+      if (editMode === 'translation') {
+        updateData.content_trans = editContent;
+      } else {
+        updateData.content_md = editContent;
+      }
+
+      await articleApi.updateArticle(id as string, updateData);
+      showToast('保存成功');
+      setShowEditModal(false);
+      fetchArticle();
+    } catch (error: any) {
+      console.error('Failed to save article:', error);
+      showToast(error.response?.data?.detail || '保存失败', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -289,14 +341,23 @@ export default function ArticleDetailPage() {
                     </>
                   )}
                 </div>
-                {article.content_trans && (
+                <div className="flex items-center gap-2">
                   <button
-                    onClick={() => setShowTranslation(!showTranslation)}
-                    className="px-3 py-1 rounded-lg transition text-blue-700 hover:bg-blue-100"
+                    onClick={() => openEditModal(showTranslation && article.content_trans ? 'translation' : 'original')}
+                    className="text-gray-400 hover:text-blue-600 transition"
+                    title={showTranslation && article.content_trans ? '编辑译文' : '编辑原文'}
                   >
-                    {showTranslation ? '🇺🇸' : '🇨🇳'}
+                    ✏️
                   </button>
-                )}
+                  {article.content_trans && (
+                    <button
+                      onClick={() => setShowTranslation(!showTranslation)}
+                      className="px-3 py-1 rounded-lg transition text-blue-700 hover:bg-blue-100"
+                    >
+                      {showTranslation ? '🇺🇸' : '🇨🇳'}
+                    </button>
+                  )}
+                </div>
               </div>
 
               <div className="prose prose-sm max-w-none">
@@ -440,6 +501,106 @@ export default function ArticleDetailPage() {
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
               >
                 生成
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showEditModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b">
+              <h3 className="text-lg font-semibold text-gray-900">
+                编辑文章{editMode === 'translation' ? '（译文）' : '（原文）'}
+              </h3>
+              <button
+                onClick={() => setShowEditModal(false)}
+                className="text-gray-500 hover:text-gray-700 text-xl"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="p-4 space-y-4 overflow-y-auto flex-1">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  标题
+                </label>
+                <input
+                  type="text"
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  作者
+                </label>
+                <input
+                  type="text"
+                  value={editAuthor}
+                  onChange={(e) => setEditAuthor(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  头图 URL
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={editTopImage}
+                    onChange={(e) => setEditTopImage(e.target.value)}
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="输入图片 URL"
+                  />
+                </div>
+                {editTopImage && (
+                  <div className="mt-2">
+                    <img
+                      src={editTopImage}
+                      alt="头图预览"
+                      className="max-h-32 rounded-lg object-cover"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).style.display = 'none';
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  {editMode === 'translation' ? '译文内容' : '原文内容'}（Markdown）
+                </label>
+                <textarea
+                  value={editContent}
+                  onChange={(e) => setEditContent(e.target.value)}
+                  rows={15}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 p-4 border-t bg-gray-50 rounded-b-lg">
+              <button
+                onClick={() => setShowEditModal(false)}
+                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
+                disabled={saving}
+              >
+                取消
+              </button>
+              <button
+                onClick={handleSaveEdit}
+                disabled={saving}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
+              >
+                {saving ? '保存中...' : '保存'}
               </button>
             </div>
           </div>
