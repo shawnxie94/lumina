@@ -21,6 +21,14 @@ import { CSS } from '@dnd-kit/utilities';
 
 type SettingSection = 'ai' | 'categories';
 type AISubSection = 'model-api' | 'prompt';
+type PromptType = 'summary' | 'key_points' | 'outline' | 'quotes';
+
+const PROMPT_TYPES = [
+  { value: 'summary' as PromptType, label: '摘要' },
+  { value: 'key_points' as PromptType, label: '关键内容' },
+  { value: 'outline' as PromptType, label: '文章大纲' },
+  { value: 'quotes' as PromptType, label: '文章金句' },
+];
 
 const PRESET_COLORS = [
   '#EF4444', '#F97316', '#F59E0B', '#EAB308', '#84CC16',
@@ -117,6 +125,7 @@ export default function SettingsPage() {
   const [promptConfigs, setPromptConfigs] = useState<PromptConfig[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedPromptType, setSelectedPromptType] = useState<PromptType>('summary');
 
   const [showModelAPIModal, setShowModelAPIModal] = useState(false);
   const [showPromptModal, setShowPromptModal] = useState(false);
@@ -327,7 +336,7 @@ export default function SettingsPage() {
     setPromptFormData({
       name: '',
       category_id: '',
-      type: 'summary',
+      type: selectedPromptType,
       prompt: '',
       model_api_config_id: '',
       is_enabled: true,
@@ -532,7 +541,7 @@ export default function SettingsPage() {
                     onClick={handleCreateModelAPINew}
                     className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
                   >
-                    + 创建新配置
+                    + 创建配置
                   </button>
                 </div>
 
@@ -544,7 +553,7 @@ export default function SettingsPage() {
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    {modelAPIConfigs.map((config) => (
+                    {[...modelAPIConfigs].sort((a, b) => (b.is_default ? 1 : 0) - (a.is_default ? 1 : 0)).map((config) => (
                       <div
                         key={config.id}
                         className="border rounded-lg p-4 hover:shadow-md transition"
@@ -597,40 +606,24 @@ export default function SettingsPage() {
                             </div>
                           </div>
 
-                          <div className="flex gap-2">
+                          <div className="flex gap-1">
                             <button
                               onClick={() => handleTestModelAPI(config.id)}
-                              className="px-3 py-1 text-sm bg-purple-100 text-purple-700 rounded hover:bg-purple-200 transition"
+                              className="px-2 py-1 text-sm text-gray-500 rounded hover:bg-purple-100 hover:text-purple-600 transition"
                               title="测试连接"
                             >
                               🔗
                             </button>
                             <button
-                              onClick={() => handleToggleModelAPIEnabled(config.id, config.is_enabled)}
-                              className="px-3 py-1 text-sm bg-gray-100 rounded hover:bg-gray-200 transition"
-                              title={config.is_enabled ? '禁用' : '启用'}
-                            >
-                              {config.is_enabled ? '🔌' : '🔆'}
-                            </button>
-                            {!config.is_default && (
-                              <button
-                                onClick={() => handleSetModelAPIDefault(config.id)}
-                                className="px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition"
-                                title="设为默认"
-                              >
-                                ⭐
-                              </button>
-                            )}
-                            <button
                               onClick={() => handleEditModelAPI(config)}
-                              className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition"
+                              className="px-2 py-1 text-sm text-gray-500 rounded hover:bg-blue-100 hover:text-blue-600 transition"
                               title="编辑"
                             >
                               ✏️
                             </button>
                             <button
                               onClick={() => handleDeleteModelAPI(config.id)}
-                              className="px-3 py-1 text-sm bg-red-600 text-white rounded hover:bg-red-700 transition"
+                              className="px-2 py-1 text-sm text-gray-500 rounded hover:bg-red-100 hover:text-red-600 transition"
                               title="删除"
                             >
                               ✕
@@ -646,25 +639,44 @@ export default function SettingsPage() {
 
             {activeSection === 'ai' && aiSubSection === 'prompt' && (
               <div className="bg-white rounded-lg shadow-sm p-6">
-                <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center justify-between mb-4">
                   <h2 className="text-lg font-semibold text-gray-900">提示词配置列表</h2>
                   <button
                     onClick={handleCreatePromptNew}
                     className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
                   >
-                    + 创建新配置
+                    + 创建配置
                   </button>
+                </div>
+
+                <div className="flex gap-2 mb-6">
+                  {PROMPT_TYPES.map((type) => (
+                    <button
+                      key={type.value}
+                      onClick={() => setSelectedPromptType(type.value)}
+                      className={`px-4 py-2 text-sm rounded-lg transition ${
+                        selectedPromptType === type.value
+                          ? 'bg-purple-600 text-white'
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      }`}
+                    >
+                      {type.label}
+                    </button>
+                  ))}
                 </div>
 
                 {loading ? (
                   <div className="text-center py-12 text-gray-500">加载中...</div>
-                ) : promptConfigs.length === 0 ? (
+                ) : promptConfigs.filter(c => c.type === selectedPromptType).length === 0 ? (
                   <div className="text-center py-12 text-gray-500">
-                    暂无提示词配置，点击"创建新配置"按钮开始
+                    暂无{PROMPT_TYPES.find(t => t.value === selectedPromptType)?.label}配置，点击上方按钮创建
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    {promptConfigs.map((config) => (
+                    {[...promptConfigs]
+                      .filter(c => c.type === selectedPromptType)
+                      .sort((a, b) => (b.is_default ? 1 : 0) - (a.is_default ? 1 : 0))
+                      .map((config) => (
                       <div
                         key={config.id}
                         className="border rounded-lg p-4 hover:shadow-md transition"
@@ -689,19 +701,12 @@ export default function SettingsPage() {
                               >
                                 {config.is_enabled ? '启用' : '禁用'}
                               </span>
-                              <span className="ml-2 px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs">
-                                {config.type}
-                              </span>
                             </div>
 
                             <div className="space-y-1 text-sm text-gray-600">
                               <div>
                                 <span className="font-medium">分类：</span>
                                 <span>{config.category_name || '通用'}</span>
-                              </div>
-                              <div>
-                                <span className="font-medium">类型：</span>
-                                <span>{config.type}</span>
                               </div>
                               {config.model_api_config_name && (
                                 <div>
@@ -718,33 +723,17 @@ export default function SettingsPage() {
                             </div>
                           </div>
 
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => handleTogglePromptEnabled(config.id, config.is_enabled)}
-                              className="px-3 py-1 text-sm bg-gray-100 rounded hover:bg-gray-200 transition"
-                              title={config.is_enabled ? '禁用' : '启用'}
-                            >
-                              {config.is_enabled ? '🔌' : '🔆'}
-                            </button>
-                            {!config.is_default && (
-                              <button
-                                onClick={() => handleSetPromptDefault(config.id)}
-                                className="px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition"
-                                title="设为默认"
-                              >
-                                ⭐
-                              </button>
-                            )}
+                          <div className="flex gap-1">
                             <button
                               onClick={() => handleEditPrompt(config)}
-                              className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition"
+                              className="px-2 py-1 text-sm text-gray-500 rounded hover:bg-blue-100 hover:text-blue-600 transition"
                               title="编辑"
                             >
                               ✏️
                             </button>
                             <button
                               onClick={() => handleDeletePrompt(config.id)}
-                              className="px-3 py-1 text-sm bg-red-600 text-white rounded hover:bg-red-700 transition"
+                              className="px-2 py-1 text-sm text-gray-500 rounded hover:bg-red-100 hover:text-red-600 transition"
                               title="删除"
                             >
                               ✕
@@ -962,23 +951,6 @@ export default function SettingsPage() {
                       {cat.name}
                     </option>
                   ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  类型
-                </label>
-                <select
-                  value={promptFormData.type}
-                  onChange={(e) => setPromptFormData({ ...promptFormData, type: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required
-                >
-                  <option value="summary">摘要</option>
-                  <option value="outline">大纲</option>
-                  <option value="key_points">关键点</option>
-                  <option value="mindmap">思维导图</option>
                 </select>
               </div>
 
