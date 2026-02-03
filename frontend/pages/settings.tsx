@@ -1,9 +1,33 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { articleApi, categoryApi, type ModelAPIConfig, type PromptConfig } from '@/lib/api';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 type SettingSection = 'ai' | 'categories';
 type AISubSection = 'model-api' | 'prompt';
+
+const PRESET_COLORS = [
+  '#EF4444', '#F97316', '#F59E0B', '#EAB308', '#84CC16',
+  '#22C55E', '#10B981', '#14B8A6', '#06B6D4', '#0EA5E9',
+  '#3B82F6', '#6366F1', '#8B5CF6', '#A855F7', '#D946EF',
+  '#EC4899', '#F43F5E', '#78716C', '#64748B', '#6B7280',
+];
 
 interface Category {
   id: string;
@@ -14,8 +38,80 @@ interface Category {
   article_count: number;
 }
 
+interface SortableCategoryItemProps {
+  category: Category;
+  onEdit: (category: Category) => void;
+  onDelete: (id: string) => void;
+}
+
+function SortableCategoryItem({ category, onEdit, onDelete }: SortableCategoryItemProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: category.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="border rounded-lg p-4 hover:shadow-md transition flex items-center justify-between bg-white"
+    >
+      <div className="flex items-center gap-4">
+        <button
+          {...attributes}
+          {...listeners}
+          className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600 px-1"
+          title="拖动排序"
+        >
+          ⋮⋮
+        </button>
+        <div
+          className="w-10 h-10 rounded flex items-center justify-center text-white font-bold text-lg"
+          style={{ backgroundColor: category.color }}
+        >
+          {category.name.charAt(0).toUpperCase()}
+        </div>
+        <div>
+          <h3 className="font-semibold text-gray-900">{category.name}</h3>
+          <p className="text-sm text-gray-600">{category.description || '暂无描述'}</p>
+          <p className="text-xs text-gray-500 mt-1">
+            文章数: {category.article_count}
+          </p>
+        </div>
+      </div>
+
+      <div className="flex gap-1">
+        <button
+          onClick={() => onEdit(category)}
+          className="px-2 py-1 text-sm text-gray-500 rounded hover:bg-blue-100 hover:text-blue-600 transition"
+          title="编辑"
+        >
+          ✏️
+        </button>
+        <button
+          onClick={() => onDelete(category.id)}
+          className="px-2 py-1 text-sm text-gray-500 rounded hover:bg-red-100 hover:text-red-600 transition"
+          title="删除"
+        >
+          ✕
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function SettingsPage() {
-  const [activeSection, setActiveSection] = useState<SettingSection>('ai');
+  const [activeSection, setActiveSection] = useState<SettingSection>('categories');
   const [aiSubSection, setAISubSection] = useState<AISubSection>('model-api');
   const [modelAPIConfigs, setModelAPIConfigs] = useState<ModelAPIConfig[]>([]);
   const [promptConfigs, setPromptConfigs] = useState<PromptConfig[]>([]);
@@ -29,6 +125,37 @@ export default function SettingsPage() {
   const [editingModelAPIConfig, setEditingModelAPIConfig] = useState<ModelAPIConfig | null>(null);
   const [editingPromptConfig, setEditingPromptConfig] = useState<PromptConfig | null>(null);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (over && active.id !== over.id) {
+      const oldIndex = categories.findIndex((c) => c.id === active.id);
+      const newIndex = categories.findIndex((c) => c.id === over.id);
+
+      const newCategories = arrayMove(categories, oldIndex, newIndex);
+      setCategories(newCategories);
+
+      const sortItems = newCategories.map((c, index) => ({
+        id: c.id,
+        sort_order: index,
+      }));
+
+      try {
+        await categoryApi.updateCategoriesSort(sortItems);
+      } catch (error) {
+        console.error('Failed to update sort order:', error);
+        fetchCategories();
+      }
+    }
+  };
 
   const [modelAPIFormData, setModelAPIFormData] = useState({
     name: '',
@@ -283,11 +410,14 @@ export default function SettingsPage() {
   // Category handlers
   const handleCreateCategoryNew = () => {
     setEditingCategory(null);
+    const maxSortOrder = categories.length > 0 
+      ? Math.max(...categories.map(c => c.sort_order)) + 1 
+      : 0;
     setCategoryFormData({
       name: '',
       description: '',
-      color: '#3B82F6',
-      sort_order: 0,
+      color: PRESET_COLORS[0],
+      sort_order: maxSortOrder,
     });
     setShowCategoryModal(true);
   };
@@ -354,6 +484,14 @@ export default function SettingsPage() {
               <h2 className="font-semibold text-gray-900 mb-4">配置项</h2>
               <div className="space-y-2">
                 <button
+                  onClick={() => setActiveSection('categories')}
+                  className={`w-full text-left px-4 py-3 rounded-lg transition ${
+                    activeSection === 'categories' ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-100'
+                  }`}
+                >
+                  🏷️ 分类管理
+                </button>
+                <button
                   onClick={() => setActiveSection('ai')}
                   className={`w-full text-left px-4 py-3 rounded-lg transition ${
                     activeSection === 'ai' ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-100'
@@ -381,14 +519,6 @@ export default function SettingsPage() {
                     </button>
                   </>
                 )}
-                <button
-                  onClick={() => setActiveSection('categories')}
-                  className={`w-full text-left px-4 py-3 rounded-lg transition ${
-                    activeSection === 'categories' ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-100'
-                  }`}
-                >
-                  🏷️ 分类管理
-                </button>
               </div>
             </div>
           </aside>
@@ -503,7 +633,7 @@ export default function SettingsPage() {
                               className="px-3 py-1 text-sm bg-red-600 text-white rounded hover:bg-red-700 transition"
                               title="删除"
                             >
-                              🗑️
+                              ✕
                             </button>
                           </div>
                         </div>
@@ -617,7 +747,7 @@ export default function SettingsPage() {
                               className="px-3 py-1 text-sm bg-red-600 text-white rounded hover:bg-red-700 transition"
                               title="删除"
                             >
-                              🗑️
+                              ✕
                             </button>
                           </div>
                         </div>
@@ -647,47 +777,27 @@ export default function SettingsPage() {
                     暂无分类，点击"新增分类"按钮开始
                   </div>
                 ) : (
-                  <div className="space-y-3">
-                    {categories.map((category) => (
-                      <div
-                        key={category.id}
-                        className="border rounded-lg p-4 hover:shadow-md transition flex items-center justify-between"
-                      >
-                        <div className="flex items-center gap-4">
-                          <div
-                            className="w-10 h-10 rounded flex items-center justify-center text-white font-bold text-lg"
-                            style={{ backgroundColor: category.color }}
-                          >
-                            {category.name.charAt(0).toUpperCase()}
-                          </div>
-                          <div>
-                            <h3 className="font-semibold text-gray-900">{category.name}</h3>
-                            <p className="text-sm text-gray-600">{category.description || '暂无描述'}</p>
-                            <p className="text-xs text-gray-500 mt-1">
-                              文章数: {category.article_count}
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => handleEditCategory(category)}
-                            className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition"
-                            title="编辑"
-                          >
-                            ✏️
-                          </button>
-                          <button
-                            onClick={() => handleDeleteCategory(category.id)}
-                            className="px-3 py-1 text-sm bg-red-600 text-white rounded hover:bg-red-700 transition"
-                            title="删除"
-                          >
-                            🗑️
-                          </button>
-                        </div>
+                  <DndContext
+                    sensors={sensors}
+                    collisionDetection={closestCenter}
+                    onDragEnd={handleDragEnd}
+                  >
+                    <SortableContext
+                      items={categories.map((c) => c.id)}
+                      strategy={verticalListSortingStrategy}
+                    >
+                      <div className="space-y-3">
+                        {categories.map((category) => (
+                          <SortableCategoryItem
+                            key={category.id}
+                            category={category}
+                            onEdit={handleEditCategory}
+                            onDelete={handleDeleteCategory}
+                          />
+                        ))}
                       </div>
-                    ))}
-                  </div>
+                    </SortableContext>
+                  </DndContext>
                 )}
               </div>
             )}
@@ -736,7 +846,6 @@ export default function SettingsPage() {
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="https://api.openai.com/v1"
                 />
-                <p className="text-xs text-gray-500 mt-1">例如: https://api.openai.com/v1 或 https://api.siliconflow.cn/v1</p>
               </div>
 
               <div>
@@ -992,27 +1101,21 @@ export default function SettingsPage() {
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   颜色
                 </label>
-                <div className="flex items-center gap-3">
-                  <input
-                    type="color"
-                    value={categoryFormData.color}
-                    onChange={(e) => setCategoryFormData({ ...categoryFormData, color: e.target.value })}
-                    className="w-20 h-10 border border-gray-300 rounded-lg cursor-pointer"
-                  />
-                  <span className="text-sm text-gray-600">{categoryFormData.color}</span>
+                <div className="grid grid-cols-10 gap-2">
+                  {PRESET_COLORS.map((color) => (
+                    <button
+                      key={color}
+                      type="button"
+                      onClick={() => setCategoryFormData({ ...categoryFormData, color })}
+                      className={`w-8 h-8 rounded-lg transition ${
+                        categoryFormData.color === color 
+                          ? 'ring-2 ring-offset-2 ring-blue-500' 
+                          : 'hover:scale-110'
+                      }`}
+                      style={{ backgroundColor: color }}
+                    />
+                  ))}
                 </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  排序
-                </label>
-                <input
-                  type="number"
-                  value={categoryFormData.sort_order}
-                  onChange={(e) => setCategoryFormData({ ...categoryFormData, sort_order: parseInt(e.target.value) || 0 })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
               </div>
             </div>
 

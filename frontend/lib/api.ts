@@ -299,4 +299,9 @@ export const categoryApi = {
     const response = await api.put(`/api/categories/${id}`, data);
     return response.data;
   },
+
+  updateCategoriesSort: async (items: { id: string; sort_order: number }[]) => {
+    const response = await api.put('/api/categories/sort', { items });
+    return response.data;
+  },
 };

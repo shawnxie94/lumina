@@ -107,7 +107,7 @@ async def get_articles(
     published_at_end: Optional[str] = None,
     created_at_start: Optional[str] = None,
     created_at_end: Optional[str] = None,
-    sort_by: Optional[str] = "published_at_desc",
+    sort_by: Optional[str] = "created_at_desc",
     db: Session = Depends(get_db),
 ):
     articles, total = article_service.get_articles(
@@ -316,6 +316,31 @@ async def create_category(category: CategoryCreate, db: Session = Depends(get_db
         db.refresh(new_category)
         return {"id": new_category.id, "name": new_category.name}
     except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+class CategorySortItem(BaseModel):
+    id: str
+    sort_order: int
+
+
+class CategorySortRequest(BaseModel):
+    items: List[CategorySortItem]
+
+
+@app.put("/api/categories/sort")
+async def update_categories_sort(
+    request: CategorySortRequest, db: Session = Depends(get_db)
+):
+    try:
+        for item in request.items:
+            category = db.query(Category).filter(Category.id == item.id).first()
+            if category:
+                category.sort_order = item.sort_order
+        db.commit()
+        return {"message": "排序更新成功"}
+    except Exception as e:
+        db.rollback()
         raise HTTPException(status_code=400, detail=str(e))
 
 

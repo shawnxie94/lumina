@@ -63,7 +63,7 @@ export default function Home() {
   const [publishedDateRange, setPublishedDateRange] = useState<[Date | null, Date | null]>([null, null]);
   const [createdDateRange, setCreatedDateRange] = useState<[Date | null, Date | null]>([null, null]);
   const [quickDateFilter, setQuickDateFilter] = useState<QuickDateOption>('');
-  const [sortBy, setSortBy] = useState<string>('published_at_desc');
+  const [sortBy, setSortBy] = useState<string>('created_at_desc');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [total, setTotal] = useState(0);

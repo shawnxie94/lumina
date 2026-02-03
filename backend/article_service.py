@@ -244,7 +244,7 @@ class ArticleService:
         published_at_end: str = None,
         created_at_start: str = None,
         created_at_end: str = None,
-        sort_by: str = "published_at_desc",
+        sort_by: str = "created_at_desc",
     ):
         from sqlalchemy import func
 
