@@ -77,6 +77,7 @@ export const articleApi = {
     published_at_end?: string;
     created_at_start?: string;
     created_at_end?: string;
+    sort_by?: string;
   }) => {
     const response = await api.get('/api/articles', { params });
     return response.data;

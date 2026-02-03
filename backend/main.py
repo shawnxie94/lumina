@@ -107,6 +107,7 @@ async def get_articles(
     published_at_end: Optional[str] = None,
     created_at_start: Optional[str] = None,
     created_at_end: Optional[str] = None,
+    sort_by: Optional[str] = "published_at_desc",
     db: Session = Depends(get_db),
 ):
     articles, total = article_service.get_articles(
@@ -121,6 +122,7 @@ async def get_articles(
         published_at_end,
         created_at_start,
         created_at_end,
+        sort_by,
     )
     return {
         "data": [

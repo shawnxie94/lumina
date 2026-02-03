@@ -13,6 +13,42 @@ const formatDate = (date: Date | null): string => {
   return `${year}-${month}-${day}`;
 };
 
+// Quick date filter options
+type QuickDateOption = '' | '1d' | '3d' | '1w' | '1m' | '3m' | '6m' | '1y';
+
+const getDateRangeFromQuickOption = (option: QuickDateOption): [Date | null, Date | null] => {
+  if (!option) return [null, null];
+  
+  const now = new Date();
+  const startDate = new Date();
+  
+  switch (option) {
+    case '1d':
+      startDate.setDate(now.getDate() - 1);
+      break;
+    case '3d':
+      startDate.setDate(now.getDate() - 3);
+      break;
+    case '1w':
+      startDate.setDate(now.getDate() - 7);
+      break;
+    case '1m':
+      startDate.setMonth(now.getMonth() - 1);
+      break;
+    case '3m':
+      startDate.setMonth(now.getMonth() - 3);
+      break;
+    case '6m':
+      startDate.setMonth(now.getMonth() - 6);
+      break;
+    case '1y':
+      startDate.setFullYear(now.getFullYear() - 1);
+      break;
+  }
+  
+  return [startDate, now];
+};
+
 export default function Home() {
   const router = useRouter();
   const [articles, setArticles] = useState<Article[]>([]);
@@ -26,6 +62,8 @@ export default function Home() {
   const [author, setAuthor] = useState<string>('');
   const [publishedDateRange, setPublishedDateRange] = useState<[Date | null, Date | null]>([null, null]);
   const [createdDateRange, setCreatedDateRange] = useState<[Date | null, Date | null]>([null, null]);
+  const [quickDateFilter, setQuickDateFilter] = useState<QuickDateOption>('');
+  const [sortBy, setSortBy] = useState<string>('published_at_desc');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [total, setTotal] = useState(0);
@@ -51,6 +89,7 @@ export default function Home() {
         published_at_end: formatDate(publishedEndDate) || undefined,
         created_at_start: formatDate(createdStartDate) || undefined,
         created_at_end: formatDate(createdEndDate) || undefined,
+        sort_by: sortBy,
       });
       setArticles(response.data);
       setTotal(response.pagination.total);
@@ -110,7 +149,7 @@ export default function Home() {
       fetchArticles();
       fetchCategoryStats();
     }
-  }, [initialized, page, pageSize, selectedCategory, searchTerm, sourceDomain, author, publishedStartDate, publishedEndDate, createdStartDate, createdEndDate]);
+  }, [initialized, page, pageSize, selectedCategory, searchTerm, sourceDomain, author, publishedStartDate, publishedEndDate, createdStartDate, createdEndDate, sortBy]);
 
   useEffect(() => {
     if (router.isReady) {
@@ -135,11 +174,20 @@ export default function Home() {
     fetchArticles();
   };
 
+  const handleQuickDateChange = (option: QuickDateOption) => {
+    setQuickDateFilter(option);
+    const [start, end] = getDateRangeFromQuickOption(option);
+    setCreatedDateRange([start, end]);
+    setPage(1);
+  };
+
   const handleClearFilters = () => {
+    setSearchTerm('');
     setSourceDomain('');
     setAuthor('');
     setPublishedDateRange([null, null]);
     setCreatedDateRange([null, null]);
+    setQuickDateFilter('');
     setPage(1);
   };
 
@@ -256,32 +304,57 @@ export default function Home() {
 
           <main className="flex-1">
             <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-              <form onSubmit={handleSearch} className="flex gap-4">
-                <input
-                  type="text"
-                  placeholder="搜索文章标题..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <button
-                  type="submit"
-                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
-                >
-                  搜索
-                </button>
+              <div className="flex flex-wrap items-center justify-end gap-4">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-600">创建时间：</span>
+                  <select
+                    value={quickDateFilter}
+                    onChange={(e) => handleQuickDateChange(e.target.value as QuickDateOption)}
+                    className="px-3 py-1 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">全部</option>
+                    <option value="1d">1天内</option>
+                    <option value="3d">3天内</option>
+                    <option value="1w">1周内</option>
+                    <option value="1m">1个月</option>
+                    <option value="3m">3个月</option>
+                    <option value="6m">6个月</option>
+                    <option value="1y">1年内</option>
+                  </select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-600">排序：</span>
+                  <select
+                    value={sortBy}
+                    onChange={(e) => { setSortBy(e.target.value); setPage(1); }}
+                    className="px-3 py-1 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="published_at_desc">发表时间倒序</option>
+                    <option value="created_at_desc">创建时间倒序</option>
+                  </select>
+                </div>
                 <button
                   type="button"
                   onClick={() => setShowFilters(!showFilters)}
-                  className={`px-4 py-2 rounded-lg transition ${showFilters ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                  className={`px-4 py-1 text-sm rounded-lg transition ${showFilters ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
                 >
-                  🔍 更多筛选
+                  🔍 高级筛选
                 </button>
-              </form>
+              </div>
 
               {showFilters && (
                 <div className="mt-4 pt-4 border-t border-gray-200">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">文章标题</label>
+                      <input
+                        type="text"
+                        placeholder="模糊匹配标题..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">来源</label>
                       <select
@@ -308,6 +381,8 @@ export default function Home() {
                         ))}
                       </select>
                     </div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">发表时间</label>
                       <DatePicker
@@ -328,7 +403,7 @@ export default function Home() {
                         selectsRange
                         startDate={createdStartDate}
                         endDate={createdEndDate}
-                        onChange={(update) => { setCreatedDateRange(update); setPage(1); }}
+                        onChange={(update) => { setCreatedDateRange(update); setQuickDateFilter(''); setPage(1); }}
                         isClearable
                         placeholderText="选择日期范围"
                         dateFormat="yyyy-MM-dd"

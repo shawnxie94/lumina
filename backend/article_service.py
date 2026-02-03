@@ -244,6 +244,7 @@ class ArticleService:
         published_at_end: str = None,
         created_at_start: str = None,
         created_at_end: str = None,
+        sort_by: str = "published_at_desc",
     ):
         from sqlalchemy import func
 
@@ -275,7 +276,15 @@ class ArticleService:
             )
 
         total = query.count()
-        query = query.order_by(Article.created_at.desc())
+
+        # Apply sorting based on sort_by parameter
+        if sort_by == "created_at_desc":
+            query = query.order_by(Article.created_at.desc())
+        else:  # Default: published_at_desc
+            query = query.order_by(
+                Article.published_at.desc().nullslast(), Article.created_at.desc()
+            )
+
         query = query.offset((page - 1) * size).limit(size)
 
         articles = query.all()
