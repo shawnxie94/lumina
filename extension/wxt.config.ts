@@ -5,7 +5,7 @@ export default defineConfig({
     name: '文章知识库采集器',
     description: '一键采集网页文章到知识库',
     version: '1.0.0',
-    permissions: ['activeTab', 'scripting', 'storage'],
+    permissions: ['activeTab', 'scripting', 'storage', 'contextMenus', 'notifications'],
     host_permissions: ['<all_urls>'],
     action: {
       default_popup: 'popup.html',

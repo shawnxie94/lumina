@@ -1,13 +1,27 @@
 import { ApiClient } from '../../utils/api';
 import { marked } from 'marked';
+import TurndownService from 'turndown';
+import { gfm } from 'turndown-plugin-gfm';
 
 class EditorController {
   #apiClient;
   #articleData = null;
   #categories = [];
+  #turndown;
 
   constructor() {
     this.#apiClient = new ApiClient();
+    this.#turndown = new TurndownService({
+      headingStyle: 'atx',
+      codeBlockStyle: 'fenced',
+      fence: '```',
+      bulletListMarker: '-',
+      emDelimiter: '*',
+      strongDelimiter: '**',
+      linkStyle: 'inlined',
+    });
+    this.#turndown.use(gfm);
+    this.#turndown.remove(['script', 'style', 'noscript', 'iframe', 'nav', 'footer', 'aside']);
   }
 
   async init() {
@@ -73,6 +87,11 @@ class EditorController {
             reject(new Error('Article data not found'));
           } else {
             this.#articleData = result[articleId];
+            
+            if (!this.#articleData.content_md && this.#articleData.content_html) {
+              this.#articleData.content_md = this.#turndown.turndown(this.#articleData.content_html);
+            }
+            
             chrome.storage.local.remove([articleId]);
             resolve();
           }

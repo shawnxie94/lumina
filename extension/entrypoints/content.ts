@@ -14,6 +14,15 @@ export default defineContentScript({
         const result = extractArticle(forceRefresh);
         sendResponse(result);
       }
+      if (message.type === 'CHECK_SELECTION') {
+        const selection = window.getSelection();
+        const hasSelection = selection && selection.toString().trim().length > 0;
+        sendResponse({ hasSelection });
+      }
+      if (message.type === 'EXTRACT_SELECTION') {
+        const result = extractSelection();
+        sendResponse(result);
+      }
       return true;
     });
   },
@@ -28,6 +37,70 @@ interface ExtractedArticle {
   published_at: string;
   source_domain: string;
   excerpt: string;
+  isSelection?: boolean;
+}
+
+function extractSelection(): ExtractedArticle | null {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) {
+    return null;
+  }
+
+  const range = selection.getRangeAt(0);
+  const selectedText = selection.toString().trim();
+  
+  if (selectedText.length === 0) {
+    return null;
+  }
+
+  const container = document.createElement('div');
+  container.appendChild(range.cloneContents());
+
+  processLazyImagesInElement(container);
+
+  const baseUrl = window.location.href;
+  const contentHtml = resolveRelativeUrls(container.innerHTML, baseUrl);
+  const meta = extractMetadata();
+
+  const topImage = extractFirstImage(contentHtml) || meta.topImage;
+
+  return {
+    title: meta.title || document.title,
+    content_html: contentHtml,
+    source_url: baseUrl,
+    top_image: topImage,
+    author: meta.author,
+    published_at: parseDate(meta.publishedAt),
+    source_domain: new URL(baseUrl).hostname,
+    excerpt: selectedText.slice(0, 200),
+    isSelection: true,
+  };
+}
+
+function processLazyImagesInElement(element: HTMLElement): void {
+  const lazyAttrs = ['data-src', 'data-lazy-src', 'data-original', 'data-lazy', 'data-url', 'data-croporisrc'];
+
+  const isPlaceholder = (src: string): boolean => {
+    if (!src) return true;
+    if (src.startsWith('data:image/svg+xml')) return true;
+    if (src.startsWith('data:image/gif;base64,R0lGOD')) return true;
+    if (src.includes('1x1') || src.includes('placeholder') || src.includes('blank')) return true;
+    if (src.includes('spacer') || src.includes('loading')) return true;
+    return false;
+  };
+
+  element.querySelectorAll('img').forEach((img) => {
+    const currentSrc = img.getAttribute('src') || '';
+    if (isPlaceholder(currentSrc)) {
+      for (const attr of lazyAttrs) {
+        const lazySrc = img.getAttribute(attr);
+        if (lazySrc) {
+          img.setAttribute('src', lazySrc);
+          break;
+        }
+      }
+    }
+  });
 }
 
 function extractArticle(forceRefresh = false): ExtractedArticle {

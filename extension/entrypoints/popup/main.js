@@ -368,15 +368,28 @@ class PopupController {
         return;
       }
 
-      this.updateStatus('loading', '正在提取文章内容...');
-
       let extractedData;
-      
+      let isSelection = false;
+
       try {
-        extractedData = await chrome.tabs.sendMessage(tab.id, { type: 'EXTRACT_ARTICLE' });
+        const selectionCheck = await chrome.tabs.sendMessage(tab.id, { type: 'CHECK_SELECTION' });
+        if (selectionCheck?.hasSelection) {
+          this.updateStatus('loading', '正在提取选中内容...');
+          extractedData = await chrome.tabs.sendMessage(tab.id, { type: 'EXTRACT_SELECTION' });
+          isSelection = true;
+        }
       } catch {
-        this.updateStatus('loading', '正在使用备用方式提取...');
-        extractedData = await this.extractViaScript(tab.id);
+        // Selection check failed, continue with full article
+      }
+
+      if (!extractedData) {
+        this.updateStatus('loading', '正在提取文章内容...');
+        try {
+          extractedData = await chrome.tabs.sendMessage(tab.id, { type: 'EXTRACT_ARTICLE' });
+        } catch {
+          this.updateStatus('loading', '正在使用备用方式提取...');
+          extractedData = await this.extractViaScript(tab.id);
+        }
       }
 
       if (!extractedData || !extractedData.content_html) {
@@ -395,12 +408,14 @@ class PopupController {
 
       const previewTitle = document.getElementById('previewTitle');
       if (previewTitle && this.#articleData) {
-        previewTitle.textContent = this.#articleData.title || '(无标题)';
+        const titlePrefix = isSelection ? '📋 ' : '';
+        previewTitle.textContent = titlePrefix + (this.#articleData.title || '(无标题)');
       }
 
       const wordCount = contentMd.length;
       const readingTime = Math.ceil(wordCount / 500);
-      this.updateStatus('idle', `准备就绪 · 约 ${readingTime} 分钟阅读`);
+      const selectionHint = isSelection ? '已选中部分内容 · ' : '';
+      this.updateStatus('idle', `${selectionHint}准备就绪 · 约 ${readingTime} 分钟阅读`);
     } catch (error) {
       console.error('Failed to extract article:', error);
       this.handleExtractionError(error);
