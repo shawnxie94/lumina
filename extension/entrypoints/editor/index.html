@@ -21,26 +21,28 @@
       <input type="text" id="titleInput" class="input-large" />
     </div>
 
-    <div class="form-group">
-      <label for="categorySelect">分类</label>
-      <select id="categorySelect">
-        <option value="">选择分类...</option>
-      </select>
-    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label for="categorySelect">分类</label>
+        <select id="categorySelect">
+          <option value="">选择分类...</option>
+        </select>
+      </div>
 
-    <div class="form-group">
-      <label for="authorInput">作者</label>
-      <input type="text" id="authorInput" />
-    </div>
+      <div class="form-group">
+        <label for="authorInput">作者</label>
+        <input type="text" id="authorInput" />
+      </div>
 
-    <div class="form-group">
-      <label for="sourceUrlInput">来源URL</label>
-      <input type="text" id="sourceUrlInput" readonly />
-    </div>
+      <div class="form-group">
+        <label for="sourceUrlInput">来源</label>
+        <input type="text" id="sourceUrlInput" readonly />
+      </div>
 
-    <div class="form-group" id="publishedAtGroup" style="display: none;">
-      <label for="publishedAtInput">发表时间</label>
-      <input type="date" id="publishedAtInput" />
+      <div class="form-group" id="publishedAtGroup">
+        <label for="publishedAtInput">发布时间</label>
+        <input type="date" id="publishedAtInput" />
+      </div>
     </div>
 
     <div class="form-group" id="topImageGroup" style="display: none;">
@@ -53,13 +55,26 @@
       </div>
     </div>
 
+    <div id="imageModal" class="image-modal hidden">
+      <div class="image-modal-backdrop"></div>
+      <div class="image-modal-content">
+        <img id="modalImage" src="" alt="头图预览" />
+        <button id="closeModalBtn" class="image-modal-close">&times;</button>
+      </div>
+    </div>
+
     <div class="form-group content-section">
       <div class="section-header">
-        <label for="contentMd">Markdown内容</label>
-        <button id="toggleMdBtn" class="btn-preview">编辑</button>
+        <label>Markdown内容</label>
       </div>
-      <textarea id="contentMd" rows="20" class="hidden"></textarea>
-      <div id="mdPreview" class="preview-panel"></div>
+      <div class="md-split-view">
+        <div class="md-editor-pane">
+          <textarea id="contentMd" rows="20"></textarea>
+        </div>
+        <div class="md-preview-pane">
+          <div id="mdPreview" class="preview-panel"></div>
+        </div>
+      </div>
     </div>
   </div>
 

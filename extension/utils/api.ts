@@ -1,4 +1,5 @@
 import type { Category, CreateArticleRequest, CreateArticleResponse, StorageData } from '../types';
+import { logError } from './errorLogger';
 
 const DEFAULT_API_HOST = 'localhost:8000';
 const STORAGE_KEY = 'apiHost';
@@ -48,6 +49,7 @@ export class ApiClient {
       return await response.json();
     } catch (error) {
       console.error('Failed to load categories:', error);
+      logError('api', error instanceof Error ? error : new Error(String(error)), { action: 'getCategories', apiHost: this.apiHost });
       throw error;
     }
   }
@@ -70,6 +72,7 @@ export class ApiClient {
       return await response.json();
     } catch (error) {
       console.error('Failed to create article:', error);
+      logError('api', error instanceof Error ? error : new Error(String(error)), { action: 'createArticle', apiHost: this.apiHost });
       throw error;
     }
   }

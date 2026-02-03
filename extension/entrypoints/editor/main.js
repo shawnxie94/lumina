@@ -146,6 +146,7 @@ class EditorController {
         }
       } catch (error) {
         console.error('Failed to parse Markdown:', error);
+        logError('editor', error, { action: 'populateForm.parseMarkdown' });
         mdPreview.innerHTML = '<p>Markdown 解析失败</p>';
       }
     }
@@ -155,21 +156,12 @@ class EditorController {
     }
 
     if (publishedAtInput) {
-      this.showPublishedAt();
       if (this.#articleData.published_at) {
         const publishedAt = this.normalizeDate(this.#articleData.published_at);
         if (publishedAt) {
           publishedAtInput.value = publishedAt;
         }
       } 
-    }
-  }
-
-  showPublishedAt() {
-    const publishedAtGroup = document.getElementById('publishedAtGroup');
-
-    if (publishedAtGroup) {
-      publishedAtGroup.style.display = 'block';
     }
   }
 
@@ -187,6 +179,7 @@ class EditorController {
       return `${year}-${month}-${day}`;
     } catch (error) {
       console.error('Failed to normalize date:', error);
+      logError('editor', error, { action: 'normalizeDate', dateStr });
       return null;
     }
   }
@@ -199,16 +192,17 @@ class EditorController {
     if (!topImageGroup || !topImageSelect || !topImagePreview) return;
 
     const uniqueImages = new Set();
+    
+    if (defaultImage) {
+      uniqueImages.add(defaultImage);
+    }
+
     const imgRegex = /!\[.*?\]\((.*?)\)/g;
     let match;
     while ((match = imgRegex.exec(mdContent)) !== null) {
       if (match[1]) {
         uniqueImages.add(match[1]);
       }
-    }
-
-    if (defaultImage) {
-      uniqueImages.add(defaultImage);
     }
 
     const imageArray = Array.from(uniqueImages);
@@ -240,10 +234,36 @@ class EditorController {
     if (imageUrl) {
       topImagePreview.innerHTML = `<img src="${imageUrl}" alt="头图预览" />`;
       topImagePreview.classList.remove('empty');
+      topImagePreview.onclick = () => this.openImageModal(imageUrl);
     } else {
       topImagePreview.innerHTML = '未选择图片';
       topImagePreview.classList.add('empty');
+      topImagePreview.onclick = null;
     }
+  }
+
+  openImageModal(imageUrl) {
+    const modal = document.getElementById('imageModal');
+    const modalImage = document.getElementById('modalImage');
+    const closeBtn = document.getElementById('closeModalBtn');
+    const backdrop = modal?.querySelector('.image-modal-backdrop');
+
+    if (!modal || !modalImage) return;
+
+    modalImage.src = imageUrl;
+    modal.classList.remove('hidden');
+
+    const closeModal = () => {
+      modal.classList.add('hidden');
+      modalImage.src = '';
+    };
+
+    closeBtn?.addEventListener('click', closeModal, { once: true });
+    backdrop?.addEventListener('click', closeModal, { once: true });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeModal();
+    }, { once: true });
   }
 
   async setupEventListeners() {
@@ -255,34 +275,43 @@ class EditorController {
   }
 
   setupPreviewToggles() {
-    const toggleMdBtn = document.getElementById('toggleMdBtn');
     const contentMd = document.getElementById('contentMd');
     const mdPreview = document.getElementById('mdPreview');
 
-    if (toggleMdBtn && contentMd && mdPreview) {
-      toggleMdBtn.addEventListener('click', () => {
-        const isEditingMode = !contentMd.classList.contains('hidden');
-        if (isEditingMode) {
-          try {
-            const mdContent = contentMd.value || '';
-            if (mdContent.trim()) {
-              mdPreview.innerHTML = marked.parse(mdContent);
-            } else {
-              mdPreview.innerHTML = '<p>无内容</p>';
-            }
-          } catch (error) {
-            console.error('Failed to parse Markdown:', error);
-            mdPreview.innerHTML = '<p>Markdown 解析失败</p>';
-          }
-          contentMd.classList.add('hidden');
-          mdPreview.classList.remove('hidden');
-          toggleMdBtn.textContent = '编辑';
-        } else {
-          contentMd.classList.remove('hidden');
-          mdPreview.classList.add('hidden');
-          toggleMdBtn.textContent = '预览';
-        }
+    if (contentMd && mdPreview) {
+      contentMd.addEventListener('input', () => {
+        this.updateMdPreview();
       });
+
+      contentMd.addEventListener('scroll', () => {
+        this.syncScroll(contentMd, mdPreview);
+      });
+    }
+  }
+
+  syncScroll(source, target) {
+    const scrollPercentage = source.scrollTop / (source.scrollHeight - source.clientHeight);
+    const targetScrollTop = scrollPercentage * (target.scrollHeight - target.clientHeight);
+    target.scrollTop = targetScrollTop;
+  }
+
+  updateMdPreview() {
+    const contentMd = document.getElementById('contentMd');
+    const mdPreview = document.getElementById('mdPreview');
+
+    if (!contentMd || !mdPreview) return;
+
+    try {
+      const mdContent = contentMd.value || '';
+      if (mdContent.trim()) {
+        mdPreview.innerHTML = marked.parse(mdContent);
+      } else {
+        mdPreview.innerHTML = '<p style="color: #9ca3af;">预览区域</p>';
+      }
+    } catch (error) {
+      console.error('Failed to parse Markdown:', error);
+      logError('editor', error, { action: 'updateMdPreview' });
+      mdPreview.innerHTML = '<p>Markdown 解析失败</p>';
     }
   }
 

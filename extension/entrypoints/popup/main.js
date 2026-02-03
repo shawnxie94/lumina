@@ -552,6 +552,7 @@ class PopupController {
       return await this.extractViaScript(tabId);
     } catch (err) {
       console.error('Fallback extraction failed:', err);
+      logError('popup', err, { action: 'extractWithRetry.fallback', tabId });
       throw lastError || err;
     }
   }

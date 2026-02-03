@@ -94,6 +94,7 @@ class SettingsController {
       await this.loadCategories();
     } catch (error) {
       console.error('Failed to save API config:', error);
+      logError('settings', error, { action: 'saveApiConfig' });
       this.showToast('保存失败', 'error');
     }
   }
@@ -124,6 +125,7 @@ class SettingsController {
       actionsEl?.classList.remove('hidden');
     } catch (error) {
       console.error('Failed to load categories:', error);
+      logError('settings', error, { action: 'loadCategories' });
       loadingEl?.classList.add('hidden');
       errorEl?.classList.remove('hidden');
     }
@@ -198,6 +200,7 @@ class SettingsController {
       await this.renderCategoryKeywords();
     } catch (error) {
       console.error('Failed to save keywords:', error);
+      logError('settings', error, { action: 'saveKeywords' });
       this.showToast('保存失败', 'error');
     }
   }
@@ -211,6 +214,7 @@ class SettingsController {
       await this.renderCategoryKeywords();
     } catch (error) {
       console.error('Failed to reset keywords:', error);
+      logError('settings', error, { action: 'resetKeywords' });
       this.showToast('重置失败', 'error');
     }
   }
@@ -260,6 +264,7 @@ class SettingsController {
       `).join('');
     } catch (error) {
       console.error('Failed to load error logs:', error);
+      logError('settings', error, { action: 'loadErrorLogs' });
       container.innerHTML = '<div class="empty-logs">加载错误日志失败</div>';
     }
   }
@@ -301,6 +306,7 @@ class SettingsController {
       await this.loadErrorLogs();
     } catch (error) {
       console.error('Failed to clear logs:', error);
+      logError('settings', error, { action: 'clearLogs' });
       this.showToast('清空失败', 'error');
     }
   }
