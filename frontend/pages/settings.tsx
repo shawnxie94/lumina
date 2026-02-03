@@ -22,10 +22,11 @@ import { CSS } from '@dnd-kit/utilities';
 
 type SettingSection = 'ai' | 'categories';
 type AISubSection = 'model-api' | 'prompt';
-type PromptType = 'summary' | 'key_points' | 'outline' | 'quotes';
+type PromptType = 'summary' | 'translation' | 'key_points' | 'outline' | 'quotes';
 
 const PROMPT_TYPES = [
   { value: 'summary' as PromptType, label: '摘要' },
+  { value: 'translation' as PromptType, label: '翻译' },
   { value: 'key_points' as PromptType, label: '关键内容' },
   { value: 'outline' as PromptType, label: '文章大纲' },
   { value: 'quotes' as PromptType, label: '文章金句' },

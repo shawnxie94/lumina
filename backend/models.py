@@ -56,6 +56,10 @@ class Article(Base):
     content_html = Column(Text, nullable=True)
     content_md = Column(Text)
     content_trans = Column(Text)
+    translation_status = Column(
+        String, default=None
+    )  # None, pending, processing, completed, failed
+    translation_error = Column(Text, nullable=True)  # 翻译失败时的错误信息
     source_url = Column(String, unique=True, nullable=False)
     top_image = Column(String)
     author = Column(String)
@@ -81,8 +85,13 @@ class AIAnalysis(Base):
         nullable=False,
     )
     summary = Column(Text)
+    summary_status = Column(String, default=None)
     outline = Column(Text)
+    outline_status = Column(String, default=None)
     key_points = Column(Text)
+    key_points_status = Column(String, default=None)
+    quotes = Column(Text)
+    quotes_status = Column(String, default=None)
     mindmap = Column(Text)
     error_message = Column(Text, nullable=True)
     updated_at = Column(String, default=today_str)

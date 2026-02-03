@@ -167,6 +167,8 @@ async def get_article(article_id: str, db: Session = Depends(get_db)):
         "content_html": article.content_html,
         "content_md": article.content_md,
         "content_trans": article.content_trans,
+        "translation_status": article.translation_status,
+        "translation_error": article.translation_error,
         "source_url": article.source_url,
         "top_image": article.top_image,
         "category": {"id": article.category.id, "name": article.category.name}
@@ -178,6 +180,23 @@ async def get_article(article_id: str, db: Session = Depends(get_db)):
         "created_at": article.created_at,
         "ai_analysis": {
             "summary": article.ai_analysis.summary if article.ai_analysis else None,
+            "summary_status": article.ai_analysis.summary_status
+            if article.ai_analysis
+            else None,
+            "key_points": article.ai_analysis.key_points
+            if article.ai_analysis
+            else None,
+            "key_points_status": article.ai_analysis.key_points_status
+            if article.ai_analysis
+            else None,
+            "outline": article.ai_analysis.outline if article.ai_analysis else None,
+            "outline_status": article.ai_analysis.outline_status
+            if article.ai_analysis
+            else None,
+            "quotes": article.ai_analysis.quotes if article.ai_analysis else None,
+            "quotes_status": article.ai_analysis.quotes_status
+            if article.ai_analysis
+            else None,
             "error_message": article.ai_analysis.error_message
             if article.ai_analysis
             else None,
@@ -207,6 +226,36 @@ async def retry_article_ai(article_id: str, db: Session = Depends(get_db)):
         return {"id": article_id, "status": "processing"}
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/articles/{article_id}/retry-translation")
+async def retry_article_translation(article_id: str, db: Session = Depends(get_db)):
+    try:
+        article_id = await article_service.retry_article_translation(db, article_id)
+        return {"id": article_id, "translation_status": "processing"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/articles/{article_id}/generate/{content_type}")
+async def generate_ai_content(
+    article_id: str, content_type: str, db: Session = Depends(get_db)
+):
+    valid_types = ["summary", "key_points", "outline", "quotes"]
+    if content_type not in valid_types:
+        raise HTTPException(
+            status_code=400, detail=f"无效的内容类型，支持: {', '.join(valid_types)}"
+        )
+
+    try:
+        await article_service.generate_ai_content(db, article_id, content_type)
+        return {"id": article_id, "content_type": content_type, "status": "processing"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 

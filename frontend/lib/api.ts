@@ -26,9 +26,21 @@ export interface ArticleDetail extends Article {
   content_html: string;
   content_md: string;
   content_trans: string;
+  translation_status: string | null;
+  translation_error: string | null;
   source_url: string;
   published_at: string | null;
-  ai_analysis: { summary: string; error_message?: string | null } | null;
+  ai_analysis: {
+    summary: string | null;
+    summary_status: string | null;
+    key_points: string | null;
+    key_points_status: string | null;
+    outline: string | null;
+    outline_status: string | null;
+    quotes: string | null;
+    quotes_status: string | null;
+    error_message?: string | null;
+  } | null;
 }
 
 export interface Category {
@@ -101,6 +113,16 @@ export const articleApi = {
 
   retryArticle: async (id: string) => {
     const response = await api.post(`/api/articles/${id}/retry`);
+    return response.data;
+  },
+
+  retryTranslation: async (id: string) => {
+    const response = await api.post(`/api/articles/${id}/retry-translation`);
+    return response.data;
+  },
+
+  generateAIContent: async (id: string, contentType: string) => {
+    const response = await api.post(`/api/articles/${id}/generate/${contentType}`);
     return response.data;
   },
 

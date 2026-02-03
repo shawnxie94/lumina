@@ -1,4 +1,4 @@
-from ai_client import ConfigurableAIClient
+from ai_client import ConfigurableAIClient, is_english_content
 from models import (
     Article,
     AIAnalysis,
@@ -16,9 +16,24 @@ class ArticleService:
     def __init__(self):
         pass
 
-    def get_ai_config(self, db: Session, category_id: str = None):
+    def get_ai_config(
+        self, db: Session, category_id: str = None, prompt_type: str = "summary"
+    ):
+        """
+        获取AI配置，支持不同类型的提示词（summary, translation等）
+
+        Args:
+            db: 数据库会话
+            category_id: 分类ID（可选）
+            prompt_type: 提示词类型，默认为 "summary"
+
+        Returns:
+            包含AI配置的字典，或None
+        """
         query = db.query(ModelAPIConfig).filter(ModelAPIConfig.is_enabled == True)
-        prompt_query = db.query(PromptConfig).filter(PromptConfig.is_enabled == True)
+        prompt_query = db.query(PromptConfig).filter(
+            PromptConfig.is_enabled == True, PromptConfig.type == prompt_type
+        )
 
         if category_id:
             category_prompt = prompt_query.filter(
@@ -197,6 +212,58 @@ class ArticleService:
             except asyncio.TimeoutError:
                 raise Exception("AI生成超时，请稍后重试")
 
+            # Auto-translate English articles to Chinese
+            content_trans = None
+            if article.content_md and is_english_content(article.content_md):
+                try:
+                    print(f"检测到英文文章，开始翻译: {article.title}")
+                    article.translation_status = "processing"
+                    article.translation_error = None
+                    db.commit()
+
+                    # 获取翻译类型的提示词配置
+                    trans_config = self.get_ai_config(
+                        db, category_id, prompt_type="translation"
+                    )
+                    trans_prompt = None
+                    trans_parameters = {}
+
+                    # 如果有翻译专用配置，使用翻译配置的AI客户端
+                    if trans_config:
+                        trans_prompt = trans_config.get("prompt_template")
+                        trans_parameters = trans_config.get("parameters") or {}
+                        # 如果翻译配置有独立的模型配置，使用它
+                        if trans_config.get("base_url") and trans_config.get("api_key"):
+                            trans_client = self.create_ai_client(trans_config)
+                        else:
+                            trans_client = ai_client
+                    else:
+                        trans_client = ai_client
+
+                    content_trans = await asyncio.wait_for(
+                        trans_client.translate_to_chinese(
+                            article.content_md,
+                            prompt=trans_prompt,
+                            parameters=trans_parameters,
+                        ),
+                        timeout=300.0,
+                    )
+                    print(f"翻译完成: {article.title}")
+                    article.translation_status = "completed"
+                    article.translation_error = None
+                except asyncio.TimeoutError:
+                    print(f"翻译超时: {article.title}")
+                    article.translation_status = "failed"
+                    article.translation_error = "翻译超时，请稍后重试"
+                except Exception as e:
+                    print(f"翻译失败: {article.title}, 错误: {e}")
+                    article.translation_status = "failed"
+                    article.translation_error = str(e)
+
+            # Update article with translation if available
+            if content_trans:
+                article.content_trans = content_trans
+
             existing_analysis = (
                 db.query(AIAnalysis).filter(AIAnalysis.article_id == article_id).first()
             )
@@ -350,3 +417,187 @@ class ArticleService:
         asyncio.create_task(self.process_article_ai(article_id, article.category_id))
 
         return article_id
+
+    async def retry_article_translation(self, db: Session, article_id: str) -> str:
+        """重新生成文章翻译"""
+        article = db.query(Article).filter(Article.id == article_id).first()
+
+        if not article:
+            raise ValueError("文章不存在")
+
+        if not article.content_md:
+            raise ValueError("文章内容为空，无法翻译")
+
+        if not is_english_content(article.content_md):
+            raise ValueError("文章不是英文内容，无需翻译")
+
+        article.translation_status = "pending"
+        article.translation_error = None
+        db.commit()
+
+        import asyncio
+
+        asyncio.create_task(
+            self.process_article_translation(article_id, article.category_id)
+        )
+
+        return article_id
+
+    async def process_article_translation(self, article_id: str, category_id: str):
+        """单独处理文章翻译"""
+        from models import SessionLocal
+        import asyncio
+
+        db = SessionLocal()
+        try:
+            article = db.query(Article).filter(Article.id == article_id).first()
+            if not article:
+                return
+
+            article.translation_status = "processing"
+            article.translation_error = None
+            db.commit()
+
+            # 获取AI配置
+            ai_config = self.get_ai_config(db, category_id)
+            if not ai_config:
+                article.translation_status = "failed"
+                article.translation_error = "未配置AI服务，请先在配置页面设置AI参数"
+                db.commit()
+                return
+
+            ai_client = self.create_ai_client(ai_config)
+
+            # 获取翻译类型的提示词配置
+            trans_config = self.get_ai_config(
+                db, category_id, prompt_type="translation"
+            )
+            trans_prompt = None
+            trans_parameters = {}
+
+            if trans_config:
+                trans_prompt = trans_config.get("prompt_template")
+                trans_parameters = trans_config.get("parameters") or {}
+                if trans_config.get("base_url") and trans_config.get("api_key"):
+                    trans_client = self.create_ai_client(trans_config)
+                else:
+                    trans_client = ai_client
+            else:
+                trans_client = ai_client
+
+            try:
+                content_trans = await asyncio.wait_for(
+                    trans_client.translate_to_chinese(
+                        article.content_md,
+                        prompt=trans_prompt,
+                        parameters=trans_parameters,
+                    ),
+                    timeout=300.0,
+                )
+                article.content_trans = content_trans
+                article.translation_status = "completed"
+                article.translation_error = None
+                print(f"翻译完成: {article.title}")
+            except asyncio.TimeoutError:
+                article.translation_status = "failed"
+                article.translation_error = "翻译超时，请稍后重试"
+                print(f"翻译超时: {article.title}")
+            except Exception as e:
+                article.translation_status = "failed"
+                article.translation_error = str(e)
+                print(f"翻译失败: {article.title}, 错误: {e}")
+
+            db.commit()
+        except Exception as e:
+            print(f"翻译处理失败: {e}")
+            article = db.query(Article).filter(Article.id == article_id).first()
+            if article:
+                article.translation_status = "failed"
+                article.translation_error = str(e)
+                db.commit()
+        finally:
+            db.close()
+
+    async def generate_ai_content(
+        self, db: Session, article_id: str, content_type: str
+    ):
+        article = db.query(Article).filter(Article.id == article_id).first()
+        if not article:
+            raise ValueError("文章不存在")
+
+        if not article.content_md:
+            raise ValueError("文章内容为空")
+
+        if not article.ai_analysis:
+            ai_analysis = AIAnalysis(article_id=article.id)
+            db.add(ai_analysis)
+            db.commit()
+            db.refresh(article)
+
+        setattr(article.ai_analysis, f"{content_type}_status", "pending")
+        db.commit()
+
+        import asyncio
+
+        asyncio.create_task(
+            self.process_ai_content(article_id, article.category_id, content_type)
+        )
+
+    async def process_ai_content(
+        self, article_id: str, category_id: str, content_type: str
+    ):
+        from models import SessionLocal
+        import asyncio
+
+        db = SessionLocal()
+        try:
+            article = db.query(Article).filter(Article.id == article_id).first()
+            if not article or not article.ai_analysis:
+                return
+
+            setattr(article.ai_analysis, f"{content_type}_status", "processing")
+            db.commit()
+
+            ai_config = self.get_ai_config(db, category_id, prompt_type=content_type)
+            if not ai_config:
+                setattr(article.ai_analysis, f"{content_type}_status", "failed")
+                article.ai_analysis.error_message = (
+                    "未配置AI服务，请先在配置页面设置AI参数"
+                )
+                db.commit()
+                return
+
+            ai_client = self.create_ai_client(ai_config)
+            prompt = ai_config.get("prompt_template")
+            parameters = ai_config.get("parameters") or {}
+
+            try:
+                result = await asyncio.wait_for(
+                    ai_client.generate_summary(
+                        article.content_md, prompt=prompt, parameters=parameters
+                    ),
+                    timeout=120.0,
+                )
+                setattr(article.ai_analysis, content_type, result)
+                setattr(article.ai_analysis, f"{content_type}_status", "completed")
+                article.ai_analysis.error_message = None
+                print(f"{content_type} 生成完成: {article.title}")
+            except asyncio.TimeoutError:
+                setattr(article.ai_analysis, f"{content_type}_status", "failed")
+                article.ai_analysis.error_message = "AI生成超时，请稍后重试"
+                print(f"{content_type} 生成超时: {article.title}")
+            except Exception as e:
+                setattr(article.ai_analysis, f"{content_type}_status", "failed")
+                article.ai_analysis.error_message = str(e)
+                print(f"{content_type} 生成失败: {article.title}, 错误: {e}")
+
+            db.commit()
+        except Exception as e:
+            print(f"{content_type} 处理失败: {e}")
+            article = db.query(Article).filter(Article.id == article_id).first()
+            if article and article.ai_analysis:
+                setattr(article.ai_analysis, f"{content_type}_status", "failed")
+                article.ai_analysis.error_message = str(e)
+                db.commit()
+        finally:
+            db.close()
