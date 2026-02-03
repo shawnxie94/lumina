@@ -6,7 +6,7 @@ export default defineConfig({
     description: '一键采集网页文章到知识库',
     version: '1.0.0',
     permissions: ['activeTab', 'scripting', 'storage'],
-    host_permissions: ['https://unpkg.com/*', 'https://cdn.jsdelivr.net/*'],
+    host_permissions: ['<all_urls>'],
     action: {
       default_popup: 'popup.html',
       default_icon: {

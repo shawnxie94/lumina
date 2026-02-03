@@ -1,6 +1,7 @@
 import '../../styles/popup.css';
 import { ApiClient, DEFAULT_CATEGORIES } from '../../utils/api';
 import TurndownService from 'turndown';
+import { gfm } from 'turndown-plugin-gfm';
 
 class PopupController {
   #apiClient;
@@ -10,7 +11,245 @@ class PopupController {
 
   constructor() {
     this.#apiClient = new ApiClient();
-    this.#turndown = new TurndownService();
+    this.#turndown = new TurndownService({
+      headingStyle: 'atx',
+      codeBlockStyle: 'fenced',
+      fence: '```',
+      bulletListMarker: '-',
+      emDelimiter: '*',
+      strongDelimiter: '**',
+      linkStyle: 'inlined',
+    });
+    
+    this.#turndown.use(gfm);
+    this.#turndown.remove(['script', 'style', 'noscript', 'iframe', 'nav', 'footer', 'aside']);
+    
+    this.#turndown.addRule('fencedCodeBlockWithLanguage', {
+      filter: (node, options) => {
+        return (
+          options.codeBlockStyle === 'fenced' &&
+          node.nodeName === 'PRE' &&
+          node.firstChild &&
+          node.firstChild.nodeName === 'CODE'
+        );
+      },
+      replacement: (_content, node, options) => {
+        const codeNode = node.firstChild;
+        const className = codeNode.getAttribute('class') || '';
+        const langMatch = className.match(/(?:language-|lang-)(\w+)/);
+        const language = langMatch ? langMatch[1] : '';
+        const code = codeNode.textContent || '';
+        const fence = options.fence;
+        return `\n\n${fence}${language}\n${code.replace(/\n$/, '')}\n${fence}\n\n`;
+      },
+    });
+
+    this.#turndown.addRule('mathBlock', {
+      filter: (node) => {
+        if (node.nodeName === 'DIV' || node.nodeName === 'SPAN') {
+          const className = node.className || '';
+          if (className.match(/MathJax|mathjax|katex|math-display|math-block/i)) {
+            return true;
+          }
+        }
+        if (node.nodeName === 'SCRIPT' && node.getAttribute('type')?.includes('math/tex')) {
+          return true;
+        }
+        if (node.nodeName === 'MATH') {
+          return true;
+        }
+        return false;
+      },
+      replacement: (_content, node) => {
+        const annotation = node.querySelector('annotation[encoding="application/x-tex"]');
+        if (annotation?.textContent) {
+          const tex = annotation.textContent.trim();
+          const isBlock = node.nodeName === 'DIV' || 
+                         node.className?.includes('display') ||
+                         node.className?.includes('block');
+          return isBlock ? `\n\n$$\n${tex}\n$$\n\n` : `$${tex}$`;
+        }
+        
+        if (node.nodeName === 'SCRIPT') {
+          const tex = node.textContent?.trim() || '';
+          const isDisplay = node.getAttribute('type')?.includes('display');
+          return isDisplay ? `\n\n$$\n${tex}\n$$\n\n` : `$${tex}$`;
+        }
+
+        const altText = node.getAttribute('alt') || node.getAttribute('data-formula');
+        if (altText) {
+          const isBlock = node.nodeName === 'DIV' || 
+                         node.className?.includes('display') ||
+                         node.className?.includes('block');
+          return isBlock ? `\n\n$$\n${altText}\n$$\n\n` : `$${altText}$`;
+        }
+
+        return _content;
+      },
+    });
+
+    this.#turndown.addRule('mathImg', {
+      filter: (node) => {
+        if (node.nodeName === 'IMG') {
+          const alt = node.getAttribute('alt') || '';
+          const src = node.getAttribute('src') || '';
+          const className = node.className || '';
+          return alt.includes('\\') || 
+                 src.includes('latex') || 
+                 src.includes('codecogs') ||
+                 src.includes('math') ||
+                 className.includes('math') ||
+                 className.includes('latex');
+        }
+        return false;
+      },
+      replacement: (_content, node) => {
+        const alt = node.getAttribute('alt') || '';
+        if (alt && alt.includes('\\')) {
+          return `$${alt}$`;
+        }
+        const src = node.getAttribute('src') || '';
+        const texMatch = src.match(/[?&]tex=([^&]+)/);
+        if (texMatch) {
+          return `$${decodeURIComponent(texMatch[1])}$`;
+        }
+        return `![math](${src})`;
+      },
+    });
+
+    this.#turndown.addRule('videoEmbed', {
+      filter: (node) => {
+        if (node.nodeName === 'IFRAME') {
+          const src = node.getAttribute('src') || '';
+          return src.includes('youtube.com') ||
+                 src.includes('youtu.be') ||
+                 src.includes('bilibili.com') ||
+                 src.includes('vimeo.com') ||
+                 src.includes('player.bilibili.com');
+        }
+        if (node.nodeName === 'VIDEO') {
+          return true;
+        }
+        return false;
+      },
+      replacement: (_content, node) => {
+        const src = node.getAttribute('src') || '';
+        const title = node.getAttribute('title') || 'Video';
+        
+        let videoUrl = src;
+        let videoId = '';
+
+        const youtubeMatch = src.match(/(?:youtube\.com\/embed\/|youtu\.be\/)([^?&]+)/);
+        if (youtubeMatch) {
+          videoId = youtubeMatch[1];
+          videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
+          return `\n\n[▶ ${title}](${videoUrl})\n\n`;
+        }
+
+        const bilibiliMatch = src.match(/player\.bilibili\.com\/player\.html\?.*?(?:bvid=|aid=)([^&]+)/);
+        if (bilibiliMatch) {
+          videoId = bilibiliMatch[1];
+          videoUrl = `https://www.bilibili.com/video/${videoId}`;
+          return `\n\n[▶ ${title}](${videoUrl})\n\n`;
+        }
+
+        const vimeoMatch = src.match(/player\.vimeo\.com\/video\/(\d+)/);
+        if (vimeoMatch) {
+          videoId = vimeoMatch[1];
+          videoUrl = `https://vimeo.com/${videoId}`;
+          return `\n\n[▶ ${title}](${videoUrl})\n\n`;
+        }
+
+        if (node.nodeName === 'VIDEO') {
+          const videoSrc = node.getAttribute('src') || node.querySelector('source')?.getAttribute('src') || '';
+          if (videoSrc) {
+            return `\n\n[▶ Video](${videoSrc})\n\n`;
+          }
+        }
+
+        return `\n\n[▶ ${title}](${src})\n\n`;
+      },
+    });
+
+    this.#turndown.addRule('improvedImage', {
+      filter: 'img',
+      replacement: (_content, node) => {
+        let src = node.getAttribute('src') || '';
+        
+        const isPlaceholder = (s) => {
+          if (!s) return true;
+          if (s.startsWith('data:image/svg+xml')) return true;
+          if (s.startsWith('data:image/gif;base64,R0lGOD')) return true;
+          if (s.includes('1x1') || s.includes('placeholder') || s.includes('blank')) return true;
+          if (s.includes('spacer') || s.includes('loading')) return true;
+          return false;
+        };
+
+        if (isPlaceholder(src)) {
+          src = node.getAttribute('data-src') || 
+                node.getAttribute('data-original') ||
+                node.getAttribute('data-lazy-src') ||
+                node.getAttribute('data-croporisrc') || '';
+        }
+
+        if (!src || isPlaceholder(src)) return '';
+
+        let alt = node.getAttribute('alt') || '';
+        
+        if (!alt || alt === 'image' || alt === 'img' || alt === '图片' || alt.length < 2) {
+          alt = node.getAttribute('title') ||
+                node.getAttribute('data-alt') ||
+                node.getAttribute('aria-label') ||
+                '';
+        }
+
+        if (!alt) {
+          const figcaption = node.closest('figure')?.querySelector('figcaption');
+          if (figcaption) {
+            alt = figcaption.textContent?.trim() || '';
+          }
+        }
+
+        if (!alt) {
+          const filename = src.split('/').pop()?.split('?')[0] || '';
+          const nameWithoutExt = filename.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ');
+          if (nameWithoutExt && nameWithoutExt.length > 2 && nameWithoutExt.length < 50) {
+            alt = nameWithoutExt;
+          }
+        }
+
+        alt = alt.replace(/[\[\]]/g, '').trim();
+        
+        const title = node.getAttribute('title');
+        const titlePart = title && title !== alt ? ` "${title}"` : '';
+        
+        return `![${alt}](${src}${titlePart})`;
+      },
+    });
+
+    this.#turndown.addRule('nestedBlockquote', {
+      filter: 'blockquote',
+      replacement: (content, node) => {
+        let depth = 0;
+        let parent = node.parentNode;
+        while (parent) {
+          if (parent.nodeName === 'BLOCKQUOTE') {
+            depth++;
+          }
+          parent = parent.parentNode;
+        }
+
+        const prefix = '> '.repeat(depth + 1);
+        const lines = content.trim().split('\n');
+        const quotedLines = lines.map(line => {
+          if (line.trim() === '') return prefix.trim();
+          if (line.startsWith('>')) return prefix + line;
+          return prefix + line;
+        });
+
+        return '\n\n' + quotedLines.join('\n') + '\n\n';
+      },
+    });
   }
 
   async init() {
@@ -95,42 +334,14 @@ class PopupController {
         throw new Error('No active tab found');
       }
 
-      const results = await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        func: () => {
-          const title = document.title;
-          const metaAuthor = document.querySelector('meta[name="author"]')?.content || '';
-          const metaPublishedAt = document.querySelector('meta[property="article:published_time"]')?.content ||
-                                 document.querySelector('meta[name="article:published_time"]')?.content ||
-                                 document.querySelector('meta[name="published_time"]')?.content ||
-                                 document.querySelector('meta[property="article:published"]')?.content ||
-                                 document.querySelector('meta[name="article:published"]')?.content ||
-                                 '';
+      let extractedData;
+      
+      try {
+        extractedData = await chrome.tabs.sendMessage(tab.id, { type: 'EXTRACT_ARTICLE' });
+      } catch {
+        extractedData = await this.extractViaScript(tab.id);
+      }
 
-          const articleElement = document.querySelector('article') ||
-                                document.querySelector('[role="main"]') ||
-                                document.querySelector('main') ||
-                                document.querySelector('.content') ||
-                                document.body;
-
-          const content = articleElement?.innerHTML || document.body?.innerHTML || '';
-
-          const img = articleElement?.querySelector('img');
-          const topImage = img?.src || null;
-
-          return {
-            title: title,
-            content_html: content,
-            source_url: window.location.href,
-            top_image: topImage,
-            author: metaAuthor,
-            published_at: metaPublishedAt,
-            source_domain: new URL(window.location.href).hostname,
-          };
-        },
-      });
-
-      const extractedData = results[0].result;
       const contentMd = this.#turndown.turndown(extractedData.content_html);
 
       this.#articleData = {
@@ -148,6 +359,76 @@ class PopupController {
       console.error('Failed to extract article:', error);
       this.updateStatus('error', '提取文章失败');
     }
+  }
+
+  async extractViaScript(tabId) {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => {
+        const lazyAttrs = ['data-src', 'data-lazy-src', 'data-original', 'data-lazy', 'data-url', 'data-croporisrc'];
+        const isPlaceholder = (s) => {
+          if (!s) return true;
+          if (s.startsWith('data:image/svg+xml')) return true;
+          if (s.startsWith('data:image/gif;base64,R0lGOD')) return true;
+          if (s.includes('1x1') || s.includes('placeholder') || s.includes('blank')) return true;
+          return false;
+        };
+        document.querySelectorAll('img').forEach((img) => {
+          const src = img.getAttribute('src') || '';
+          if (isPlaceholder(src)) {
+            for (const attr of lazyAttrs) {
+              const lazySrc = img.getAttribute(attr);
+              if (lazySrc) {
+                img.setAttribute('src', lazySrc);
+                break;
+              }
+            }
+          }
+        });
+
+        const getMeta = (selectors) => {
+          for (const selector of selectors) {
+            const el = document.querySelector(selector);
+            if (el?.content) return el.content;
+            if (el?.textContent) return el.textContent.trim();
+          }
+          return '';
+        };
+
+        const title = getMeta(['meta[property="og:title"]', 'meta[name="twitter:title"]']) || document.title;
+        const author = getMeta(['meta[name="author"]', 'meta[property="article:author"]', '.author', '.byline']);
+        const publishedAt = getMeta(['meta[property="article:published_time"]', 'meta[name="date"]', 'time[datetime]']);
+        const topImage = getMeta(['meta[property="og:image"]', 'meta[name="twitter:image"]']);
+
+        const selectorsToTry = ['article', '[role="main"]', 'main', '.post-content', '.article-content', '.content', '#content'];
+        let articleElement = null;
+        for (const selector of selectorsToTry) {
+          const el = document.querySelector(selector);
+          if (el && el.textContent.trim().length > 200) {
+            articleElement = el;
+            break;
+          }
+        }
+        if (!articleElement) articleElement = document.body;
+
+        const clone = articleElement.cloneNode(true);
+        ['script', 'style', 'noscript', 'nav', 'footer', 'aside', '.ads', '.comments', '.share', '.related'].forEach(sel => {
+          clone.querySelectorAll(sel).forEach(el => el.remove());
+        });
+
+        return {
+          title,
+          content_html: clone.innerHTML,
+          source_url: window.location.href,
+          top_image: topImage || clone.querySelector('img')?.src || null,
+          author,
+          published_at: publishedAt,
+          source_domain: new URL(window.location.href).hostname,
+          excerpt: getMeta(['meta[property="og:description"]', 'meta[name="description"]']),
+        };
+      },
+    });
+    return results[0].result;
   }
 
   extractTopImage(content) {
