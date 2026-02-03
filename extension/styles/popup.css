@@ -218,6 +218,28 @@ body {
   display: none;
 }
 
+.quality-warnings {
+  margin-bottom: 12px;
+}
+
+.quality-warnings.hidden {
+  display: none;
+}
+
+.quality-warning {
+  padding: 8px 12px;
+  background: #fef3c7;
+  border: 1px solid #fcd34d;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #92400e;
+  margin-bottom: 6px;
+}
+
+.quality-warning:last-child {
+  margin-bottom: 0;
+}
+
 .buttons {
   display: flex;
   gap: 8px;

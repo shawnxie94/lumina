@@ -446,17 +446,12 @@ class PopupController {
       }
 
       if (!extractedData) {
-        this.updateStatus('loading', '正在提取文章内容...');
-        try {
-          extractedData = await chrome.tabs.sendMessage(tab.id, { type: 'EXTRACT_ARTICLE' });
-        } catch {
-          this.updateStatus('loading', '正在使用备用方式提取...');
-          extractedData = await this.extractViaScript(tab.id);
-        }
+        extractedData = await this.extractWithRetry(tab.id);
       }
 
       if (!extractedData || !extractedData.content_html) {
         this.updateStatus('error', '未能提取到文章内容，请确认页面已加载完成');
+        this.showRetryButton();
         return;
       }
 
@@ -475,12 +470,69 @@ class PopupController {
       const wordCount = contentMd.length;
       const readingTime = Math.ceil(wordCount / 500);
       const selectionHint = isSelection ? '已选中部分内容 · ' : '';
-      this.updateStatus('idle', `${selectionHint}准备就绪 · 约 ${readingTime} 分钟阅读`);
+      
+      let statusMessage = `${selectionHint}准备就绪 · 约 ${readingTime} 分钟阅读`;
+      
+      if (extractedData.quality) {
+        this.displayQualityWarnings(extractedData.quality);
+        if (extractedData.quality.score < 70) {
+          statusMessage += ' · ⚠️ 内容质量较低';
+        }
+      }
+      
+      this.updateStatus('idle', statusMessage);
     } catch (error) {
       console.error('Failed to extract article:', error);
       logError('popup', error, { action: 'extractArticle', url: this.#currentTab?.url });
       this.handleExtractionError(error);
     }
+  }
+
+  async extractWithRetry(tabId, maxRetries = 2) {
+    let lastError = null;
+    
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        if (attempt > 0) {
+          this.updateStatus('loading', `正在重试提取 (${attempt}/${maxRetries})...`);
+          await new Promise(r => setTimeout(r, 500 * attempt));
+        } else {
+          this.updateStatus('loading', '正在提取文章内容...');
+        }
+        
+        const result = await chrome.tabs.sendMessage(tabId, { 
+          type: 'EXTRACT_ARTICLE',
+          forceRefresh: attempt > 0,
+        });
+        
+        if (result && result.content_html) {
+          return result;
+        }
+      } catch (err) {
+        lastError = err;
+        console.log(`Extraction attempt ${attempt + 1} failed:`, err);
+      }
+    }
+    
+    this.updateStatus('loading', '正在使用备用方式提取...');
+    try {
+      return await this.extractViaScript(tabId);
+    } catch (err) {
+      console.error('Fallback extraction failed:', err);
+      throw lastError || err;
+    }
+  }
+
+  displayQualityWarnings(quality) {
+    if (!quality || !quality.warnings || quality.warnings.length === 0) return;
+    
+    const warningsContainer = document.getElementById('qualityWarnings');
+    if (!warningsContainer) return;
+    
+    warningsContainer.innerHTML = quality.warnings
+      .map(w => `<div class="quality-warning">⚠️ ${w}</div>`)
+      .join('');
+    warningsContainer.classList.remove('hidden');
   }
 
   updatePreview(isSelection = false) {

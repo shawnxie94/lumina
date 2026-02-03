@@ -4,6 +4,12 @@ import { parseDate } from '../utils/dateParser';
 
 let cachedResult: { url: string; data: ExtractedArticle } | null = null;
 
+const LAZY_IMAGE_ATTRS = [
+  'data-src', 'data-lazy-src', 'data-original', 'data-lazy', 'data-url',
+  'data-croporisrc', 'data-actualsrc', 'data-echo', 'data-lazyload',
+  'data-hi-res-src', 'data-zoom-src', 'data-full-src',
+];
+
 export default defineContentScript({
   matches: ['<all_urls>'],
   runAt: 'document_idle',
@@ -41,6 +47,25 @@ interface ExtractedArticle {
   source_domain: string;
   excerpt: string;
   isSelection?: boolean;
+  quality?: ContentQuality;
+}
+
+interface ContentQuality {
+  score: number;
+  wordCount: number;
+  hasImages: boolean;
+  hasCode: boolean;
+  warnings: string[];
+}
+
+interface JsonLdArticle {
+  '@type'?: string;
+  headline?: string;
+  name?: string;
+  author?: { name?: string } | string;
+  datePublished?: string;
+  image?: { url?: string } | string;
+  description?: string;
 }
 
 function extractSelection(): ExtractedArticle | null {
@@ -80,30 +105,96 @@ function extractSelection(): ExtractedArticle | null {
   };
 }
 
+function isPlaceholderSrc(src: string): boolean {
+  if (!src) return true;
+  if (src.startsWith('data:image/svg+xml')) return true;
+  if (src.startsWith('data:image/gif;base64,R0lGOD')) return true;
+  if (src.includes('1x1') || src.includes('placeholder') || src.includes('blank')) return true;
+  if (src.includes('spacer') || src.includes('loading')) return true;
+  return false;
+}
+
 function processLazyImagesInElement(element: HTMLElement): void {
-  const lazyAttrs = ['data-src', 'data-lazy-src', 'data-original', 'data-lazy', 'data-url', 'data-croporisrc'];
-
-  const isPlaceholder = (src: string): boolean => {
-    if (!src) return true;
-    if (src.startsWith('data:image/svg+xml')) return true;
-    if (src.startsWith('data:image/gif;base64,R0lGOD')) return true;
-    if (src.includes('1x1') || src.includes('placeholder') || src.includes('blank')) return true;
-    if (src.includes('spacer') || src.includes('loading')) return true;
-    return false;
-  };
-
   element.querySelectorAll('img').forEach((img) => {
     const currentSrc = img.getAttribute('src') || '';
-    if (isPlaceholder(currentSrc)) {
-      for (const attr of lazyAttrs) {
+    if (isPlaceholderSrc(currentSrc)) {
+      for (const attr of LAZY_IMAGE_ATTRS) {
         const lazySrc = img.getAttribute(attr);
-        if (lazySrc) {
+        if (lazySrc && !isPlaceholderSrc(lazySrc)) {
           img.setAttribute('src', lazySrc);
           break;
         }
       }
     }
   });
+
+  element.querySelectorAll('picture source').forEach((source) => {
+    const lazySrcset = source.getAttribute('data-srcset');
+    if (lazySrcset) {
+      source.setAttribute('srcset', lazySrcset);
+    }
+  });
+}
+
+function extractJsonLd(): Partial<{ title: string; author: string; publishedAt: string; topImage: string; description: string }> {
+  const scripts = document.querySelectorAll('script[type="application/ld+json"]');
+  
+  for (const script of scripts) {
+    try {
+      const rawData = JSON.parse(script.textContent || '');
+      const dataArray = Array.isArray(rawData) ? rawData : [rawData];
+      
+      for (const data of dataArray) {
+        const article = findArticleInJsonLd(data);
+        if (article) {
+          const authorValue = article.author;
+          let authorName = '';
+          if (typeof authorValue === 'string') {
+            authorName = authorValue;
+          } else if (authorValue && typeof authorValue === 'object' && authorValue.name) {
+            authorName = authorValue.name;
+          }
+
+          const imageValue = article.image;
+          let imageUrl = '';
+          if (typeof imageValue === 'string') {
+            imageUrl = imageValue;
+          } else if (imageValue && typeof imageValue === 'object' && imageValue.url) {
+            imageUrl = imageValue.url;
+          }
+
+          return {
+            title: article.headline || article.name || '',
+            author: authorName,
+            publishedAt: article.datePublished || '',
+            topImage: imageUrl,
+            description: article.description || '',
+          };
+        }
+      }
+    } catch {
+      continue;
+    }
+  }
+  return {};
+}
+
+function findArticleInJsonLd(data: JsonLdArticle | { '@graph'?: JsonLdArticle[] }): JsonLdArticle | null {
+  const articleTypes = ['Article', 'NewsArticle', 'BlogPosting', 'TechArticle', 'ScholarlyArticle'];
+  
+  if (data['@type'] && articleTypes.includes(data['@type'])) {
+    return data as JsonLdArticle;
+  }
+  
+  if ('@graph' in data && Array.isArray(data['@graph'])) {
+    for (const item of data['@graph']) {
+      if (item['@type'] && articleTypes.includes(item['@type'])) {
+        return item;
+      }
+    }
+  }
+  
+  return null;
 }
 
 function extractArticle(forceRefresh = false): ExtractedArticle {
@@ -115,7 +206,15 @@ function extractArticle(forceRefresh = false): ExtractedArticle {
   processLazyImages();
 
   const baseUrl = window.location.href;
+  const jsonLdData = extractJsonLd();
   const meta = extractMetadata();
+  const mergedMeta = {
+    title: jsonLdData.title || meta.title,
+    author: jsonLdData.author || meta.author,
+    publishedAt: jsonLdData.publishedAt || meta.publishedAt,
+    topImage: jsonLdData.topImage || meta.topImage,
+    description: jsonLdData.description || meta.description,
+  };
 
   let result: ExtractedArticle;
 
@@ -123,82 +222,121 @@ function extractArticle(forceRefresh = false): ExtractedArticle {
   if (adapter) {
     const adapterResult = extractWithAdapter(adapter);
     const contentHtml = resolveRelativeUrls(adapterResult.contentHtml, baseUrl);
-    const rawDate = adapterResult.publishedAt || meta.publishedAt;
+    const rawDate = adapterResult.publishedAt || mergedMeta.publishedAt;
     
     result = {
-      title: adapterResult.title || meta.title || document.title,
+      title: adapterResult.title || mergedMeta.title || document.title,
       content_html: contentHtml,
       source_url: baseUrl,
-      top_image: meta.topImage || extractFirstImage(contentHtml),
-      author: adapterResult.author || meta.author,
+      top_image: mergedMeta.topImage || extractFirstImage(contentHtml),
+      author: adapterResult.author || mergedMeta.author,
       published_at: parseDate(rawDate),
       source_domain: new URL(baseUrl).hostname,
-      excerpt: meta.description,
+      excerpt: mergedMeta.description,
     };
   } else {
     const doc = document.cloneNode(true) as Document;
     const reader = new Readability(doc, {
       charThreshold: 100,
+      keepClasses: true,
     });
     const article = reader.parse();
 
     if (article) {
       const contentHtml = resolveRelativeUrls(article.content, baseUrl);
-      const topImage = meta.topImage || extractFirstImage(contentHtml);
-      const rawDate = article.publishedTime || meta.publishedAt;
+      const topImage = mergedMeta.topImage || extractFirstImage(contentHtml);
+      const rawDate = article.publishedTime || mergedMeta.publishedAt;
 
       result = {
-        title: article.title || meta.title || document.title,
+        title: article.title || mergedMeta.title || document.title,
         content_html: contentHtml,
         source_url: baseUrl,
         top_image: topImage,
-        author: article.byline || meta.author,
+        author: article.byline || mergedMeta.author,
         published_at: parseDate(rawDate),
         source_domain: new URL(baseUrl).hostname,
-        excerpt: article.excerpt || meta.description,
+        excerpt: article.excerpt || mergedMeta.description,
       };
     } else {
       const fallbackContent = extractFallbackContent();
       const contentHtml = resolveRelativeUrls(fallbackContent, baseUrl);
 
       result = {
-        title: meta.title || document.title,
+        title: mergedMeta.title || document.title,
         content_html: contentHtml,
         source_url: baseUrl,
-        top_image: meta.topImage || extractFirstImage(contentHtml),
-        author: meta.author,
-        published_at: parseDate(meta.publishedAt),
+        top_image: mergedMeta.topImage || extractFirstImage(contentHtml),
+        author: mergedMeta.author,
+        published_at: parseDate(mergedMeta.publishedAt),
         source_domain: new URL(baseUrl).hostname,
-        excerpt: meta.description,
+        excerpt: mergedMeta.description,
       };
     }
   }
 
+  result.quality = assessContentQuality(result.content_html);
   cachedResult = { url: currentUrl, data: result };
   return result;
 }
 
-function processLazyImages(): void {
-  const lazyAttrs = ['data-src', 'data-lazy-src', 'data-original', 'data-lazy', 'data-url'];
-
-  const isPlaceholder = (src: string): boolean => {
-    if (!src) return true;
-    if (src.startsWith('data:image/svg+xml')) return true;
-    if (src.startsWith('data:image/gif;base64,R0lGOD')) return true;
-    if (src.includes('1x1') || src.includes('placeholder') || src.includes('blank')) return true;
-    if (src.includes('spacer') || src.includes('loading')) return true;
-    return false;
+function assessContentQuality(html: string): ContentQuality {
+  const warnings: string[] = [];
+  let score = 100;
+  
+  const textContent = html.replace(/<[^>]*>/g, '');
+  const wordCount = textContent.length;
+  
+  if (wordCount < 200) {
+    warnings.push('内容过短，可能提取不完整');
+    score -= 30;
+  } else if (wordCount < 500) {
+    warnings.push('内容较短');
+    score -= 10;
+  }
+  
+  if (html.includes('<script') || html.includes('<style')) {
+    warnings.push('内容可能包含脚本残留');
+    score -= 20;
+  }
+  
+  const imgMatches = html.match(/<img[^>]*>/g) || [];
+  const imgCount = imgMatches.length;
+  let brokenImgCount = 0;
+  
+  for (const imgTag of imgMatches) {
+    if (imgTag.includes('data:image/gif') || imgTag.includes('data:image/svg+xml')) {
+      brokenImgCount++;
+    }
+  }
+  
+  if (imgCount > 0 && brokenImgCount > imgCount / 2) {
+    warnings.push('部分图片可能未正确加载');
+    score -= 15;
+  }
+  
+  const hasCode = html.includes('<pre') || html.includes('<code') || html.includes('```');
+  
+  return {
+    score: Math.max(0, score),
+    wordCount,
+    hasImages: imgCount > 0,
+    hasCode,
+    warnings,
   };
+}
 
+function processLazyImages(): void {
   document.querySelectorAll('img').forEach((img) => {
     const currentSrc = img.getAttribute('src') || '';
-    const shouldReplace = !currentSrc || isPlaceholder(currentSrc);
+    const shouldReplace = !currentSrc || isPlaceholderSrc(currentSrc);
 
-    for (const attr of lazyAttrs) {
-      const lazySrc = img.getAttribute(attr);
-      if (lazySrc && shouldReplace) {
-        img.setAttribute('src', lazySrc);
-        break;
+    if (shouldReplace) {
+      for (const attr of LAZY_IMAGE_ATTRS) {
+        const lazySrc = img.getAttribute(attr);
+        if (lazySrc && !isPlaceholderSrc(lazySrc)) {
+          img.setAttribute('src', lazySrc);
+          break;
+        }
       }
     }
 
@@ -212,6 +350,13 @@ function processLazyImages(): void {
     const lazySrcset = source.getAttribute('data-srcset');
     if (lazySrcset) {
       source.setAttribute('srcset', lazySrcset);
+    }
+  });
+
+  document.querySelectorAll('[data-bg], [data-background-image]').forEach((el) => {
+    const lazyBg = el.getAttribute('data-bg') || el.getAttribute('data-background-image');
+    if (lazyBg) {
+      (el as HTMLElement).style.backgroundImage = `url(${lazyBg})`;
     }
   });
 }
@@ -231,6 +376,9 @@ function extractMetadata(): Metadata {
       if (el instanceof HTMLMetaElement && el.content) {
         return el.content;
       }
+      if (el instanceof HTMLTimeElement && el.dateTime) {
+        return el.dateTime;
+      }
       if (el?.textContent?.trim()) {
         return el.textContent.trim();
       }
@@ -247,9 +395,14 @@ function extractMetadata(): Metadata {
       'meta[name="author"]',
       'meta[property="article:author"]',
       'meta[name="twitter:creator"]',
+      'meta[name="byl"]',
+      'meta[name="sailthru.author"]',
+      '[itemprop="author"]',
       '[rel="author"]',
       '.author',
       '.byline',
+      '.post-author',
+      '.entry-author',
     ]),
     publishedAt: getMeta([
       'meta[property="article:published_time"]',
@@ -257,8 +410,10 @@ function extractMetadata(): Metadata {
       'meta[name="published_time"]',
       'meta[property="article:published"]',
       'meta[name="date"]',
+      'meta[name="DC.date.issued"]',
       'meta[property="og:published_time"]',
       'time[datetime]',
+      '[itemprop="datePublished"]',
     ]),
     topImage: getMeta([
       'meta[property="og:image"]',
@@ -312,6 +467,18 @@ function extractFallbackContent(): string {
     '.related', '.related-posts', '.recommended',
     '.newsletter', '.subscribe',
     '[role="navigation"]', '[role="banner"]', '[role="complementary"]',
+    '.paywall', '.subscription-wall', '.premium-content',
+    '.cookie-banner', '.cookie-notice', '.gdpr', '.consent',
+    '.popup', '.modal', '.overlay',
+    '.sticky-header', '.fixed-header', '.floating-header',
+    '.breadcrumb', '.breadcrumbs',
+    '.pagination', '.pager',
+    '[data-ad]', '[data-advertisement]',
+    '.sponsored', '.promotion', '.promo',
+    '.print-only',
+    '.author-bio', '.author-card', '.author-box',
+    '.table-of-contents', '.toc',
+    '.feedback', '.rating', '.reactions',
   ];
 
   removeSelectors.forEach((selector) => {
