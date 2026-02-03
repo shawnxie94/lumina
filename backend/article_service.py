@@ -207,7 +207,7 @@ class ArticleService:
                     ai_client.generate_summary(
                         article.content_md, prompt=prompt, parameters=parameters
                     ),
-                    timeout=60.0,
+                    timeout=300.0,
                 )
             except asyncio.TimeoutError:
                 raise Exception("AI生成超时，请稍后重试")
@@ -638,7 +638,7 @@ class ArticleService:
                     ai_client.generate_summary(
                         article.content_md, prompt=prompt, parameters=parameters
                     ),
-                    timeout=120.0,
+                    timeout=300.0,
                 )
                 setattr(article.ai_analysis, content_type, result)
                 setattr(article.ai_analysis, f"{content_type}_status", "completed")

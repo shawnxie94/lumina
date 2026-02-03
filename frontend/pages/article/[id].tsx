@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import { articleApi, type ArticleDetail, type ModelAPIConfig, type PromptConfig } from '@/lib/api';
 import { useToast } from '@/components/Toast';
@@ -6,14 +6,18 @@ import { BackToTop } from '@/components/BackToTop';
 import Link from 'next/link';
 import { marked } from 'marked';
 
+// 轮询间隔（毫秒）
+const POLLING_INTERVAL = 3000;
+
 interface AIContentSectionProps {
   title: string;
   content: string | null | undefined;
   status: string | null | undefined;
   onGenerate: () => void;
+  onCopy: () => void;
 }
 
-function AIContentSection({ title, content, status, onGenerate }: AIContentSectionProps) {
+function AIContentSection({ title, content, status, onGenerate, onCopy }: AIContentSectionProps) {
   const getStatusBadge = () => {
     if (!status) return null;
     const statusConfig: Record<string, { bg: string; text: string; label: string }> = {
@@ -47,6 +51,15 @@ function AIContentSection({ title, content, status, onGenerate }: AIContentSecti
             {content ? '🔄' : '✨'}
           </button>
         )}
+        {content && (
+          <button
+            onClick={onCopy}
+            className="text-gray-400 hover:text-blue-600 transition"
+            title="复制内容"
+          >
+            📋
+          </button>
+        )}
       </div>
       {content ? (
         <div className="text-gray-700 text-sm whitespace-pre-wrap">{content}</div>
@@ -55,6 +68,102 @@ function AIContentSection({ title, content, status, onGenerate }: AIContentSecti
           {status === 'processing' ? '正在生成...' : '点击 ✨ 生成'}
         </p>
       )}
+    </div>
+  );
+}
+
+interface ConfirmModalProps {
+  isOpen: boolean;
+  title: string;
+  message: string;
+  confirmText?: string;
+  cancelText?: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+
+function ConfirmModal({ isOpen, title, message, confirmText = '确定', cancelText = '取消', onConfirm, onCancel }: ConfirmModalProps) {
+  if (!isOpen) return null;
+  
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg shadow-xl max-w-sm w-full">
+        <div className="p-4 border-b">
+          <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
+        </div>
+        <div className="p-4">
+          <p className="text-gray-600">{message}</p>
+        </div>
+        <div className="flex justify-end gap-2 p-4 border-t bg-gray-50 rounded-b-lg">
+          <button
+            onClick={onCancel}
+            className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
+          >
+            {cancelText}
+          </button>
+          <button
+            onClick={onConfirm}
+            className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition"
+          >
+            {confirmText}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface TocItem {
+  id: string;
+  text: string;
+  level: number;
+}
+
+function TableOfContents({ items, activeId }: { items: TocItem[]; activeId: string }) {
+  if (items.length === 0) return null;
+
+  return (
+    <nav className="space-y-1">
+      {items.map((item) => (
+        <a
+          key={item.id}
+          href={`#${item.id}`}
+          className={`block text-sm truncate transition ${
+            activeId === item.id
+              ? 'text-blue-600 font-medium'
+              : 'text-gray-600 hover:text-gray-900'
+          }`}
+          style={{ paddingLeft: `${(item.level - 1) * 12}px` }}
+        >
+          {item.text}
+        </a>
+      ))}
+    </nav>
+  );
+}
+
+function ReadingProgress() {
+  const [progress, setProgress] = useState(0);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const scrollTop = window.scrollY;
+      const docHeight = document.documentElement.scrollHeight - window.innerHeight;
+      const scrollPercent = docHeight > 0 ? (scrollTop / docHeight) * 100 : 0;
+      setProgress(Math.min(100, Math.max(0, scrollPercent)));
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    handleScroll();
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  return (
+    <div className="fixed top-0 left-0 right-0 h-1 bg-gray-200 z-50">
+      <div
+        className="h-full bg-blue-600 transition-all duration-150"
+        style={{ width: `${progress}%` }}
+      />
     </div>
   );
 }
@@ -82,11 +191,101 @@ export default function ArticleDetailPage() {
   const [editTopImage, setEditTopImage] = useState('');
   const [editContent, setEditContent] = useState('');
   const [saving, setSaving] = useState(false);
+
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [tocItems, setTocItems] = useState<TocItem[]>([]);
+  const [activeTocId, setActiveTocId] = useState('');
+  const [tocCollapsed, setTocCollapsed] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const pollingRef = useRef<NodeJS.Timeout | null>(null);
+
+  const needsPolling = useCallback((data: ArticleDetail | null): boolean => {
+    if (!data) return false;
+    const pendingStatuses = ['pending', 'processing'];
+    if (pendingStatuses.includes(data.status)) return true;
+    if (pendingStatuses.includes(data.translation_status || '')) return true;
+    if (data.ai_analysis) {
+      const { summary_status, key_points_status, outline_status, quotes_status } = data.ai_analysis;
+      if (pendingStatuses.includes(summary_status || '')) return true;
+      if (pendingStatuses.includes(key_points_status || '')) return true;
+      if (pendingStatuses.includes(outline_status || '')) return true;
+      if (pendingStatuses.includes(quotes_status || '')) return true;
+    }
+    return false;
+  }, []);
   useEffect(() => {
     if (id) {
       fetchArticle();
     }
+    return () => {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+      }
+    };
   }, [id]);
+
+  useEffect(() => {
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
+
+    if (needsPolling(article)) {
+      pollingRef.current = setInterval(async () => {
+        try {
+          const data = await articleApi.getArticle(id as string);
+          setArticle(data);
+          if (!needsPolling(data) && pollingRef.current) {
+            clearInterval(pollingRef.current);
+            pollingRef.current = null;
+          }
+        } catch (error) {
+          console.error('Polling failed:', error);
+        }
+      }, POLLING_INTERVAL);
+    }
+  }, [article, id, needsPolling]);
+
+  useEffect(() => {
+    if (!contentRef.current) return;
+
+    const headings = contentRef.current.querySelectorAll('h1, h2, h3, h4, h5, h6');
+    const items: TocItem[] = [];
+    
+    headings.forEach((heading, index) => {
+      const id = `heading-${index}`;
+      heading.id = id;
+      items.push({
+        id,
+        text: heading.textContent || '',
+        level: parseInt(heading.tagName[1]),
+      });
+    });
+    
+    setTocItems(items);
+  }, [article, showTranslation]);
+
+  useEffect(() => {
+    if (tocItems.length === 0) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            setActiveTocId(entry.target.id);
+          }
+        });
+      },
+      { rootMargin: '-80px 0px -80% 0px' }
+    );
+
+    tocItems.forEach((item) => {
+      const element = document.getElementById(item.id);
+      if (element) observer.observe(element);
+    });
+
+    return () => observer.disconnect();
+  }, [tocItems]);
 
   const fetchArticle = async () => {
     setLoading(true);
@@ -143,24 +342,9 @@ export default function ArticleDetailPage() {
         });
       }
       showToast('已提交生成请求');
-      setTimeout(fetchArticle, 1000);
     } catch (error: any) {
       console.error('Failed to generate:', error);
       showToast(error.response?.data?.detail || '生成失败', 'error');
-    }
-  };
-
-  const handleRetry = async () => {
-    if (!id || !article) return;
-
-    try {
-      await articleApi.retryArticle(id as string);
-      setArticle({ ...article, status: 'pending' });
-      showToast('已重新提交生成请求');
-      fetchArticle();
-    } catch (error) {
-      console.error('Failed to retry article:', error);
-      showToast('重试失败', 'error');
     }
   };
 
@@ -171,7 +355,6 @@ export default function ArticleDetailPage() {
       await articleApi.retryTranslation(id as string);
       setArticle({ ...article, translation_status: 'pending' });
       showToast('已重新提交翻译请求');
-      fetchArticle();
     } catch (error: any) {
       console.error('Failed to retry translation:', error);
       showToast(error.response?.data?.detail || '重试翻译失败', 'error');
@@ -185,7 +368,6 @@ export default function ArticleDetailPage() {
 
   const handleDelete = async () => {
     if (!id) return;
-    if (!confirm('确定要删除这篇文章吗？')) return;
 
     try {
       await articleApi.deleteArticle(id as string);
@@ -194,6 +376,17 @@ export default function ArticleDetailPage() {
     } catch (error) {
       console.error('Failed to delete article:', error);
       showToast('删除失败', 'error');
+    }
+  };
+
+  const handleCopyContent = async (content: string | null | undefined, label: string) => {
+    if (!content) return;
+    try {
+      await navigator.clipboard.writeText(content);
+      showToast(`${label}已复制`);
+    } catch (error) {
+      console.error('Failed to copy:', error);
+      showToast('复制失败', 'error');
     }
   };
 
@@ -260,6 +453,7 @@ export default function ArticleDetailPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      <ReadingProgress />
        <nav className="bg-white shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between mb-3">
@@ -268,7 +462,7 @@ export default function ArticleDetailPage() {
             </Link>
             <h1 className="text-xl font-bold text-gray-900 truncate">{article.title}</h1>
             <button
-              onClick={handleDelete}
+              onClick={() => setShowDeleteModal(true)}
               className="text-gray-400 hover:text-red-600 transition"
               title="删除文章"
             >
@@ -276,6 +470,17 @@ export default function ArticleDetailPage() {
             </button>
           </div>
           <div className="flex flex-wrap gap-4 text-sm text-gray-600 pb-3 border-b border-gray-100">
+            {article.category && (
+              <div>
+                <span className="font-medium text-gray-700">分类：</span>
+                <Link
+                  href={`/?category_id=${article.category.id}`}
+                  className="inline-flex items-center gap-1"
+                >
+                  <span className="text-blue-600 hover:underline">{article.category.name}</span>
+                </Link>
+              </div>
+            )}
             {article.author && (
               <div>
                 <span className="font-medium text-gray-700">作者：</span>
@@ -312,6 +517,24 @@ export default function ArticleDetailPage() {
 
         <div className="max-w-7xl mx-auto px-4 py-8">
           <div className="flex gap-6">
+            {tocItems.length > 0 && (
+              <aside className={`hidden xl:block flex-shrink-0 transition-all duration-300 ${tocCollapsed ? 'w-12' : 'w-48'}`}>
+                <div className="sticky top-4 bg-white rounded-lg shadow-sm p-4 max-h-[calc(100vh-2rem)] overflow-y-auto">
+                  <div className="flex items-center justify-between mb-3">
+                    {!tocCollapsed && <h3 className="text-sm font-semibold text-gray-900">📑 目录</h3>}
+                    <button
+                      onClick={() => setTocCollapsed(!tocCollapsed)}
+                      className="text-gray-500 hover:text-gray-700 transition"
+                      title={tocCollapsed ? '展开' : '收起'}
+                    >
+                      {tocCollapsed ? '»' : '«'}
+                    </button>
+                  </div>
+                  {!tocCollapsed && <TableOfContents items={tocItems} activeId={activeTocId} />}
+                </div>
+              </aside>
+            )}
+
             <div className="flex-1 bg-white rounded-lg shadow-sm p-6">
               <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-2">
@@ -360,7 +583,7 @@ export default function ArticleDetailPage() {
                 </div>
               </div>
 
-              <div className="prose prose-sm max-w-none">
+              <div ref={contentRef} className="prose prose-sm max-w-none">
                 {showTranslation && article.content_trans ? (
                   <div
                     dangerouslySetInnerHTML={{
@@ -403,6 +626,7 @@ export default function ArticleDetailPage() {
                       content={article.ai_analysis?.summary}
                       status={article.ai_analysis?.summary_status || (article.status === 'completed' ? 'completed' : article.status)}
                       onGenerate={() => handleGenerateContent('summary')}
+                      onCopy={() => handleCopyContent(article.ai_analysis?.summary, '摘要')}
                     />
 
                     <AIContentSection
@@ -410,6 +634,7 @@ export default function ArticleDetailPage() {
                       content={article.ai_analysis?.key_points}
                       status={article.ai_analysis?.key_points_status}
                       onGenerate={() => handleGenerateContent('key_points')}
+                      onCopy={() => handleCopyContent(article.ai_analysis?.key_points, '关键内容')}
                     />
 
                     <AIContentSection
@@ -417,6 +642,7 @@ export default function ArticleDetailPage() {
                       content={article.ai_analysis?.outline}
                       status={article.ai_analysis?.outline_status}
                       onGenerate={() => handleGenerateContent('outline')}
+                      onCopy={() => handleCopyContent(article.ai_analysis?.outline, '文章大纲')}
                     />
 
                     <AIContentSection
@@ -424,6 +650,7 @@ export default function ArticleDetailPage() {
                       content={article.ai_analysis?.quotes}
                       status={article.ai_analysis?.quotes_status}
                       onGenerate={() => handleGenerateContent('quotes')}
+                      onCopy={() => handleCopyContent(article.ai_analysis?.quotes, '文章金句')}
                     />
 
                     {article.ai_analysis?.error_message && (
@@ -606,6 +833,19 @@ export default function ArticleDetailPage() {
           </div>
         </div>
       )}
+
+      <ConfirmModal
+        isOpen={showDeleteModal}
+        title="删除文章"
+        message="确定要删除这篇文章吗？此操作不可撤销。"
+        confirmText="删除"
+        cancelText="取消"
+        onConfirm={() => {
+          setShowDeleteModal(false);
+          handleDelete();
+        }}
+        onCancel={() => setShowDeleteModal(false)}
+      />
 
       <BackToTop />
     </div>
