@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { articleApi, categoryApi, Article, Category } from '@/lib/api';
 import { useToast } from '@/components/Toast';
+import { BackToTop } from '@/components/BackToTop';
 import Link from 'next/link';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
@@ -240,7 +241,23 @@ export default function Home() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = data.filename;
+      
+      const now = new Date();
+      const timestamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
+      
+      const selectedArticles = articles.filter(a => selectedArticleIds.has(a.id));
+      const categoryCount: Record<string, number> = {};
+      selectedArticles.forEach(article => {
+        const catName = article.category?.name || '未分类';
+        categoryCount[catName] = (categoryCount[catName] || 0) + 1;
+      });
+      
+      const categoryInfo = Object.entries(categoryCount)
+        .map(([name, count]) => `${name}${count}篇`)
+        .join('_');
+      
+      a.download = `${timestamp}_${categoryInfo}.md`;
+      
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -529,16 +546,9 @@ export default function Home() {
                                </span>
                              </div>
                              {article.summary && (
-                               <div className="relative group">
-                                 <p className="mt-2 text-gray-600 line-clamp-2 cursor-pointer">
-                                   {article.summary}
-                                 </p>
-                                 <div className="absolute left-0 top-full mt-2 z-50 hidden group-hover:block w-full max-w-xl">
-                                   <div className="bg-gray-900 text-white text-sm rounded-lg p-4 shadow-lg">
-                                     {article.summary}
-                                   </div>
-                                 </div>
-                               </div>
+                               <p className="mt-2 text-gray-600 line-clamp-2">
+                                 {article.summary}
+                               </p>
                              )}
                           </div>
                         </div>
@@ -604,6 +614,7 @@ export default function Home() {
           </main>
         </div>
       </div>
+      <BackToTop />
     </div>
   );
 }
