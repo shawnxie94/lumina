@@ -2,12 +2,14 @@ import '../../styles/popup.css';
 import { ApiClient, DEFAULT_CATEGORIES } from '../../utils/api';
 import TurndownService from 'turndown';
 import { gfm } from 'turndown-plugin-gfm';
+import { addToHistory, getHistory, clearHistory, formatHistoryDate } from '../../utils/history';
 
 class PopupController {
   #apiClient;
   #turndown;
   #articleData = null;
   #currentTab = null;
+  #categories = [];
 
   constructor() {
     this.#apiClient = new ApiClient();
@@ -257,6 +259,7 @@ class PopupController {
       await this.loadConfig();
       await this.setupEventListeners();
       await this.loadCategories();
+      await this.loadHistory();
       await this.extractArticle();
     } catch (error) {
       console.error('Failed to initialize popup:', error);
@@ -294,6 +297,26 @@ class PopupController {
     document.getElementById('cancelConfigBtn')?.addEventListener('click', () => this.closeConfigModal());
 
     document.getElementById('retryBtn')?.addEventListener('click', () => this.retryExtract());
+
+    document.getElementById('clearHistoryBtn')?.addEventListener('click', () => this.clearHistoryList());
+
+    document.getElementById('viewAllHistoryBtn')?.addEventListener('click', () => this.openHistoryPage());
+  }
+
+  openHistoryPage() {
+    chrome.tabs.create({ url: chrome.runtime.getURL('history.html') });
+    window.close();
+  }
+
+  async ensureContentScriptLoaded(tabId) {
+    try {
+      await chrome.tabs.sendMessage(tabId, { type: 'PING' });
+    } catch {
+      await chrome.scripting.executeScript({
+        target: { tabId },
+        files: ['content-scripts/content.js'],
+      });
+    }
   }
 
   async retryExtract() {
@@ -325,10 +348,12 @@ class PopupController {
   async loadCategories() {
     try {
       const categories = await this.#apiClient.getCategories();
+      this.#categories = categories;
       this.populateCategories(categories);
     } catch (error) {
       console.error('Failed to load categories:', error);
       this.updateStatus('warning', '加载分类失败，使用默认分类');
+      this.#categories = DEFAULT_CATEGORIES;
       this.populateCategories(DEFAULT_CATEGORIES);
     }
   }
@@ -368,6 +393,8 @@ class PopupController {
         return;
       }
 
+      await this.ensureContentScriptLoaded(tab.id);
+
       let extractedData;
       let isSelection = false;
 
@@ -375,11 +402,14 @@ class PopupController {
         const selectionCheck = await chrome.tabs.sendMessage(tab.id, { type: 'CHECK_SELECTION' });
         if (selectionCheck?.hasSelection) {
           this.updateStatus('loading', '正在提取选中内容...');
-          extractedData = await chrome.tabs.sendMessage(tab.id, { type: 'EXTRACT_SELECTION' });
-          isSelection = true;
+          const selectionData = await chrome.tabs.sendMessage(tab.id, { type: 'EXTRACT_SELECTION' });
+          if (selectionData && selectionData.content_html) {
+            extractedData = selectionData;
+            isSelection = true;
+          }
         }
-      } catch {
-        // Selection check failed, continue with full article
+      } catch (err) {
+        console.log('Selection check failed:', err);
       }
 
       if (!extractedData) {
@@ -406,11 +436,8 @@ class PopupController {
         content_md: contentMd,
       };
 
-      const previewTitle = document.getElementById('previewTitle');
-      if (previewTitle && this.#articleData) {
-        const titlePrefix = isSelection ? '📋 ' : '';
-        previewTitle.textContent = titlePrefix + (this.#articleData.title || '(无标题)');
-      }
+      this.updatePreview(isSelection);
+      this.autoSelectCategory(contentMd, extractedData.title);
 
       const wordCount = contentMd.length;
       const readingTime = Math.ceil(wordCount / 500);
@@ -420,6 +447,93 @@ class PopupController {
       console.error('Failed to extract article:', error);
       this.handleExtractionError(error);
     }
+  }
+
+  updatePreview(isSelection = false) {
+    const previewTitle = document.getElementById('previewTitle');
+    const previewMeta = document.getElementById('previewMeta');
+
+    if (previewTitle && this.#articleData) {
+      const titlePrefix = isSelection ? '📋 ' : '';
+      previewTitle.textContent = titlePrefix + (this.#articleData.title || '(无标题)');
+    }
+
+    if (previewMeta && this.#articleData) {
+      const metaParts = [];
+
+      if (this.#articleData.author) {
+        metaParts.push(`<span>✍️ ${this.#articleData.author}</span>`);
+      }
+
+      if (this.#articleData.published_at) {
+        metaParts.push(`<span>📅 ${this.#articleData.published_at}</span>`);
+      }
+
+      if (this.#articleData.source_domain) {
+        metaParts.push(`<span>🔗 ${this.#articleData.source_domain}</span>`);
+      }
+
+      const wordCount = this.#articleData.content_md?.length || 0;
+      if (wordCount > 0) {
+        metaParts.push(`<span>📝 ${wordCount} 字</span>`);
+      }
+
+      previewMeta.innerHTML = metaParts.join('<span class="meta-divider">·</span>');
+    }
+  }
+
+  autoSelectCategory(content, title) {
+    if (!this.#categories || this.#categories.length === 0) return;
+
+    const text = `${title || ''} ${content || ''}`.toLowerCase();
+    const select = document.getElementById('categorySelect');
+    if (!select) return;
+
+    let bestMatch = null;
+    let bestScore = 0;
+
+    for (const category of this.#categories) {
+      const keywords = this.getCategoryKeywords(category.name);
+      let score = 0;
+
+      for (const keyword of keywords) {
+        const regex = new RegExp(keyword, 'gi');
+        const matches = text.match(regex);
+        if (matches) {
+          score += matches.length;
+        }
+      }
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestMatch = category;
+      }
+    }
+
+    if (bestMatch && bestScore >= 2) {
+      select.value = bestMatch.id;
+    }
+  }
+
+  getCategoryKeywords(categoryName) {
+    const keywordMap = {
+      '技术': ['代码', 'code', '编程', 'programming', 'api', '函数', 'function', '开发', 'dev', 'github', '算法', 'algorithm', 'javascript', 'python', 'java', 'react', 'vue', 'node', 'css', 'html', '前端', '后端', 'frontend', 'backend', '数据库', 'database', 'sql', 'linux', 'docker', 'kubernetes', 'k8s', 'ai', '人工智能', '机器学习', 'machine learning', 'deep learning'],
+      '产品': ['产品', 'product', '用户', 'user', '需求', 'requirement', '设计', 'design', 'ux', 'ui', '交互', '体验', 'experience', '功能', 'feature', 'mvp', '迭代', 'iteration', 'roadmap'],
+      '商业': ['商业', 'business', '市场', 'market', '营销', 'marketing', '增长', 'growth', '融资', 'funding', '投资', 'investment', '创业', 'startup', '盈利', 'profit', '收入', 'revenue', '战略', 'strategy'],
+      '生活': ['生活', 'life', '健康', 'health', '运动', 'exercise', '旅行', 'travel', '美食', 'food', '读书', 'reading', '电影', 'movie', '音乐', 'music', '摄影', 'photography'],
+      '科技': ['科技', 'tech', 'technology', '互联网', 'internet', '手机', 'phone', 'iphone', 'android', '智能', 'smart', '创新', 'innovation', '数字', 'digital', '云', 'cloud'],
+      '设计': ['设计', 'design', 'ui', 'ux', '界面', 'interface', '视觉', 'visual', '色彩', 'color', '排版', 'typography', '图标', 'icon', 'figma', 'sketch', 'photoshop'],
+      '管理': ['管理', 'management', '团队', 'team', '领导', 'leadership', '效率', 'efficiency', '协作', 'collaboration', '项目', 'project', 'okr', 'kpi', '绩效', 'performance'],
+    };
+
+    const name = categoryName.toLowerCase();
+    for (const [key, keywords] of Object.entries(keywordMap)) {
+      if (name.includes(key.toLowerCase()) || key.toLowerCase().includes(name)) {
+        return keywords;
+      }
+    }
+
+    return [categoryName.toLowerCase()];
   }
 
   handleExtractionError(error) {
@@ -589,6 +703,15 @@ class PopupController {
         category_id: categoryId,
       });
 
+      const category = this.#categories.find(c => c.id === categoryId);
+      await addToHistory({
+        title: this.#articleData.title,
+        url: this.#articleData.source_url,
+        domain: this.#articleData.source_domain,
+        categoryName: category?.name,
+      });
+      await this.loadHistory();
+
       this.updateStatus('success', `采集成功！文章ID: ${result.id}`);
       this.showSuccessButtons(result.id);
     } catch (error) {
@@ -703,6 +826,57 @@ class PopupController {
       statusEl.className = `status ${type}`;
       statusEl.textContent = message;
     }
+  }
+
+  async loadHistory() {
+    const historySection = document.getElementById('historySection');
+    const historyList = document.getElementById('historyList');
+    
+    if (!historySection || !historyList) return;
+
+    const history = await getHistory();
+    
+    if (history.length === 0) {
+      historySection.classList.add('hidden');
+      return;
+    }
+
+    historySection.classList.remove('hidden');
+    historyList.innerHTML = '';
+
+    for (const item of history.slice(0, 5)) {
+      const itemEl = document.createElement('div');
+      itemEl.className = 'history-item';
+      itemEl.onclick = () => {
+        chrome.tabs.create({ url: item.url });
+      };
+
+      itemEl.innerHTML = `
+        <div class="history-item-content">
+          <div class="history-item-title">${this.escapeHtml(item.title)}</div>
+          <div class="history-item-meta">
+            <span>${item.domain}</span>
+            <span>${formatHistoryDate(item.collectedAt)}</span>
+          </div>
+        </div>
+        ${item.categoryName ? `<span class="history-item-category">${this.escapeHtml(item.categoryName)}</span>` : ''}
+      `;
+
+      historyList.appendChild(itemEl);
+    }
+  }
+
+  async clearHistoryList() {
+    if (confirm('确定要清空采集历史吗？')) {
+      await clearHistory();
+      await this.loadHistory();
+    }
+  }
+
+  escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text || '';
+    return div.innerHTML;
   }
 }
 

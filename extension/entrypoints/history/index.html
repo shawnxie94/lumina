@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>采集历史 - 文章知识库</title>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>📚 采集历史</h1>
+      <div class="header-actions">
+        <button id="clearAllBtn" class="btn btn-danger">清空全部</button>
+      </div>
+    </div>
+
+    <div class="stats" id="stats"></div>
+
+    <div class="history-list" id="historyList">
+      <div class="empty-state" id="emptyState">
+        <div class="empty-icon">📭</div>
+        <div class="empty-text">暂无采集记录</div>
+        <div class="empty-hint">采集文章后，记录会显示在这里</div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="./main.js"></script>
+</body>
+</html>

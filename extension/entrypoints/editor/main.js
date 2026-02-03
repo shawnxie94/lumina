@@ -2,6 +2,7 @@ import { ApiClient } from '../../utils/api';
 import { marked } from 'marked';
 import TurndownService from 'turndown';
 import { gfm } from 'turndown-plugin-gfm';
+import { addToHistory } from '../../utils/history';
 
 class EditorController {
   #apiClient;
@@ -329,6 +330,14 @@ class EditorController {
       };
 
       const result = await this.#apiClient.createArticle(articleData);
+
+      const category = this.#categories.find(c => c.id === categoryId);
+      await addToHistory({
+        title: title,
+        url: this.#articleData.source_url,
+        domain: this.#articleData.source_domain,
+        categoryName: category?.name,
+      });
 
       this.updateStatus('success', `提交成功！文章ID: ${result.id}`);
 

@@ -53,6 +53,28 @@ body {
   line-height: 1.4;
 }
 
+.preview-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.preview-meta:empty {
+  display: none;
+}
+
+.preview-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.preview-meta .meta-divider {
+  color: #d1d5db;
+}
+
 .form-group {
   margin-bottom: 16px;
 }
@@ -217,4 +239,109 @@ body {
 
 .config-btn:hover {
   background: #e5e7eb;
+}
+
+.history-section {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.history-section.hidden {
+  display: none;
+}
+
+.history-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #6b7280;
+}
+
+.history-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.view-all-btn {
+  background: none;
+  border: none;
+  font-size: 11px;
+  color: #3b82f6;
+  cursor: pointer;
+}
+
+.view-all-btn:hover {
+  color: #2563eb;
+  text-decoration: underline;
+}
+
+.clear-history-btn {
+  background: none;
+  border: none;
+  font-size: 11px;
+  color: #9ca3af;
+  cursor: pointer;
+}
+
+.clear-history-btn:hover {
+  color: #ef4444;
+}
+
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.history-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.history-item:hover {
+  border-color: #3b82f6;
+  background: #f0f9ff;
+}
+
+.history-item-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.history-item-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: #111827;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.history-item-meta {
+  font-size: 11px;
+  color: #9ca3af;
+  display: flex;
+  gap: 8px;
+}
+
+.history-item-category {
+  font-size: 10px;
+  padding: 2px 6px;
+  background: #e0e7ff;
+  color: #4338ca;
+  border-radius: 4px;
+  white-space: nowrap;
 }

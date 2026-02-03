@@ -13,6 +13,7 @@
 
   <div class="preview">
     <div class="preview-title" id="previewTitle">正在加载...</div>
+    <div class="preview-meta" id="previewMeta"></div>
   </div>
 
   <div class="form-group">
@@ -31,6 +32,17 @@
     <button class="btn btn-secondary" id="cancelBtn">取消</button>
     <button class="btn btn-secondary" id="editAndCollectBtn">编辑后采集</button>
     <button class="btn btn-primary" id="collectBtn">采集</button>
+  </div>
+
+  <div class="history-section" id="historySection">
+    <div class="history-header">
+      <span>最近采集</span>
+      <div class="history-actions">
+        <button id="viewAllHistoryBtn" class="view-all-btn">查看全部</button>
+        <button id="clearHistoryBtn" class="clear-history-btn">清空</button>
+      </div>
+    </div>
+    <div class="history-list" id="historyList"></div>
   </div>
 
   <div id="configModal" class="config-modal">
