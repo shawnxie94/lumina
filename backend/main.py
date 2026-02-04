@@ -1,6 +1,10 @@
+import json
+import logging
 import os
+import time
+import uuid
 
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List
@@ -28,7 +32,56 @@ from auth import (
     create_token,
 )
 
+logger = logging.getLogger("article_api")
+if not logger.handlers:
+    logging.basicConfig(level=logging.INFO)
+
+
+def log_event(event: str, request_id: str, **fields) -> None:
+    payload = {"event": event, "request_id": request_id, **fields}
+    logger.info(json.dumps(payload, ensure_ascii=False))
+
+
 app = FastAPI(title="文章知识库API", version="1.0.0")
+
+
+@app.middleware("http")
+async def request_id_middleware(request: Request, call_next):
+    request_id = request.headers.get("X-Request-Id") or str(uuid.uuid4())
+    request.state.request_id = request_id
+    start_time = time.perf_counter()
+    log_event(
+        "request_start",
+        request_id,
+        method=request.method,
+        path=str(request.url.path),
+        client=request.client.host if request.client else None,
+    )
+    try:
+        response = await call_next(request)
+    except Exception as exc:
+        duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
+        log_event(
+            "request_error",
+            request_id,
+            method=request.method,
+            path=str(request.url.path),
+            duration_ms=duration_ms,
+            error=str(exc),
+        )
+        raise
+    duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
+    response.headers["X-Request-Id"] = request_id
+    log_event(
+        "request_end",
+        request_id,
+        method=request.method,
+        path=str(request.url.path),
+        status_code=response.status_code,
+        duration_ms=duration_ms,
+    )
+    return response
+
 
 allowed_origins_env = os.getenv("ALLOWED_ORIGINS", "")
 if allowed_origins_env:
@@ -71,6 +124,20 @@ class ArticleUpdate(BaseModel):
     content_md: Optional[str] = None
     content_trans: Optional[str] = None
     is_visible: Optional[bool] = None
+
+
+class ArticleBatchVisibility(BaseModel):
+    article_ids: List[str]
+    is_visible: bool
+
+
+class ArticleBatchCategory(BaseModel):
+    article_ids: List[str]
+    category_id: Optional[str] = None
+
+
+class ArticleBatchDelete(BaseModel):
+    article_ids: List[str]
 
 
 class CategoryCreate(BaseModel):
@@ -130,7 +197,10 @@ async def setup_admin(request: SetupRequest, db: Session = Depends(get_db)):
     if admin is not None:
         raise HTTPException(status_code=400, detail="管理员密码已设置")
 
-    admin = create_admin_settings(db, request.password)
+    try:
+        admin = create_admin_settings(db, request.password)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     token = create_token(admin.jwt_secret)
     return LoginResponse(token=token, message="管理员密码设置成功")
 
@@ -172,7 +242,10 @@ async def change_password(
     if not is_valid:
         raise HTTPException(status_code=401, detail="原密码错误")
 
-    update_admin_password(db, admin, request.new_password)
+    try:
+        update_admin_password(db, admin, request.new_password)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     token = create_token(admin.jwt_secret)
     return LoginResponse(token=token, message="密码修改成功，请使用新 token")
 
@@ -201,6 +274,7 @@ async def get_articles(
     search: Optional[str] = None,
     source_domain: Optional[str] = None,
     author: Optional[str] = None,
+    is_visible: Optional[bool] = None,
     published_at_start: Optional[str] = None,
     published_at_end: Optional[str] = None,
     created_at_start: Optional[str] = None,
@@ -210,18 +284,19 @@ async def get_articles(
     is_admin: bool = Depends(check_is_admin),
 ):
     articles, total = article_service.get_articles(
-        db,
-        page,
-        size,
-        category_id,
-        search,
-        source_domain,
-        author,
-        published_at_start,
-        published_at_end,
-        created_at_start,
-        created_at_end,
-        sort_by,
+        db=db,
+        page=page,
+        size=size,
+        category_id=category_id,
+        search=search,
+        source_domain=source_domain,
+        author=author,
+        is_visible=is_visible,
+        published_at_start=published_at_start,
+        published_at_end=published_at_end,
+        created_at_start=created_at_start,
+        created_at_end=created_at_end,
+        sort_by=sort_by,
         is_admin=is_admin,
     )
     return {
@@ -396,6 +471,61 @@ async def update_article(
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/articles/batch/visibility")
+async def batch_update_visibility(
+    request: ArticleBatchVisibility,
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
+    if not request.article_ids:
+        raise HTTPException(status_code=400, detail="请选择文章")
+    updated = (
+        db.query(Article)
+        .filter(Article.id.in_(request.article_ids))
+        .update({"is_visible": request.is_visible}, synchronize_session=False)
+    )
+    db.commit()
+    return {"updated": updated}
+
+
+@app.post("/api/articles/batch/category")
+async def batch_update_category(
+    request: ArticleBatchCategory,
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
+    if not request.article_ids:
+        raise HTTPException(status_code=400, detail="请选择文章")
+    if request.category_id:
+        category = db.query(Category).filter(Category.id == request.category_id).first()
+        if not category:
+            raise HTTPException(status_code=404, detail="分类不存在")
+    updated = (
+        db.query(Article)
+        .filter(Article.id.in_(request.article_ids))
+        .update({"category_id": request.category_id}, synchronize_session=False)
+    )
+    db.commit()
+    return {"updated": updated}
+
+
+@app.post("/api/articles/batch/delete")
+async def batch_delete_articles(
+    request: ArticleBatchDelete,
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
+    if not request.article_ids:
+        raise HTTPException(status_code=400, detail="请选择文章")
+    deleted = (
+        db.query(Article)
+        .filter(Article.id.in_(request.article_ids))
+        .delete(synchronize_session=False)
+    )
+    db.commit()
+    return {"deleted": deleted}
 
 
 class VisibilityUpdate(BaseModel):

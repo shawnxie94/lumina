@@ -303,15 +303,16 @@ class ArticleService:
         db: Session,
         page: int = 1,
         size: int = 20,
-        category_id: str = None,
-        search: str = None,
-        source_domain: str = None,
-        author: str = None,
-        published_at_start: str = None,
-        published_at_end: str = None,
-        created_at_start: str = None,
-        created_at_end: str = None,
-        sort_by: str = "created_at_desc",
+        category_id: str | None = None,
+        search: str | None = None,
+        source_domain: str | None = None,
+        author: str | None = None,
+        is_visible: bool | None = None,
+        published_at_start: str | None = None,
+        published_at_end: str | None = None,
+        created_at_start: str | None = None,
+        created_at_end: str | None = None,
+        sort_by: str | None = "created_at_desc",
         is_admin: bool = False,
     ):
         from sqlalchemy import func
@@ -320,6 +321,8 @@ class ArticleService:
 
         if not is_admin:
             query = query.filter(Article.is_visible == True)
+        elif is_visible is not None:
+            query = query.filter(Article.is_visible == is_visible)
 
         if category_id:
             query = query.filter(Article.category_id == category_id)

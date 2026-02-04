@@ -193,6 +193,7 @@ export const articleApi = {
     search?: string;
     source_domain?: string;
     author?: string;
+    is_visible?: boolean;
     published_at_start?: string;
     published_at_end?: string;
     created_at_start?: string;
@@ -230,6 +231,29 @@ export const articleApi = {
 
   updateArticleVisibility: async (id: string, isVisible: boolean) => {
     const response = await api.put(`/api/articles/${id}/visibility`, { is_visible: isVisible });
+    return response.data;
+  },
+
+  batchUpdateVisibility: async (articleIds: string[], isVisible: boolean) => {
+    const response = await api.post('/api/articles/batch/visibility', {
+      article_ids: articleIds,
+      is_visible: isVisible,
+    });
+    return response.data;
+  },
+
+  batchUpdateCategory: async (articleIds: string[], categoryId: string | null) => {
+    const response = await api.post('/api/articles/batch/category', {
+      article_ids: articleIds,
+      category_id: categoryId,
+    });
+    return response.data;
+  },
+
+  batchDeleteArticles: async (articleIds: string[]) => {
+    const response = await api.post('/api/articles/batch/delete', {
+      article_ids: articleIds,
+    });
     return response.data;
   },
 

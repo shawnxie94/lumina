@@ -71,6 +71,7 @@ export default function Home() {
   const [publishedDateRange, setPublishedDateRange] = useState<[Date | null, Date | null]>([null, null]);
   const [createdDateRange, setCreatedDateRange] = useState<[Date | null, Date | null]>([null, null]);
   const [quickDateFilter, setQuickDateFilter] = useState<QuickDateOption>('');
+  const [visibilityFilter, setVisibilityFilter] = useState<string>('');
   const [sortBy, setSortBy] = useState<string>('created_at_desc');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
@@ -81,6 +82,7 @@ export default function Home() {
   const [showFilters, setShowFilters] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [jumpToPage, setJumpToPage] = useState('');
+  const [batchCategoryId, setBatchCategoryId] = useState('');
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [publishedStartDate, publishedEndDate] = publishedDateRange;
@@ -89,6 +91,8 @@ export default function Home() {
   const fetchArticles = async () => {
     setLoading(true);
     try {
+      const visibilityValue =
+        visibilityFilter === 'visible' ? true : visibilityFilter === 'hidden' ? false : undefined;
       const response = await articleApi.getArticles({
         page,
         size: pageSize,
@@ -96,6 +100,7 @@ export default function Home() {
         search: searchTerm || undefined,
         source_domain: sourceDomain || undefined,
         author: author || undefined,
+        is_visible: isAdmin ? visibilityValue : undefined,
         published_at_start: formatDate(publishedStartDate) || undefined,
         published_at_end: formatDate(publishedEndDate) || undefined,
         created_at_start: formatDate(createdStartDate) || undefined,
@@ -175,6 +180,7 @@ export default function Home() {
     searchTerm,
     sourceDomain,
     author,
+    visibilityFilter,
     publishedStartDate,
     publishedEndDate,
     createdStartDate,
@@ -229,7 +235,57 @@ export default function Home() {
     setCreatedDateRange([null, null]);
     setQuickDateFilter('');
     setSelectedCategory('');
+    setVisibilityFilter('');
     setPage(1);
+  };
+
+  const handleBatchVisibility = async (isVisible: boolean) => {
+    if (selectedArticleIds.size === 0) return;
+    try {
+      await articleApi.batchUpdateVisibility(Array.from(selectedArticleIds), isVisible);
+      showToast(isVisible ? '已批量设为可见' : '已批量设为隐藏');
+      setSelectedArticleIds(new Set());
+      fetchArticles();
+      fetchCategoryStats();
+    } catch (error) {
+      console.error('Failed to batch update visibility:', error);
+      showToast('操作失败', 'error');
+    }
+  };
+
+  const handleBatchCategory = async () => {
+    if (selectedArticleIds.size === 0) return;
+    if (!batchCategoryId) {
+      showToast('请选择分类', 'info');
+      return;
+    }
+    const targetCategoryId = batchCategoryId === '__clear__' ? null : batchCategoryId;
+    try {
+      await articleApi.batchUpdateCategory(Array.from(selectedArticleIds), targetCategoryId);
+      showToast('分类已更新');
+      setBatchCategoryId('');
+      setSelectedArticleIds(new Set());
+      fetchArticles();
+      fetchCategoryStats();
+    } catch (error) {
+      console.error('Failed to batch update category:', error);
+      showToast('操作失败', 'error');
+    }
+  };
+
+  const handleBatchDelete = async () => {
+    if (selectedArticleIds.size === 0) return;
+    if (!confirm('确定要删除选中的文章吗？此操作不可恢复')) return;
+    try {
+      await articleApi.batchDeleteArticles(Array.from(selectedArticleIds));
+      showToast('删除成功');
+      setSelectedArticleIds(new Set());
+      fetchArticles();
+      fetchCategoryStats();
+    } catch (error) {
+      console.error('Failed to batch delete articles:', error);
+      showToast('删除失败', 'error');
+    }
   };
 
   const activeFilters = useMemo(() => {
@@ -239,6 +295,9 @@ export default function Home() {
     if (searchTerm) filters.push(`标题：${searchTerm}`);
     if (sourceDomain) filters.push(`来源：${sourceDomain}`);
     if (author) filters.push(`作者：${author}`);
+    if (isAdmin && visibilityFilter) {
+      filters.push(visibilityFilter === 'visible' ? '可见：是' : '可见：否');
+    }
     if (publishedStartDate || publishedEndDate) {
       filters.push(`发表：${formatDate(publishedStartDate)} ~ ${formatDate(publishedEndDate)}`.trim());
     }
@@ -261,6 +320,8 @@ export default function Home() {
     createdEndDate,
     quickDateFilter,
     sortBy,
+    isAdmin,
+    visibilityFilter,
   ]);
 
   const handleDelete = async (id: string) => {
@@ -467,6 +528,20 @@ export default function Home() {
                     <option value="1y">1年内</option>
                   </select>
                 </div>
+                {isAdmin && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-gray-600">可见：</span>
+                    <select
+                      value={visibilityFilter}
+                      onChange={(e) => { setVisibilityFilter(e.target.value); setPage(1); }}
+                      className="px-3 py-1 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">全部</option>
+                      <option value="visible">可见</option>
+                      <option value="hidden">隐藏</option>
+                    </select>
+                  </div>
+                )}
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-gray-600">排序：</span>
                   <select
@@ -586,6 +661,56 @@ export default function Home() {
                       清除筛选
                     </button>
                   </div>
+                </div>
+              </div>
+            )}
+            {isAdmin && selectedArticleIds.size > 0 && (
+              <div className="mt-4 pt-4 border-t border-gray-200">
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="text-sm text-gray-600">已选 {selectedArticleIds.size} 篇</span>
+                  <button
+                    type="button"
+                    onClick={() => handleBatchVisibility(true)}
+                    className="px-3 py-1 text-sm bg-green-50 text-green-700 rounded-lg hover:bg-green-100 transition"
+                  >
+                    设为可见
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleBatchVisibility(false)}
+                    className="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition"
+                  >
+                    设为隐藏
+                  </button>
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={batchCategoryId}
+                      onChange={(e) => setBatchCategoryId(e.target.value)}
+                      className="px-3 py-1 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">选择分类</option>
+                      <option value="__clear__">清空分类</option>
+                      {categories.map((category) => (
+                        <option key={category.id} value={category.id}>
+                          {category.name}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={handleBatchCategory}
+                      className="px-3 py-1 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                    >
+                      应用分类
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleBatchDelete}
+                    className="px-3 py-1 text-sm bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition"
+                  >
+                    批量删除
+                  </button>
                 </div>
               </div>
             )}

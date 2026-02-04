@@ -51,6 +51,7 @@ class SetupRequest(BaseModel):
 
 PASSWORD_HASH_VERSION_SHA256 = "sha256$"
 PASSWORD_HASH_VERSION_BCRYPT = "bcrypt$"
+MAX_BCRYPT_PASSWORD_BYTES = 72
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
@@ -60,6 +61,8 @@ def _hash_password_sha256(password: str) -> str:
 
 def hash_password(password: str) -> str:
     """使用 bcrypt 哈希密码"""
+    if len(password.encode("utf-8")) > MAX_BCRYPT_PASSWORD_BYTES:
+        raise ValueError("密码过长（最长72字节），请缩短后重试")
     return f"{PASSWORD_HASH_VERSION_BCRYPT}{pwd_context.hash(password)}"
 
 
@@ -70,7 +73,12 @@ def verify_password(password: str, password_hash: str) -> tuple[bool, bool]:
 
     if password_hash.startswith(PASSWORD_HASH_VERSION_BCRYPT):
         hashed = password_hash[len(PASSWORD_HASH_VERSION_BCRYPT) :]
-        return pwd_context.verify(password, hashed), False
+        if len(password.encode("utf-8")) > MAX_BCRYPT_PASSWORD_BYTES:
+            return False, False
+        try:
+            return pwd_context.verify(password, hashed), False
+        except Exception:
+            return False, False
 
     if password_hash.startswith(PASSWORD_HASH_VERSION_SHA256):
         hashed = password_hash[len(PASSWORD_HASH_VERSION_SHA256) :]
