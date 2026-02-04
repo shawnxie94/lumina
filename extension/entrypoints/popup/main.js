@@ -227,10 +227,8 @@ class PopupController {
 
         alt = alt.replace(/[\[\]]/g, '').trim();
         
-        const title = node.getAttribute('title');
-        const titlePart = title && title !== alt ? ` "${title}"` : '';
-        
-        return `![${alt}](${src}${titlePart})`;
+        const escapedAlt = alt.replace(/"/g, '&quot;');
+        return `<img src="${src}" alt="${escapedAlt}" style="max-width: 600px;" />`;
       },
     });
 

@@ -26,6 +26,21 @@ class EditorController {
     });
     this.#turndown.use(gfm);
     this.#turndown.remove(['script', 'style', 'noscript', 'iframe', 'nav', 'footer', 'aside']);
+    
+    this.#turndown.addRule('improvedImage', {
+      filter: 'img',
+      replacement: (_content, node) => {
+        let src = node.getAttribute('src') || '';
+        if (!src || src.startsWith('data:image/svg+xml') || src.startsWith('data:image/gif;base64,R0lGOD')) {
+          src = node.getAttribute('data-src') || node.getAttribute('data-original') || '';
+        }
+        if (!src) return '';
+        
+        let alt = node.getAttribute('alt') || node.getAttribute('title') || '';
+        alt = alt.replace(/"/g, '&quot;');
+        return `<img src="${src}" alt="${alt}" style="max-width: 600px;" />`;
+      },
+    });
   }
 
   async init() {
