@@ -408,6 +408,7 @@ class PopupController {
     document.getElementById('logoutBtn')?.addEventListener('click', () => this.handleLogout());
 
     document.getElementById('loginPromptBtn')?.addEventListener('click', () => this.handleLogin());
+    document.getElementById('loginPromptConfigBtn')?.addEventListener('click', () => this.openConfigModal());
   }
 
   openHistoryPage() {
