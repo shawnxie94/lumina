@@ -66,6 +66,7 @@ class Article(Base):
     published_at = Column(String)
     source_domain = Column(String)
     status = Column(String, default="pending")
+    is_visible = Column(Boolean, default=False)
     category_id = Column(String, ForeignKey("categories.id"))
     created_at = Column(String, default=now_str)
     updated_at = Column(String, default=now_str)
@@ -133,6 +134,18 @@ class PromptConfig(Base):
 
     category = relationship("Category", back_populates="prompt_configs")
     model_api_config = relationship("ModelAPIConfig", backref="prompt_configs")
+
+
+class AdminSettings(Base):
+    """存储管理员认证信息，系统只有一个管理员账户"""
+
+    __tablename__ = "admin_settings"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    password_hash = Column(String, nullable=False)
+    jwt_secret = Column(String, nullable=False)  # 用于签名 JWT token
+    created_at = Column(String, default=now_str)
+    updated_at = Column(String, default=now_str)
 
 
 # Keep AIConfig for backwards compatibility (deprecated)

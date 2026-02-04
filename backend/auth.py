@@ -1,0 +1,169 @@
+"""
+认证模块 - 管理员登录和权限验证
+"""
+
+import secrets
+import hashlib
+from datetime import datetime, timedelta
+from typing import Optional
+
+import jwt
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
+
+from models import get_db, AdminSettings, now_str
+
+# JWT 配置
+JWT_ALGORITHM = "HS256"
+JWT_EXPIRATION_HOURS = 24 * 7  # 7 天有效期
+
+# HTTP Bearer 认证
+security = HTTPBearer(auto_error=False)
+
+
+# ============ Pydantic Schemas ============
+
+
+class LoginRequest(BaseModel):
+    password: str
+
+
+class LoginResponse(BaseModel):
+    token: str
+    message: str
+
+
+class ChangePasswordRequest(BaseModel):
+    old_password: str
+    new_password: str
+
+
+class SetupRequest(BaseModel):
+    password: str
+
+
+# ============ 密码工具函数 ============
+
+
+def hash_password(password: str) -> str:
+    """使用 SHA-256 哈希密码"""
+    return hashlib.sha256(password.encode()).hexdigest()
+
+
+def verify_password(password: str, password_hash: str) -> bool:
+    """验证密码"""
+    return hash_password(password) == password_hash
+
+
+def generate_jwt_secret() -> str:
+    """生成随机 JWT 密钥"""
+    return secrets.token_hex(32)
+
+
+# ============ JWT 工具函数 ============
+
+
+def create_token(jwt_secret: str) -> str:
+    """创建 JWT token"""
+    payload = {
+        "sub": "admin",
+        "iat": datetime.utcnow(),
+        "exp": datetime.utcnow() + timedelta(hours=JWT_EXPIRATION_HOURS),
+    }
+    return jwt.encode(payload, jwt_secret, algorithm=JWT_ALGORITHM)
+
+
+def verify_token(token: str, jwt_secret: str) -> bool:
+    """验证 JWT token"""
+    try:
+        jwt.decode(token, jwt_secret, algorithms=[JWT_ALGORITHM])
+        return True
+    except jwt.ExpiredSignatureError:
+        return False
+    except jwt.InvalidTokenError:
+        return False
+
+
+# ============ 数据库操作 ============
+
+
+def get_admin_settings(db: Session) -> Optional[AdminSettings]:
+    """获取管理员设置"""
+    return db.query(AdminSettings).first()
+
+
+def create_admin_settings(db: Session, password: str) -> AdminSettings:
+    """创建管理员设置（首次设置密码）"""
+    admin = AdminSettings(
+        password_hash=hash_password(password),
+        jwt_secret=generate_jwt_secret(),
+    )
+    db.add(admin)
+    db.commit()
+    db.refresh(admin)
+    return admin
+
+
+def update_admin_password(db: Session, admin: AdminSettings, new_password: str) -> None:
+    """更新管理员密码"""
+    admin.password_hash = hash_password(new_password)
+    admin.jwt_secret = (
+        generate_jwt_secret()
+    )  # 更换密码时重新生成 JWT 密钥，使旧 token 失效
+    admin.updated_at = now_str()
+    db.commit()
+
+
+# ============ FastAPI 依赖 ============
+
+
+def get_current_admin(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    db: Session = Depends(get_db),
+) -> bool:
+    """
+    验证当前请求是否来自已登录的管理员
+    用于保护需要管理员权限的路由
+    """
+    if credentials is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="未登录，请先登录",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    admin = get_admin_settings(db)
+    if admin is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="系统未初始化，请先设置管理员密码",
+        )
+
+    if not verify_token(credentials.credentials, admin.jwt_secret):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="登录已过期，请重新登录",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    return True
+
+
+def check_is_admin(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    db: Session = Depends(get_db),
+) -> bool:
+    """
+    检查当前请求是否来自已登录的管理员（不抛出异常）
+    用于前端判断是否显示管理功能
+    """
+    if credentials is None:
+        return False
+
+    admin = get_admin_settings(db)
+    if admin is None:
+        return False
+
+    return verify_token(credentials.credentials, admin.jwt_secret)

@@ -1,10 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+
 import { useRouter } from 'next/router';
+import Link from 'next/link';
+import { marked } from 'marked';
+
 import { articleApi, type ArticleDetail, type ModelAPIConfig, type PromptConfig } from '@/lib/api';
 import { useToast } from '@/components/Toast';
 import { BackToTop } from '@/components/BackToTop';
-import Link from 'next/link';
-import { marked } from 'marked';
+import { useAuth } from '@/contexts/AuthContext';
 
 // 轮询间隔（毫秒）
 const POLLING_INTERVAL = 3000;
@@ -15,9 +18,10 @@ interface AIContentSectionProps {
   status: string | null | undefined;
   onGenerate: () => void;
   onCopy: () => void;
+  canEdit?: boolean;
 }
 
-function AIContentSection({ title, content, status, onGenerate, onCopy }: AIContentSectionProps) {
+function AIContentSection({ title, content, status, onGenerate, onCopy, canEdit = false }: AIContentSectionProps) {
   const getStatusBadge = () => {
     if (!status) return null;
     const statusConfig: Record<string, { bg: string; text: string; label: string }> = {
@@ -35,7 +39,7 @@ function AIContentSection({ title, content, status, onGenerate, onCopy }: AICont
     );
   };
 
-  const showGenerateButton = !status || status === 'completed' || status === 'failed';
+  const showGenerateButton = canEdit && (!status || status === 'completed' || status === 'failed');
 
   return (
     <div>
@@ -65,7 +69,7 @@ function AIContentSection({ title, content, status, onGenerate, onCopy }: AICont
         <div className="text-gray-700 text-sm whitespace-pre-wrap">{content}</div>
       ) : (
         <p className="text-gray-400 text-sm">
-          {status === 'processing' ? '正在生成...' : '点击 ✨ 生成'}
+          {status === 'processing' ? '正在生成...' : '未生成'}
         </p>
       )}
     </div>
@@ -171,6 +175,7 @@ function ReadingProgress() {
 export default function ArticleDetailPage() {
   const router = useRouter();
   const { showToast } = useToast();
+  const { isAdmin } = useAuth();
   const { id } = router.query;
   const [article, setArticle] = useState<ArticleDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -379,6 +384,19 @@ export default function ArticleDetailPage() {
     }
   };
 
+  const handleToggleVisibility = async () => {
+    if (!id || !article) return;
+
+    try {
+      await articleApi.updateArticleVisibility(id as string, !article.is_visible);
+      setArticle({ ...article, is_visible: !article.is_visible });
+      showToast(article.is_visible ? '已设为不可见' : '已设为可见');
+    } catch (error) {
+      console.error('Failed to toggle visibility:', error);
+      showToast('操作失败', 'error');
+    }
+  };
+
   const handleCopyContent = async (content: string | null | undefined, label: string) => {
     if (!content) return;
     try {
@@ -461,13 +479,30 @@ export default function ArticleDetailPage() {
               ← 返回列表
             </Link>
             <h1 className="text-xl font-bold text-gray-900 truncate">{article.title}</h1>
-            <button
-              onClick={() => setShowDeleteModal(true)}
-              className="text-gray-400 hover:text-red-600 transition"
-              title="删除文章"
-            >
-              ✕
-            </button>
+            {isAdmin ? (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleToggleVisibility}
+                  className={`w-6 h-6 flex items-center justify-center rounded transition ${
+                    article.is_visible
+                      ? 'text-green-500 hover:text-green-700 hover:bg-green-50'
+                      : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
+                  }`}
+                  title={article.is_visible ? '点击隐藏' : '点击显示'}
+                >
+                  {article.is_visible ? '👁️' : '👁️‍🗨️'}
+                </button>
+                <button
+                  onClick={() => setShowDeleteModal(true)}
+                  className="text-gray-400 hover:text-red-600 transition"
+                  title="删除文章"
+                >
+                  ✕
+                </button>
+              </div>
+            ) : (
+              <div className="w-6" />
+            )}
           </div>
           <div className="flex flex-wrap gap-4 text-sm text-gray-600 pb-3 border-b border-gray-100">
             {article.category && (
@@ -552,7 +587,7 @@ export default function ArticleDetailPage() {
                          article.translation_status === 'pending' ? '等待翻译' :
                          article.translation_status === 'failed' ? '翻译失败' : ''}
                       </span>
-                      {(article.translation_status === 'completed' || article.translation_status === 'failed') && (
+                      {(article.translation_status === 'completed' || article.translation_status === 'failed') && isAdmin && (
                         <button
                           onClick={handleRetryTranslation}
                           className="text-gray-400 hover:text-blue-600 transition"
@@ -565,13 +600,15 @@ export default function ArticleDetailPage() {
                   )}
                 </div>
                 <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => openEditModal(showTranslation && article.content_trans ? 'translation' : 'original')}
-                    className="text-gray-400 hover:text-blue-600 transition"
-                    title={showTranslation && article.content_trans ? '编辑译文' : '编辑原文'}
-                  >
-                    ✏️
-                  </button>
+                  {isAdmin && (
+                    <button
+                      onClick={() => openEditModal(showTranslation && article.content_trans ? 'translation' : 'original')}
+                      className="text-gray-400 hover:text-blue-600 transition"
+                      title={showTranslation && article.content_trans ? '编辑译文' : '编辑原文'}
+                    >
+                      ✏️
+                    </button>
+                  )}
                   {article.content_trans && (
                     <button
                       onClick={() => setShowTranslation(!showTranslation)}
@@ -627,6 +664,7 @@ export default function ArticleDetailPage() {
                       status={article.ai_analysis?.summary_status || (article.status === 'completed' ? 'completed' : article.status)}
                       onGenerate={() => handleGenerateContent('summary')}
                       onCopy={() => handleCopyContent(article.ai_analysis?.summary, '摘要')}
+                      canEdit={isAdmin}
                     />
 
                     <AIContentSection
@@ -635,6 +673,7 @@ export default function ArticleDetailPage() {
                       status={article.ai_analysis?.key_points_status}
                       onGenerate={() => handleGenerateContent('key_points')}
                       onCopy={() => handleCopyContent(article.ai_analysis?.key_points, '关键内容')}
+                      canEdit={isAdmin}
                     />
 
                     <AIContentSection
@@ -643,6 +682,7 @@ export default function ArticleDetailPage() {
                       status={article.ai_analysis?.outline_status}
                       onGenerate={() => handleGenerateContent('outline')}
                       onCopy={() => handleCopyContent(article.ai_analysis?.outline, '文章大纲')}
+                      canEdit={isAdmin}
                     />
 
                     <AIContentSection
@@ -651,6 +691,7 @@ export default function ArticleDetailPage() {
                       status={article.ai_analysis?.quotes_status}
                       onGenerate={() => handleGenerateContent('quotes')}
                       onCopy={() => handleCopyContent(article.ai_analysis?.quotes, '文章金句')}
+                      canEdit={isAdmin}
                     />
 
                     {article.ai_analysis?.error_message && (

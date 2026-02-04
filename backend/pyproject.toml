@@ -13,6 +13,7 @@ dependencies = [
     "pydantic==2.5.0",
     "pydantic-settings==2.1.0",
     "python-dotenv==1.0.0",
+    "PyJWT==2.8.0",
 ]
 
 [build-system]
@@ -20,4 +21,4 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-py-modules = ["main", "models", "ai_client", "article_service"]
+py-modules = ["main", "models", "ai_client", "article_service", "auth"]

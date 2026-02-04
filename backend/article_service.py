@@ -312,10 +312,14 @@ class ArticleService:
         created_at_start: str = None,
         created_at_end: str = None,
         sort_by: str = "created_at_desc",
+        is_admin: bool = False,
     ):
         from sqlalchemy import func
 
         query = db.query(Article)
+
+        if not is_admin:
+            query = query.filter(Article.is_visible == True)
 
         if category_id:
             query = query.filter(Article.category_id == category_id)

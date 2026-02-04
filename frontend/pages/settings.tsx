@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
+
+import { useRouter } from 'next/router';
 import Link from 'next/link';
-import { articleApi, categoryApi, type ModelAPIConfig, type PromptConfig } from '@/lib/api';
-import { useToast } from '@/components/Toast';
 import {
   DndContext,
   closestCenter,
@@ -19,6 +19,10 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+
+import { articleApi, categoryApi, type ModelAPIConfig, type PromptConfig } from '@/lib/api';
+import { useToast } from '@/components/Toast';
+import { useAuth } from '@/contexts/AuthContext';
 
 type SettingSection = 'ai' | 'categories';
 type AISubSection = 'model-api' | 'prompt';
@@ -121,7 +125,9 @@ function SortableCategoryItem({ category, onEdit, onDelete }: SortableCategoryIt
 }
 
 export default function SettingsPage() {
+  const router = useRouter();
   const { showToast } = useToast();
+  const { isAdmin, isLoading: authLoading } = useAuth();
   const [activeSection, setActiveSection] = useState<SettingSection>('categories');
   const [aiSubSection, setAISubSection] = useState<AISubSection>('model-api');
   const [modelAPIConfigs, setModelAPIConfigs] = useState<ModelAPIConfig[]>([]);
@@ -138,6 +144,12 @@ export default function SettingsPage() {
   const [editingModelAPIConfig, setEditingModelAPIConfig] = useState<ModelAPIConfig | null>(null);
   const [editingPromptConfig, setEditingPromptConfig] = useState<PromptConfig | null>(null);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+
+  useEffect(() => {
+    if (!authLoading && !isAdmin) {
+      router.push('/login');
+    }
+  }, [authLoading, isAdmin, router]);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -475,6 +487,27 @@ export default function SettingsPage() {
       showToast('删除失败', 'error');
     }
   };
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-gray-500">加载中...</div>
+      </div>
+    );
+  }
+
+  if (!isAdmin) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-gray-500 mb-4">无权限访问此页面</div>
+          <Link href="/login" className="text-blue-600 hover:underline">
+            去登录
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">

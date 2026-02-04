@@ -9,6 +9,103 @@ const api = axios.create({
   },
 });
 
+// ============ Token 管理 ============
+
+const TOKEN_KEY = 'admin_token';
+
+export const getToken = (): string | null => {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem(TOKEN_KEY);
+};
+
+export const setToken = (token: string): void => {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(TOKEN_KEY, token);
+};
+
+export const removeToken = (): void => {
+  if (typeof window === 'undefined') return;
+  localStorage.removeItem(TOKEN_KEY);
+};
+
+// ============ 请求拦截器：自动添加 token ============
+
+api.interceptors.request.use(
+  (config) => {
+    const token = getToken();
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  },
+);
+
+// ============ 响应拦截器：处理 401 错误 ============
+
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    // 401 错误不自动清除 token，让调用方决定如何处理
+    return Promise.reject(error);
+  },
+);
+
+// ============ 认证相关类型 ============
+
+export interface AuthStatus {
+  initialized: boolean;
+}
+
+export interface AuthVerifyResponse {
+  valid: boolean;
+  role: 'admin' | 'guest';
+}
+
+export interface LoginResponse {
+  token: string;
+  message: string;
+}
+
+// ============ 认证 API ============
+
+export const authApi = {
+  /** 获取认证状态：是否已初始化管理员密码 */
+  getStatus: async (): Promise<AuthStatus> => {
+    const response = await api.get('/api/auth/status');
+    return response.data;
+  },
+
+  /** 首次设置管理员密码 */
+  setup: async (password: string): Promise<LoginResponse> => {
+    const response = await api.post('/api/auth/setup', { password });
+    return response.data;
+  },
+
+  /** 管理员登录 */
+  login: async (password: string): Promise<LoginResponse> => {
+    const response = await api.post('/api/auth/login', { password });
+    return response.data;
+  },
+
+  /** 验证当前 token 是否有效 */
+  verify: async (): Promise<AuthVerifyResponse> => {
+    const response = await api.get('/api/auth/verify');
+    return response.data;
+  },
+
+  /** 修改管理员密码 */
+  changePassword: async (oldPassword: string, newPassword: string): Promise<LoginResponse> => {
+    const response = await api.put('/api/auth/password', {
+      old_password: oldPassword,
+      new_password: newPassword,
+    });
+    return response.data;
+  },
+};
+
 export interface Article {
   id: string;
   title: string;
@@ -20,6 +117,7 @@ export interface Article {
   source_domain: string | null;
   published_at: string | null;
   created_at: string;
+  is_visible: boolean;
 }
 
 export interface ArticleDetail extends Article {
@@ -30,6 +128,7 @@ export interface ArticleDetail extends Article {
   translation_error: string | null;
   source_url: string;
   published_at: string | null;
+  is_visible: boolean;
   ai_analysis: {
     summary: string | null;
     summary_status: string | null;
@@ -114,9 +213,15 @@ export const articleApi = {
       top_image?: string;
       content_md?: string;
       content_trans?: string;
+      is_visible?: boolean;
     },
   ) => {
     const response = await api.put(`/api/articles/${id}`, data);
+    return response.data;
+  },
+
+  updateArticleVisibility: async (id: string, isVisible: boolean) => {
+    const response = await api.put(`/api/articles/${id}/visibility`, { is_visible: isVisible });
     return response.data;
   },
 

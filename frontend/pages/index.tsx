@@ -1,11 +1,14 @@
 import { useState, useEffect } from 'react';
+
 import { useRouter } from 'next/router';
-import { articleApi, categoryApi, Article, Category } from '@/lib/api';
-import { useToast } from '@/components/Toast';
-import { BackToTop } from '@/components/BackToTop';
 import Link from 'next/link';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
+
+import { articleApi, categoryApi, Article, Category } from '@/lib/api';
+import { useToast } from '@/components/Toast';
+import { BackToTop } from '@/components/BackToTop';
+import { useAuth } from '@/contexts/AuthContext';
 
 const formatDate = (date: Date | null): string => {
   if (!date) return '';
@@ -54,6 +57,7 @@ const getDateRangeFromQuickOption = (option: QuickDateOption): [Date | null, Dat
 export default function Home() {
   const router = useRouter();
   const { showToast } = useToast();
+  const { isAdmin, logout } = useAuth();
   const [articles, setArticles] = useState<Article[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [categoryStats, setCategoryStats] = useState<{ id: string; name: string; color: string | null; article_count: number }[]>([]);
@@ -209,6 +213,19 @@ export default function Home() {
     }
   };
 
+  const handleToggleVisibility = async (id: string, currentVisibility: boolean) => {
+    try {
+      await articleApi.updateArticleVisibility(id, !currentVisibility);
+      setArticles((prev) =>
+        prev.map((a) => (a.id === id ? { ...a, is_visible: !currentVisibility } : a))
+      );
+      showToast(currentVisibility ? '已设为不可见' : '已设为可见');
+    } catch (error) {
+      console.error('Failed to toggle visibility:', error);
+      showToast('操作失败', 'error');
+    }
+  };
+
   const handleToggleSelect = (id: string) => {
     setSelectedArticleIds((prev) => {
       const next = new Set(prev);
@@ -287,7 +304,7 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <h1 className="text-2xl font-bold text-gray-900">📚 文章知识库</h1>
-            <div className="flex gap-2">
+            <div className="flex gap-2 items-center">
               {selectedArticleIds.size > 0 && (
                 <button
                   onClick={handleExport}
@@ -296,12 +313,32 @@ export default function Home() {
                   导出选中 ({selectedArticleIds.size})
                 </button>
               )}
-              <Link
-                href="/settings"
-                className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition"
-              >
-                ⚙️ 设置
-              </Link>
+              {isAdmin && (
+                <Link
+                  href="/settings"
+                  className="w-9 h-9 flex items-center justify-center text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition"
+                  title="设置"
+                >
+                  ⚙️
+                </Link>
+              )}
+              {isAdmin ? (
+                <button
+                  onClick={logout}
+                  className="w-9 h-9 flex items-center justify-center text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
+                  title="退出登录"
+                >
+                  🚪
+                </button>
+              ) : (
+                <Link
+                  href="/login"
+                  className="w-9 h-9 flex items-center justify-center text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
+                  title="管理员登录"
+                >
+                  🔐
+                </Link>
+              )}
             </div>
           </div>
         </div>
@@ -491,15 +528,30 @@ export default function Home() {
                    {articles.map((article) => (
                       <div
                         key={article.id}
-                        className="bg-white rounded-lg shadow-sm p-6 hover:shadow-md transition relative"
+                        className={`bg-white rounded-lg shadow-sm p-6 hover:shadow-md transition relative ${!article.is_visible && isAdmin ? 'opacity-60' : ''}`}
                       >
-                        <button
-                          onClick={() => handleDelete(article.id)}
-                          className="absolute top-3 right-3 w-6 h-6 flex items-center justify-center text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition"
-                          title="删除"
-                        >
-                          ✕
-                        </button>
+                        {isAdmin && (
+                          <div className="absolute top-3 right-3 flex items-center gap-1">
+                            <button
+                              onClick={() => handleToggleVisibility(article.id, article.is_visible)}
+                              className={`w-6 h-6 flex items-center justify-center rounded transition ${
+                                article.is_visible
+                                  ? 'text-green-500 hover:text-green-700 hover:bg-green-50'
+                                  : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
+                              }`}
+                              title={article.is_visible ? '点击隐藏' : '点击显示'}
+                            >
+                              {article.is_visible ? '👁️' : '👁️‍🗨️'}
+                            </button>
+                            <button
+                              onClick={() => handleDelete(article.id)}
+                              className="w-6 h-6 flex items-center justify-center text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition"
+                              title="删除"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        )}
                         <div className="flex gap-4">
                           <input
                             type="checkbox"

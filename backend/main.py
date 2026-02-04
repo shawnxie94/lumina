@@ -13,6 +13,19 @@ from models import (
 )
 from article_service import ArticleService
 from sqlalchemy.orm import Session
+from auth import (
+    LoginRequest,
+    LoginResponse,
+    ChangePasswordRequest,
+    SetupRequest,
+    get_current_admin,
+    check_is_admin,
+    get_admin_settings,
+    create_admin_settings,
+    update_admin_password,
+    verify_password,
+    create_token,
+)
 
 app = FastAPI(title="文章知识库API", version="1.0.0")
 
@@ -45,6 +58,7 @@ class ArticleUpdate(BaseModel):
     top_image: Optional[str] = None
     content_md: Optional[str] = None
     content_trans: Optional[str] = None
+    is_visible: Optional[bool] = None
 
 
 class CategoryCreate(BaseModel):
@@ -94,8 +108,74 @@ async def startup_event():
     init_db()
 
 
+# ============ 认证路由 ============
+
+
+@app.get("/api/auth/status")
+async def get_auth_status(db: Session = Depends(get_db)):
+    """获取认证状态：是否已初始化管理员密码"""
+    admin = get_admin_settings(db)
+    return {"initialized": admin is not None}
+
+
+@app.post("/api/auth/setup")
+async def setup_admin(request: SetupRequest, db: Session = Depends(get_db)):
+    """首次设置管理员密码"""
+    admin = get_admin_settings(db)
+    if admin is not None:
+        raise HTTPException(status_code=400, detail="管理员密码已设置")
+
+    admin = create_admin_settings(db, request.password)
+    token = create_token(admin.jwt_secret)
+    return LoginResponse(token=token, message="管理员密码设置成功")
+
+
+@app.post("/api/auth/login")
+async def login(request: LoginRequest, db: Session = Depends(get_db)):
+    """管理员登录"""
+    admin = get_admin_settings(db)
+    if admin is None:
+        raise HTTPException(status_code=400, detail="系统未初始化，请先设置管理员密码")
+
+    if not verify_password(request.password, admin.password_hash):
+        raise HTTPException(status_code=401, detail="密码错误")
+
+    token = create_token(admin.jwt_secret)
+    return LoginResponse(token=token, message="登录成功")
+
+
+@app.get("/api/auth/verify")
+async def verify_auth(is_admin: bool = Depends(check_is_admin)):
+    """验证当前 token 是否有效"""
+    return {"valid": is_admin, "role": "admin" if is_admin else "guest"}
+
+
+@app.put("/api/auth/password")
+async def change_password(
+    request: ChangePasswordRequest,
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
+    """修改管理员密码（需要登录）"""
+    admin = get_admin_settings(db)
+
+    if not verify_password(request.old_password, admin.password_hash):
+        raise HTTPException(status_code=401, detail="原密码错误")
+
+    update_admin_password(db, admin, request.new_password)
+    token = create_token(admin.jwt_secret)
+    return LoginResponse(token=token, message="密码修改成功，请使用新 token")
+
+
+# ============ 文章路由 ============
+
+
 @app.post("/api/articles")
-async def create_article(article: ArticleCreate, db: Session = Depends(get_db)):
+async def create_article(
+    article: ArticleCreate,
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
     try:
         article_id = await article_service.create_article(article.dict(), db)
         return {"id": article_id, "status": "processing"}
@@ -117,6 +197,7 @@ async def get_articles(
     created_at_end: Optional[str] = None,
     sort_by: Optional[str] = "created_at_desc",
     db: Session = Depends(get_db),
+    is_admin: bool = Depends(check_is_admin),
 ):
     articles, total = article_service.get_articles(
         db,
@@ -131,6 +212,7 @@ async def get_articles(
         created_at_start,
         created_at_end,
         sort_by,
+        is_admin=is_admin,
     )
     return {
         "data": [
@@ -151,6 +233,7 @@ async def get_articles(
                 "source_domain": a.source_domain,
                 "published_at": a.published_at,
                 "created_at": a.created_at,
+                "is_visible": a.is_visible,
             }
             for a in articles
         ],
@@ -164,9 +247,16 @@ async def get_articles(
 
 
 @app.get("/api/articles/{article_id}")
-async def get_article(article_id: str, db: Session = Depends(get_db)):
+async def get_article(
+    article_id: str,
+    db: Session = Depends(get_db),
+    is_admin: bool = Depends(check_is_admin),
+):
     article = article_service.get_article(db, article_id)
     if not article:
+        raise HTTPException(status_code=404, detail="文章不存在")
+
+    if not is_admin and not article.is_visible:
         raise HTTPException(status_code=404, detail="文章不存在")
 
     return {
@@ -184,6 +274,7 @@ async def get_article(article_id: str, db: Session = Depends(get_db)):
         else None,
         "author": article.author,
         "status": article.status,
+        "is_visible": article.is_visible,
         "published_at": article.published_at,
         "created_at": article.created_at,
         "ai_analysis": {
@@ -215,7 +306,11 @@ async def get_article(article_id: str, db: Session = Depends(get_db)):
 
 
 @app.delete("/api/articles/{article_id}")
-async def delete_article(article_id: str, db: Session = Depends(get_db)):
+async def delete_article(
+    article_id: str,
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
     article = db.query(Article).filter(Article.id == article_id).first()
     if not article:
         raise HTTPException(status_code=404, detail="文章不存在")
@@ -229,7 +324,10 @@ async def delete_article(article_id: str, db: Session = Depends(get_db)):
 
 @app.put("/api/articles/{article_id}")
 async def update_article(
-    article_id: str, article_data: ArticleUpdate, db: Session = Depends(get_db)
+    article_id: str,
+    article_data: ArticleUpdate,
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
 ):
     article = db.query(Article).filter(Article.id == article_id).first()
     if not article:
@@ -246,6 +344,8 @@ async def update_article(
             article.content_md = article_data.content_md
         if article_data.content_trans is not None:
             article.content_trans = article_data.content_trans
+        if article_data.is_visible is not None:
+            article.is_visible = article_data.is_visible
 
         from models import now_str
 
@@ -261,6 +361,7 @@ async def update_article(
             "top_image": article.top_image,
             "content_md": article.content_md,
             "content_trans": article.content_trans,
+            "is_visible": article.is_visible,
             "updated_at": article.updated_at,
         }
     except Exception as e:
@@ -268,8 +369,36 @@ async def update_article(
         raise HTTPException(status_code=400, detail=str(e))
 
 
+class VisibilityUpdate(BaseModel):
+    is_visible: bool
+
+
+@app.put("/api/articles/{article_id}/visibility")
+async def update_article_visibility(
+    article_id: str,
+    data: VisibilityUpdate,
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
+    article = db.query(Article).filter(Article.id == article_id).first()
+    if not article:
+        raise HTTPException(status_code=404, detail="文章不存在")
+
+    article.is_visible = data.is_visible
+    from models import now_str
+
+    article.updated_at = now_str()
+    db.commit()
+
+    return {"id": article.id, "is_visible": article.is_visible}
+
+
 @app.post("/api/articles/{article_id}/retry")
-async def retry_article_ai(article_id: str, db: Session = Depends(get_db)):
+async def retry_article_ai(
+    article_id: str,
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
     try:
         article_id = await article_service.retry_article_ai(db, article_id)
         return {"id": article_id, "status": "processing"}
@@ -280,7 +409,11 @@ async def retry_article_ai(article_id: str, db: Session = Depends(get_db)):
 
 
 @app.post("/api/articles/{article_id}/retry-translation")
-async def retry_article_translation(article_id: str, db: Session = Depends(get_db)):
+async def retry_article_translation(
+    article_id: str,
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
     try:
         article_id = await article_service.retry_article_translation(db, article_id)
         return {"id": article_id, "translation_status": "processing"}
@@ -297,6 +430,7 @@ async def generate_ai_content(
     model_config_id: str = None,
     prompt_config_id: str = None,
     db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
 ):
     valid_types = ["summary", "key_points", "outline", "quotes"]
     if content_type not in valid_types:
@@ -417,7 +551,11 @@ async def get_category_stats(
 
 
 @app.post("/api/categories")
-async def create_category(category: CategoryCreate, db: Session = Depends(get_db)):
+async def create_category(
+    category: CategoryCreate,
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
     try:
         new_category = Category(**category.dict())
         db.add(new_category)
@@ -439,7 +577,9 @@ class CategorySortRequest(BaseModel):
 
 @app.put("/api/categories/sort")
 async def update_categories_sort(
-    request: CategorySortRequest, db: Session = Depends(get_db)
+    request: CategorySortRequest,
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
 ):
     try:
         for item in request.items:
@@ -455,7 +595,10 @@ async def update_categories_sort(
 
 @app.put("/api/categories/{category_id}")
 async def update_category(
-    category_id: str, category: CategoryCreate, db: Session = Depends(get_db)
+    category_id: str,
+    category: CategoryCreate,
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
 ):
     existing_category = db.query(Category).filter(Category.id == category_id).first()
     if not existing_category:
@@ -485,7 +628,11 @@ async def update_category(
 
 
 @app.delete("/api/categories/{category_id}")
-async def delete_category(category_id: str, db: Session = Depends(get_db)):
+async def delete_category(
+    category_id: str,
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
     category = db.query(Category).filter(Category.id == category_id).first()
     if not category:
         raise HTTPException(status_code=404, detail="分类不存在")
@@ -533,7 +680,11 @@ async def get_ai_configs(
 
 
 @app.post("/api/configs/ai")
-async def create_ai_config(config: AIConfigBase, db: Session = Depends(get_db)):
+async def create_ai_config(
+    config: AIConfigBase,
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
     try:
         new_config = AIConfig(**config.dict())
         db.add(new_config)
@@ -557,7 +708,10 @@ async def create_ai_config(config: AIConfigBase, db: Session = Depends(get_db)):
 
 @app.put("/api/configs/ai/{config_id}")
 async def update_ai_config(
-    config_id: str, config: AIConfigBase, db: Session = Depends(get_db)
+    config_id: str,
+    config: AIConfigBase,
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
 ):
     ai_config = db.query(AIConfig).filter(AIConfig.id == config_id).first()
 
@@ -592,7 +746,11 @@ async def update_ai_config(
 
 
 @app.delete("/api/configs/ai/{config_id}")
-async def delete_ai_config(config_id: str, db: Session = Depends(get_db)):
+async def delete_ai_config(
+    config_id: str,
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
     ai_config = db.query(AIConfig).filter(AIConfig.id == config_id).first()
 
     if not ai_config:
@@ -647,7 +805,9 @@ async def get_model_api_config(config_id: str, db: Session = Depends(get_db)):
 
 @app.post("/api/model-api-configs")
 async def create_model_api_config(
-    config: ModelAPIConfigBase, db: Session = Depends(get_db)
+    config: ModelAPIConfigBase,
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
 ):
     try:
         # If this is set as default, unset other defaults
@@ -678,7 +838,10 @@ async def create_model_api_config(
 
 @app.put("/api/model-api-configs/{config_id}")
 async def update_model_api_config(
-    config_id: str, config: ModelAPIConfigBase, db: Session = Depends(get_db)
+    config_id: str,
+    config: ModelAPIConfigBase,
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
 ):
     existing_config = (
         db.query(ModelAPIConfig).filter(ModelAPIConfig.id == config_id).first()
@@ -721,7 +884,11 @@ async def update_model_api_config(
 
 
 @app.delete("/api/model-api-configs/{config_id}")
-async def delete_model_api_config(config_id: str, db: Session = Depends(get_db)):
+async def delete_model_api_config(
+    config_id: str,
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
     config = db.query(ModelAPIConfig).filter(ModelAPIConfig.id == config_id).first()
 
     if not config:
@@ -734,7 +901,11 @@ async def delete_model_api_config(config_id: str, db: Session = Depends(get_db))
 
 
 @app.post("/api/model-api-configs/{config_id}/test")
-async def test_model_api_config(config_id: str, db: Session = Depends(get_db)):
+async def test_model_api_config(
+    config_id: str,
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
     config = db.query(ModelAPIConfig).filter(ModelAPIConfig.id == config_id).first()
 
     if not config:
@@ -833,7 +1004,11 @@ async def get_prompt_config(config_id: str, db: Session = Depends(get_db)):
 
 
 @app.post("/api/prompt-configs")
-async def create_prompt_config(config: PromptConfigBase, db: Session = Depends(get_db)):
+async def create_prompt_config(
+    config: PromptConfigBase,
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
     try:
         # If this is set as default, unset other defaults of same type
         if config.is_default:
@@ -868,7 +1043,10 @@ async def create_prompt_config(config: PromptConfigBase, db: Session = Depends(g
 
 @app.put("/api/prompt-configs/{config_id}")
 async def update_prompt_config(
-    config_id: str, config: PromptConfigBase, db: Session = Depends(get_db)
+    config_id: str,
+    config: PromptConfigBase,
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
 ):
     existing_config = (
         db.query(PromptConfig).filter(PromptConfig.id == config_id).first()
@@ -921,7 +1099,11 @@ async def update_prompt_config(
 
 
 @app.delete("/api/prompt-configs/{config_id}")
-async def delete_prompt_config(config_id: str, db: Session = Depends(get_db)):
+async def delete_prompt_config(
+    config_id: str,
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
     config = db.query(PromptConfig).filter(PromptConfig.id == config_id).first()
 
     if not config:
