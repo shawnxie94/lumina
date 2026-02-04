@@ -4,7 +4,7 @@ import { useRouter } from 'next/router';
 import Link from 'next/link';
 import { marked } from 'marked';
 
-import { articleApi, type ArticleDetail, type ModelAPIConfig, type PromptConfig } from '@/lib/api';
+import { articleApi, type Article, type ArticleDetail, type ModelAPIConfig, type PromptConfig } from '@/lib/api';
 import { useToast } from '@/components/Toast';
 import { BackToTop } from '@/components/BackToTop';
 import { useAuth } from '@/contexts/AuthContext';
@@ -329,8 +329,11 @@ export default function ArticleDetailPage() {
   const [tocItems, setTocItems] = useState<TocItem[]>([]);
   const [activeTocId, setActiveTocId] = useState('');
   const [tocCollapsed, setTocCollapsed] = useState(false);
+  const [immersiveMode, setImmersiveMode] = useState(false);
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
   const [mindMapOpen, setMindMapOpen] = useState(false);
+  const [prevArticle, setPrevArticle] = useState<Article | null>(null);
+  const [nextArticle, setNextArticle] = useState<Article | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -351,6 +354,7 @@ export default function ArticleDetailPage() {
   useEffect(() => {
     if (id) {
       fetchArticle();
+      fetchNeighbors();
     }
     return () => {
       if (pollingRef.current) {
@@ -443,6 +447,29 @@ export default function ArticleDetailPage() {
       showToast('加载文章失败', 'error');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchNeighbors = async () => {
+    try {
+      const list = await articleApi.getArticles({
+        page: 1,
+        size: 100,
+        sort_by: 'created_at_desc',
+      });
+      const items = list?.data || [];
+      const currentIndex = items.findIndex((item: Article) => item.id === id);
+      if (currentIndex === -1) {
+        setPrevArticle(null);
+        setNextArticle(null);
+        return;
+      }
+      setPrevArticle(items[currentIndex - 1] || null);
+      setNextArticle(items[currentIndex + 1] || null);
+    } catch (error) {
+      console.error('Failed to fetch article neighbors:', error);
+      setPrevArticle(null);
+      setNextArticle(null);
     }
   };
 
@@ -629,41 +656,52 @@ export default function ArticleDetailPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className={`min-h-screen ${immersiveMode ? 'bg-white' : 'bg-gray-50'}`}>
       <ReadingProgress />
-       <nav className="bg-white shadow-sm border-b">
+       <nav className={`bg-white ${immersiveMode ? '' : 'shadow-sm border-b'}`}>
         <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between mb-3">
             <Link href="/" className="text-blue-600 hover:text-blue-700 transition">
               ← 返回列表
             </Link>
             <h1 className="text-xl font-bold text-gray-900 truncate">{article.title}</h1>
-            {isAdmin ? (
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={handleToggleVisibility}
-                  className={`w-6 h-6 flex items-center justify-center rounded transition ${
-                    article.is_visible
-                      ? 'text-green-500 hover:text-green-700 hover:bg-green-50'
-                      : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
-                  }`}
-                  title={article.is_visible ? '点击隐藏' : '点击显示'}
-                >
-                  {article.is_visible ? '👁️' : '👁️‍🗨️'}
-                </button>
-                <button
-                  onClick={() => setShowDeleteModal(true)}
-                  className="text-gray-400 hover:text-red-600 transition"
-                  title="删除文章"
-                >
-                  ✕
-                </button>
-              </div>
-            ) : (
-              <div className="w-6" />
-            )}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setImmersiveMode(!immersiveMode)}
+                className={`px-3 py-1 rounded-lg text-sm transition ${
+                  immersiveMode
+                    ? 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
+                }`}
+                title={immersiveMode ? '退出沉浸式阅读' : '进入沉浸式阅读'}
+              >
+                {immersiveMode ? '退出沉浸' : '沉浸式阅读'}
+              </button>
+              {isAdmin && (
+                <>
+                  <button
+                    onClick={handleToggleVisibility}
+                    className={`w-6 h-6 flex items-center justify-center rounded transition ${
+                      article.is_visible
+                        ? 'text-green-500 hover:text-green-700 hover:bg-green-50'
+                        : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
+                    }`}
+                    title={article.is_visible ? '点击隐藏' : '点击显示'}
+                  >
+                    {article.is_visible ? '👁️' : '👁️‍🗨️'}
+                  </button>
+                  <button
+                    onClick={() => setShowDeleteModal(true)}
+                    className="text-gray-400 hover:text-red-600 transition"
+                    title="删除文章"
+                  >
+                    ✕
+                  </button>
+                </>
+              )}
+            </div>
           </div>
-          <div className="flex flex-wrap gap-4 text-sm text-gray-600 pb-3 border-b border-gray-100">
+          <div className={`flex flex-wrap gap-4 text-sm text-gray-600 pb-3 ${immersiveMode ? '' : 'border-b border-gray-100'}`}>
             {article.category && (
               <div>
                 <span className="font-medium text-gray-700">分类：</span>
@@ -709,9 +747,9 @@ export default function ArticleDetailPage() {
         </div>
       </nav>
 
-        <div className="max-w-7xl mx-auto px-4 py-8">
+        <div className={`max-w-7xl mx-auto px-4 ${immersiveMode ? 'py-6' : 'py-8'}`}>
           <div className="flex gap-6">
-            {tocItems.length > 0 && (
+            {!immersiveMode && tocItems.length > 0 && (
               <aside className={`hidden xl:block flex-shrink-0 transition-all duration-300 ${tocCollapsed ? 'w-12' : 'w-48'}`}>
                 <div className="sticky top-4 bg-white rounded-lg shadow-sm p-4 max-h-[calc(100vh-2rem)] overflow-y-auto">
                   <div className="flex items-center justify-between mb-3">
@@ -729,7 +767,7 @@ export default function ArticleDetailPage() {
               </aside>
             )}
 
-            <div className="flex-1 bg-white rounded-lg shadow-sm p-6">
+            <div className={`flex-1 bg-white ${immersiveMode ? '' : 'rounded-lg shadow-sm p-6'}`}>
               <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-2">
                   <h2 className="text-lg font-semibold text-gray-900">📄 原文内容</h2>
@@ -804,9 +842,47 @@ export default function ArticleDetailPage() {
                   />
                 )}
               </div>
+
+              <div className="flex items-center justify-between mt-6 text-sm">
+                <button
+                  onClick={() => prevArticle && router.push(`/article/${prevArticle.id}`)}
+                  disabled={!prevArticle}
+                  className={`px-3 py-2 rounded-lg transition text-left ${
+                    prevArticle
+                      ? 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      : 'bg-gray-50 text-gray-400 cursor-not-allowed'
+                  }`}
+                  title={prevArticle ? prevArticle.title : '无上一篇'}
+                >
+                  <span className="block">← 上一篇</span>
+                  {prevArticle && (
+                    <span className="block text-xs text-gray-500">
+                      {prevArticle.title.length > 20 ? `${prevArticle.title.slice(0, 20)}...` : prevArticle.title}
+                    </span>
+                  )}
+                </button>
+                <button
+                  onClick={() => nextArticle && router.push(`/article/${nextArticle.id}`)}
+                  disabled={!nextArticle}
+                  className={`px-3 py-2 rounded-lg transition text-right ${
+                    nextArticle
+                      ? 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      : 'bg-gray-50 text-gray-400 cursor-not-allowed'
+                  }`}
+                  title={nextArticle ? nextArticle.title : '无下一篇'}
+                >
+                  <span className="block">下一篇 →</span>
+                  {nextArticle && (
+                    <span className="block text-xs text-gray-500">
+                      {nextArticle.title.length > 20 ? `${nextArticle.title.slice(0, 20)}...` : nextArticle.title}
+                    </span>
+                  )}
+                </button>
+              </div>
             </div>
 
-            <aside className={`flex-shrink-0 transition-all duration-300 ${analysisCollapsed ? 'w-12' : 'w-96'}`}>
+            {!immersiveMode && (
+              <aside className={`flex-shrink-0 transition-all duration-300 ${analysisCollapsed ? 'w-12' : 'w-96'}`}>
               <div className="bg-white rounded-lg shadow-sm p-4 sticky top-4 max-h-[calc(100vh-2rem)] overflow-y-auto">
                 <div className="flex items-center justify-between mb-4">
                   {!analysisCollapsed && <h2 className="text-lg font-semibold text-gray-900">🤖 AI 解读</h2>}
@@ -877,6 +953,7 @@ export default function ArticleDetailPage() {
                 )}
               </div>
             </aside>
+            )}
           </div>
         </div>
 
