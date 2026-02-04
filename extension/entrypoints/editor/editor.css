@@ -384,10 +384,11 @@ body {
 }
 
 .preview-panel img {
-  max-width: 100%;
+  max-width: min(100%, 600px);
   height: auto;
   border-radius: 4px;
   margin: 12px 0;
+  display: block;
 }
 
 .preview-panel ul,

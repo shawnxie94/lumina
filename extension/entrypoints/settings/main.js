@@ -20,6 +20,7 @@ setupGlobalErrorHandler('settings');
 class SettingsController {
   #apiClient;
   #categories = [];
+  #sectionObserver = null;
 
   constructor() {
     this.#apiClient = new ApiClient();
@@ -28,9 +29,60 @@ class SettingsController {
   async init() {
     await this.loadConfig();
     this.setupEventListeners();
+    this.setupSidebarNavigation();
     this.checkApiHealth();
     await this.loadCategories();
     await this.loadErrorLogs();
+  }
+
+  setupSidebarNavigation() {
+    try {
+      const navItems = document.querySelectorAll('.nav-item');
+      const sections = document.querySelectorAll('.section[id]');
+
+      navItems.forEach(item => {
+        item.addEventListener('click', (e) => {
+          e.preventDefault();
+          const sectionId = item.dataset.section;
+          const section = document.getElementById(sectionId);
+          if (section) {
+            section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        });
+      });
+
+      if (sections.length > 0 && 'IntersectionObserver' in window) {
+        this.#sectionObserver = new IntersectionObserver(
+          (entries) => {
+            entries.forEach(entry => {
+              if (entry.isIntersecting) {
+                const sectionId = entry.target.id;
+                this.updateActiveNavItem(sectionId);
+              }
+            });
+          },
+          { rootMargin: '-20% 0px -70% 0px', threshold: 0 }
+        );
+
+        sections.forEach(section => {
+          this.#sectionObserver.observe(section);
+        });
+      }
+    } catch (error) {
+      console.error('Failed to setup sidebar navigation:', error);
+      logError('settings', error, { action: 'setupSidebarNavigation' });
+    }
+  }
+
+  updateActiveNavItem(sectionId) {
+    const navItems = document.querySelectorAll('.nav-item');
+    navItems.forEach(item => {
+      if (item.dataset.section === sectionId) {
+        item.classList.add('active');
+      } else {
+        item.classList.remove('active');
+      }
+    });
   }
 
   async loadConfig() {
