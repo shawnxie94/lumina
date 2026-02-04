@@ -781,7 +781,10 @@ export default function SettingsPage() {
             <Link href="/" className="text-blue-600 hover:text-blue-700 transition">
               ← 返回列表
             </Link>
-            <h1 className="text-xl font-bold text-gray-900">🧭 Lumina 管理台</h1>
+            <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+              <img src="/favicon.png" alt="Lumina" className="h-6 w-6" />
+              <span>Lumina 管理台</span>
+            </h1>
             <div className="w-20"></div>
           </div>
         </div>

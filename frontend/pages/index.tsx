@@ -216,11 +216,6 @@ export default function Home() {
   }, []);
 
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    setPage(1);
-  };
-
   const handleQuickDateChange = (option: QuickDateOption) => {
     setQuickDateFilter(option);
     const [start, end] = getDateRangeFromQuickOption(option);
@@ -432,7 +427,10 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">✨ Lumina</h1>
+              <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+                <img src="/favicon.png" alt="Lumina" className="h-7 w-7" />
+                <span>Lumina</span>
+              </h1>
               <p className="text-sm text-gray-500 mt-1">AI 驱动的知识库</p>
             </div>
             <div className="flex gap-2 items-center">
