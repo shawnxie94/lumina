@@ -367,6 +367,11 @@ export default function Home() {
   };
 
   const handleExport = async () => {
+    if (!isAdmin) {
+      showToast('仅管理员可导出文章', 'info');
+      return;
+    }
+
     if (selectedArticleIds.size === 0) {
       showToast('请先选择要导出的文章', 'info');
       return;
@@ -666,7 +671,7 @@ export default function Home() {
                   </div>
                 </div>
               </div>
-              {selectedArticleIds.size > 0 && (
+              {isAdmin && selectedArticleIds.size > 0 && (
                 <div className="mt-4 pt-4 border-t border-gray-200">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="flex flex-wrap items-center gap-3">
@@ -735,26 +740,28 @@ export default function Home() {
             ) : articles.length === 0 ? (
               <div className="text-center py-12 text-gray-500">暂无文章</div>
              ) : (
-               <>
-                 <div className="mb-4">
-                   <label className="flex items-center gap-2 cursor-pointer">
-                     <input
-                       type="checkbox"
-                       checked={selectedArticleIds.size === articles.length}
-                       onChange={handleSelectAll}
-                       className="w-4 h-4 text-blue-600 rounded"
-                     />
-                     <span className="text-sm text-gray-600">全选 ({selectedArticleIds.size}/{articles.length})</span>
-                   </label>
-                 </div>
-                 <div className="space-y-4">
-                   {articles.map((article) => (
-                      <div
-                        key={article.id}
-                        className={`bg-white rounded-lg shadow-sm p-6 hover:shadow-md transition relative ${!article.is_visible && isAdmin ? 'opacity-60' : ''}`}
-                      >
-                        {isAdmin && (
-                          <div className="absolute top-3 right-3 flex items-center gap-1">
+                <> 
+                  {isAdmin && (
+                    <div className="mb-4">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={selectedArticleIds.size === articles.length}
+                          onChange={handleSelectAll}
+                          className="w-4 h-4 text-blue-600 rounded"
+                        />
+                        <span className="text-sm text-gray-600">全选 ({selectedArticleIds.size}/{articles.length})</span>
+                      </label>
+                    </div>
+                  )}
+                  <div className="space-y-4">
+                    {articles.map((article) => (
+                       <div
+                         key={article.id}
+                         className={`bg-white rounded-lg shadow-sm p-6 hover:shadow-md transition relative ${!article.is_visible && isAdmin ? 'opacity-60' : ''}`}
+                       >
+                         {isAdmin && (
+                           <div className="absolute top-3 right-3 flex items-center gap-1">
                             <button
                               onClick={() => handleToggleVisibility(article.id, article.is_visible)}
                               className={`w-6 h-6 flex items-center justify-center rounded transition ${
@@ -775,13 +782,15 @@ export default function Home() {
                             </button>
                           </div>
                         )}
-                        <div className="flex gap-4">
-                          <input
-                            type="checkbox"
-                            checked={selectedArticleIds.has(article.id)}
-                            onChange={() => handleToggleSelect(article.id)}
-                            className="w-4 h-4 text-blue-600 rounded mt-1"
-                          />
+                         <div className="flex gap-4">
+                           {isAdmin && (
+                             <input
+                               type="checkbox"
+                               checked={selectedArticleIds.has(article.id)}
+                               onChange={() => handleToggleSelect(article.id)}
+                               className="w-4 h-4 text-blue-600 rounded mt-1"
+                             />
+                           )}
                           {article.top_image && (
                             <img
                               src={article.top_image}

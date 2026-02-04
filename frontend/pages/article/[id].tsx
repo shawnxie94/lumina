@@ -390,6 +390,7 @@ export default function ArticleDetailPage() {
     };
   }, [id]);
 
+
   useEffect(() => {
     if (pollingRef.current) {
       clearInterval(pollingRef.current);
@@ -805,7 +806,7 @@ export default function ArticleDetailPage() {
             <div className={`flex-1 bg-white ${immersiveMode ? '' : 'rounded-lg shadow-sm p-6'}`}>
               <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-2">
-                  <h2 className="text-lg font-semibold text-gray-900">📄 原文内容</h2>
+                  <h2 className="text-lg font-semibold text-gray-900">📄 内容</h2>
                   {article.translation_status && (
                     <>
                       <span className={`px-2 py-0.5 rounded text-xs ${
@@ -836,18 +837,20 @@ export default function ArticleDetailPage() {
                     <button
                       onClick={() => openEditModal(showTranslation && article.content_trans ? 'translation' : 'original')}
                       className="flex items-center gap-1 px-2 py-1 rounded-lg text-sm text-gray-600 hover:text-blue-600 hover:bg-blue-50 transition"
-                      title={showTranslation && article.content_trans ? '编辑译文' : '编辑原文'}
+                      title={showTranslation && article.content_trans ? '编辑中文' : '编辑英文'}
                     >
                       ✏️
-                      <span>{showTranslation && article.content_trans ? '编辑译文' : '编辑原文'}</span>
+                      <span>{showTranslation && article.content_trans ? '编辑中文' : '编辑应用'}</span>
                     </button>
                   )}
                   {article.content_trans && (
                     <button
                       onClick={() => setShowTranslation(!showTranslation)}
-                      className="px-3 py-1 rounded-lg transition text-blue-700 hover:bg-blue-100"
+                      className="flex items-center gap-1 px-2 py-1 rounded-lg text-sm text-blue-700 bg-blue-50 hover:bg-blue-100 transition"
+                      title={showTranslation ? '当前查看中文' : '当前查看英文'}
                     >
-                      {showTranslation ? '🇺🇸' : '🇨🇳'}
+                      <span>{showTranslation ? '🇺🇸' : '🇨🇳'}</span>
+                      <span>{showTranslation ? '英文' : '中文'}</span>
                     </button>
                   )}
                 </div>
@@ -1094,7 +1097,7 @@ export default function ArticleDetailPage() {
           >
             <div className="flex items-center justify-between p-4 border-b">
               <h3 className="text-lg font-semibold text-gray-900">
-                编辑文章{editMode === 'translation' ? '（译文）' : '（原文）'}
+                编辑文章{editMode === 'translation' ? '（中文）' : '（英文）'}
               </h3>
               <button
                 onClick={() => setShowEditModal(false)}
@@ -1158,7 +1161,7 @@ export default function ArticleDetailPage() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  {editMode === 'translation' ? '译文内容' : '原文内容'}（Markdown）
+                  {editMode === 'translation' ? '中文内容' : '英文内容'}（Markdown）
                 </label>
                 <textarea
                   value={editContent}
