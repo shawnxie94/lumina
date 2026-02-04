@@ -22,18 +22,20 @@ body {
 .settings-layout {
   display: flex;
   min-height: 100vh;
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 0 24px;
 }
 
 .settings-sidebar {
   width: 200px;
   background: white;
   border-right: 1px solid #e5e7eb;
-  position: fixed;
+  position: sticky;
   top: 0;
-  left: 0;
   height: 100vh;
+  max-height: 100vh;
   overflow-y: auto;
-  z-index: 100;
 }
 
 .sidebar-nav {
@@ -77,12 +79,40 @@ body {
 
 .settings-main {
   flex: 1;
-  margin-left: 200px;
+}
+
+.mobile-nav {
+  display: none;
+  background: white;
+  border-bottom: 1px solid #e5e7eb;
+  position: sticky;
+  top: 0;
+  z-index: 90;
+}
+
+.mobile-nav-scroll {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 12px 16px;
+}
+
+.mobile-nav .nav-item {
+  border-left: none;
+  border-bottom: 2px solid transparent;
+  padding: 8px 12px;
+  border-radius: 6px;
+}
+
+.mobile-nav .nav-item.active {
+  border-left-color: transparent;
+  border-bottom-color: #3b82f6;
+  background: #eff6ff;
 }
 
 .container {
-  max-width: 600px;
-  margin: 0 auto;
+  max-width: 760px;
+  margin: 0;
   padding: 24px;
 }
 
@@ -479,5 +509,13 @@ body {
 
   .settings-main {
     margin-left: 0;
+  }
+
+  .settings-layout {
+    padding: 0;
+  }
+
+  .mobile-nav {
+    display: block;
   }
 }

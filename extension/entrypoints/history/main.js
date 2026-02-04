@@ -114,6 +114,14 @@ class HistoryController {
         this.handleDelete(item.id);
       });
 
+      itemEl.addEventListener('click', (event) => {
+        const target = event.target;
+        if (target instanceof HTMLElement) {
+          if (target.closest('a') || target.closest('button')) return;
+        }
+        chrome.tabs.create({ url: articleUrl });
+      });
+
       listEl.appendChild(itemEl);
     }
   }

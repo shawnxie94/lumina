@@ -109,6 +109,7 @@ body {
   background: white;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
+  cursor: pointer;
   transition: all 0.15s;
 }
 
