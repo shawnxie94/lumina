@@ -109,6 +109,26 @@ class AIAnalysis(Base):
     article = relationship("Article", back_populates="ai_analysis")
 
 
+class AITask(Base):
+    __tablename__ = "ai_tasks"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    article_id = Column(String, ForeignKey("articles.id"), nullable=True)
+    task_type = Column(String, nullable=False)
+    content_type = Column(String, nullable=True)
+    status = Column(String, default="pending")
+    payload = Column(Text, nullable=True)
+    attempts = Column(Integer, default=0)
+    max_attempts = Column(Integer, default=3)
+    run_at = Column(String, default=now_str)
+    locked_at = Column(String, nullable=True)
+    locked_by = Column(String, nullable=True)
+    last_error = Column(Text, nullable=True)
+    created_at = Column(String, default=now_str)
+    updated_at = Column(String, default=now_str)
+    finished_at = Column(String, nullable=True)
+
+
 class ModelAPIConfig(Base):
     __tablename__ = "model_api_configs"
 
@@ -193,6 +213,17 @@ def init_db():
                     ("max_tokens", "INTEGER"),
                     ("top_p", "REAL"),
                 ],
+            )
+
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_ai_tasks_status_run_at ON ai_tasks (status, run_at)"
+                )
+            )
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_ai_tasks_article_id ON ai_tasks (article_id)"
+                )
             )
 
             def migrate_ai_configs_to_prompt_configs():

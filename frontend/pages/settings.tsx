@@ -25,7 +25,7 @@ import { articleApi, categoryApi, type ModelAPIConfig, type PromptConfig } from 
 import { useToast } from '@/components/Toast';
 import { useAuth } from '@/contexts/AuthContext';
 
-type SettingSection = 'ai' | 'categories';
+type SettingSection = 'ai' | 'categories' | 'tasks';
 type AISubSection = 'model-api' | 'prompt';
 type PromptType = 'summary' | 'translation' | 'key_points' | 'outline' | 'quotes';
 
@@ -51,6 +51,24 @@ interface Category {
   color: string;
   sort_order: number;
   article_count: number;
+}
+
+interface AITaskItem {
+  id: string;
+  article_id: string | null;
+  article_title?: string | null;
+  task_type: string;
+  content_type: string | null;
+  status: string;
+  attempts: number;
+  max_attempts: number;
+  run_at: string | null;
+  locked_at: string | null;
+  locked_by: string | null;
+  last_error: string | null;
+  created_at: string;
+  updated_at: string;
+  finished_at: string | null;
 }
 
 interface SortableCategoryItemProps {
@@ -134,8 +152,16 @@ export default function SettingsPage() {
   const [modelAPIConfigs, setModelAPIConfigs] = useState<ModelAPIConfig[]>([]);
   const [promptConfigs, setPromptConfigs] = useState<PromptConfig[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [taskItems, setTaskItems] = useState<AITaskItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [taskLoading, setTaskLoading] = useState(false);
   const [selectedPromptType, setSelectedPromptType] = useState<PromptType>('summary');
+  const [taskPage, setTaskPage] = useState(1);
+  const [taskPageSize, setTaskPageSize] = useState(20);
+  const [taskTotal, setTaskTotal] = useState(0);
+  const [taskStatusFilter, setTaskStatusFilter] = useState('');
+  const [taskTypeFilter, setTaskTypeFilter] = useState('');
+  const [taskArticleIdFilter, setTaskArticleIdFilter] = useState('');
 
   const [showModelAPIModal, setShowModelAPIModal] = useState(false);
   const [showPromptModal, setShowPromptModal] = useState(false);
@@ -158,7 +184,7 @@ export default function SettingsPage() {
     const storedAiSubSection = localStorage.getItem('settings_ai_sub_section');
     const storedPromptType = localStorage.getItem('settings_prompt_type');
 
-    if (storedSection === 'ai' || storedSection === 'categories') {
+    if (storedSection === 'ai' || storedSection === 'categories' || storedSection === 'tasks') {
       setActiveSection(storedSection);
     }
     if (storedAiSubSection === 'model-api' || storedAiSubSection === 'prompt') {
@@ -276,17 +302,50 @@ export default function SettingsPage() {
     }
   };
 
+  const fetchTasks = async () => {
+    setTaskLoading(true);
+    try {
+      const [taskTypeValue, contentTypeValue] = taskTypeFilter.split(':');
+      const response = await articleApi.getAITasks({
+        page: taskPage,
+        size: taskPageSize,
+        status: taskStatusFilter || undefined,
+        task_type: taskTypeValue || undefined,
+        content_type: contentTypeValue || undefined,
+        article_id: taskArticleIdFilter || undefined,
+      });
+      setTaskItems(response.data || []);
+      setTaskTotal(response.pagination?.total || 0);
+    } catch (error) {
+      console.error('Failed to fetch AI tasks:', error);
+      showToast('任务加载失败', 'error');
+    } finally {
+      setTaskLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (activeSection === 'categories') {
       fetchCategories();
-    } else {
+      return;
+    }
+    if (activeSection === 'ai') {
       if (aiSubSection === 'model-api') {
         fetchModelAPIConfigs();
       } else {
         fetchPromptConfigs();
       }
+      return;
+    }
+    if (activeSection === 'tasks') {
+      fetchTasks();
     }
   }, [activeSection, aiSubSection]);
+
+  useEffect(() => {
+    if (activeSection !== 'tasks') return;
+    fetchTasks();
+  }, [taskPage, taskPageSize, taskStatusFilter, taskTypeFilter, taskArticleIdFilter, activeSection]);
 
   const handleCreateModelAPINew = () => {
     setEditingModelAPIConfig(null);
@@ -454,6 +513,40 @@ export default function SettingsPage() {
       console.error('Failed to save prompt config:', error);
       showToast('保存失败', 'error');
     }
+  };
+
+  const handleRetryTask = async (taskId: string) => {
+    try {
+      await articleApi.retryAITasks([taskId]);
+      showToast('任务已重试');
+      fetchTasks();
+    } catch (error) {
+      console.error('Failed to retry task:', error);
+      showToast('重试失败', 'error');
+    }
+  };
+
+  const handleCancelTask = async (taskId: string) => {
+    try {
+      await articleApi.cancelAITasks([taskId]);
+      showToast('任务已取消');
+      fetchTasks();
+    } catch (error) {
+      console.error('Failed to cancel task:', error);
+      showToast('取消失败', 'error');
+    }
+  };
+
+  const getTaskTypeLabel = (task: AITaskItem) => {
+    if (task.task_type === 'process_article_translation') return '翻译';
+    if (task.task_type === 'process_ai_content') {
+      if (task.content_type === 'summary') return '摘要';
+      if (task.content_type === 'key_points') return '总结';
+      if (task.content_type === 'outline') return '大纲';
+      if (task.content_type === 'quotes') return '金句';
+      return 'AI内容';
+    }
+    return '摘要';
   };
 
   const handleDeletePrompt = async (id: string) => {
@@ -670,7 +763,7 @@ export default function SettingsPage() {
             <Link href="/" className="text-blue-600 hover:text-blue-700 transition">
               ← 返回列表
             </Link>
-            <h1 className="text-xl font-bold text-gray-900">⚙️ 系统设置</h1>
+            <h1 className="text-xl font-bold text-gray-900">🧭 管理台</h1>
             <div className="w-20"></div>
           </div>
         </div>
@@ -680,7 +773,7 @@ export default function SettingsPage() {
         <div className="flex gap-6">
           <aside className="w-64 flex-shrink-0">
             <div className="bg-white rounded-lg shadow-sm p-4">
-              <h2 className="font-semibold text-gray-900 mb-4">配置项</h2>
+              <h2 className="font-semibold text-gray-900 mb-4">管理模块</h2>
               <div className="space-y-2">
                 <button
                   onClick={() => setActiveSection('categories')}
@@ -718,6 +811,14 @@ export default function SettingsPage() {
                     </button>
                   </>
                 )}
+                <button
+                  onClick={() => setActiveSection('tasks')}
+                  className={`w-full text-left px-4 py-3 rounded-lg transition ${
+                    activeSection === 'tasks' ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-100'
+                  }`}
+                >
+                  🧭 任务监控
+                </button>
               </div>
             </div>
           </aside>
@@ -1047,6 +1148,201 @@ export default function SettingsPage() {
                     </SortableContext>
                   </DndContext>
                 )}
+              </div>
+            )}
+
+            {activeSection === 'tasks' && (
+              <div className="bg-white rounded-lg shadow-sm p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <div>
+                    <h2 className="text-lg font-semibold text-gray-900">AI 任务监控</h2>
+                    <p className="text-sm text-gray-500">查看、重试或取消后台任务</p>
+                  </div>
+                  <button
+                    onClick={fetchTasks}
+                    className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition"
+                  >
+                    刷新
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">状态</label>
+                    <select
+                      value={taskStatusFilter}
+                      onChange={(e) => { setTaskStatusFilter(e.target.value); setTaskPage(1); }}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">全部</option>
+                      <option value="pending">待处理</option>
+                      <option value="processing">处理中</option>
+                      <option value="completed">已完成</option>
+                      <option value="failed">失败</option>
+                      <option value="cancelled">已取消</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">任务类型</label>
+                    <select
+                      value={taskTypeFilter}
+                      onChange={(e) => { setTaskTypeFilter(e.target.value); setTaskPage(1); }}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">全部</option>
+                      <option value="process_article_ai">摘要生成</option>
+                      <option value="process_article_translation">翻译生成</option>
+                      <option value="process_ai_content:summary">摘要生成</option>
+                      <option value="process_ai_content:outline">大纲生成</option>
+                      <option value="process_ai_content:quotes">金句生成</option>
+                      <option value="process_ai_content:key_points">总结生成</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">文章ID</label>
+                    <input
+                      value={taskArticleIdFilter}
+                      onChange={(e) => { setTaskArticleIdFilter(e.target.value); setTaskPage(1); }}
+                      placeholder="输入文章ID"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+
+                {taskLoading ? (
+                  <div className="text-center py-12 text-gray-500">加载中...</div>
+                ) : taskItems.length === 0 ? (
+                  <div className="text-center py-12 text-gray-500">暂无任务</div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-sm">
+                      <thead className="bg-gray-50 text-gray-600">
+                        <tr>
+                          <th className="text-left px-4 py-3">任务</th>
+                          <th className="text-left px-4 py-3">状态</th>
+                          <th className="text-left px-4 py-3">尝试</th>
+                          <th className="text-left px-4 py-3">文章</th>
+                          <th className="text-left px-4 py-3">时间</th>
+                          <th className="text-right px-4 py-3">操作</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {taskItems.map((task) => (
+                          <tr key={task.id} className="hover:bg-gray-50">
+                            <td className="px-4 py-3">
+                              <div className="font-medium text-gray-900">
+                                {getTaskTypeLabel(task)}生成
+                              </div>
+                              <div className="text-xs text-gray-500">{task.task_type}</div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span
+                                className={`px-2 py-1 rounded text-xs ${
+                                  task.status === 'completed'
+                                    ? 'bg-green-100 text-green-700'
+                                    : task.status === 'failed'
+                                    ? 'bg-red-100 text-red-700'
+                                    : task.status === 'processing'
+                                    ? 'bg-blue-100 text-blue-700'
+                                    : task.status === 'cancelled'
+                                    ? 'bg-gray-200 text-gray-600'
+                                    : 'bg-yellow-100 text-yellow-700'
+                                }`}
+                              >
+                                {task.status}
+                              </span>
+                              {task.last_error && (
+                                <div className="text-xs text-red-500 mt-1 line-clamp-1" title={task.last_error}>
+                                  {task.last_error}
+                                </div>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-gray-600">
+                              {task.attempts}/{task.max_attempts}
+                            </td>
+                            <td className="px-4 py-3 text-gray-600">
+                              {task.article_id ? (
+                                <Link
+                                  href={`/article/${task.article_id}`}
+                                  className="text-blue-600 hover:underline"
+                                  title={task.article_title || task.article_id}
+                                >
+                                  {(() => {
+                                    const title = task.article_title || '未知文章';
+                                    const chars = Array.from(title);
+                                    const truncated = chars.slice(0, 10).join('');
+                                    return chars.length > 10 ? `${truncated}...` : truncated;
+                                  })()}
+                                </Link>
+                              ) : (
+                                '-'
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-gray-500">
+                              <div>创建：{new Date(task.created_at).toLocaleString('zh-CN')}</div>
+                              {task.finished_at && (
+                                <div>完成：{new Date(task.finished_at).toLocaleString('zh-CN')}</div>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              <div className="flex items-center justify-end gap-2">
+                                <button
+                                  onClick={() => handleRetryTask(task.id)}
+                                  className="px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded"
+                                  disabled={task.status === 'processing'}
+                                >
+                                  重试
+                                </button>
+                                <button
+                                  onClick={() => handleCancelTask(task.id)}
+                                  className="px-2 py-1 text-xs text-gray-600 hover:bg-gray-100 rounded"
+                                  disabled={task.status === 'completed' || task.status === 'cancelled'}
+                                >
+                                  取消
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                <div className="mt-6 flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                    <span>每页显示</span>
+                    <select
+                      value={taskPageSize}
+                      onChange={(e) => { setTaskPageSize(Number(e.target.value)); setTaskPage(1); }}
+                      className="px-2 py-1 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value={10}>10</option>
+                      <option value={20}>20</option>
+                      <option value={50}>50</option>
+                    </select>
+                    <span>条，共 {taskTotal} 条</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setTaskPage((p) => Math.max(1, p - 1))}
+                      disabled={taskPage === 1}
+                      className="px-4 py-2 bg-white border rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      上一页
+                    </button>
+                    <span className="px-4 py-2 bg-white border rounded-lg">
+                      第 {taskPage} / {Math.ceil(taskTotal / taskPageSize) || 1} 页
+                    </span>
+                    <button
+                      onClick={() => setTaskPage((p) => p + 1)}
+                      disabled={taskPage * taskPageSize >= taskTotal}
+                      className="px-4 py-2 bg-white border rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      下一页
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
           </main>

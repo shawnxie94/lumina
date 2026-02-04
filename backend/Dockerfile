@@ -9,7 +9,8 @@ COPY . .
 RUN uv venv --python 3.11
 ENV PATH="/app/.venv/bin:$PATH"
 
-RUN pip install -e .
+RUN /app/.venv/bin/python -m ensurepip
+RUN /app/.venv/bin/python -m pip install -e .
 
 RUN mkdir -p /app/data
 

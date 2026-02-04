@@ -1,7 +1,10 @@
 from ai_client import ConfigurableAIClient, is_english_content
+import json
+
 from models import (
     Article,
     AIAnalysis,
+    AITask,
     Category,
     SessionLocal,
     ModelAPIConfig,
@@ -87,6 +90,29 @@ class ArticleService:
             model_name=config["model_name"],
         )
 
+    def enqueue_task(
+        self,
+        db: Session,
+        task_type: str,
+        article_id: str | None = None,
+        content_type: str | None = None,
+        payload: dict | None = None,
+    ) -> str:
+        task = AITask(
+            article_id=article_id,
+            task_type=task_type,
+            content_type=content_type,
+            payload=json.dumps(payload or {}, ensure_ascii=False),
+            status="pending",
+            attempts=0,
+            run_at=now_str(),
+            updated_at=now_str(),
+        )
+        db.add(task)
+        db.commit()
+        db.refresh(task)
+        return task.id
+
     def get_article_neighbors(
         self,
         db: Session,
@@ -146,10 +172,11 @@ class ArticleService:
                     raise ValueError("该文章已存在，请勿重复提交")
             raise ValueError(f"数据完整性错误: {str(e)}")
 
-        import asyncio
-
-        asyncio.create_task(
-            self.process_article_ai(article.id, article_data.get("category_id"))
+        self.enqueue_task(
+            db,
+            task_type="process_article_ai",
+            article_id=article.id,
+            payload={"category_id": article_data.get("category_id")},
         )
 
         return article.id
@@ -427,9 +454,12 @@ class ArticleService:
             article.ai_analysis.error_message = None
         db.commit()
 
-        import asyncio
-
-        asyncio.create_task(self.process_article_ai(article_id, article.category_id))
+        self.enqueue_task(
+            db,
+            task_type="process_article_ai",
+            article_id=article_id,
+            payload={"category_id": article.category_id},
+        )
 
         return article_id
 
@@ -450,10 +480,11 @@ class ArticleService:
         article.translation_error = None
         db.commit()
 
-        import asyncio
-
-        asyncio.create_task(
-            self.process_article_translation(article_id, article.category_id)
+        self.enqueue_task(
+            db,
+            task_type="process_article_translation",
+            article_id=article_id,
+            payload={"category_id": article.category_id},
         )
 
         return article_id
@@ -558,16 +589,16 @@ class ArticleService:
         article.ai_analysis.updated_at = now_str()
         db.commit()
 
-        import asyncio
-
-        asyncio.create_task(
-            self.process_ai_content(
-                article_id,
-                article.category_id,
-                content_type,
-                model_config_id=model_config_id,
-                prompt_config_id=prompt_config_id,
-            )
+        self.enqueue_task(
+            db,
+            task_type="process_ai_content",
+            article_id=article_id,
+            content_type=content_type,
+            payload={
+                "category_id": article.category_id,
+                "model_config_id": model_config_id,
+                "prompt_config_id": prompt_config_id,
+            },
         )
 
     async def process_ai_content(

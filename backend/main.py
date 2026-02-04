@@ -11,8 +11,10 @@ from typing import Optional, List
 from models import (
     get_db,
     init_db,
+    now_str,
     Category,
     Article,
+    AITask,
     ModelAPIConfig,
     PromptConfig,
 )
@@ -138,6 +140,14 @@ class ArticleBatchCategory(BaseModel):
 
 class ArticleBatchDelete(BaseModel):
     article_ids: List[str]
+
+
+class AITaskRetryRequest(BaseModel):
+    task_ids: List[str]
+
+
+class AITaskCancelRequest(BaseModel):
+    task_ids: List[str]
 
 
 class CategoryCreate(BaseModel):
@@ -526,6 +536,172 @@ async def batch_delete_articles(
     )
     db.commit()
     return {"deleted": deleted}
+
+
+@app.get("/api/ai-tasks")
+async def list_ai_tasks(
+    page: int = 1,
+    size: int = 20,
+    status: Optional[str] = None,
+    task_type: Optional[str] = None,
+    content_type: Optional[str] = None,
+    article_id: Optional[str] = None,
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
+    query = db.query(AITask)
+
+    if status:
+        query = query.filter(AITask.status == status)
+    if task_type:
+        query = query.filter(AITask.task_type == task_type)
+    if content_type:
+        query = query.filter(AITask.content_type == content_type)
+    if article_id:
+        query = query.filter(AITask.article_id == article_id)
+
+    total = query.count()
+    tasks = (
+        query.order_by(AITask.created_at.desc())
+        .offset((page - 1) * size)
+        .limit(size)
+        .all()
+    )
+
+    article_ids = [task.article_id for task in tasks if task.article_id]
+    article_map = {}
+    if article_ids:
+        articles = (
+            db.query(Article.id, Article.title)
+            .filter(Article.id.in_(article_ids))
+            .all()
+        )
+        article_map = {article.id: article.title for article in articles}
+
+    return {
+        "data": [
+            {
+                "id": task.id,
+                "article_id": task.article_id,
+                "article_title": article_map.get(task.article_id),
+                "task_type": task.task_type,
+                "content_type": task.content_type,
+                "status": task.status,
+                "attempts": task.attempts,
+                "max_attempts": task.max_attempts,
+                "run_at": task.run_at,
+                "locked_at": task.locked_at,
+                "locked_by": task.locked_by,
+                "last_error": task.last_error,
+                "created_at": task.created_at,
+                "updated_at": task.updated_at,
+                "finished_at": task.finished_at,
+            }
+            for task in tasks
+        ],
+        "pagination": {
+            "page": page,
+            "size": size,
+            "total": total,
+            "total_pages": (total + size - 1) // size,
+        },
+    }
+
+
+@app.get("/api/ai-tasks/{task_id}")
+async def get_ai_task(
+    task_id: str,
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
+    task = db.query(AITask).filter(AITask.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="任务不存在")
+
+    article_title = None
+    if task.article_id:
+        article = (
+            db.query(Article.id, Article.title)
+            .filter(Article.id == task.article_id)
+            .first()
+        )
+        if article:
+            article_title = article.title
+
+    return {
+        "id": task.id,
+        "article_id": task.article_id,
+        "article_title": article_title,
+        "task_type": task.task_type,
+        "content_type": task.content_type,
+        "status": task.status,
+        "payload": task.payload,
+        "attempts": task.attempts,
+        "max_attempts": task.max_attempts,
+        "run_at": task.run_at,
+        "locked_at": task.locked_at,
+        "locked_by": task.locked_by,
+        "last_error": task.last_error,
+        "created_at": task.created_at,
+        "updated_at": task.updated_at,
+        "finished_at": task.finished_at,
+    }
+
+
+@app.post("/api/ai-tasks/retry")
+async def retry_ai_tasks(
+    request: AITaskRetryRequest,
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
+    if not request.task_ids:
+        raise HTTPException(status_code=400, detail="请选择任务")
+
+    updated = (
+        db.query(AITask)
+        .filter(AITask.id.in_(request.task_ids))
+        .update(
+            {
+                "status": "pending",
+                "run_at": now_str(),
+                "locked_at": None,
+                "locked_by": None,
+                "last_error": None,
+                "updated_at": now_str(),
+            },
+            synchronize_session=False,
+        )
+    )
+    db.commit()
+    return {"updated": updated}
+
+
+@app.post("/api/ai-tasks/cancel")
+async def cancel_ai_tasks(
+    request: AITaskCancelRequest,
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
+    if not request.task_ids:
+        raise HTTPException(status_code=400, detail="请选择任务")
+
+    updated = (
+        db.query(AITask)
+        .filter(AITask.id.in_(request.task_ids))
+        .filter(AITask.status.in_(["pending", "processing"]))
+        .update(
+            {
+                "status": "cancelled",
+                "locked_at": None,
+                "locked_by": None,
+                "updated_at": now_str(),
+                "finished_at": now_str(),
+            },
+            synchronize_session=False,
+        )
+    )
+    db.commit()
+    return {"updated": updated}
 
 
 class VisibilityUpdate(BaseModel):

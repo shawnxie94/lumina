@@ -262,6 +262,33 @@ export const articleApi = {
     return response.data;
   },
 
+  getAITasks: async (params?: {
+    page?: number;
+    size?: number;
+    status?: string;
+    task_type?: string;
+    content_type?: string;
+    article_id?: string;
+  }) => {
+    const response = await api.get('/api/ai-tasks', { params });
+    return response.data;
+  },
+
+  getAITask: async (taskId: string) => {
+    const response = await api.get(`/api/ai-tasks/${taskId}`);
+    return response.data;
+  },
+
+  retryAITasks: async (taskIds: string[]) => {
+    const response = await api.post('/api/ai-tasks/retry', { task_ids: taskIds });
+    return response.data;
+  },
+
+  cancelAITasks: async (taskIds: string[]) => {
+    const response = await api.post('/api/ai-tasks/cancel', { task_ids: taskIds });
+    return response.data;
+  },
+
   retryArticle: async (id: string) => {
     const response = await api.post(`/api/articles/${id}/retry`);
     return response.data;

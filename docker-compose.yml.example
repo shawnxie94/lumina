@@ -22,6 +22,20 @@ services:
     networks:
       - app-network
 
+  worker:
+    build: ./backend
+    command: /app/.venv/bin/python worker.py
+    environment:
+      - DATABASE_URL=sqlite:///./data/articles.db
+      - AI_WORKER_POLL_INTERVAL=3
+      - AI_TASK_LOCK_TIMEOUT=300
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      - api
+    networks:
+      - app-network
+
 networks:
   app-network:
     driver: bridge
