@@ -3,9 +3,11 @@ import { logError } from './errorLogger';
 
 const DEFAULT_API_HOST = 'localhost:8000';
 const STORAGE_KEY = 'apiHost';
+const TOKEN_KEY = 'adminToken';
 
 export class ApiClient {
   private apiHost: string;
+  private token: string | null = null;
 
   constructor(apiHost?: string) {
     this.apiHost = apiHost || DEFAULT_API_HOST;
@@ -18,6 +20,20 @@ export class ApiClient {
   get frontendUrl(): string {
     const host = this.apiHost.replace(':8000', ':3000');
     return `http://${host}`;
+  }
+
+  setToken(token: string | null) {
+    this.token = token;
+  }
+
+  private getHeaders(): Record<string, string> {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (this.token) {
+      headers['Authorization'] = `Bearer ${this.token}`;
+    }
+    return headers;
   }
 
   static async loadApiHost(): Promise<string> {
@@ -40,6 +56,56 @@ export class ApiClient {
     });
   }
 
+  static async loadToken(): Promise<string | null> {
+    return new Promise((resolve) => {
+      chrome.storage.local.get([TOKEN_KEY], (result) => {
+        resolve(result[TOKEN_KEY] || null);
+      });
+    });
+  }
+
+  static saveToken(token: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      chrome.storage.local.set({ [TOKEN_KEY]: token }, () => {
+        if (chrome.runtime.lastError) {
+          reject(chrome.runtime.lastError);
+        } else {
+          resolve();
+        }
+      });
+    });
+  }
+
+  static removeToken(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      chrome.storage.local.remove([TOKEN_KEY], () => {
+        if (chrome.runtime.lastError) {
+          reject(chrome.runtime.lastError);
+        } else {
+          resolve();
+        }
+      });
+    });
+  }
+
+  async verifyToken(): Promise<{ valid: boolean; role: string }> {
+    if (!this.token) {
+      return { valid: false, role: 'guest' };
+    }
+    try {
+      const response = await fetch(`${this.baseUrl}/api/auth/verify`, {
+        method: 'GET',
+        headers: this.getHeaders(),
+      });
+      if (!response.ok) {
+        return { valid: false, role: 'guest' };
+      }
+      return await response.json();
+    } catch {
+      return { valid: false, role: 'guest' };
+    }
+  }
+
   async getCategories(): Promise<Category[]> {
     try {
       const response = await fetch(`${this.baseUrl}/api/categories`);
@@ -58,11 +124,13 @@ export class ApiClient {
     try {
       const response = await fetch(`${this.baseUrl}/api/articles`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: this.getHeaders(),
         body: JSON.stringify(data),
       });
+
+      if (response.status === 401) {
+        throw new Error('UNAUTHORIZED');
+      }
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));

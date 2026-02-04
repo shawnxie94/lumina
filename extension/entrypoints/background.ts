@@ -1,4 +1,5 @@
 import { logError } from '../utils/errorLogger';
+import { ApiClient } from '../utils/api';
 
 export default defineBackground(() => {
   chrome.runtime.onInstalled.addListener(() => {
@@ -8,6 +9,22 @@ export default defineBackground(() => {
       contexts: ['page', 'selection'],
     });
   });
+
+  // 监听来自网页的消息（用于接收授权 token）
+  chrome.runtime.onMessageExternal.addListener(
+    async (message, _sender, sendResponse) => {
+      if (message.type === 'AUTH_TOKEN' && message.token) {
+        try {
+          await ApiClient.saveToken(message.token);
+          sendResponse({ success: true });
+        } catch (err) {
+          console.error('Failed to save token:', err);
+          sendResponse({ success: false, error: String(err) });
+        }
+      }
+      return true;
+    }
+  );
 
   async function ensureContentScriptLoaded(tabId: number): Promise<boolean> {
     try {

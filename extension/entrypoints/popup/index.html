@@ -9,6 +9,9 @@
   <div class="header">
     <h1>📚 文章采集器</h1>
     <div class="header-right">
+      <span class="login-status logged-out" id="loginStatus">知识库未授权</span>
+      <button id="loginBtn" class="login-btn" title="授权">🔐</button>
+      <button id="logoutBtn" class="login-btn hidden" title="取消授权">🚪</button>
       <span class="connection-status" id="connectionStatus" title="检测中...">
         <span class="status-dot checking"></span>
       </span>
@@ -16,42 +19,51 @@
     </div>
   </div>
 
-  <div class="preview">
-    <img class="preview-thumbnail hidden" id="previewThumbnail" alt="" />
-    <div class="preview-info">
-      <div class="preview-title" id="previewTitle">正在加载...</div>
-      <div class="preview-meta" id="previewMeta"></div>
+  <div id="loginPrompt" class="login-prompt hidden">
+    <div class="login-prompt-content">
+      <p>🔒 需要知识库管理员权限才能采集文章</p>
+      <button id="loginPromptBtn" class="btn btn-primary">去授权</button>
     </div>
   </div>
 
-  <div class="form-group">
-    <label for="categorySelect">分类</label>
-    <select id="categorySelect">
-      <option value="">选择分类...</option>
-    </select>
-  </div>
-
-  <div class="status idle" id="status">
-    准备就绪
-  </div>
-  <div class="quality-warnings hidden" id="qualityWarnings"></div>
-  <button class="retry-btn hidden" id="retryBtn">🔄 重试</button>
-
-  <div class="buttons">
-    <button class="btn btn-secondary" id="cancelBtn">取消</button>
-    <button class="btn btn-secondary" id="editAndCollectBtn">编辑后采集</button>
-    <button class="btn btn-primary" id="collectBtn">采集</button>
-  </div>
-
-  <div class="history-section" id="historySection">
-    <div class="history-header">
-      <span>最近采集</span>
-      <div class="history-actions">
-        <button id="viewAllHistoryBtn" class="view-all-btn">查看全部</button>
-        <button id="clearHistoryBtn" class="clear-history-btn">清空</button>
+  <div id="mainContent">
+    <div class="preview">
+      <img class="preview-thumbnail hidden" id="previewThumbnail" alt="" />
+      <div class="preview-info">
+        <div class="preview-title" id="previewTitle">正在加载...</div>
+        <div class="preview-meta" id="previewMeta"></div>
       </div>
     </div>
-    <div class="history-list" id="historyList"></div>
+
+    <div class="form-group">
+      <label for="categorySelect">分类</label>
+      <select id="categorySelect">
+        <option value="">选择分类...</option>
+      </select>
+    </div>
+
+    <div class="status idle" id="status">
+      准备就绪
+    </div>
+    <div class="quality-warnings hidden" id="qualityWarnings"></div>
+    <button class="retry-btn hidden" id="retryBtn">🔄 重试</button>
+
+    <div class="buttons">
+      <button class="btn btn-secondary" id="cancelBtn">取消</button>
+      <button class="btn btn-secondary" id="editAndCollectBtn">编辑后采集</button>
+      <button class="btn btn-primary" id="collectBtn">采集</button>
+    </div>
+
+    <div class="history-section" id="historySection">
+      <div class="history-header">
+        <span>最近采集</span>
+        <div class="history-actions">
+          <button id="viewAllHistoryBtn" class="view-all-btn">查看全部</button>
+          <button id="clearHistoryBtn" class="clear-history-btn">清空</button>
+        </div>
+      </div>
+      <div class="history-list" id="historyList"></div>
+    </div>
   </div>
 
   <div id="configModal" class="config-modal">

@@ -7,6 +7,9 @@ export default defineConfig({
     version: '1.0.0',
     permissions: ['activeTab', 'scripting', 'storage', 'contextMenus', 'notifications'],
     host_permissions: ['<all_urls>'],
+    externally_connectable: {
+      matches: ['http://localhost:3000/*', 'http://127.0.0.1:3000/*'],
+    },
     action: {
       default_popup: 'popup.html',
       default_icon: {

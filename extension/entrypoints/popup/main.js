@@ -15,6 +15,7 @@ class PopupController {
   #articleData = null;
   #currentTab = null;
   #categories = [];
+  #isLoggedIn = false;
 
   constructor() {
     this.#apiClient = new ApiClient();
@@ -283,6 +284,13 @@ class PopupController {
       await this.loadConfig();
       await this.setupEventListeners();
       this.checkApiHealth();
+      await this.checkLoginStatus();
+      
+      if (!this.#isLoggedIn) {
+        this.showLoginRequired();
+        return;
+      }
+      
       await this.loadCategories();
       await this.loadHistory();
       await this.extractArticle();
@@ -295,12 +303,59 @@ class PopupController {
 
   async loadConfig() {
     const apiHost = await ApiClient.loadApiHost();
+    const token = await ApiClient.loadToken();
     this.#apiClient = new ApiClient(apiHost);
+    if (token) {
+      this.#apiClient.setToken(token);
+    }
 
     const apiHostInput = document.getElementById('apiHostInput');
     if (apiHostInput) {
       apiHostInput.value = apiHost;
     }
+  }
+
+  async checkLoginStatus() {
+    const result = await this.#apiClient.verifyToken();
+    this.#isLoggedIn = result.valid && result.role === 'admin';
+    this.updateLoginUI();
+  }
+
+  updateLoginUI() {
+    const loginBtn = document.getElementById('loginBtn');
+    const logoutBtn = document.getElementById('logoutBtn');
+    const loginStatus = document.getElementById('loginStatus');
+    
+    if (loginBtn) loginBtn.classList.toggle('hidden', this.#isLoggedIn);
+    if (logoutBtn) logoutBtn.classList.toggle('hidden', !this.#isLoggedIn);
+    if (loginStatus) {
+      loginStatus.textContent = this.#isLoggedIn ? '已登录' : '未登录';
+      loginStatus.className = `login-status ${this.#isLoggedIn ? 'logged-in' : 'logged-out'}`;
+    }
+  }
+
+  showLoginRequired() {
+    const mainContent = document.getElementById('mainContent');
+    const loginPrompt = document.getElementById('loginPrompt');
+    
+    if (mainContent) mainContent.classList.add('hidden');
+    if (loginPrompt) loginPrompt.classList.remove('hidden');
+    
+    this.updateStatus('warning', '请先登录管理员账号');
+  }
+
+  async handleLogin() {
+    const authUrl = `${this.#apiClient.frontendUrl}/auth/extension?extension_id=${chrome.runtime.id}`;
+    chrome.tabs.create({ url: authUrl });
+    window.close();
+  }
+
+  async handleLogout() {
+    await ApiClient.removeToken();
+    this.#apiClient.setToken(null);
+    this.#isLoggedIn = false;
+    this.updateLoginUI();
+    this.showLoginRequired();
   }
 
   async checkApiHealth() {
@@ -347,6 +402,12 @@ class PopupController {
     document.getElementById('clearHistoryBtn')?.addEventListener('click', () => this.clearHistoryList());
 
     document.getElementById('viewAllHistoryBtn')?.addEventListener('click', () => this.openHistoryPage());
+
+    document.getElementById('loginBtn')?.addEventListener('click', () => this.handleLogin());
+
+    document.getElementById('logoutBtn')?.addEventListener('click', () => this.handleLogout());
+
+    document.getElementById('loginPromptBtn')?.addEventListener('click', () => this.handleLogin());
   }
 
   openHistoryPage() {
@@ -813,6 +874,15 @@ class PopupController {
     } catch (error) {
       console.error('Failed to collect article:', error);
       logError('popup', error, { action: 'collectArticle', title: this.#articleData?.title });
+      
+      if (error.message === 'UNAUTHORIZED') {
+        await ApiClient.removeToken();
+        this.#isLoggedIn = false;
+        this.updateLoginUI();
+        this.updateStatus('error', '登录已过期，请重新登录');
+        return;
+      }
+      
       this.updateStatus('error', '采集失败，请重试');
     }
   }

@@ -449,3 +449,60 @@ body {
   border-radius: 4px;
   white-space: nowrap;
 }
+
+.login-status {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.login-status.logged-in {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.login-status.logged-out {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.login-btn {
+  background: none;
+  border: none;
+  font-size: 14px;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+.login-btn:hover {
+  background: #f3f4f6;
+}
+
+.login-btn.hidden {
+  display: none;
+}
+
+.login-prompt {
+  text-align: center;
+  padding: 32px 16px;
+}
+
+.login-prompt.hidden {
+  display: none;
+}
+
+.login-prompt-content p {
+  font-size: 14px;
+  color: #6b7280;
+  margin-bottom: 16px;
+}
+
+.login-prompt-content .btn {
+  min-width: 120px;
+}
+
+#mainContent.hidden {
+  display: none;
+}
