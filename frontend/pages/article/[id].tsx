@@ -1,3 +1,4 @@
+import Head from 'next/head';
 import { useState, useEffect, useRef, useCallback } from 'react';
 
 import { useRouter } from 'next/router';
@@ -672,6 +673,9 @@ export default function ArticleDetailPage() {
 
   return (
     <div className={`min-h-screen ${immersiveMode ? 'bg-white' : 'bg-gray-50'}`}>
+      <Head>
+        <title>{article?.title ? `${article.title} - Lumina` : '文章详情 - Lumina'}</title>
+      </Head>
       <ReadingProgress />
        <nav className={`bg-white ${immersiveMode ? '' : 'shadow-sm border-b'}`}>
         <div className="max-w-7xl mx-auto px-4 py-4">

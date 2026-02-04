@@ -91,9 +91,9 @@ export default function ExtensionAuthPage() {
   if (authorized) {
     return (
       <>
-        <Head>
-          <title>授权成功 - 文章知识库</title>
-        </Head>
+    <Head>
+      <title>授权成功 - Lumina</title>
+    </Head>
         <div className="min-h-screen flex items-center justify-center bg-gray-50">
           <div className="text-center">
             <div className="text-6xl mb-4">✅</div>
@@ -109,9 +109,9 @@ export default function ExtensionAuthPage() {
   if (isAdmin) {
     return (
       <>
-        <Head>
-          <title>扩展授权 - 文章知识库</title>
-        </Head>
+    <Head>
+      <title>扩展授权 - Lumina</title>
+    </Head>
         <div className="min-h-screen flex items-center justify-center bg-gray-50">
           <div className="text-center">
             <div className="text-4xl mb-4">🔐</div>
@@ -126,9 +126,9 @@ export default function ExtensionAuthPage() {
 
   return (
     <>
-      <Head>
-        <title>扩展授权登录 - 文章知识库</title>
-      </Head>
+    <Head>
+      <title>扩展授权登录 - Lumina</title>
+    </Head>
 
       <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-md w-full space-y-8">

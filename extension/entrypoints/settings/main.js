@@ -168,7 +168,7 @@ class SettingsController {
 
       if (this.#categories.length === 0) {
         errorEl?.classList.remove('hidden');
-        errorEl.querySelector('span').textContent = '暂无分类，请先在知识库中创建分类';
+    errorEl.querySelector('span').textContent = '暂无分类，请先在 Lumina 中创建分类';
         return;
       }
 

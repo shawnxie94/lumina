@@ -74,9 +74,9 @@ export default function LoginPage() {
 
   return (
     <>
-      <Head>
-        <title>{isSetupMode ? '设置管理员密码' : '管理员登录'} - 文章知识库</title>
-      </Head>
+    <Head>
+      <title>{isSetupMode ? '设置管理员密码' : '管理员登录'} - Lumina · AI 驱动的知识库</title>
+    </Head>
 
       <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-md w-full space-y-8">

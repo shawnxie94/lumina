@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import Head from 'next/head';
 import { useRef } from 'react';
 
 import { useRouter } from 'next/router';
@@ -771,13 +772,16 @@ export default function SettingsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      <Head>
+        <title>管理台 - Lumina · AI 驱动的知识库</title>
+      </Head>
       <nav className="bg-white shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <Link href="/" className="text-blue-600 hover:text-blue-700 transition">
               ← 返回列表
             </Link>
-            <h1 className="text-xl font-bold text-gray-900">🧭 管理台</h1>
+            <h1 className="text-xl font-bold text-gray-900">🧭 Lumina 管理台</h1>
             <div className="w-20"></div>
           </div>
         </div>

@@ -2,8 +2,8 @@ import { defineConfig } from 'wxt';
 
 export default defineConfig({
   manifest: {
-    name: '文章知识库采集器',
-    description: '一键采集网页文章到知识库',
+  name: 'Lumina 采集器',
+  description: '一键采集网页内容到 Lumina',
     version: '1.0.0',
     permissions: ['activeTab', 'scripting', 'storage', 'contextMenus', 'notifications'],
     host_permissions: ['<all_urls>'],

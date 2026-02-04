@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>文章采集器</title>
+  <title>Lumina · AI 驱动的知识库</title>
 </head>
 <body>
   <div class="header">
-    <h1>📚 文章采集器</h1>
+    <h1>✨ Lumina 采集器</h1>
     <div class="header-right">
-      <span class="login-status logged-out" id="loginStatus">知识库未授权</span>
+        <span class="login-status logged-out" id="loginStatus">Lumina 未授权</span>
       <button id="loginBtn" class="login-btn" title="授权">🔐</button>
       <button id="logoutBtn" class="login-btn hidden" title="取消授权">🚪</button>
       <span class="connection-status" id="connectionStatus" title="检测中...">
@@ -21,7 +21,7 @@
 
   <div id="loginPrompt" class="login-prompt hidden">
     <div class="login-prompt-content">
-      <p>🔒 需要知识库管理员权限才能采集文章</p>
+      <p>🔒 需要 Lumina 管理员权限才能采集文章</p>
       <button id="loginPromptBtn" class="btn btn-primary">去授权</button>
       <button id="loginPromptConfigBtn" class="btn btn-secondary">修改 API 地址</button>
     </div>
@@ -72,7 +72,7 @@
       <h2>⚙️ 配置</h2>
 
       <div class="form-group">
-        <label for="apiHostInput">知识库 API 地址</label>
+        <label for="apiHostInput">Lumina API 地址</label>
         <input type="text" id="apiHostInput" placeholder="localhost:8000" />
       </div>
 

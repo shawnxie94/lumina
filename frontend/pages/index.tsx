@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 
+import Head from 'next/head';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
 import DatePicker from 'react-datepicker';
@@ -424,10 +425,16 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      <Head>
+        <title>Lumina · AI 驱动的知识库</title>
+      </Head>
       <nav className="bg-white shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-bold text-gray-900">📚 文章知识库</h1>
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">✨ Lumina</h1>
+              <p className="text-sm text-gray-500 mt-1">AI 驱动的知识库</p>
+            </div>
             <div className="flex gap-2 items-center">
               {selectedArticleIds.size > 0 && (
                 <button
