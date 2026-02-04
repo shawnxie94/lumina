@@ -76,15 +76,27 @@ class ConfigurableAIClient:
         if parameters is None:
             parameters = {}
 
+        system_prompt = parameters.get("system_prompt")
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+
         request_params = {
             "model": self.model_name,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": messages,
             "max_tokens": parameters.get("max_tokens", max_tokens),
             "temperature": parameters.get("temperature", temperature),
         }
 
         if "top_p" in parameters:
             request_params["top_p"] = parameters["top_p"]
+
+        response_format = parameters.get("response_format")
+        if isinstance(response_format, str):
+            request_params["response_format"] = {"type": response_format}
+        elif isinstance(response_format, dict):
+            request_params["response_format"] = response_format
 
         try:
             response = await self.client.chat.completions.create(**request_params)
@@ -138,15 +150,27 @@ class ConfigurableAIClient:
         if parameters is None:
             parameters = {}
 
+        system_prompt = parameters.get("system_prompt")
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": final_prompt})
+
         request_params = {
             "model": self.model_name,
-            "messages": [{"role": "user", "content": final_prompt}],
+            "messages": messages,
             "max_tokens": parameters.get("max_tokens", max_tokens),
             "temperature": parameters.get("temperature", temperature),
         }
 
         if "top_p" in parameters:
             request_params["top_p"] = parameters["top_p"]
+
+        response_format = parameters.get("response_format")
+        if isinstance(response_format, str):
+            request_params["response_format"] = {"type": response_format}
+        elif isinstance(response_format, dict):
+            request_params["response_format"] = response_format
 
         try:
             print(

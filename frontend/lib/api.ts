@@ -169,6 +169,11 @@ export interface PromptConfig {
   category_name: string | null;
   type: string;
   prompt: string;
+  system_prompt?: string | null;
+  response_format?: string | null;
+  temperature?: number | null;
+  max_tokens?: number | null;
+  top_p?: number | null;
   model_api_config_id: string | null;
   model_api_config_name: string | null;
   is_enabled: boolean;
@@ -260,51 +265,6 @@ export const articleApi = {
     return response.data as string[];
   },
 
-  getAIConfigs: async (categoryId?: string) => {
-    const response = await api.get('/api/configs/ai', {
-      params: categoryId ? { category_id: categoryId } : undefined,
-    });
-    return response.data;
-  },
-
-  createAIConfig: async (data: {
-    category_id?: string;
-    dimension: string;
-    is_enabled?: boolean;
-    base_url: string;
-    api_key: string;
-    model_name?: string;
-    prompt_template?: string;
-    parameters?: string;
-    is_default?: boolean;
-  }) => {
-    const response = await api.post('/api/configs/ai', data);
-    return response.data;
-  },
-
-  updateAIConfig: async (
-    configId: string,
-    data: {
-      category_id?: string;
-      dimension?: string;
-      is_enabled?: boolean;
-      base_url?: string;
-      api_key?: string;
-      model_name?: string;
-      prompt_template?: string;
-      parameters?: string;
-      is_default?: boolean;
-    },
-  ) => {
-    const response = await api.put(`/api/configs/ai/${configId}`, data);
-    return response.data;
-  },
-
-  deleteAIConfig: async (configId: string) => {
-    const response = await api.delete(`/api/configs/ai/${configId}`);
-    return response.data;
-  },
-
   getModelAPIConfigs: async () => {
     const response = await api.get('/api/model-api-configs');
     return response.data;
@@ -370,6 +330,11 @@ export const articleApi = {
     category_id?: string;
     type: string;
     prompt: string;
+    system_prompt?: string | null;
+    response_format?: string | null;
+    temperature?: number | null;
+    max_tokens?: number | null;
+    top_p?: number | null;
     model_api_config_id?: string;
     is_enabled?: boolean;
     is_default?: boolean;
@@ -385,6 +350,11 @@ export const articleApi = {
       category_id?: string;
       type?: string;
       prompt?: string;
+      system_prompt?: string | null;
+      response_format?: string | null;
+      temperature?: number | null;
+      max_tokens?: number | null;
+      top_p?: number | null;
       model_api_config_id?: string;
       is_enabled?: boolean;
       is_default?: boolean;

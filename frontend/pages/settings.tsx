@@ -196,10 +196,16 @@ export default function SettingsPage() {
     category_id: '',
     type: 'summary',
     prompt: '',
+    system_prompt: '',
+    response_format: '',
+    temperature: '',
+    max_tokens: '',
+    top_p: '',
     model_api_config_id: '',
     is_enabled: true,
     is_default: false,
   });
+  const [showPromptAdvanced, setShowPromptAdvanced] = useState(false);
 
   const [categoryFormData, setCategoryFormData] = useState({
     name: '',
@@ -354,10 +360,16 @@ export default function SettingsPage() {
       category_id: '',
       type: selectedPromptType,
       prompt: '',
+      system_prompt: '',
+      response_format: '',
+      temperature: '',
+      max_tokens: '',
+      top_p: '',
       model_api_config_id: '',
       is_enabled: true,
       is_default: false,
     });
+    setShowPromptAdvanced(false);
     setShowPromptModal(true);
   };
 
@@ -368,19 +380,39 @@ export default function SettingsPage() {
       category_id: config.category_id || '',
       type: config.type,
       prompt: config.prompt,
+      system_prompt: config.system_prompt || '',
+      response_format: config.response_format || '',
+      temperature: config.temperature?.toString() || '',
+      max_tokens: config.max_tokens?.toString() || '',
+      top_p: config.top_p?.toString() || '',
       model_api_config_id: config.model_api_config_id || '',
       is_enabled: config.is_enabled,
       is_default: config.is_default,
     });
+    setShowPromptAdvanced(false);
     setShowPromptModal(true);
   };
 
   const handleSavePrompt = async () => {
+    if (!promptFormData.system_prompt.trim()) {
+      showToast('请填写系统提示词', 'error');
+      return;
+    }
+    if (!promptFormData.prompt.trim()) {
+      showToast('请填写提示词', 'error');
+      return;
+    }
+
     try {
       const data = {
         ...promptFormData,
         category_id: promptFormData.category_id || undefined,
         model_api_config_id: promptFormData.model_api_config_id || undefined,
+        system_prompt: promptFormData.system_prompt || undefined,
+        response_format: promptFormData.response_format || undefined,
+        temperature: promptFormData.temperature ? Number(promptFormData.temperature) : undefined,
+        max_tokens: promptFormData.max_tokens ? Number(promptFormData.max_tokens) : undefined,
+        top_p: promptFormData.top_p ? Number(promptFormData.top_p) : undefined,
       };
 
       if (editingPromptConfig) {
@@ -743,12 +775,22 @@ export default function SettingsPage() {
                             <div className="space-y-1 text-sm text-gray-600">
                               <div>
                                 <span className="font-medium">分类：</span>
-                                <span>{config.category_name || '通用'}</span>
+                                <span className="inline-flex items-center px-2 py-0.5 bg-gray-100 text-gray-700 rounded text-xs">
+                                  {config.category_name || '通用'}
+                                </span>
                               </div>
                               {config.model_api_config_name && (
                                 <div>
                                   <span className="font-medium">关联模型API：</span>
                                   <span>{config.model_api_config_name}</span>
+                                </div>
+                              )}
+                              {config.system_prompt && (
+                                <div>
+                                  <span className="font-medium">系统提示词：</span>
+                                  <code className="px-2 py-1 bg-gray-50 rounded text-xs block mt-1 max-h-20 overflow-y-auto">
+                                    {config.system_prompt.slice(0, 100)}{config.system_prompt.length > 100 ? '...' : ''}
+                                  </code>
                                 </div>
                               )}
                               <div>
@@ -757,6 +799,30 @@ export default function SettingsPage() {
                                   {config.prompt.slice(0, 100)}{config.prompt.length > 100 ? '...' : ''}
                                 </code>
                               </div>
+                              {(config.system_prompt || config.response_format || config.temperature != null || config.max_tokens != null || config.top_p != null) && (
+                                <div className="flex flex-wrap gap-2 pt-1">
+                                  {config.response_format && (
+                                    <span className="px-2 py-1 bg-gray-50 text-gray-700 rounded text-xs">
+                                      响应格式: {config.response_format}
+                                    </span>
+                                  )}
+                                  {config.temperature != null && (
+                                    <span className="px-2 py-1 bg-gray-50 text-gray-700 rounded text-xs">
+                                      温度: {config.temperature}
+                                    </span>
+                                  )}
+                                  {config.max_tokens != null && (
+                                    <span className="px-2 py-1 bg-gray-50 text-gray-700 rounded text-xs">
+                                      最大Tokens: {config.max_tokens}
+                                    </span>
+                                  )}
+                                  {config.top_p != null && (
+                                    <span className="px-2 py-1 bg-gray-50 text-gray-700 rounded text-xs">
+                                      Top P: {config.top_p}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           </div>
 
@@ -1000,6 +1066,20 @@ export default function SettingsPage() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
+                  系统提示词
+                </label>
+                <textarea
+                  value={promptFormData.system_prompt}
+                  onChange={(e) => setPromptFormData({ ...promptFormData, system_prompt: e.target.value })}
+                  rows={4}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="系统级约束，例如：你是一个严谨的内容分析助手..."
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
                   提示词
                 </label>
                 <textarea
@@ -1010,6 +1090,83 @@ export default function SettingsPage() {
                   placeholder="请为以下文章生成摘要..."
                   required
                 />
+              </div>
+
+              <div className="border border-gray-200 rounded-lg">
+                <button
+                  type="button"
+                  onClick={() => setShowPromptAdvanced(!showPromptAdvanced)}
+                  className="w-full flex items-center justify-between px-4 py-3 text-sm text-gray-700 hover:bg-gray-50"
+                >
+                  <span>高级设置（可选）</span>
+                  <span className="text-gray-400">{showPromptAdvanced ? '收起' : '展开'}</span>
+                </button>
+                {showPromptAdvanced && (
+                  <div className="border-t border-gray-200 p-4 space-y-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          响应格式
+                        </label>
+                        <select
+                          value={promptFormData.response_format}
+                          onChange={(e) => setPromptFormData({ ...promptFormData, response_format: e.target.value })}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                          <option value="">默认</option>
+                          <option value="text">text</option>
+                          <option value="json_object">json_object</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          温度
+                        </label>
+                        <input
+                          type="number"
+                          step="0.1"
+                          min="0"
+                          max="2"
+                          value={promptFormData.temperature}
+                          onChange={(e) => setPromptFormData({ ...promptFormData, temperature: e.target.value })}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="0.7"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          最大 Tokens
+                        </label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={promptFormData.max_tokens}
+                          onChange={(e) => setPromptFormData({ ...promptFormData, max_tokens: e.target.value })}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="1200"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Top P
+                        </label>
+                        <input
+                          type="number"
+                          step="0.1"
+                          min="0"
+                          max="1"
+                          value={promptFormData.top_p}
+                          onChange={(e) => setPromptFormData({ ...promptFormData, top_p: e.target.value })}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="1.0"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div>
@@ -1185,11 +1342,39 @@ export default function SettingsPage() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  完整提示词内容
+                  系统提示词
+                </label>
+                <pre className="w-full p-4 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-800 whitespace-pre-wrap font-mono">
+                  {showPromptPreview.system_prompt || '未设置（必填）'}
+                </pre>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  提示词
                 </label>
                 <pre className="w-full p-4 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-800 whitespace-pre-wrap font-mono">
                   {showPromptPreview.prompt}
                 </pre>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700">
+                  <div className="text-xs text-gray-500">响应格式</div>
+                  <div>{showPromptPreview.response_format || '默认'}</div>
+                </div>
+                <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700">
+                  <div className="text-xs text-gray-500">温度</div>
+                  <div>{showPromptPreview.temperature ?? '默认'}</div>
+                </div>
+                <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700">
+                  <div className="text-xs text-gray-500">最大 Tokens</div>
+                  <div>{showPromptPreview.max_tokens ?? '默认'}</div>
+                </div>
+                <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700">
+                  <div className="text-xs text-gray-500">Top P</div>
+                  <div>{showPromptPreview.top_p ?? '默认'}</div>
+                </div>
               </div>
             </div>
 

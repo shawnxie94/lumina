@@ -9,7 +9,28 @@ from models import (
 )
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
-import json
+
+
+def build_parameters(model) -> dict:
+    if not model:
+        return {}
+    params = {}
+    system_prompt = getattr(model, "system_prompt", None)
+    response_format = getattr(model, "response_format", None)
+    temperature = getattr(model, "temperature", None)
+    max_tokens = getattr(model, "max_tokens", None)
+    top_p = getattr(model, "top_p", None)
+    if system_prompt:
+        params["system_prompt"] = system_prompt
+    if response_format:
+        params["response_format"] = response_format
+    if temperature is not None:
+        params["temperature"] = temperature
+    if max_tokens is not None:
+        params["max_tokens"] = max_tokens
+    if top_p is not None:
+        params["top_p"] = top_p
+    return params
 
 
 class ArticleService:
@@ -19,98 +40,44 @@ class ArticleService:
     def get_ai_config(
         self, db: Session, category_id: str = None, prompt_type: str = "summary"
     ):
-        """
-        获取AI配置，支持不同类型的提示词（summary, translation等）
-
-        Args:
-            db: 数据库会话
-            category_id: 分类ID（可选）
-            prompt_type: 提示词类型，默认为 "summary"
-
-        Returns:
-            包含AI配置的字典，或None
-        """
         query = db.query(ModelAPIConfig).filter(ModelAPIConfig.is_enabled == True)
         prompt_query = db.query(PromptConfig).filter(
             PromptConfig.is_enabled == True, PromptConfig.type == prompt_type
         )
 
+        prompt_config = None
         if category_id:
-            category_prompt = prompt_query.filter(
+            prompt_config = prompt_query.filter(
                 PromptConfig.category_id == category_id
             ).first()
-            if category_prompt:
-                result = {
-                    "prompt_template": category_prompt.prompt,
-                    "parameters": None,
-                }
-                if category_prompt.model_api_config_id:
-                    model_config = query.filter(
-                        ModelAPIConfig.id == category_prompt.model_api_config_id
-                    ).first()
-                    if model_config:
-                        result.update(
-                            {
-                                "base_url": model_config.base_url,
-                                "api_key": model_config.api_key,
-                                "model_name": model_config.model_name,
-                            }
-                        )
-                else:
-                    default_model = query.filter(
-                        ModelAPIConfig.is_default == True
-                    ).first()
-                    if default_model:
-                        result.update(
-                            {
-                                "base_url": default_model.base_url,
-                                "api_key": default_model.api_key,
-                                "model_name": default_model.model_name,
-                            }
-                        )
-                return result
 
-        generic_prompt = prompt_query.filter(PromptConfig.category_id.is_(None)).first()
-        if generic_prompt:
-            result = {
-                "prompt_template": generic_prompt.prompt,
-                "parameters": None,
-            }
-            if generic_prompt.model_api_config_id:
-                model_config = query.filter(
-                    ModelAPIConfig.id == generic_prompt.model_api_config_id
-                ).first()
-                if model_config:
-                    result.update(
-                        {
-                            "base_url": model_config.base_url,
-                            "api_key": model_config.api_key,
-                            "model_name": model_config.model_name,
-                        }
-                    )
-            else:
-                default_model = query.filter(ModelAPIConfig.is_default == True).first()
-                if default_model:
-                    result.update(
-                        {
-                            "base_url": default_model.base_url,
-                            "api_key": default_model.api_key,
-                            "model_name": default_model.model_name,
-                        }
-                    )
-            return result
+        if not prompt_config:
+            prompt_config = prompt_query.filter(
+                PromptConfig.category_id.is_(None)
+            ).first()
 
-        default_model = query.filter(ModelAPIConfig.is_default == True).first()
-        if default_model:
-            return {
-                "base_url": default_model.base_url,
-                "api_key": default_model.api_key,
-                "model_name": default_model.model_name,
-                "prompt_template": None,
-                "parameters": None,
-            }
+        model_config = None
+        if prompt_config and prompt_config.model_api_config_id:
+            model_config = query.filter(
+                ModelAPIConfig.id == prompt_config.model_api_config_id
+            ).first()
 
-        return None
+        if not model_config:
+            model_config = query.filter(ModelAPIConfig.is_default == True).first()
+
+        if not model_config:
+            return None
+
+        result = {
+            "base_url": model_config.base_url,
+            "api_key": model_config.api_key,
+            "model_name": model_config.model_name,
+            "prompt_template": prompt_config.prompt if prompt_config else None,
+        }
+
+        parameters = build_parameters(prompt_config) if prompt_config else {}
+        result["parameters"] = parameters or None
+        return result
 
     def create_ai_client(self, config: dict) -> ConfigurableAIClient:
         return ConfigurableAIClient(
@@ -199,7 +166,7 @@ class ArticleService:
                 return
 
             ai_client = self.create_ai_client(ai_config)
-            parameters = ai_config.get("parameters", {})
+            parameters = ai_config.get("parameters") or {}
             prompt = ai_config.get("prompt_template")
 
             try:
@@ -588,6 +555,7 @@ class ArticleService:
 
             ai_config = None
             prompt = None
+            prompt_parameters = {}
 
             if model_config_id:
                 model_config = (
@@ -610,6 +578,7 @@ class ArticleService:
                 )
                 if prompt_config:
                     prompt = prompt_config.prompt
+                    prompt_parameters = build_parameters(prompt_config)
                     if not ai_config and prompt_config.model_api_config_id:
                         model_config = (
                             db.query(ModelAPIConfig)
@@ -644,6 +613,8 @@ class ArticleService:
 
             ai_client = self.create_ai_client(ai_config)
             parameters = ai_config.get("parameters") or {}
+            if prompt_parameters:
+                parameters = {**parameters, **prompt_parameters}
 
             try:
                 result = await asyncio.wait_for(

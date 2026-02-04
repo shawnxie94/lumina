@@ -7,7 +7,6 @@ from models import (
     init_db,
     Category,
     Article,
-    AIConfig,
     ModelAPIConfig,
     PromptConfig,
 )
@@ -72,18 +71,6 @@ class ExportRequest(BaseModel):
     article_ids: List[str]
 
 
-class AIConfigBase(BaseModel):
-    category_id: Optional[str] = None
-    dimension: str
-    is_enabled: bool = True
-    base_url: str
-    api_key: str
-    model_name: str = "gpt-4o"
-    prompt_template: Optional[str] = None
-    parameters: Optional[str] = None
-    is_default: bool = False
-
-
 class ModelAPIConfigBase(BaseModel):
     name: str
     base_url: str
@@ -98,6 +85,11 @@ class PromptConfigBase(BaseModel):
     category_id: Optional[str] = None
     type: str  # summary, outline, key_points, mindmap, etc.
     prompt: str
+    system_prompt: Optional[str] = None
+    response_format: Optional[str] = None
+    temperature: Optional[float] = None
+    max_tokens: Optional[int] = None
+    top_p: Optional[float] = None
     model_api_config_id: Optional[str] = None
     is_enabled: bool = True
     is_default: bool = False
@@ -651,117 +643,6 @@ async def export_articles(request: ExportRequest, db: Session = Depends(get_db))
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@app.get("/api/configs/ai")
-async def get_ai_configs(
-    category_id: Optional[str] = None, db: Session = Depends(get_db)
-):
-    query = db.query(AIConfig)
-
-    if category_id:
-        query = query.filter(AIConfig.category_id == category_id)
-
-    configs = query.all()
-
-    return [
-        {
-            "id": c.id,
-            "category_id": c.category_id,
-            "dimension": c.dimension,
-            "is_enabled": c.is_enabled,
-            "base_url": c.base_url,
-            "api_key": c.api_key,
-            "model_name": c.model_name,
-            "prompt_template": c.prompt_template,
-            "parameters": c.parameters,
-            "is_default": c.is_default,
-        }
-        for c in configs
-    ]
-
-
-@app.post("/api/configs/ai")
-async def create_ai_config(
-    config: AIConfigBase,
-    db: Session = Depends(get_db),
-    _: bool = Depends(get_current_admin),
-):
-    try:
-        new_config = AIConfig(**config.dict())
-        db.add(new_config)
-        db.commit()
-        db.refresh(new_config)
-        return {
-            "id": new_config.id,
-            "category_id": new_config.category_id,
-            "dimension": new_config.dimension,
-            "is_enabled": new_config.is_enabled,
-            "base_url": new_config.base_url,
-            "api_key": new_config.api_key,
-            "model_name": new_config.model_name,
-            "prompt_template": new_config.prompt_template,
-            "parameters": new_config.parameters,
-            "is_default": new_config.is_default,
-        }
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.put("/api/configs/ai/{config_id}")
-async def update_ai_config(
-    config_id: str,
-    config: AIConfigBase,
-    db: Session = Depends(get_db),
-    _: bool = Depends(get_current_admin),
-):
-    ai_config = db.query(AIConfig).filter(AIConfig.id == config_id).first()
-
-    if not ai_config:
-        raise HTTPException(status_code=404, detail="AI配置不存在")
-
-    ai_config.category_id = config.category_id
-    ai_config.dimension = config.dimension
-    ai_config.is_enabled = config.is_enabled
-    ai_config.base_url = config.base_url
-    ai_config.api_key = config.api_key
-    ai_config.model_name = config.model_name
-    ai_config.prompt_template = config.prompt_template
-    ai_config.parameters = config.parameters
-    ai_config.is_default = config.is_default
-
-    db.commit()
-    db.refresh(ai_config)
-
-    return {
-        "id": ai_config.id,
-        "category_id": ai_config.category_id,
-        "dimension": ai_config.dimension,
-        "is_enabled": ai_config.is_enabled,
-        "base_url": ai_config.base_url,
-        "api_key": ai_config.api_key,
-        "model_name": ai_config.model_name,
-        "prompt_template": ai_config.prompt_template,
-        "parameters": ai_config.parameters,
-        "is_default": ai_config.is_default,
-    }
-
-
-@app.delete("/api/configs/ai/{config_id}")
-async def delete_ai_config(
-    config_id: str,
-    db: Session = Depends(get_db),
-    _: bool = Depends(get_current_admin),
-):
-    ai_config = db.query(AIConfig).filter(AIConfig.id == config_id).first()
-
-    if not ai_config:
-        raise HTTPException(status_code=404, detail="AI配置不存在")
-
-    db.delete(ai_config)
-    db.commit()
-
-    return {"message": "删除成功"}
-
-
 # Model API Config endpoints
 @app.get("/api/model-api-configs")
 async def get_model_api_configs(db: Session = Depends(get_db)):
@@ -965,6 +846,11 @@ async def get_prompt_configs(
             "category_name": c.category.name if c.category else None,
             "type": c.type,
             "prompt": c.prompt,
+            "system_prompt": c.system_prompt,
+            "response_format": c.response_format,
+            "temperature": c.temperature,
+            "max_tokens": c.max_tokens,
+            "top_p": c.top_p,
             "model_api_config_id": c.model_api_config_id,
             "model_api_config_name": c.model_api_config.name
             if c.model_api_config
@@ -992,6 +878,11 @@ async def get_prompt_config(config_id: str, db: Session = Depends(get_db)):
         "category_name": config.category.name if config.category else None,
         "type": config.type,
         "prompt": config.prompt,
+        "system_prompt": config.system_prompt,
+        "response_format": config.response_format,
+        "temperature": config.temperature,
+        "max_tokens": config.max_tokens,
+        "top_p": config.top_p,
         "model_api_config_id": config.model_api_config_id,
         "model_api_config_name": config.model_api_config.name
         if config.model_api_config
@@ -1027,6 +918,11 @@ async def create_prompt_config(
             "category_name": new_config.category.name if new_config.category else None,
             "type": new_config.type,
             "prompt": new_config.prompt,
+            "system_prompt": new_config.system_prompt,
+            "response_format": new_config.response_format,
+            "temperature": new_config.temperature,
+            "max_tokens": new_config.max_tokens,
+            "top_p": new_config.top_p,
             "model_api_config_id": new_config.model_api_config_id,
             "model_api_config_name": new_config.model_api_config.name
             if new_config.model_api_config
@@ -1068,6 +964,11 @@ async def update_prompt_config(
         existing_config.category_id = config.category_id
         existing_config.type = config.type
         existing_config.prompt = config.prompt
+        existing_config.system_prompt = config.system_prompt
+        existing_config.response_format = config.response_format
+        existing_config.temperature = config.temperature
+        existing_config.max_tokens = config.max_tokens
+        existing_config.top_p = config.top_p
         existing_config.model_api_config_id = config.model_api_config_id
         existing_config.is_enabled = config.is_enabled
         existing_config.is_default = config.is_default
@@ -1084,6 +985,11 @@ async def update_prompt_config(
             else None,
             "type": existing_config.type,
             "prompt": existing_config.prompt,
+            "system_prompt": existing_config.system_prompt,
+            "response_format": existing_config.response_format,
+            "temperature": existing_config.temperature,
+            "max_tokens": existing_config.max_tokens,
+            "top_p": existing_config.top_p,
             "model_api_config_id": existing_config.model_api_config_id,
             "model_api_config_name": existing_config.model_api_config.name
             if existing_config.model_api_config
