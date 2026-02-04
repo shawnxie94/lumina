@@ -260,12 +260,12 @@ function TableOfContents({ items, activeId }: { items: TocItem[]; activeId: stri
         <a
           key={item.id}
           href={`#${item.id}`}
-          className={`block text-sm truncate transition ${
+          className={`block text-xs truncate transition ${
             activeId === item.id
               ? 'text-blue-600 font-medium'
               : 'text-gray-600 hover:text-gray-900'
           }`}
-          style={{ paddingLeft: `${(item.level - 1) * 12}px` }}
+          style={{ paddingLeft: `${(item.level - 1) * 8}px` }}
         >
           {item.text}
         </a>
@@ -742,12 +742,12 @@ export default function ArticleDetailPage() {
       </nav>
 
         <div className={`max-w-7xl mx-auto px-4 ${immersiveMode ? 'py-6' : 'py-8'}`}>
-          <div className="flex gap-6">
+          <div className="flex gap-4">
             {!immersiveMode && tocItems.length > 0 && (
               <aside className={`hidden xl:block flex-shrink-0 transition-all duration-300 ${tocCollapsed ? 'w-12' : 'w-48'}`}>
                 <div className="sticky top-4 bg-white rounded-lg shadow-sm p-4 max-h-[calc(100vh-2rem)] overflow-y-auto">
                   <div className="flex items-center justify-between mb-3">
-                    {!tocCollapsed && <h3 className="text-sm font-semibold text-gray-900">📑 目录</h3>}
+                    {!tocCollapsed && <h3 className="text-lg font-semibold text-gray-900">📑 目录</h3>}
                     <button
                       onClick={() => setTocCollapsed(!tocCollapsed)}
                       className="text-gray-500 hover:text-gray-700 transition"

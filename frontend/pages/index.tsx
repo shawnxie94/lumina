@@ -189,9 +189,13 @@ export default function Home() {
 
   useEffect(() => {
     if (router.isReady) {
-      const { author: authorParam } = router.query;
+      const { author: authorParam, category_id: categoryParam } = router.query;
       if (authorParam && typeof authorParam === 'string') {
         setAuthor(authorParam);
+        setShowFilters(true);
+      }
+      if (categoryParam && typeof categoryParam === 'string') {
+        setSelectedCategory(categoryParam);
         setShowFilters(true);
       }
       setInitialized(true);
