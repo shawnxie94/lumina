@@ -694,50 +694,16 @@ export default function ArticleDetailPage() {
       <ReadingProgress />
        <nav className={`bg-white ${immersiveMode ? '' : 'shadow-sm border-b'}`}>
         <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center justify-between mb-3 relative">
             <Link href="/" className="text-blue-600 hover:text-blue-700 transition">
               ← 返回列表
             </Link>
-            <h1 className="text-xl font-bold text-gray-900 truncate">{article.title}</h1>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setImmersiveMode(!immersiveMode)}
-                className={`px-3 py-1 rounded-lg text-sm transition ${
-                  immersiveMode
-                    ? 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
-                }`}
-                title={immersiveMode ? '退出沉浸式阅读' : '进入沉浸式阅读'}
-              >
-                {immersiveMode ? '退出沉浸' : '沉浸式阅读'}
-              </button>
-              {isAdmin && (
-                <>
-                  <button
-                    onClick={handleToggleVisibility}
-                    className={`flex items-center gap-1 px-2 py-1 rounded-lg text-sm transition ${
-                      article.is_visible
-                        ? 'text-green-700 bg-green-50 hover:bg-green-100'
-                        : 'text-gray-600 bg-gray-100 hover:bg-gray-200'
-                    }`}
-                    title={article.is_visible ? '点击隐藏' : '点击显示'}
-                  >
-                    {article.is_visible ? '👁️' : '👁️‍🗨️'}
-                    <span>{article.is_visible ? '隐藏' : '显示'}</span>
-                  </button>
-                  <button
-                    onClick={() => setShowDeleteModal(true)}
-                    className="flex items-center gap-1 px-2 py-1 rounded-lg text-sm text-red-600 hover:bg-red-50 transition"
-                    title="删除文章"
-                  >
-                    🗑️
-                    <span>删除</span>
-                  </button>
-                </>
-              )}
-            </div>
+            <h1 className="text-2xl font-bold text-gray-900 truncate absolute left-1/2 -translate-x-1/2 max-w-[70%] text-center">
+              {article.title}
+            </h1>
+            <div></div>
           </div>
-          <div className={`flex flex-wrap gap-4 text-sm text-gray-600 pb-3 ${immersiveMode ? '' : 'border-b border-gray-100'}`}>
+          <div className={`flex flex-wrap gap-4 text-sm text-gray-600 pb-3 justify-center ${immersiveMode ? '' : 'border-b border-gray-100'}`}>
             {article.category && (
               <div>
                 <span className="font-medium text-gray-700">分类：</span>
@@ -832,16 +798,38 @@ export default function ArticleDetailPage() {
                     </>
                   )}
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   {isAdmin && (
-                    <button
-                      onClick={() => openEditModal(showTranslation && article.content_trans ? 'translation' : 'original')}
-                      className="flex items-center gap-1 px-2 py-1 rounded-lg text-sm text-gray-600 hover:text-blue-600 hover:bg-blue-50 transition"
-                      title={showTranslation && article.content_trans ? '编辑中文' : '编辑英文'}
-                    >
-                      ✏️
-                      <span>{showTranslation && article.content_trans ? '编辑中文' : '编辑应用'}</span>
-                    </button>
+                    <>
+                      <button
+                        onClick={handleToggleVisibility}
+                        className={`flex items-center gap-1 px-2 py-1 rounded-lg text-sm transition ${
+                          article.is_visible
+                            ? 'text-green-700 bg-green-50 hover:bg-green-100'
+                            : 'text-gray-600 bg-gray-100 hover:bg-gray-200'
+                        }`}
+                        title={article.is_visible ? '点击隐藏' : '点击显示'}
+                      >
+                        {article.is_visible ? '👁️' : '👁️‍🗨️'}
+                        <span>{article.is_visible ? '隐藏' : '显示'}</span>
+                      </button>
+                      <button
+                        onClick={() => openEditModal(showTranslation && article.content_trans ? 'translation' : 'original')}
+                        className="flex items-center gap-1 px-2 py-1 rounded-lg text-sm text-gray-600 hover:text-blue-600 hover:bg-blue-50 transition"
+                        title={'编辑'}
+                      >
+                        ✏️
+                        <span>{'编辑'}</span>
+                      </button>
+                      <button
+                        onClick={() => setShowDeleteModal(true)}
+                        className="flex items-center gap-1 px-2 py-1 rounded-lg text-sm text-red-600 hover:bg-red-50 transition"
+                        title="删除文章"
+                      >
+                        🗑️
+                        <span>删除</span>
+                      </button>
+                    </>
                   )}
                   {article.content_trans && (
                     <button
@@ -850,9 +838,20 @@ export default function ArticleDetailPage() {
                       title={showTranslation ? '当前查看中文' : '当前查看英文'}
                     >
                       <span>{showTranslation ? '🇺🇸' : '🇨🇳'}</span>
-                      <span>{showTranslation ? '英文' : '中文'}</span>
+                      <span>{showTranslation ? '切换英文' : '切换中文'}</span>
                     </button>
                   )}
+                  <button
+                    onClick={() => setImmersiveMode(!immersiveMode)}
+                    className={`flex items-center gap-1 px-2 py-1 rounded-lg text-sm transition ${
+                      immersiveMode
+                        ? 'text-gray-700 bg-gray-100 hover:bg-gray-200'
+                        : 'text-blue-700 bg-blue-50 hover:bg-blue-100'
+                    }`}
+                    title={immersiveMode ? '退出沉浸式阅读' : '进入沉浸式阅读'}
+                  >
+                    <span>{immersiveMode ? '退出沉浸' : '沉浸式阅读'}</span>
+                  </button>
                 </div>
               </div>
 
@@ -1097,7 +1096,7 @@ export default function ArticleDetailPage() {
           >
             <div className="flex items-center justify-between p-4 border-b">
               <h3 className="text-lg font-semibold text-gray-900">
-                编辑文章{editMode === 'translation' ? '（中文）' : '（英文）'}
+                编辑文章
               </h3>
               <button
                 onClick={() => setShowEditModal(false)}
@@ -1161,7 +1160,7 @@ export default function ArticleDetailPage() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  {editMode === 'translation' ? '中文内容' : '英文内容'}（Markdown）
+                  内容（Markdown）
                 </label>
                 <textarea
                   value={editContent}
