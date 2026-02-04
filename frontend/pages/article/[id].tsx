@@ -4,7 +4,7 @@ import { useRouter } from 'next/router';
 import Link from 'next/link';
 import { marked } from 'marked';
 
-import { articleApi, type Article, type ArticleDetail, type ModelAPIConfig, type PromptConfig } from '@/lib/api';
+import { articleApi, type ArticleDetail, type ModelAPIConfig, type PromptConfig } from '@/lib/api';
 import { useToast } from '@/components/Toast';
 import { BackToTop } from '@/components/BackToTop';
 import { useAuth } from '@/contexts/AuthContext';
@@ -300,6 +300,11 @@ function ReadingProgress() {
   );
 }
 
+interface ArticleNeighbor {
+  id: string;
+  title: string;
+}
+
 export default function ArticleDetailPage() {
   const router = useRouter();
   const { showToast } = useToast();
@@ -332,8 +337,8 @@ export default function ArticleDetailPage() {
   const [immersiveMode, setImmersiveMode] = useState(false);
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
   const [mindMapOpen, setMindMapOpen] = useState(false);
-  const [prevArticle, setPrevArticle] = useState<Article | null>(null);
-  const [nextArticle, setNextArticle] = useState<Article | null>(null);
+  const [prevArticle, setPrevArticle] = useState<ArticleNeighbor | null>(null);
+  const [nextArticle, setNextArticle] = useState<ArticleNeighbor | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -354,7 +359,6 @@ export default function ArticleDetailPage() {
   useEffect(() => {
     if (id) {
       fetchArticle();
-      fetchNeighbors();
     }
     return () => {
       if (pollingRef.current) {
@@ -442,34 +446,21 @@ export default function ArticleDetailPage() {
     try {
       const data = await articleApi.getArticle(id as string);
       setArticle(data);
+      if (data?.prev_article) {
+        setPrevArticle(data.prev_article as ArticleNeighbor);
+      } else {
+        setPrevArticle(null);
+      }
+      if (data?.next_article) {
+        setNextArticle(data.next_article as ArticleNeighbor);
+      } else {
+        setNextArticle(null);
+      }
     } catch (error) {
       console.error('Failed to fetch article:', error);
       showToast('加载文章失败', 'error');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const fetchNeighbors = async () => {
-    try {
-      const list = await articleApi.getArticles({
-        page: 1,
-        size: 100,
-        sort_by: 'created_at_desc',
-      });
-      const items = list?.data || [];
-      const currentIndex = items.findIndex((item: Article) => item.id === id);
-      if (currentIndex === -1) {
-        setPrevArticle(null);
-        setNextArticle(null);
-        return;
-      }
-      setPrevArticle(items[currentIndex - 1] || null);
-      setNextArticle(items[currentIndex + 1] || null);
-    } catch (error) {
-      console.error('Failed to fetch article neighbors:', error);
-      setPrevArticle(null);
-      setNextArticle(null);
     }
   };
 
@@ -490,6 +481,9 @@ export default function ArticleDetailPage() {
   const showKeyPointsSection = isAdmin || Boolean(article?.ai_analysis?.key_points);
   const showOutlineSection = isAdmin || Boolean(article?.ai_analysis?.outline);
   const showQuotesSection = isAdmin || Boolean(article?.ai_analysis?.quotes);
+  const aiUpdatedAt = article?.ai_analysis?.updated_at
+    ? new Date(article.ai_analysis.updated_at).toLocaleString('zh-CN')
+    : '';
 
   const fetchConfigs = async (contentType: string) => {
     try {
@@ -885,7 +879,14 @@ export default function ArticleDetailPage() {
               <aside className={`flex-shrink-0 transition-all duration-300 ${analysisCollapsed ? 'w-12' : 'w-96'}`}>
               <div className="bg-white rounded-lg shadow-sm p-4 sticky top-4 max-h-[calc(100vh-2rem)] overflow-y-auto">
                 <div className="flex items-center justify-between mb-4">
-                  {!analysisCollapsed && <h2 className="text-lg font-semibold text-gray-900">🤖 AI 解读</h2>}
+                  {!analysisCollapsed && (
+                    <div>
+                      <h2 className="text-lg font-semibold text-gray-900">🤖 AI 解读</h2>
+                      {aiUpdatedAt && (
+                        <div className="text-xs text-gray-500 mt-1">更新时间：{aiUpdatedAt}</div>
+                      )}
+                    </div>
+                  )}
                   <button
                     onClick={() => setAnalysisCollapsed(!analysisCollapsed)}
                     className="text-gray-500 hover:text-gray-700 transition"

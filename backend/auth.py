@@ -13,6 +13,8 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from passlib.context import CryptContext
+
 from models import get_db, AdminSettings, now_str
 
 # JWT 配置
@@ -47,14 +49,37 @@ class SetupRequest(BaseModel):
 # ============ 密码工具函数 ============
 
 
-def hash_password(password: str) -> str:
-    """使用 SHA-256 哈希密码"""
+PASSWORD_HASH_VERSION_SHA256 = "sha256$"
+PASSWORD_HASH_VERSION_BCRYPT = "bcrypt$"
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+
+def _hash_password_sha256(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
 
 
-def verify_password(password: str, password_hash: str) -> bool:
-    """验证密码"""
-    return hash_password(password) == password_hash
+def hash_password(password: str) -> str:
+    """使用 bcrypt 哈希密码"""
+    return f"{PASSWORD_HASH_VERSION_BCRYPT}{pwd_context.hash(password)}"
+
+
+def verify_password(password: str, password_hash: str) -> tuple[bool, bool]:
+    """验证密码。返回 (是否匹配, 是否需要升级哈希)"""
+    if not password_hash:
+        return False, False
+
+    if password_hash.startswith(PASSWORD_HASH_VERSION_BCRYPT):
+        hashed = password_hash[len(PASSWORD_HASH_VERSION_BCRYPT) :]
+        return pwd_context.verify(password, hashed), False
+
+    if password_hash.startswith(PASSWORD_HASH_VERSION_SHA256):
+        hashed = password_hash[len(PASSWORD_HASH_VERSION_SHA256) :]
+        return _hash_password_sha256(password) == hashed, True
+
+    if len(password_hash) == 64:
+        return _hash_password_sha256(password) == password_hash, True
+
+    return False, False
 
 
 def generate_jwt_secret() -> str:

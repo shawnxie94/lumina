@@ -139,7 +139,10 @@ export interface ArticleDetail extends Article {
     quotes: string | null;
     quotes_status: string | null;
     error_message?: string | null;
+    updated_at?: string | null;
   } | null;
+  prev_article?: { id: string; title: string } | null;
+  next_article?: { id: string; title: string } | null;
 }
 
 export interface Category {

@@ -15,3 +15,5 @@ dist/
 .wxt/
 .output/
 frontend/tsconfig.tsbuildinfo
+.env
+docker-compose.yml

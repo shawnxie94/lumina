@@ -1,3 +1,5 @@
+import os
+
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -28,9 +30,20 @@ from auth import (
 
 app = FastAPI(title="文章知识库API", version="1.0.0")
 
+allowed_origins_env = os.getenv("ALLOWED_ORIGINS", "")
+if allowed_origins_env:
+    allowed_origins = [
+        origin.strip() for origin in allowed_origins_env.split(",") if origin.strip()
+    ]
+else:
+    allowed_origins = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -129,8 +142,12 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
     if admin is None:
         raise HTTPException(status_code=400, detail="系统未初始化，请先设置管理员密码")
 
-    if not verify_password(request.password, admin.password_hash):
+    is_valid, needs_upgrade = verify_password(request.password, admin.password_hash)
+    if not is_valid:
         raise HTTPException(status_code=401, detail="密码错误")
+
+    if needs_upgrade:
+        update_admin_password(db, admin, request.password)
 
     token = create_token(admin.jwt_secret)
     return LoginResponse(token=token, message="登录成功")
@@ -151,7 +168,8 @@ async def change_password(
     """修改管理员密码（需要登录）"""
     admin = get_admin_settings(db)
 
-    if not verify_password(request.old_password, admin.password_hash):
+    is_valid, _ = verify_password(request.old_password, admin.password_hash)
+    if not is_valid:
         raise HTTPException(status_code=401, detail="原密码错误")
 
     update_admin_password(db, admin, request.new_password)
@@ -251,6 +269,10 @@ async def get_article(
     if not is_admin and not article.is_visible:
         raise HTTPException(status_code=404, detail="文章不存在")
 
+    prev_article, next_article = article_service.get_article_neighbors(
+        db, article, is_admin=is_admin
+    )
+
     return {
         "id": article.id,
         "title": article.title,
@@ -291,8 +313,23 @@ async def get_article(
             "error_message": article.ai_analysis.error_message
             if article.ai_analysis
             else None,
+            "updated_at": article.ai_analysis.updated_at
+            if article.ai_analysis
+            else None,
         }
         if article.ai_analysis
+        else None,
+        "prev_article": {
+            "id": prev_article.id,
+            "title": prev_article.title,
+        }
+        if prev_article
+        else None,
+        "next_article": {
+            "id": next_article.id,
+            "title": next_article.title,
+        }
+        if next_article
         else None,
     }
 
@@ -500,46 +537,54 @@ async def get_category_stats(
 ):
     from sqlalchemy import func
 
-    categories = db.query(Category).order_by(Category.sort_order).all()
-    result = []
+    stats_query = db.query(
+        Article.category_id.label("category_id"),
+        func.count(Article.id).label("article_count"),
+    )
 
-    for c in categories:
-        query = db.query(Article).filter(Article.category_id == c.id)
-
-        if search:
-            query = query.filter(Article.title.contains(search))
-        if source_domain:
-            query = query.filter(Article.source_domain == source_domain)
-        if author:
-            query = query.filter(Article.author == author)
-        if published_at_start:
-            query = query.filter(
-                func.substr(Article.published_at, 1, 10) >= published_at_start
-            )
-        if published_at_end:
-            query = query.filter(
-                func.substr(Article.published_at, 1, 10) <= published_at_end
-            )
-        if created_at_start:
-            query = query.filter(
-                func.substr(Article.created_at, 1, 10) >= created_at_start
-            )
-        if created_at_end:
-            query = query.filter(
-                func.substr(Article.created_at, 1, 10) <= created_at_end
-            )
-
-        count = query.count()
-        result.append(
-            {
-                "id": c.id,
-                "name": c.name,
-                "color": c.color,
-                "article_count": count,
-            }
+    if search:
+        stats_query = stats_query.filter(Article.title.contains(search))
+    if source_domain:
+        stats_query = stats_query.filter(Article.source_domain == source_domain)
+    if author:
+        stats_query = stats_query.filter(Article.author == author)
+    if published_at_start:
+        stats_query = stats_query.filter(
+            func.substr(Article.published_at, 1, 10) >= published_at_start
+        )
+    if published_at_end:
+        stats_query = stats_query.filter(
+            func.substr(Article.published_at, 1, 10) <= published_at_end
+        )
+    if created_at_start:
+        stats_query = stats_query.filter(
+            func.substr(Article.created_at, 1, 10) >= created_at_start
+        )
+    if created_at_end:
+        stats_query = stats_query.filter(
+            func.substr(Article.created_at, 1, 10) <= created_at_end
         )
 
-    return result
+    stats_subquery = stats_query.group_by(Article.category_id).subquery()
+    categories = (
+        db.query(
+            Category,
+            func.coalesce(stats_subquery.c.article_count, 0).label("article_count"),
+        )
+        .outerjoin(stats_subquery, Category.id == stats_subquery.c.category_id)
+        .order_by(Category.sort_order)
+        .all()
+    )
+
+    return [
+        {
+            "id": category.id,
+            "name": category.name,
+            "color": category.color,
+            "article_count": article_count,
+        }
+        for category, article_count in categories
+    ]
 
 
 @app.post("/api/categories")
@@ -635,7 +680,11 @@ async def delete_category(
 
 
 @app.post("/api/export")
-async def export_articles(request: ExportRequest, db: Session = Depends(get_db)):
+async def export_articles(
+    request: ExportRequest,
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
     try:
         markdown_content = article_service.export_articles(db, request.article_ids)
         return {"content": markdown_content, "filename": "articles_export.md"}
@@ -645,7 +694,10 @@ async def export_articles(request: ExportRequest, db: Session = Depends(get_db))
 
 # Model API Config endpoints
 @app.get("/api/model-api-configs")
-async def get_model_api_configs(db: Session = Depends(get_db)):
+async def get_model_api_configs(
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
     configs = db.query(ModelAPIConfig).order_by(ModelAPIConfig.created_at.desc()).all()
 
     return [
@@ -665,7 +717,11 @@ async def get_model_api_configs(db: Session = Depends(get_db)):
 
 
 @app.get("/api/model-api-configs/{config_id}")
-async def get_model_api_config(config_id: str, db: Session = Depends(get_db)):
+async def get_model_api_config(
+    config_id: str,
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
     config = db.query(ModelAPIConfig).filter(ModelAPIConfig.id == config_id).first()
 
     if not config:
@@ -828,6 +884,7 @@ async def get_prompt_configs(
     category_id: Optional[str] = None,
     type: Optional[str] = None,
     db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
 ):
     query = db.query(PromptConfig)
 
@@ -865,7 +922,11 @@ async def get_prompt_configs(
 
 
 @app.get("/api/prompt-configs/{config_id}")
-async def get_prompt_config(config_id: str, db: Session = Depends(get_db)):
+async def get_prompt_config(
+    config_id: str,
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
     config = db.query(PromptConfig).filter(PromptConfig.id == config_id).first()
 
     if not config:

@@ -6,6 +6,7 @@ from models import (
     SessionLocal,
     ModelAPIConfig,
     PromptConfig,
+    now_str,
 )
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
@@ -86,6 +87,28 @@ class ArticleService:
             model_name=config["model_name"],
         )
 
+    def get_article_neighbors(
+        self,
+        db: Session,
+        article: Article,
+        is_admin: bool = False,
+    ):
+        query = db.query(Article)
+        if not is_admin:
+            query = query.filter(Article.is_visible == True)
+
+        prev_article = (
+            query.filter(Article.created_at > article.created_at)
+            .order_by(Article.created_at.asc())
+            .first()
+        )
+        next_article = (
+            query.filter(Article.created_at < article.created_at)
+            .order_by(Article.created_at.desc())
+            .first()
+        )
+        return prev_article, next_article
+
     async def create_article(self, article_data: dict, db: Session) -> str:
         category = (
             db.query(Category)
@@ -156,10 +179,12 @@ class ArticleService:
                     existing_analysis.error_message = (
                         "未配置AI服务，请先在配置页面设置AI参数"
                     )
+                    existing_analysis.updated_at = now_str()
                 else:
                     ai_analysis = AIAnalysis(
                         article_id=article.id,
                         error_message="未配置AI服务，请先在配置页面设置AI参数",
+                        updated_at=now_str(),
                     )
                     db.add(ai_analysis)
                 db.commit()
@@ -237,8 +262,13 @@ class ArticleService:
             if existing_analysis:
                 existing_analysis.summary = summary
                 existing_analysis.error_message = None
+                existing_analysis.updated_at = now_str()
             else:
-                ai_analysis = AIAnalysis(article_id=article.id, summary=summary)
+                ai_analysis = AIAnalysis(
+                    article_id=article.id,
+                    summary=summary,
+                    updated_at=now_str(),
+                )
                 db.add(ai_analysis)
 
             article.status = "completed"
@@ -256,9 +286,12 @@ class ArticleService:
                 )
                 if existing_analysis:
                     existing_analysis.error_message = error_message
+                    existing_analysis.updated_at = now_str()
                 else:
                     ai_analysis = AIAnalysis(
-                        article_id=article.id, error_message=error_message
+                        article_id=article.id,
+                        error_message=error_message,
+                        updated_at=now_str(),
                     )
                     db.add(ai_analysis)
                 db.commit()
@@ -519,6 +552,7 @@ class ArticleService:
             db.refresh(article)
 
         setattr(article.ai_analysis, f"{content_type}_status", "pending")
+        article.ai_analysis.updated_at = now_str()
         db.commit()
 
         import asyncio
@@ -551,6 +585,7 @@ class ArticleService:
                 return
 
             setattr(article.ai_analysis, f"{content_type}_status", "processing")
+            article.ai_analysis.updated_at = now_str()
             db.commit()
 
             ai_config = None
@@ -608,6 +643,7 @@ class ArticleService:
                 article.ai_analysis.error_message = (
                     "未配置AI服务，请先在配置页面设置AI参数"
                 )
+                article.ai_analysis.updated_at = now_str()
                 db.commit()
                 return
 
@@ -626,14 +662,17 @@ class ArticleService:
                 setattr(article.ai_analysis, content_type, result)
                 setattr(article.ai_analysis, f"{content_type}_status", "completed")
                 article.ai_analysis.error_message = None
+                article.ai_analysis.updated_at = now_str()
                 print(f"{content_type} 生成完成: {article.title}")
             except asyncio.TimeoutError:
                 setattr(article.ai_analysis, f"{content_type}_status", "failed")
                 article.ai_analysis.error_message = "AI生成超时，请稍后重试"
+                article.ai_analysis.updated_at = now_str()
                 print(f"{content_type} 生成超时: {article.title}")
             except Exception as e:
                 setattr(article.ai_analysis, f"{content_type}_status", "failed")
                 article.ai_analysis.error_message = str(e)
+                article.ai_analysis.updated_at = now_str()
                 print(f"{content_type} 生成失败: {article.title}, 错误: {e}")
 
             db.commit()
@@ -643,6 +682,7 @@ class ArticleService:
             if article and article.ai_analysis:
                 setattr(article.ai_analysis, f"{content_type}_status", "failed")
                 article.ai_analysis.error_message = str(e)
+                article.ai_analysis.updated_at = now_str()
                 db.commit()
         finally:
             db.close()

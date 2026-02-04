@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 
 import { useRouter } from 'next/router';
 import Link from 'next/link';
@@ -20,6 +20,7 @@ const formatDate = (date: Date | null): string => {
 
 // Quick date filter options
 type QuickDateOption = '' | '1d' | '3d' | '1w' | '1m' | '3m' | '6m' | '1y';
+
 
 const getDateRangeFromQuickOption = (option: QuickDateOption): [Date | null, Date | null] => {
   if (!option) return [null, null];
@@ -80,6 +81,7 @@ export default function Home() {
   const [showFilters, setShowFilters] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [jumpToPage, setJumpToPage] = useState('');
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [publishedStartDate, publishedEndDate] = publishedDateRange;
   const [createdStartDate, createdEndDate] = createdDateRange;
@@ -154,11 +156,36 @@ export default function Home() {
   };
 
   useEffect(() => {
-    if (initialized) {
+    if (!initialized) return;
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+    }
+    debounceRef.current = setTimeout(() => {
       fetchArticles();
       fetchCategoryStats();
-    }
-  }, [initialized, page, pageSize, selectedCategory, searchTerm, sourceDomain, author, publishedStartDate, publishedEndDate, createdStartDate, createdEndDate, sortBy]);
+    }, 400);
+    return () => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+      }
+    };
+  }, [
+    initialized,
+    selectedCategory,
+    searchTerm,
+    sourceDomain,
+    author,
+    publishedStartDate,
+    publishedEndDate,
+    createdStartDate,
+    createdEndDate,
+    sortBy,
+  ]);
+
+  useEffect(() => {
+    if (!initialized) return;
+    fetchArticles();
+  }, [initialized, page, pageSize]);
 
   useEffect(() => {
     if (router.isReady) {
@@ -177,10 +204,10 @@ export default function Home() {
     fetchSources();
   }, []);
 
+
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     setPage(1);
-    fetchArticles();
   };
 
   const handleQuickDateChange = (option: QuickDateOption) => {
@@ -197,8 +224,40 @@ export default function Home() {
     setPublishedDateRange([null, null]);
     setCreatedDateRange([null, null]);
     setQuickDateFilter('');
+    setSelectedCategory('');
     setPage(1);
   };
+
+  const activeFilters = useMemo(() => {
+    const filters: string[] = [];
+    const categoryName = categories.find((c) => c.id === selectedCategory)?.name;
+    if (categoryName) filters.push(`分类：${categoryName}`);
+    if (searchTerm) filters.push(`标题：${searchTerm}`);
+    if (sourceDomain) filters.push(`来源：${sourceDomain}`);
+    if (author) filters.push(`作者：${author}`);
+    if (publishedStartDate || publishedEndDate) {
+      filters.push(`发表：${formatDate(publishedStartDate)} ~ ${formatDate(publishedEndDate)}`.trim());
+    }
+    if (createdStartDate || createdEndDate) {
+      filters.push(`创建：${formatDate(createdStartDate)} ~ ${formatDate(createdEndDate)}`.trim());
+    }
+    if (quickDateFilter) filters.push(`创建快速：${quickDateFilter}`);
+    if (sortBy === 'published_at_desc') filters.push('排序：发表时间倒序');
+    if (sortBy === 'created_at_desc') filters.push('排序：创建时间倒序');
+    return filters;
+  }, [
+    categories,
+    selectedCategory,
+    searchTerm,
+    sourceDomain,
+    author,
+    publishedStartDate,
+    publishedEndDate,
+    createdStartDate,
+    createdEndDate,
+    quickDateFilter,
+    sortBy,
+  ]);
 
   const handleDelete = async (id: string) => {
     if (!confirm('确定要删除这篇文章吗？')) return;
@@ -361,7 +420,7 @@ export default function Home() {
               {!sidebarCollapsed && (
                 <div className="space-y-2">
                   <button
-                    onClick={() => setSelectedCategory('')}
+                    onClick={() => { setSelectedCategory(''); setPage(1); }}
                     className={`w-full text-left px-3 py-2 rounded-lg transition ${
                       selectedCategory === '' ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-100'
                     }`}
@@ -371,7 +430,7 @@ export default function Home() {
                   {categoryStats.map((category) => (
                     <button
                       key={category.id}
-                      onClick={() => setSelectedCategory(category.id)}
+                      onClick={() => { setSelectedCategory(category.id); setPage(1); }}
                       className={`w-full text-left px-3 py-2 rounded-lg transition ${
                         selectedCategory === category.id ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-100'
                       }`}
@@ -433,7 +492,7 @@ export default function Home() {
                         type="text"
                         placeholder="模糊匹配标题..."
                         value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
+                        onChange={(e) => { setSearchTerm(e.target.value); setPage(1); }}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
                     </div>
@@ -464,7 +523,7 @@ export default function Home() {
                       </select>
                     </div>
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-2">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">发表时间</label>
                       <DatePicker
@@ -494,17 +553,38 @@ export default function Home() {
                       />
                     </div>
                   </div>
-                  <div className="mt-4 flex justify-end">
+                </div>
+              )}
+
+            {activeFilters.length > 0 && (
+              <div className="mt-4 pt-4 border-t border-gray-200">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex flex-wrap gap-2">
+                      {activeFilters.length === 0 ? (
+                        <span className="text-sm text-gray-500">暂无筛选条件</span>
+                      ) : (
+                        activeFilters.map((filter) => (
+                          <span
+                            key={filter}
+                            className="px-2 py-1 text-xs bg-blue-50 text-blue-700 rounded"
+                          >
+                            {filter}
+                          </span>
+                        ))
+                      )}
+                    </div>
+                  <div className="flex items-center gap-2">
                     <button
                       type="button"
                       onClick={handleClearFilters}
-                      className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition"
+                      className="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition"
                     >
                       清除筛选
                     </button>
                   </div>
                 </div>
-              )}
+              </div>
+            )}
             </div>
 
             {loading ? (

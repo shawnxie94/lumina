@@ -16,7 +16,7 @@ services:
       - "8000:8000"
     environment:
       - DATABASE_URL=sqlite:///./data/articles.db
-      - ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,https://your-domain.com,chrome-extension://bhbljjcfgdghpbgkcgocjochdmibjhbp
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
     volumes:
       - ./data:/app/data
     networks:
