@@ -597,11 +597,11 @@ export default function Home() {
                                    : new Date(article.created_at).toLocaleDateString('zh-CN')}
                                </span>
                              </div>
-                             {article.summary && (
-                               <p className="mt-2 text-gray-600 line-clamp-2">
-                                 {article.summary}
-                               </p>
-                             )}
+                              {article.summary && (
+                                <p className="mt-2 text-gray-600 line-clamp-3">
+                                  {article.summary}
+                                </p>
+                              )}
                           </div>
                         </div>
                       </div>

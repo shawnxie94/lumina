@@ -19,9 +19,100 @@ interface AIContentSectionProps {
   onGenerate: () => void;
   onCopy: () => void;
   canEdit?: boolean;
+  renderMarkdown?: boolean;
+  renderMindMap?: boolean;
+  onMindMapOpen?: () => void;
 }
 
-function AIContentSection({ title, content, status, onGenerate, onCopy, canEdit = false }: AIContentSectionProps) {
+interface MindMapNode {
+  title: string;
+  children?: MindMapNode[];
+}
+
+function normalizeMindMapNode(input: unknown): MindMapNode | null {
+  if (typeof input === 'string') {
+    return { title: input };
+  }
+  if (!input || typeof input !== 'object') return null;
+  const record = input as { title?: unknown; children?: unknown };
+  const title = typeof record.title === 'string' ? record.title : '';
+  const childrenRaw = Array.isArray(record.children) ? record.children : [];
+  const children = childrenRaw
+    .map((child) => normalizeMindMapNode(child))
+    .filter((node): node is MindMapNode => Boolean(node && (node.title || node.children?.length)));
+  return { title, children };
+}
+
+function parseMindMapOutline(content: string): MindMapNode | null {
+  try {
+    const parsed = JSON.parse(content) as unknown;
+    if (Array.isArray(parsed)) {
+      const children = parsed
+        .map((child) => normalizeMindMapNode(child))
+        .filter((node): node is MindMapNode => Boolean(node));
+      return { title: '', children };
+    }
+    return normalizeMindMapNode(parsed);
+  } catch {
+    return null;
+  }
+}
+
+function MindMapTree({ node, isRoot = false, compact = false, depth = 0 }: { node: MindMapNode; isRoot?: boolean; compact?: boolean; depth?: number }) {
+  const hasTitle = node.title && node.title.trim().length > 0;
+  const hasChildren = Boolean(node.children && node.children.length > 0);
+  const containerClass = isRoot
+    ? compact
+      ? 'space-y-2'
+      : 'space-y-4'
+    : compact
+      ? 'pl-3 border-l border-gray-200/70 space-y-2'
+      : 'pl-5 border-l border-gray-200/70 space-y-4';
+
+  const palette = [
+    'border-blue-200 bg-blue-50/60 text-blue-800',
+    'border-emerald-200 bg-emerald-50/60 text-emerald-800',
+    'border-amber-200 bg-amber-50/60 text-amber-800',
+    'border-purple-200 bg-purple-50/60 text-purple-800',
+  ];
+  const colorClass = palette[depth % palette.length];
+
+  return (
+    <div className={containerClass}>
+      {hasTitle && (
+        <div className={isRoot ? '' : compact ? 'flex items-start gap-2 -ml-3' : 'flex items-start gap-3 -ml-5'}>
+          {!isRoot && (
+            <span
+              className={
+                compact
+                  ? 'mt-2 h-1.5 w-1.5 rounded-full bg-gray-300'
+                  : 'mt-2 h-2 w-2 rounded-full bg-gray-300'
+              }
+            />
+          )}
+          <span
+            className={
+              compact
+                ? `inline-flex items-center rounded-md border px-2 py-1 text-xs shadow-sm ${colorClass}`
+                : `inline-flex items-center rounded-lg border px-3 py-1.5 text-sm shadow-sm ${colorClass}`
+            }
+          >
+            {node.title}
+          </span>
+        </div>
+      )}
+      {hasChildren && (
+        <div className={compact ? 'space-y-2' : 'space-y-5'}>
+          {node.children?.map((child, index) => (
+            <MindMapTree key={`${child.title}-${index}`} node={child} compact={compact} depth={depth + 1} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AIContentSection({ title, content, status, onGenerate, onCopy, canEdit = false, renderMarkdown = false, renderMindMap = false, onMindMapOpen }: AIContentSectionProps) {
   const getStatusBadge = () => {
     if (!status) return null;
     const statusConfig: Record<string, { bg: string; text: string; label: string }> = {
@@ -66,7 +157,44 @@ function AIContentSection({ title, content, status, onGenerate, onCopy, canEdit 
         )}
       </div>
       {content ? (
-        <div className="text-gray-700 text-sm whitespace-pre-wrap">{content}</div>
+        renderMindMap ? (
+          (() => {
+            const tree = parseMindMapOutline(content);
+            return tree ? (
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-2">
+                <div
+                  onClick={onMindMapOpen}
+                  className="cursor-zoom-in"
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      onMindMapOpen?.();
+                    }
+                  }}
+                >
+                  <div className="overflow-hidden relative">
+                    <div className="inline-block">
+                      <MindMapTree node={tree} isRoot compact />
+                    </div>
+                    <div className="absolute top-1 right-1 text-[10px] text-gray-400 bg-white/80 px-2 py-0.5 rounded">
+                      点击放大
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-gray-700 text-sm whitespace-pre-wrap">{content}</div>
+            );
+          })()
+        ) : renderMarkdown ? (
+          <div
+            className="prose prose-sm max-w-none rounded-lg border border-gray-200 bg-gray-50 p-3 text-gray-700"
+            dangerouslySetInnerHTML={{ __html: marked(content) }}
+          />
+        ) : (
+          <div className="text-gray-700 text-sm whitespace-pre-wrap">{content}</div>
+        )
       ) : (
         <p className="text-gray-400 text-sm">
           {status === 'processing' ? '正在生成...' : '未生成'}
@@ -201,6 +329,8 @@ export default function ArticleDetailPage() {
   const [tocItems, setTocItems] = useState<TocItem[]>([]);
   const [activeTocId, setActiveTocId] = useState('');
   const [tocCollapsed, setTocCollapsed] = useState(false);
+  const [lightboxImage, setLightboxImage] = useState<string | null>(null);
+  const [mindMapOpen, setMindMapOpen] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -292,6 +422,17 @@ export default function ArticleDetailPage() {
     return () => observer.disconnect();
   }, [tocItems]);
 
+  useEffect(() => {
+    if (!lightboxImage) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setLightboxImage(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [lightboxImage]);
+
   const fetchArticle = async () => {
     setLoading(true);
     try {
@@ -304,6 +445,24 @@ export default function ArticleDetailPage() {
       setLoading(false);
     }
   };
+
+  const openMindMap = () => {
+    setMindMapOpen(true);
+  };
+
+  const handleContentClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLElement | null;
+    if (!target || target.tagName !== 'IMG') return;
+    const img = target as HTMLImageElement;
+    if (img.src) {
+      setLightboxImage(img.src);
+    }
+  };
+
+  const showSummarySection = isAdmin || Boolean(article?.ai_analysis?.summary);
+  const showKeyPointsSection = isAdmin || Boolean(article?.ai_analysis?.key_points);
+  const showOutlineSection = isAdmin || Boolean(article?.ai_analysis?.outline);
+  const showQuotesSection = isAdmin || Boolean(article?.ai_analysis?.quotes);
 
   const fetchConfigs = async (contentType: string) => {
     try {
@@ -620,7 +779,11 @@ export default function ArticleDetailPage() {
                 </div>
               </div>
 
-              <div ref={contentRef} className="prose prose-sm max-w-none">
+              <div
+                ref={contentRef}
+                onClick={handleContentClick}
+                className="prose prose-sm max-w-none prose-img:cursor-zoom-in prose-img:rounded-lg prose-img:border prose-img:border-gray-200 prose-img:bg-white prose-img:shadow-sm prose-img:max-w-[320px] sm:prose-img:max-w-[420px]"
+              >
                 {showTranslation && article.content_trans ? (
                   <div
                     dangerouslySetInnerHTML={{
@@ -658,43 +821,54 @@ export default function ArticleDetailPage() {
 
                 {!analysisCollapsed && (
                   <div className="space-y-6">
-                    <AIContentSection
-                      title="📝 摘要"
-                      content={article.ai_analysis?.summary}
-                      status={article.ai_analysis?.summary_status || (article.status === 'completed' ? 'completed' : article.status)}
-                      onGenerate={() => handleGenerateContent('summary')}
-                      onCopy={() => handleCopyContent(article.ai_analysis?.summary, '摘要')}
-                      canEdit={isAdmin}
-                    />
+                    {showSummarySection && (
+                      <AIContentSection
+                        title="📝 摘要"
+                        content={article.ai_analysis?.summary}
+                        status={article.ai_analysis?.summary_status || (article.status === 'completed' ? 'completed' : article.status)}
+                        onGenerate={() => handleGenerateContent('summary')}
+                        onCopy={() => handleCopyContent(article.ai_analysis?.summary, '摘要')}
+                        canEdit={isAdmin}
+                      />
+                    )}
 
-                    <AIContentSection
-                      title="🔑 关键内容"
-                      content={article.ai_analysis?.key_points}
-                      status={article.ai_analysis?.key_points_status}
-                      onGenerate={() => handleGenerateContent('key_points')}
-                      onCopy={() => handleCopyContent(article.ai_analysis?.key_points, '关键内容')}
-                      canEdit={isAdmin}
-                    />
+                    {showKeyPointsSection && (
+                      <AIContentSection
+                        title="🔑 关键内容"
+                        content={article.ai_analysis?.key_points}
+                        status={article.ai_analysis?.key_points_status}
+                        onGenerate={() => handleGenerateContent('key_points')}
+                        onCopy={() => handleCopyContent(article.ai_analysis?.key_points, '关键内容')}
+                        canEdit={isAdmin}
+                      />
+                    )}
 
-                    <AIContentSection
-                      title="📋 文章大纲"
-                      content={article.ai_analysis?.outline}
-                      status={article.ai_analysis?.outline_status}
-                      onGenerate={() => handleGenerateContent('outline')}
-                      onCopy={() => handleCopyContent(article.ai_analysis?.outline, '文章大纲')}
-                      canEdit={isAdmin}
-                    />
+                    {showOutlineSection && (
+                      <AIContentSection
+                        title="📋 文章大纲"
+                        content={article.ai_analysis?.outline}
+                        status={article.ai_analysis?.outline_status}
+                        onGenerate={() => handleGenerateContent('outline')}
+                        onCopy={() => handleCopyContent(article.ai_analysis?.outline, '文章大纲')}
+                        canEdit={isAdmin}
+                        renderMindMap
+                        onMindMapOpen={openMindMap}
+                      />
+                    )}
 
-                    <AIContentSection
-                      title="💬 文章金句"
-                      content={article.ai_analysis?.quotes}
-                      status={article.ai_analysis?.quotes_status}
-                      onGenerate={() => handleGenerateContent('quotes')}
-                      onCopy={() => handleCopyContent(article.ai_analysis?.quotes, '文章金句')}
-                      canEdit={isAdmin}
-                    />
+                    {showQuotesSection && (
+                      <AIContentSection
+                        title="💬 文章金句"
+                        content={article.ai_analysis?.quotes}
+                        status={article.ai_analysis?.quotes_status}
+                        onGenerate={() => handleGenerateContent('quotes')}
+                        onCopy={() => handleCopyContent(article.ai_analysis?.quotes, '文章金句')}
+                        canEdit={isAdmin}
+                        renderMarkdown
+                      />
+                    )}
 
-                    {article.ai_analysis?.error_message && (
+                    {isAdmin && article.ai_analysis?.error_message && (
                       <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
                         <p className="text-red-700 text-sm">{article.ai_analysis.error_message}</p>
                       </div>
@@ -887,6 +1061,60 @@ export default function ArticleDetailPage() {
         }}
         onCancel={() => setShowDeleteModal(false)}
       />
+
+      {lightboxImage && (
+        <div
+          className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4"
+          onClick={() => setLightboxImage(null)}
+        >
+          <div className="relative">
+            <button
+              onClick={() => setLightboxImage(null)}
+              className="absolute -top-3 -right-3 w-8 h-8 rounded-full bg-white text-gray-700 shadow flex items-center justify-center hover:bg-gray-100"
+              aria-label="关闭"
+            >
+              ×
+            </button>
+            <img
+              src={lightboxImage}
+              alt="预览"
+              className="max-h-[80vh] max-w-[90vw] rounded-lg shadow-xl"
+              onClick={(event) => event.stopPropagation()}
+            />
+          </div>
+        </div>
+      )}
+
+      {mindMapOpen && article?.ai_analysis?.outline && (
+        (() => {
+          const tree = parseMindMapOutline(article.ai_analysis?.outline || '');
+          if (!tree) return null;
+          return (
+            <div
+              className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4"
+              onClick={() => setMindMapOpen(false)}
+            >
+              <div
+                className="relative w-full max-w-6xl h-[80vh]"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <button
+                  onClick={() => setMindMapOpen(false)}
+                  className="absolute top-3 right-3 w-8 h-8 rounded-full bg-white text-gray-700 shadow flex items-center justify-center hover:bg-gray-100"
+                  aria-label="关闭"
+                >
+                  ×
+                </button>
+                <div className="w-full h-full rounded-lg bg-white shadow-xl border overflow-auto">
+                  <div className="p-6">
+                    <MindMapTree node={tree} isRoot />
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })()
+      )}
 
       <BackToTop />
     </div>
