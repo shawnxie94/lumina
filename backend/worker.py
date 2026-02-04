@@ -1,4 +1,5 @@
 import asyncio
+import asyncio
 import json
 import os
 import time
@@ -13,6 +14,7 @@ from models import AITask, SessionLocal, now_str
 
 POLL_INTERVAL = float(os.getenv("AI_WORKER_POLL_INTERVAL", "3"))
 LOCK_TIMEOUT_SECONDS = int(os.getenv("AI_TASK_LOCK_TIMEOUT", "300"))
+TASK_TIMEOUT_SECONDS = int(os.getenv("AI_TASK_TIMEOUT", "900"))
 WORKER_ID = os.getenv("AI_WORKER_ID", str(uuid.uuid4()))
 
 
@@ -62,12 +64,19 @@ def claim_task(db) -> AITask | None:
     return db.query(AITask).filter(AITask.id == task.id).first()
 
 
-def finish_task(db, task: AITask, success: bool, error: str | None = None) -> None:
+def finish_task(
+    db,
+    task: AITask,
+    success: bool,
+    error: str | None = None,
+    error_type: str | None = None,
+) -> None:
     now_iso = get_now_iso()
     if success:
         task.status = "completed"
         task.finished_at = now_iso
         task.last_error = None
+        task.last_error_type = None
     else:
         if task.attempts >= (task.max_attempts or 3):
             task.status = "failed"
@@ -79,6 +88,7 @@ def finish_task(db, task: AITask, success: bool, error: str | None = None) -> No
                 datetime.now() + timedelta(seconds=backoff_seconds)
             ).isoformat()
         task.last_error = error
+        task.last_error_type = error_type
 
     task.locked_at = None
     task.locked_by = None
@@ -86,7 +96,22 @@ def finish_task(db, task: AITask, success: bool, error: str | None = None) -> No
     db.commit()
 
 
-def run_task(task: AITask) -> None:
+def classify_error(exc: Exception) -> str:
+    message = str(exc).lower()
+    if (
+        isinstance(exc, asyncio.TimeoutError)
+        or "timeout" in message
+        or "超时" in message
+    ):
+        return "timeout"
+    if "未配置ai服务" in message or "ai服务" in message or "config" in message:
+        return "config"
+    if "文章不存在" in message or "缺少" in message:
+        return "data"
+    return "unknown"
+
+
+async def run_task_async(task: AITask) -> None:
     payload = json.loads(task.payload or "{}")
     article_id = task.article_id
     category_id = payload.get("category_id")
@@ -95,13 +120,13 @@ def run_task(task: AITask) -> None:
     if task.task_type == "process_article_ai":
         if not article_id:
             raise ValueError("缺少文章ID")
-        asyncio.run(service.process_article_ai(article_id, category_id))
+        await service.process_article_ai(article_id, category_id)
         return
 
     if task.task_type == "process_article_translation":
         if not article_id:
             raise ValueError("缺少文章ID")
-        asyncio.run(service.process_article_translation(article_id, category_id))
+        await service.process_article_translation(article_id, category_id)
         return
 
     if task.task_type == "process_ai_content":
@@ -110,33 +135,66 @@ def run_task(task: AITask) -> None:
         content_type = task.content_type or payload.get("content_type")
         if not content_type:
             raise ValueError("缺少内容类型")
-        asyncio.run(
-            service.process_ai_content(
-                article_id,
-                category_id,
-                content_type,
-                model_config_id=payload.get("model_config_id"),
-                prompt_config_id=payload.get("prompt_config_id"),
-            )
+        await service.process_ai_content(
+            article_id,
+            category_id,
+            content_type,
+            model_config_id=payload.get("model_config_id"),
+            prompt_config_id=payload.get("prompt_config_id"),
         )
         return
 
     raise ValueError(f"未知任务类型: {task.task_type}")
 
 
+def cleanup_stale_tasks(db) -> int:
+    now_iso = get_now_iso()
+    stale_lock_iso = get_stale_lock_iso()
+    stale_tasks = (
+        db.query(AITask)
+        .filter(AITask.status == "processing")
+        .filter(AITask.locked_at.isnot(None))
+        .filter(AITask.locked_at < stale_lock_iso)
+        .all()
+    )
+    cleaned = 0
+    for task in stale_tasks:
+        task.locked_at = None
+        task.locked_by = None
+        if task.attempts >= (task.max_attempts or 3):
+            task.status = "failed"
+            task.finished_at = now_iso
+        else:
+            task.status = "pending"
+            task.run_at = now_iso
+        task.last_error = "任务超时或锁过期已重置"
+        task.last_error_type = "timeout"
+        task.updated_at = now_iso
+        cleaned += 1
+    if cleaned:
+        db.commit()
+    return cleaned
+
+
 def main() -> None:
     while True:
         db = SessionLocal()
         try:
+            cleanup_stale_tasks(db)
             task = claim_task(db)
             if not task:
                 time.sleep(POLL_INTERVAL)
                 continue
             try:
-                run_task(task)
+                asyncio.run(
+                    asyncio.wait_for(run_task_async(task), timeout=TASK_TIMEOUT_SECONDS)
+                )
                 finish_task(db, task, success=True)
             except Exception as exc:
-                finish_task(db, task, success=False, error=str(exc))
+                error_type = classify_error(exc)
+                finish_task(
+                    db, task, success=False, error=str(exc), error_type=error_type
+                )
         finally:
             db.close()
 

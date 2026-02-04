@@ -22,6 +22,8 @@ interface AIContentSectionProps {
   renderMarkdown?: boolean;
   renderMindMap?: boolean;
   onMindMapOpen?: () => void;
+  showStatus?: boolean;
+  statusLink?: string;
 }
 
 interface MindMapNode {
@@ -112,7 +114,19 @@ function MindMapTree({ node, isRoot = false, compact = false, depth = 0 }: { nod
   );
 }
 
-function AIContentSection({ title, content, status, onGenerate, onCopy, canEdit = false, renderMarkdown = false, renderMindMap = false, onMindMapOpen }: AIContentSectionProps) {
+function AIContentSection({
+  title,
+  content,
+  status,
+  onGenerate,
+  onCopy,
+  canEdit = false,
+  renderMarkdown = false,
+  renderMindMap = false,
+  onMindMapOpen,
+  showStatus = false,
+  statusLink,
+}: AIContentSectionProps) {
   const getStatusBadge = () => {
     if (!status) return null;
     const statusConfig: Record<string, { bg: string; text: string; label: string }> = {
@@ -131,12 +145,19 @@ function AIContentSection({ title, content, status, onGenerate, onCopy, canEdit 
   };
 
   const showGenerateButton = canEdit && (!status || status === 'completed' || status === 'failed');
+  const statusBadge = showStatus ? getStatusBadge() : null;
 
   return (
     <div>
       <div className="flex items-center gap-2 mb-2">
         <h3 className="font-semibold text-gray-900">{title}</h3>
-        {getStatusBadge()}
+        {statusBadge && statusLink ? (
+          <Link href={statusLink} className="hover:opacity-80 transition">
+            {statusBadge}
+          </Link>
+        ) : (
+          statusBadge
+        )}
         {showGenerateButton && (
           <button
             onClick={onGenerate}
@@ -195,11 +216,11 @@ function AIContentSection({ title, content, status, onGenerate, onCopy, canEdit 
         ) : (
           <div className="text-gray-700 text-sm whitespace-pre-wrap">{content}</div>
         )
-      ) : (
+      ) : showStatus ? (
         <p className="text-gray-400 text-sm">
           {status === 'processing' ? '正在生成...' : '未生成'}
         </p>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -906,6 +927,8 @@ export default function ArticleDetailPage() {
                         onGenerate={() => handleGenerateContent('summary')}
                         onCopy={() => handleCopyContent(article.ai_analysis?.summary, '摘要')}
                         canEdit={isAdmin}
+                        showStatus={isAdmin}
+                        statusLink={`/settings?section=tasks&article_id=${article.id}`}
                       />
                     )}
 
@@ -917,6 +940,8 @@ export default function ArticleDetailPage() {
                         onGenerate={() => handleGenerateContent('key_points')}
                         onCopy={() => handleCopyContent(article.ai_analysis?.key_points, '总结')}
                         canEdit={isAdmin}
+                        showStatus={isAdmin}
+                        statusLink={`/settings?section=tasks&article_id=${article.id}`}
                       />
                     )}
 
@@ -930,6 +955,8 @@ export default function ArticleDetailPage() {
                         canEdit={isAdmin}
                         renderMindMap
                         onMindMapOpen={openMindMap}
+                        showStatus={isAdmin}
+                        statusLink={`/settings?section=tasks&article_id=${article.id}`}
                       />
                     )}
 
@@ -942,6 +969,8 @@ export default function ArticleDetailPage() {
                         onCopy={() => handleCopyContent(article.ai_analysis?.quotes, '金句')}
                         canEdit={isAdmin}
                         renderMarkdown
+                        showStatus={isAdmin}
+                        statusLink={`/settings?section=tasks&article_id=${article.id}`}
                       />
                     )}
 

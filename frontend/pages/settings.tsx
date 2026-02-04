@@ -196,6 +196,19 @@ export default function SettingsPage() {
   }, []);
 
   useEffect(() => {
+    if (!router.isReady) return;
+    const { section, article_id: articleIdParam } = router.query;
+    if (section === 'tasks') {
+      setActiveSection('tasks');
+    }
+    if (articleIdParam && typeof articleIdParam === 'string') {
+      setActiveSection('tasks');
+      setTaskArticleIdFilter(articleIdParam);
+      setTaskPage(1);
+    }
+  }, [router.isReady, router.query]);
+
+  useEffect(() => {
     if (typeof window === 'undefined') return;
     localStorage.setItem('settings_active_section', activeSection);
     localStorage.setItem('settings_ai_sub_section', aiSubSection);
@@ -536,6 +549,7 @@ export default function SettingsPage() {
       showToast('取消失败', 'error');
     }
   };
+
 
   const getTaskTypeLabel = (task: AITaskItem) => {
     if (task.task_type === 'process_article_translation') return '翻译';
@@ -1223,7 +1237,7 @@ export default function SettingsPage() {
                           <th className="text-left px-4 py-3">尝试</th>
                           <th className="text-left px-4 py-3">文章</th>
                           <th className="text-left px-4 py-3">时间</th>
-                          <th className="text-right px-4 py-3">操作</th>
+                          <th className="text-left px-4 py-3">操作</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100">
@@ -1249,7 +1263,15 @@ export default function SettingsPage() {
                                     : 'bg-yellow-100 text-yellow-700'
                                 }`}
                               >
-                                {task.status}
+                                {task.status === 'completed'
+                                  ? '已完成'
+                                  : task.status === 'failed'
+                                  ? '失败'
+                                  : task.status === 'processing'
+                                  ? '处理中'
+                                  : task.status === 'cancelled'
+                                  ? '已取消'
+                                  : '待处理'}
                               </span>
                               {task.last_error && (
                                 <div className="text-xs text-red-500 mt-1 line-clamp-1" title={task.last_error}>

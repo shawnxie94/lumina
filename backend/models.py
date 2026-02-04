@@ -124,6 +124,7 @@ class AITask(Base):
     locked_at = Column(String, nullable=True)
     locked_by = Column(String, nullable=True)
     last_error = Column(Text, nullable=True)
+    last_error_type = Column(String, nullable=True)
     created_at = Column(String, default=now_str)
     updated_at = Column(String, default=now_str)
     finished_at = Column(String, nullable=True)
@@ -212,6 +213,24 @@ def init_db():
                     ("temperature", "REAL"),
                     ("max_tokens", "INTEGER"),
                     ("top_p", "REAL"),
+                ],
+            )
+
+            ensure_columns(
+                "ai_tasks",
+                [
+                    ("content_type", "TEXT"),
+                    ("payload", "TEXT"),
+                    ("attempts", "INTEGER"),
+                    ("max_attempts", "INTEGER"),
+                    ("run_at", "TEXT"),
+                    ("locked_at", "TEXT"),
+                    ("locked_by", "TEXT"),
+                    ("last_error", "TEXT"),
+                    ("last_error_type", "TEXT"),
+                    ("created_at", "TEXT"),
+                    ("updated_at", "TEXT"),
+                    ("finished_at", "TEXT"),
                 ],
             )
 
