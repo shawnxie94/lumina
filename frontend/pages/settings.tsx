@@ -154,15 +154,18 @@ export default function SettingsPage() {
   const [promptConfigs, setPromptConfigs] = useState<PromptConfig[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [taskItems, setTaskItems] = useState<AITaskItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [modelLoading, setModelLoading] = useState(true);
+  const [promptLoading, setPromptLoading] = useState(true);
+  const [categoryLoading, setCategoryLoading] = useState(true);
   const [taskLoading, setTaskLoading] = useState(false);
   const [selectedPromptType, setSelectedPromptType] = useState<PromptType>('summary');
   const [taskPage, setTaskPage] = useState(1);
-  const [taskPageSize, setTaskPageSize] = useState(20);
+  const [taskPageSize, setTaskPageSize] = useState(10);
   const [taskTotal, setTaskTotal] = useState(0);
   const [taskStatusFilter, setTaskStatusFilter] = useState('');
   const [taskTypeFilter, setTaskTypeFilter] = useState('');
   const [taskArticleIdFilter, setTaskArticleIdFilter] = useState('');
+  const hasTaskFilters = Boolean(taskStatusFilter || taskTypeFilter || taskArticleIdFilter);
 
   const [showModelAPIModal, setShowModelAPIModal] = useState(false);
   const [showPromptModal, setShowPromptModal] = useState(false);
@@ -242,6 +245,7 @@ export default function SettingsPage() {
         await categoryApi.updateCategoriesSort(sortItems);
       } catch (error) {
         console.error('Failed to update sort order:', error);
+        showToast('排序更新失败', 'error');
         fetchCategories();
       }
     }
@@ -281,38 +285,38 @@ export default function SettingsPage() {
   });
 
   const fetchModelAPIConfigs = async () => {
-    setLoading(true);
+    setModelLoading(true);
     try {
       const data = await articleApi.getModelAPIConfigs();
       setModelAPIConfigs(data);
     } catch (error) {
       console.error('Failed to fetch model API configs:', error);
     } finally {
-      setLoading(false);
+      setModelLoading(false);
     }
   };
 
   const fetchPromptConfigs = async () => {
-    setLoading(true);
+    setPromptLoading(true);
     try {
       const data = await articleApi.getPromptConfigs();
       setPromptConfigs(data);
     } catch (error) {
       console.error('Failed to fetch prompt configs:', error);
     } finally {
-      setLoading(false);
+      setPromptLoading(false);
     }
   };
 
   const fetchCategories = async () => {
-    setLoading(true);
+    setCategoryLoading(true);
     try {
       const data = await categoryApi.getCategories();
       setCategories(data);
     } catch (error) {
       console.error('Failed to fetch categories:', error);
     } finally {
-      setLoading(false);
+      setCategoryLoading(false);
     }
   };
 
@@ -431,27 +435,6 @@ export default function SettingsPage() {
     }
   };
 
-  const handleToggleModelAPIEnabled = async (id: string, isEnabled: boolean) => {
-    try {
-      await articleApi.updateModelAPIConfig(id, { is_enabled: !isEnabled });
-      fetchModelAPIConfigs();
-    } catch (error) {
-      console.error('Failed to toggle enabled:', error);
-      showToast('操作失败', 'error');
-    }
-  };
-
-  const handleSetModelAPIDefault = async (id: string) => {
-    try {
-      await articleApi.updateModelAPIConfig(id, { is_default: true });
-      showToast('已设置为默认配置');
-      fetchModelAPIConfigs();
-    } catch (error) {
-      console.error('Failed to set default:', error);
-      showToast('操作失败', 'error');
-    }
-  };
-
   const handleCreatePromptNew = () => {
     setEditingPromptConfig(null);
     setPromptFormData({
@@ -541,6 +524,8 @@ export default function SettingsPage() {
   };
 
   const handleCancelTask = async (taskId: string) => {
+    if (!confirm('确定取消该任务吗？')) return;
+
     try {
       await articleApi.cancelAITasks([taskId]);
       showToast('任务已取消');
@@ -672,27 +657,6 @@ export default function SettingsPage() {
     }
   };
 
-  const handleTogglePromptEnabled = async (id: string, isEnabled: boolean) => {
-    try {
-      await articleApi.updatePromptConfig(id, { is_enabled: !isEnabled });
-      fetchPromptConfigs();
-    } catch (error) {
-      console.error('Failed to toggle enabled:', error);
-      showToast('操作失败', 'error');
-    }
-  };
-
-  const handleSetPromptDefault = async (id: string) => {
-    try {
-      await articleApi.updatePromptConfig(id, { is_default: true });
-      showToast('已设置为默认配置');
-      fetchPromptConfigs();
-    } catch (error) {
-      console.error('Failed to set default:', error);
-      showToast('操作失败', 'error');
-    }
-  };
-
   // Category handlers
   const handleCreateCategoryNew = () => {
     setEditingCategory(null);
@@ -812,26 +776,32 @@ export default function SettingsPage() {
                 >
                   🤖 AI配置
                 </button>
-                {activeSection === 'ai' && (
-                  <>
-                    <button
-                      onClick={() => setAISubSection('model-api')}
-                      className={`w-full text-left px-6 py-2 text-sm rounded-lg transition ${
-                        aiSubSection === 'model-api' ? 'bg-blue-50 text-blue-700' : 'hover:bg-gray-50'
-                      }`}
-                    >
-                      🔌 模型API配置
-                    </button>
-                    <button
-                      onClick={() => setAISubSection('prompt')}
-                      className={`w-full text-left px-6 py-2 text-sm rounded-lg transition ${
-                        aiSubSection === 'prompt' ? 'bg-blue-50 text-blue-700' : 'hover:bg-gray-50'
-                      }`}
-                    >
-                      📝 提示词配置
-                    </button>
-                  </>
-                )}
+                <button
+                  onClick={() => {
+                    setActiveSection('ai');
+                    setAISubSection('model-api');
+                  }}
+                  className={`w-full text-left px-6 py-2 text-sm rounded-lg transition ${
+                    activeSection === 'ai' && aiSubSection === 'model-api'
+                      ? 'bg-blue-50 text-blue-700'
+                      : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  🔌 模型API配置
+                </button>
+                <button
+                  onClick={() => {
+                    setActiveSection('ai');
+                    setAISubSection('prompt');
+                  }}
+                  className={`w-full text-left px-6 py-2 text-sm rounded-lg transition ${
+                    activeSection === 'ai' && aiSubSection === 'prompt'
+                      ? 'bg-blue-50 text-blue-700'
+                      : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  📝 提示词配置
+                </button>
                 <button
                   onClick={() => setActiveSection('tasks')}
                   className={`w-full text-left px-4 py-3 rounded-lg transition ${
@@ -857,11 +827,17 @@ export default function SettingsPage() {
                   </button>
                 </div>
 
-                {loading ? (
+                {modelLoading ? (
                   <div className="text-center py-12 text-gray-500">加载中...</div>
                 ) : modelAPIConfigs.length === 0 ? (
                   <div className="text-center py-12 text-gray-500">
-                    暂无模型API配置，点击"创建新配置"按钮开始
+                    <div className="mb-4">暂无模型API配置</div>
+                    <button
+                      onClick={handleCreateModelAPINew}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                    >
+                      创建配置
+                    </button>
                   </div>
                 ) : (
                   <div className="space-y-4">
@@ -919,11 +895,11 @@ export default function SettingsPage() {
                           </div>
 
                           <div className="flex gap-1">
-                            <button
-                              onClick={() => handleTestModelAPI(config.id)}
-                              className="px-2 py-1 text-sm text-gray-500 rounded hover:bg-purple-100 hover:text-purple-600 transition"
-                              title="测试连接"
-                            >
+                              <button
+                                onClick={() => handleTestModelAPI(config.id)}
+                                className="px-2 py-1 text-sm text-gray-500 rounded hover:bg-blue-100 hover:text-blue-600 transition"
+                                title="测试连接"
+                              >
                               🔗
                             </button>
                             <button
@@ -994,22 +970,28 @@ export default function SettingsPage() {
                     <button
                       key={type.value}
                       onClick={() => setSelectedPromptType(type.value)}
-                      className={`px-4 py-2 text-sm rounded-lg transition ${
-                        selectedPromptType === type.value
-                          ? 'bg-purple-600 text-white'
-                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                      }`}
+                        className={`px-4 py-2 text-sm rounded-lg transition ${
+                          selectedPromptType === type.value
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        }`}
                     >
                       {type.label}
                     </button>
                   ))}
                 </div>
 
-                {loading ? (
+                {promptLoading ? (
                   <div className="text-center py-12 text-gray-500">加载中...</div>
                 ) : promptConfigs.filter(c => c.type === selectedPromptType).length === 0 ? (
                   <div className="text-center py-12 text-gray-500">
-                    暂无{PROMPT_TYPES.find(t => t.value === selectedPromptType)?.label}配置，点击上方按钮创建
+                    <div className="mb-4">暂无{PROMPT_TYPES.find(t => t.value === selectedPromptType)?.label}配置</div>
+                    <button
+                      onClick={handleCreatePromptNew}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                    >
+                      创建配置
+                    </button>
                   </div>
                 ) : (
                   <div className="space-y-4">
@@ -1100,7 +1082,7 @@ export default function SettingsPage() {
                           <div className="flex gap-1">
                             <button
                               onClick={() => setShowPromptPreview(config)}
-                              className="px-2 py-1 text-sm text-gray-500 rounded hover:bg-purple-100 hover:text-purple-600 transition"
+                                className="px-2 py-1 text-sm text-gray-500 rounded hover:bg-blue-100 hover:text-blue-600 transition"
                               title="预览"
                             >
                               👁️
@@ -1140,11 +1122,17 @@ export default function SettingsPage() {
                   </button>
                 </div>
 
-                {loading ? (
+                {categoryLoading ? (
                   <div className="text-center py-12 text-gray-500">加载中...</div>
                 ) : categories.length === 0 ? (
                   <div className="text-center py-12 text-gray-500">
-                    暂无分类，点击"新增分类"按钮开始
+                    <div className="mb-4">暂无分类</div>
+                    <button
+                      onClick={handleCreateCategoryNew}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                    >
+                      新增分类
+                    </button>
                   </div>
                 ) : (
                   <DndContext
@@ -1179,12 +1167,26 @@ export default function SettingsPage() {
                     <h2 className="text-lg font-semibold text-gray-900">AI 任务监控</h2>
                     <p className="text-sm text-gray-500">查看、重试或取消后台任务</p>
                   </div>
-                  <button
-                    onClick={fetchTasks}
-                    className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition"
-                  >
-                    刷新
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        setTaskStatusFilter('');
+                        setTaskTypeFilter('');
+                        setTaskArticleIdFilter('');
+                        setTaskPage(1);
+                      }}
+                      className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition"
+                      disabled={!hasTaskFilters}
+                    >
+                      清空筛选
+                    </button>
+                    <button
+                      onClick={fetchTasks}
+                      className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition"
+                    >
+                      刷新
+                    </button>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
@@ -1211,9 +1213,9 @@ export default function SettingsPage() {
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
                       <option value="">全部</option>
-                      <option value="process_article_ai">摘要生成</option>
+                      <option value="process_article_ai">文章摘要</option>
                       <option value="process_article_translation">翻译生成</option>
-                      <option value="process_ai_content:summary">摘要生成</option>
+                      <option value="process_ai_content:summary">AI摘要</option>
                       <option value="process_ai_content:outline">大纲生成</option>
                       <option value="process_ai_content:quotes">金句生成</option>
                       <option value="process_ai_content:key_points">总结生成</option>
@@ -1233,7 +1235,9 @@ export default function SettingsPage() {
                 {taskLoading ? (
                   <div className="text-center py-12 text-gray-500">加载中...</div>
                 ) : taskItems.length === 0 ? (
-                  <div className="text-center py-12 text-gray-500">暂无任务</div>
+                  <div className="text-center py-12 text-gray-500">
+                    {hasTaskFilters ? '暂无匹配任务' : '暂无任务'}
+                  </div>
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="min-w-full text-sm">
@@ -1379,8 +1383,14 @@ export default function SettingsPage() {
       </div>
 
       {showModelAPIModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+          onClick={() => setShowModelAPIModal(false)}
+        >
+          <div
+            className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+            onClick={(event) => event.stopPropagation()}
+          >
             <div className="flex items-center justify-between p-6 border-b">
               <h3 className="text-lg font-semibold text-gray-900">
                 {editingModelAPIConfig ? '编辑模型API配置' : '创建新模型API配置'}
@@ -1491,8 +1501,14 @@ export default function SettingsPage() {
       )}
 
       {showPromptModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+          onClick={() => setShowPromptModal(false)}
+        >
+          <div
+            className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+            onClick={(event) => event.stopPropagation()}
+          >
             <div className="flex items-center justify-between p-6 border-b">
               <h3 className="text-lg font-semibold text-gray-900">
                 {editingPromptConfig ? '编辑提示词配置' : '创建新提示词配置'}
@@ -1704,8 +1720,14 @@ export default function SettingsPage() {
 
       {/* Category Modal */}
       {showCategoryModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+          onClick={() => setShowCategoryModal(false)}
+        >
+          <div
+            className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto"
+            onClick={(event) => event.stopPropagation()}
+          >
             <div className="flex items-center justify-between p-6 border-b">
               <h3 className="text-lg font-semibold text-gray-900">
                 {editingCategory ? '编辑分类' : '新增分类'}
@@ -1785,8 +1807,14 @@ export default function SettingsPage() {
       )}
 
       {showPromptPreview && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+          onClick={() => setShowPromptPreview(null)}
+        >
+          <div
+            className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+            onClick={(event) => event.stopPropagation()}
+          >
             <div className="flex items-center justify-between p-6 border-b">
               <h3 className="text-lg font-semibold text-gray-900">
                 提示词预览 - {showPromptPreview.name}
@@ -1801,7 +1829,7 @@ export default function SettingsPage() {
 
             <div className="p-6 space-y-4">
               <div className="flex flex-wrap gap-2">
-                <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-sm">
+                <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm">
                   {PROMPT_TYPES.find(t => t.value === showPromptPreview.type)?.label || showPromptPreview.type}
                 </span>
                 <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-sm">

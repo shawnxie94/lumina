@@ -75,7 +75,7 @@ export default function Home() {
   const [visibilityFilter, setVisibilityFilter] = useState<string>('');
   const [sortBy, setSortBy] = useState<string>('created_at_desc');
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
+  const [pageSize, setPageSize] = useState(10);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [initialized, setInitialized] = useState(false);
@@ -421,7 +421,7 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-gray-50">
       <Head>
-        <title>Lumina</title>
+        <title>Lumina - AI驱动的知识库</title>
       </Head>
       <nav className="bg-white shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 py-4">
