@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useRef } from 'react';
 
 import { useRouter } from 'next/router';
 import Link from 'next/link';
@@ -31,9 +32,9 @@ type PromptType = 'summary' | 'translation' | 'key_points' | 'outline' | 'quotes
 const PROMPT_TYPES = [
   { value: 'summary' as PromptType, label: '摘要' },
   { value: 'translation' as PromptType, label: '翻译' },
-  { value: 'key_points' as PromptType, label: '关键内容' },
-  { value: 'outline' as PromptType, label: '文章大纲' },
-  { value: 'quotes' as PromptType, label: '文章金句' },
+  { value: 'key_points' as PromptType, label: '总结' },
+  { value: 'outline' as PromptType, label: '大纲' },
+  { value: 'quotes' as PromptType, label: '金句' },
 ];
 
 const PRESET_COLORS = [
@@ -151,6 +152,30 @@ export default function SettingsPage() {
     }
   }, [authLoading, isAdmin, router]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const storedSection = localStorage.getItem('settings_active_section');
+    const storedAiSubSection = localStorage.getItem('settings_ai_sub_section');
+    const storedPromptType = localStorage.getItem('settings_prompt_type');
+
+    if (storedSection === 'ai' || storedSection === 'categories') {
+      setActiveSection(storedSection);
+    }
+    if (storedAiSubSection === 'model-api' || storedAiSubSection === 'prompt') {
+      setAISubSection(storedAiSubSection);
+    }
+    if (PROMPT_TYPES.some((type) => type.value === storedPromptType)) {
+      setSelectedPromptType(storedPromptType as PromptType);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem('settings_active_section', activeSection);
+    localStorage.setItem('settings_ai_sub_section', aiSubSection);
+    localStorage.setItem('settings_prompt_type', selectedPromptType);
+  }, [activeSection, aiSubSection, selectedPromptType]);
+
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, {
@@ -206,6 +231,7 @@ export default function SettingsPage() {
     is_default: false,
   });
   const [showPromptAdvanced, setShowPromptAdvanced] = useState(false);
+  const promptImportInputRef = useRef<HTMLInputElement>(null);
 
   const [categoryFormData, setCategoryFormData] = useState({
     name: '',
@@ -440,6 +466,101 @@ export default function SettingsPage() {
     } catch (error) {
       console.error('Failed to delete prompt config:', error);
       showToast('删除失败', 'error');
+    }
+  };
+
+  const handleExportPromptConfigs = (scope: 'current' | 'all') => {
+    const source = scope === 'all'
+      ? promptConfigs
+      : promptConfigs.filter((config) => config.type === selectedPromptType);
+
+    const exportData = source.map(({ category_name, model_api_config_name, created_at, updated_at, id, ...rest }) => rest);
+
+    const blob = new Blob([JSON.stringify({ configs: exportData }, null, 2)], {
+      type: 'application/json',
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const suffix = scope === 'all' ? 'all' : selectedPromptType;
+    link.href = url;
+    link.download = `prompt-configs-${suffix}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportPromptConfigs = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const raw = await file.text();
+      const parsed = JSON.parse(raw);
+      const configs = Array.isArray(parsed) ? parsed : parsed?.configs;
+      if (!Array.isArray(configs)) {
+        showToast('导入失败：格式不正确', 'error');
+        return;
+      }
+
+      let created = 0;
+      let updated = 0;
+      let skipped = 0;
+
+      for (const item of configs) {
+        if (!item || typeof item !== 'object') {
+          skipped += 1;
+          continue;
+        }
+        const type = String(item.type || '').trim();
+        const name = String(item.name || '').trim();
+        const prompt = String(item.prompt || '').trim();
+        const systemPrompt = String(item.system_prompt || '').trim();
+
+        if (!type || !name || !prompt || !systemPrompt) {
+          skipped += 1;
+          continue;
+        }
+
+        const payload = {
+          name,
+          type,
+          prompt,
+          system_prompt: systemPrompt,
+          category_id: item.category_id || undefined,
+          model_api_config_id: item.model_api_config_id || undefined,
+          response_format: item.response_format || undefined,
+          temperature: item.temperature ?? undefined,
+          max_tokens: item.max_tokens ?? undefined,
+          top_p: item.top_p ?? undefined,
+          is_enabled: item.is_enabled ?? true,
+          is_default: item.is_default ?? false,
+        };
+
+        const existing = promptConfigs.find(
+          (config) =>
+            config.type === type &&
+            config.name === name &&
+            (config.category_id || '') === (item.category_id || '')
+        );
+
+        if (existing) {
+          await articleApi.updatePromptConfig(existing.id, payload);
+          updated += 1;
+        } else {
+          await articleApi.createPromptConfig(payload);
+          created += 1;
+        }
+      }
+
+      showToast(`导入完成：新增 ${created}，更新 ${updated}，跳过 ${skipped}`);
+      fetchPromptConfigs();
+    } catch (error) {
+      console.error('Failed to import prompt configs:', error);
+      showToast('导入失败，请检查文件内容', 'error');
+    } finally {
+      if (promptImportInputRef.current) {
+        promptImportInputRef.current.value = '';
+      }
     }
   };
 
@@ -710,13 +831,41 @@ export default function SettingsPage() {
               <div className="bg-white rounded-lg shadow-sm p-6">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-lg font-semibold text-gray-900">提示词配置列表</h2>
-                  <button
-                    onClick={handleCreatePromptNew}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
-                  >
-                    + 创建配置
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handleExportPromptConfigs('current')}
+                      className="px-3 py-2 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition"
+                    >
+                      导出当前
+                    </button>
+                    <button
+                      onClick={() => handleExportPromptConfigs('all')}
+                      className="px-3 py-2 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition"
+                    >
+                      导出全部
+                    </button>
+                    <button
+                      onClick={() => promptImportInputRef.current?.click()}
+                      className="px-3 py-2 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition"
+                    >
+                      导入
+                    </button>
+                    <button
+                      onClick={handleCreatePromptNew}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                    >
+                      + 创建配置
+                    </button>
+                  </div>
                 </div>
+
+                <input
+                  ref={promptImportInputRef}
+                  type="file"
+                  accept="application/json"
+                  className="hidden"
+                  onChange={handleImportPromptConfigs}
+                />
 
                 <div className="flex gap-2 mb-6">
                   {PROMPT_TYPES.map((type) => (

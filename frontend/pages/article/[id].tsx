@@ -143,7 +143,7 @@ function AIContentSection({ title, content, status, onGenerate, onCopy, canEdit 
             className="text-gray-400 hover:text-blue-600 transition"
             title={content ? '重新生成' : '生成'}
           >
-            {content ? '🔄' : '✨'}
+          {content ? '🔄' : '⚡'}
           </button>
         )}
         {content && (
@@ -834,22 +834,22 @@ export default function ArticleDetailPage() {
 
                     {showKeyPointsSection && (
                       <AIContentSection
-                        title="🔑 关键内容"
+                        title="🧾 总结"
                         content={article.ai_analysis?.key_points}
                         status={article.ai_analysis?.key_points_status}
                         onGenerate={() => handleGenerateContent('key_points')}
-                        onCopy={() => handleCopyContent(article.ai_analysis?.key_points, '关键内容')}
+                        onCopy={() => handleCopyContent(article.ai_analysis?.key_points, '总结')}
                         canEdit={isAdmin}
                       />
                     )}
 
                     {showOutlineSection && (
                       <AIContentSection
-                        title="📋 文章大纲"
+                        title="🧭 大纲"
                         content={article.ai_analysis?.outline}
                         status={article.ai_analysis?.outline_status}
                         onGenerate={() => handleGenerateContent('outline')}
-                        onCopy={() => handleCopyContent(article.ai_analysis?.outline, '文章大纲')}
+                        onCopy={() => handleCopyContent(article.ai_analysis?.outline, '大纲')}
                         canEdit={isAdmin}
                         renderMindMap
                         onMindMapOpen={openMindMap}
@@ -858,11 +858,11 @@ export default function ArticleDetailPage() {
 
                     {showQuotesSection && (
                       <AIContentSection
-                        title="💬 文章金句"
+                        title="✨ 金句"
                         content={article.ai_analysis?.quotes}
                         status={article.ai_analysis?.quotes_status}
                         onGenerate={() => handleGenerateContent('quotes')}
-                        onCopy={() => handleCopyContent(article.ai_analysis?.quotes, '文章金句')}
+                        onCopy={() => handleCopyContent(article.ai_analysis?.quotes, '金句')}
                         canEdit={isAdmin}
                         renderMarkdown
                       />
