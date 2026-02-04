@@ -282,10 +282,10 @@ function TableOfContents({ items, activeId }: { items: TocItem[]; activeId: stri
         <a
           key={item.id}
           href={`#${item.id}`}
-          className={`block text-xs truncate transition ${
+          className={`block text-xs truncate rounded px-2 py-1 transition ${
             activeId === item.id
-              ? 'text-blue-600 font-medium'
-              : 'text-gray-600 hover:text-gray-900'
+              ? 'text-blue-700 font-semibold bg-blue-50'
+              : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
           }`}
           style={{ paddingLeft: `${(item.level - 1) * 8}px` }}
         >
@@ -356,6 +356,7 @@ export default function ArticleDetailPage() {
   const [tocItems, setTocItems] = useState<TocItem[]>([]);
   const [activeTocId, setActiveTocId] = useState('');
   const [tocCollapsed, setTocCollapsed] = useState(false);
+  const activeHeadingMapRef = useRef<Map<string, number>>(new Map());
   const [immersiveMode, setImmersiveMode] = useState(false);
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
   const [mindMapOpen, setMindMapOpen] = useState(false);
@@ -428,6 +429,7 @@ export default function ArticleDetailPage() {
     });
     
     setTocItems(items);
+    setActiveTocId(items[0]?.id || '');
   }, [article, showTranslation]);
 
   useEffect(() => {
@@ -435,15 +437,27 @@ export default function ArticleDetailPage() {
 
     const observer = new IntersectionObserver(
       (entries) => {
+        const activeMap = activeHeadingMapRef.current;
         entries.forEach((entry) => {
+          const targetId = entry.target.id;
           if (entry.isIntersecting) {
-            setActiveTocId(entry.target.id);
+            activeMap.set(targetId, entry.boundingClientRect.top);
+          } else {
+            activeMap.delete(targetId);
           }
         });
+
+        if (activeMap.size > 0) {
+          const nextActive = Array.from(activeMap.entries()).sort((a, b) => a[1] - b[1])[0]?.[0];
+          if (nextActive) {
+            setActiveTocId(nextActive);
+          }
+        }
       },
-      { rootMargin: '-80px 0px -80% 0px' }
+      { rootMargin: '-80px 0px -80% 0px', threshold: [0, 0.1, 0.5] }
     );
 
+    activeHeadingMapRef.current.clear();
     tocItems.forEach((item) => {
       const element = document.getElementById(item.id);
       if (element) observer.observe(element);
@@ -700,21 +714,23 @@ export default function ArticleDetailPage() {
                 <>
                   <button
                     onClick={handleToggleVisibility}
-                    className={`w-6 h-6 flex items-center justify-center rounded transition ${
+                    className={`flex items-center gap-1 px-2 py-1 rounded-lg text-sm transition ${
                       article.is_visible
-                        ? 'text-green-500 hover:text-green-700 hover:bg-green-50'
-                        : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
+                        ? 'text-green-700 bg-green-50 hover:bg-green-100'
+                        : 'text-gray-600 bg-gray-100 hover:bg-gray-200'
                     }`}
                     title={article.is_visible ? '点击隐藏' : '点击显示'}
                   >
                     {article.is_visible ? '👁️' : '👁️‍🗨️'}
+                    <span>{article.is_visible ? '隐藏' : '显示'}</span>
                   </button>
                   <button
                     onClick={() => setShowDeleteModal(true)}
-                    className="text-gray-400 hover:text-red-600 transition"
+                    className="flex items-center gap-1 px-2 py-1 rounded-lg text-sm text-red-600 hover:bg-red-50 transition"
                     title="删除文章"
                   >
-                    ✕
+                    🗑️
+                    <span>删除</span>
                   </button>
                 </>
               )}
@@ -819,10 +835,11 @@ export default function ArticleDetailPage() {
                   {isAdmin && (
                     <button
                       onClick={() => openEditModal(showTranslation && article.content_trans ? 'translation' : 'original')}
-                      className="text-gray-400 hover:text-blue-600 transition"
+                      className="flex items-center gap-1 px-2 py-1 rounded-lg text-sm text-gray-600 hover:text-blue-600 hover:bg-blue-50 transition"
                       title={showTranslation && article.content_trans ? '编辑译文' : '编辑原文'}
                     >
                       ✏️
+                      <span>{showTranslation && article.content_trans ? '编辑译文' : '编辑原文'}</span>
                     </button>
                   )}
                   {article.content_trans && (
@@ -992,8 +1009,14 @@ export default function ArticleDetailPage() {
         </div>
 
       {showConfigModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+          onClick={() => setShowConfigModal(false)}
+        >
+          <div
+            className="bg-white rounded-lg shadow-xl max-w-md w-full"
+            onClick={(event) => event.stopPropagation()}
+          >
             <div className="flex items-center justify-between p-4 border-b">
               <h3 className="text-lg font-semibold text-gray-900">选择生成配置</h3>
               <button
@@ -1061,8 +1084,14 @@ export default function ArticleDetailPage() {
       )}
 
       {showEditModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] flex flex-col">
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+          onClick={() => setShowEditModal(false)}
+        >
+          <div
+            className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] flex flex-col"
+            onClick={(event) => event.stopPropagation()}
+          >
             <div className="flex items-center justify-between p-4 border-b">
               <h3 className="text-lg font-semibold text-gray-900">
                 编辑文章{editMode === 'translation' ? '（译文）' : '（原文）'}

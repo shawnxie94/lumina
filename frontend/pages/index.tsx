@@ -421,7 +421,7 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-gray-50">
       <Head>
-        <title>Lumina · AI 驱动的知识库</title>
+        <title>Lumina</title>
       </Head>
       <nav className="bg-white shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 py-4">
@@ -431,41 +431,35 @@ export default function Home() {
                 <img src="/favicon.png" alt="Lumina" className="h-7 w-7" />
                 <span>Lumina</span>
               </h1>
-              <p className="text-sm text-gray-500 mt-1">AI 驱动的知识库</p>
             </div>
             <div className="flex gap-2 items-center">
-              {selectedArticleIds.size > 0 && (
-                <button
-                  onClick={handleExport}
-                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
-                >
-                  导出选中 ({selectedArticleIds.size})
-                </button>
-              )}
               {isAdmin && (
                 <Link
                   href="/settings"
-                  className="w-9 h-9 flex items-center justify-center text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition"
+                  className="flex items-center gap-1 px-3 py-1 rounded-lg text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition"
                   title="设置"
                 >
                   ⚙️
+                  <span>设置</span>
                 </Link>
               )}
               {isAdmin ? (
                 <button
                   onClick={logout}
-                  className="w-9 h-9 flex items-center justify-center text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
+                  className="flex items-center gap-1 px-3 py-1 rounded-lg text-sm text-gray-600 hover:text-red-600 hover:bg-red-50 transition"
                   title="退出登录"
                 >
                   🚪
+                  <span>退出</span>
                 </button>
               ) : (
                 <Link
                   href="/login"
-                  className="w-9 h-9 flex items-center justify-center text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
+                  className="flex items-center gap-1 px-3 py-1 rounded-lg text-sm text-gray-600 hover:text-blue-600 hover:bg-blue-50 transition"
                   title="管理员登录"
                 >
                   🔐
+                  <span>登录</span>
                 </Link>
               )}
             </div>
@@ -515,12 +509,22 @@ export default function Home() {
 
           <main className="flex-1">
             <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-              <div className="flex flex-wrap items-center justify-end gap-4">
+              <div className="flex flex-wrap items-center justify-between gap-4">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm text-gray-600">创建时间：</span>
-                  <select
-                    value={quickDateFilter}
-                    onChange={(e) => handleQuickDateChange(e.target.value as QuickDateOption)}
+                  <button
+                    type="button"
+                    onClick={() => setShowFilters(!showFilters)}
+                    className={`px-4 py-1 text-sm rounded-lg transition ${showFilters ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                  >
+                    🔍 高级筛选
+                  </button>
+                </div>
+                <div className="flex flex-wrap items-center justify-end gap-4">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-gray-600">创建时间：</span>
+                    <select
+                      value={quickDateFilter}
+                      onChange={(e) => handleQuickDateChange(e.target.value as QuickDateOption)}
                     className="px-3 py-1 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="">全部</option>
@@ -533,38 +537,32 @@ export default function Home() {
                     <option value="1y">1年内</option>
                   </select>
                 </div>
-                {isAdmin && (
+                  {isAdmin && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-gray-600">可见：</span>
+                      <select
+                        value={visibilityFilter}
+                        onChange={(e) => { setVisibilityFilter(e.target.value); setPage(1); }}
+                        className="px-3 py-1 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">全部</option>
+                        <option value="visible">可见</option>
+                        <option value="hidden">隐藏</option>
+                      </select>
+                    </div>
+                  )}
                   <div className="flex items-center gap-2">
-                    <span className="text-sm text-gray-600">可见：</span>
+                    <span className="text-sm text-gray-600">排序：</span>
                     <select
-                      value={visibilityFilter}
-                      onChange={(e) => { setVisibilityFilter(e.target.value); setPage(1); }}
+                      value={sortBy}
+                      onChange={(e) => { setSortBy(e.target.value); setPage(1); }}
                       className="px-3 py-1 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
-                      <option value="">全部</option>
-                      <option value="visible">可见</option>
-                      <option value="hidden">隐藏</option>
+                      <option value="published_at_desc">发表时间倒序</option>
+                      <option value="created_at_desc">创建时间倒序</option>
                     </select>
                   </div>
-                )}
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-gray-600">排序：</span>
-                  <select
-                    value={sortBy}
-                    onChange={(e) => { setSortBy(e.target.value); setPage(1); }}
-                    className="px-3 py-1 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="published_at_desc">发表时间倒序</option>
-                    <option value="created_at_desc">创建时间倒序</option>
-                  </select>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setShowFilters(!showFilters)}
-                  className={`px-4 py-1 text-sm rounded-lg transition ${showFilters ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
-                >
-                  🔍 高级筛选
-                </button>
               </div>
 
               {showFilters && (
@@ -640,85 +638,96 @@ export default function Home() {
                 </div>
               )}
 
-            {activeFilters.length > 0 && (
               <div className="mt-4 pt-4 border-t border-gray-200">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex flex-wrap gap-2">
-                      {activeFilters.length === 0 ? (
-                        <span className="text-sm text-gray-500">暂无筛选条件</span>
-                      ) : (
-                        activeFilters.map((filter) => (
-                          <span
-                            key={filter}
-                            className="px-2 py-1 text-xs bg-blue-50 text-blue-700 rounded"
-                          >
-                            {filter}
-                          </span>
-                        ))
-                      )}
-                    </div>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-wrap gap-2">
+                    {activeFilters.length === 0 ? (
+                      <span className="text-sm text-gray-500">暂无筛选条件</span>
+                    ) : (
+                      activeFilters.map((filter) => (
+                        <span
+                          key={filter}
+                          className="px-2 py-1 text-xs bg-blue-50 text-blue-700 rounded"
+                        >
+                          {filter}
+                        </span>
+                      ))
+                    )}
+                  </div>
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
                       onClick={handleClearFilters}
-                      className="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition"
+                      className={`px-3 py-1 text-sm rounded-lg transition ${activeFilters.length === 0 ? 'bg-gray-50 text-gray-400 cursor-not-allowed' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                      disabled={activeFilters.length === 0}
                     >
                       清除筛选
                     </button>
                   </div>
                 </div>
               </div>
-            )}
-            {isAdmin && selectedArticleIds.size > 0 && (
-              <div className="mt-4 pt-4 border-t border-gray-200">
-                <div className="flex flex-wrap items-center gap-3">
-                  <span className="text-sm text-gray-600">已选 {selectedArticleIds.size} 篇</span>
-                  <button
-                    type="button"
-                    onClick={() => handleBatchVisibility(true)}
-                    className="px-3 py-1 text-sm bg-green-50 text-green-700 rounded-lg hover:bg-green-100 transition"
-                  >
-                    设为可见
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleBatchVisibility(false)}
-                    className="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition"
-                  >
-                    设为隐藏
-                  </button>
-                  <div className="flex items-center gap-2">
-                    <select
-                      value={batchCategoryId}
-                      onChange={(e) => setBatchCategoryId(e.target.value)}
-                      className="px-3 py-1 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="">选择分类</option>
-                      <option value="__clear__">清空分类</option>
-                      {categories.map((category) => (
-                        <option key={category.id} value={category.id}>
-                          {category.name}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      onClick={handleBatchCategory}
-                      className="px-3 py-1 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
-                    >
-                      应用分类
-                    </button>
+              {selectedArticleIds.size > 0 && (
+                <div className="mt-4 pt-4 border-t border-gray-200">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <span className="text-sm text-gray-600">已选 {selectedArticleIds.size} 篇</span>
+                      <button
+                        onClick={handleExport}
+                        className="px-3 py-1 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
+                      >
+                        导出选中 ({selectedArticleIds.size})
+                      </button>
+                    </div>
+                    {isAdmin && (
+                      <div className="flex flex-wrap items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => handleBatchVisibility(true)}
+                          className="px-3 py-1 text-sm bg-green-50 text-green-700 rounded-lg hover:bg-green-100 transition"
+                        >
+                          设为可见
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleBatchVisibility(false)}
+                          className="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition"
+                        >
+                          设为隐藏
+                        </button>
+                        <div className="flex items-center gap-2">
+                          <select
+                            value={batchCategoryId}
+                            onChange={(e) => setBatchCategoryId(e.target.value)}
+                            className="px-3 py-1 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          >
+                            <option value="">选择分类</option>
+                            <option value="__clear__">清空分类</option>
+                            {categories.map((category) => (
+                              <option key={category.id} value={category.id}>
+                                {category.name}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            type="button"
+                            onClick={handleBatchCategory}
+                            className="px-3 py-1 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                          >
+                            应用分类
+                          </button>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleBatchDelete}
+                          className="px-3 py-1 text-sm bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition"
+                        >
+                          批量删除
+                        </button>
+                      </div>
+                    )}
                   </div>
-                  <button
-                    type="button"
-                    onClick={handleBatchDelete}
-                    className="px-3 py-1 text-sm bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition"
-                  >
-                    批量删除
-                  </button>
                 </div>
-              </div>
-            )}
+              )}
             </div>
 
             {loading ? (
