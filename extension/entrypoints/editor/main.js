@@ -61,7 +61,11 @@ class EditorController {
 
   async loadConfig() {
     const apiHost = await ApiClient.loadApiHost();
+    const token = await ApiClient.loadToken();
     this.#apiClient = new ApiClient(apiHost);
+    if (token) {
+      this.#apiClient.setToken(token);
+    }
   }
 
   async loadCategories() {
@@ -402,6 +406,11 @@ class EditorController {
     } catch (error) {
       console.error('Failed to submit article:', error);
       logError('editor', error, { action: 'submitArticle', title: this.#articleData?.title });
+      if (error.message === 'UNAUTHORIZED') {
+        await ApiClient.removeToken();
+        this.updateStatus('error', '登录已过期，请重新登录');
+        return;
+      }
       const errorMessage = error.message || '提交失败，请重试';
       this.updateStatus('error', errorMessage);
     }
