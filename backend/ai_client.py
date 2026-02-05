@@ -56,6 +56,21 @@ class ConfigurableAIClient:
         self.model_name = model_name
         self.client = AsyncOpenAI(base_url=base_url, api_key=api_key)
 
+    def _serialize_usage(self, usage: Any) -> Optional[Dict[str, Any]]:
+        if usage is None:
+            return None
+        if hasattr(usage, "model_dump"):
+            return usage.model_dump()
+        if hasattr(usage, "dict"):
+            return usage.dict()
+        if isinstance(usage, dict):
+            return usage
+        return {
+            "prompt_tokens": getattr(usage, "prompt_tokens", None),
+            "completion_tokens": getattr(usage, "completion_tokens", None),
+            "total_tokens": getattr(usage, "total_tokens", None),
+        }
+
     async def generate_summary(
         self,
         content: str,
@@ -103,11 +118,18 @@ class ConfigurableAIClient:
             start_time = time.monotonic()
             response = await self.client.chat.completions.create(**request_params)
             latency_ms = int((time.monotonic() - start_time) * 1000)
+            usage_data = self._serialize_usage(getattr(response, "usage", None))
             return {
                 "content": response.choices[0].message.content,
                 "usage": getattr(response, "usage", None),
                 "model": getattr(response, "model", self.model_name),
                 "latency_ms": latency_ms,
+                "request_payload": request_params,
+                "response_payload": {
+                    "content": response.choices[0].message.content,
+                    "model": getattr(response, "model", self.model_name),
+                    "usage": usage_data,
+                },
             }
         except Exception as e:
             print(f"AI生成失败: {e}")
@@ -188,6 +210,7 @@ class ConfigurableAIClient:
             response = await self.client.chat.completions.create(**request_params)
             latency_ms = int((time.monotonic() - start_time) * 1000)
             result = response.choices[0].message.content
+            usage_data = self._serialize_usage(getattr(response, "usage", None))
             print(
                 f"翻译响应 - 结果长度: {len(result) if result else 0}, 前100字符: {result[:100] if result else 'None'}"
             )
@@ -196,6 +219,12 @@ class ConfigurableAIClient:
                 "usage": getattr(response, "usage", None),
                 "model": getattr(response, "model", self.model_name),
                 "latency_ms": latency_ms,
+                "request_payload": request_params,
+                "response_payload": {
+                    "content": result,
+                    "model": getattr(response, "model", self.model_name),
+                    "usage": usage_data,
+                },
             }
         except Exception as e:
             print(f"翻译失败: {e}")

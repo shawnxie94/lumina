@@ -249,6 +249,9 @@ export default function SettingsPage() {
 	const [usageContentType, setUsageContentType] = useState("");
 	const [usageStart, setUsageStart] = useState("");
 	const [usageEnd, setUsageEnd] = useState("");
+	const [showUsagePayloadModal, setShowUsagePayloadModal] = useState(false);
+	const [usagePayloadTitle, setUsagePayloadTitle] = useState("");
+	const [usagePayloadContent, setUsagePayloadContent] = useState("");
 
 	const [showModelAPIModal, setShowModelAPIModal] = useState(false);
 	const [showModelAPIAdvanced, setShowModelAPIAdvanced] = useState(false);
@@ -763,6 +766,22 @@ export default function SettingsPage() {
 		return contentType;
 	};
 
+	const formatJsonPayload = (payload: string | null) => {
+		if (!payload) return "暂无数据";
+		try {
+			const parsed = JSON.parse(payload);
+			return JSON.stringify(parsed, null, 2);
+		} catch {
+			return payload;
+		}
+	};
+
+	const openUsagePayload = (title: string, payload: string | null) => {
+		setUsagePayloadTitle(title);
+		setUsagePayloadContent(formatJsonPayload(payload));
+		setShowUsagePayloadModal(true);
+	};
+
 	const formatUsageDateTime = (value: string | null) => {
 		if (!value) return "-";
 		const date = new Date(value);
@@ -1252,7 +1271,7 @@ export default function SettingsPage() {
 																	<th className="text-left px-3 py-2">模型</th>
 																	<th className="text-left px-3 py-2">调用</th>
 															<th className="text-left px-3 py-2">
-																Tokens（输入/输出）
+																Tokens（输入/输出，单位：tokens）
 															</th>
 																	<th className="text-left px-3 py-2">费用（参考）</th>
 																</tr>
@@ -1314,9 +1333,10 @@ export default function SettingsPage() {
 																	<th className="text-left px-3 py-2">
 																		Tokens（输入/输出）
 																	</th>
-																	<th className="text-left px-3 py-2">费用（参考）</th>
-																	<th className="text-left px-3 py-2">状态</th>
-																</tr>
+															<th className="text-left px-3 py-2">费用（参考）</th>
+															<th className="text-left px-3 py-2">状态</th>
+															<th className="text-left px-3 py-2">查看</th>
+														</tr>
 															</thead>
 															<tbody className="divide-y divide-border">
 																{usageLogs.map((log) => (
@@ -1339,10 +1359,42 @@ export default function SettingsPage() {
 																				: "-"}
 																			{log.currency ? ` ${log.currency}` : ""}
 																		</td>
-																		<td className="px-3 py-2 text-text-2">
-																			{getUsageStatusLabel(log.status)}
-																		</td>
-																	</tr>
+															<td className="px-3 py-2 text-text-2">
+																{getUsageStatusLabel(log.status)}
+															</td>
+															<td className="px-3 py-2 text-text-2">
+																{log.request_payload || log.response_payload ? (
+																	<div className="flex items-center gap-2">
+																		<button
+																			type="button"
+																			onClick={() =>
+																			openUsagePayload(
+																				"请求输入",
+																				log.request_payload,
+																			)
+																		}
+																		className="px-2 py-1 text-xs bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
+																	>
+																		输入
+																	</button>
+																	<button
+																		type="button"
+																			onClick={() =>
+																			openUsagePayload(
+																				"响应输出",
+																				log.response_payload,
+																			)
+																		}
+																		className="px-2 py-1 text-xs bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
+																	>
+																		输出
+																	</button>
+																</div>
+															) : (
+																	"-"
+															)}
+															</td>
+														</tr>
 																))}
 															</tbody>
 														</table>
@@ -2318,11 +2370,40 @@ export default function SettingsPage() {
 							</div>
 						</div>
 					</div>
-				)}
+								)}
 
-				{showPromptModal && (
-					<div
-						className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+								{showUsagePayloadModal && (
+									<div
+										className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+										onClick={() => setShowUsagePayloadModal(false)}
+									>
+										<div
+											className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto"
+											onClick={(event) => event.stopPropagation()}
+										>
+											<div className="flex items-center justify-between p-6 border-b">
+												<h3 className="text-lg font-semibold text-gray-900">
+													{usagePayloadTitle}
+												</h3>
+												<button
+													onClick={() => setShowUsagePayloadModal(false)}
+													className="text-gray-500 hover:text-gray-700 text-2xl"
+												>
+													×
+												</button>
+											</div>
+											<div className="p-6">
+												<pre className="text-xs text-gray-800 whitespace-pre-wrap bg-gray-50 border border-gray-200 rounded-lg p-4">
+													{usagePayloadContent}
+												</pre>
+											</div>
+										</div>
+									</div>
+								)}
+
+								{showPromptModal && (
+									<div
+										className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
 						onClick={() => setShowPromptModal(false)}
 					>
 						<div

@@ -153,6 +153,8 @@ class AIUsageLog(Base):
     currency = Column(String, nullable=True)
     latency_ms = Column(Integer, nullable=True)
     error_message = Column(Text, nullable=True)
+    request_payload = Column(Text, nullable=True)
+    response_payload = Column(Text, nullable=True)
     created_at = Column(String, default=now_str)
 
 
@@ -269,6 +271,14 @@ def init_db():
                     ("price_input_per_1k", "REAL"),
                     ("price_output_per_1k", "REAL"),
                     ("currency", "TEXT"),
+                ],
+            )
+
+            ensure_columns(
+                "ai_usage_logs",
+                [
+                    ("request_payload", "TEXT"),
+                    ("response_payload", "TEXT"),
                 ],
             )
 

@@ -770,6 +770,8 @@ async def get_ai_usage_logs(
                 "currency": log.currency,
                 "latency_ms": log.latency_ms,
                 "error_message": log.error_message,
+                "request_payload": log.request_payload,
+                "response_payload": log.response_payload,
                 "created_at": log.created_at,
             }
         )

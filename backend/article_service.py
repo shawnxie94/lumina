@@ -116,7 +116,16 @@ class ArticleService:
         price_input_per_1k: float | None,
         price_output_per_1k: float | None,
         currency: str | None,
+        request_payload: dict | str | None = None,
+        response_payload: dict | str | None = None,
     ) -> None:
+        def normalize_payload(payload: dict | str | None) -> str | None:
+            if payload is None:
+                return None
+            if isinstance(payload, str):
+                return payload
+            return json.dumps(payload, ensure_ascii=False)
+
         prompt_tokens = self._extract_usage_value(usage, "prompt_tokens")
         completion_tokens = self._extract_usage_value(usage, "completion_tokens")
         total_tokens = self._extract_usage_value(usage, "total_tokens")
@@ -149,6 +158,8 @@ class ArticleService:
                 currency=currency,
                 latency_ms=latency_ms,
                 error_message=error_message,
+                request_payload=normalize_payload(request_payload),
+                response_payload=normalize_payload(response_payload),
                 created_at=now_str(),
             )
         )
@@ -311,6 +322,8 @@ class ArticleService:
                     price_input_per_1k=pricing.get("price_input_per_1k"),
                     price_output_per_1k=pricing.get("price_output_per_1k"),
                     currency=pricing.get("currency"),
+                    request_payload=summary_result.get("request_payload"),
+                    response_payload=summary_result.get("response_payload"),
                 )
             except asyncio.TimeoutError:
                 self._log_ai_usage(
@@ -398,6 +411,8 @@ class ArticleService:
                                 "price_output_per_1k"
                             ),
                             currency=trans_pricing.get("currency"),
+                            request_payload=content_trans.get("request_payload"),
+                            response_payload=content_trans.get("response_payload"),
                         )
                         content_trans = content_trans.get("content")
                     print(f"翻译完成: {article.title}")
@@ -727,6 +742,8 @@ class ArticleService:
                         price_input_per_1k=pricing.get("price_input_per_1k"),
                         price_output_per_1k=pricing.get("price_output_per_1k"),
                         currency=pricing.get("currency"),
+                        request_payload=content_trans.get("request_payload"),
+                        response_payload=content_trans.get("response_payload"),
                     )
                     content_trans = content_trans.get("content")
                 article.content_trans = content_trans
@@ -938,6 +955,8 @@ class ArticleService:
                         price_input_per_1k=pricing.get("price_input_per_1k"),
                         price_output_per_1k=pricing.get("price_output_per_1k"),
                         currency=pricing.get("currency"),
+                        request_payload=result.get("request_payload"),
+                        response_payload=result.get("response_payload"),
                     )
                     result = result.get("content")
                 setattr(article.ai_analysis, content_type, result)

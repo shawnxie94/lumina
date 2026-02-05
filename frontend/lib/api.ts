@@ -189,6 +189,8 @@ export interface AIUsageLogItem {
 	currency: string | null;
 	latency_ms: number | null;
 	error_message: string | null;
+	request_payload: string | null;
+	response_payload: string | null;
 	created_at: string;
 }
 
