@@ -87,6 +87,15 @@ const PRESET_COLORS = [
 	"#6B7280",
 ];
 
+const CURRENCY_OPTIONS = [
+	{ value: "", label: "默认" },
+	{ value: "USD", label: "美元 (USD)" },
+	{ value: "CNY", label: "人民币 (CNY)" },
+	{ value: "HKD", label: "港币 (HKD)" },
+	{ value: "EUR", label: "欧元 (EUR)" },
+	{ value: "JPY", label: "日元 (JPY)" },
+];
+
 interface Category {
 	id: string;
 	name: string;
@@ -242,6 +251,7 @@ export default function SettingsPage() {
 	const [usageEnd, setUsageEnd] = useState("");
 
 	const [showModelAPIModal, setShowModelAPIModal] = useState(false);
+	const [showModelAPIAdvanced, setShowModelAPIAdvanced] = useState(false);
 	const [showPromptModal, setShowPromptModal] = useState(false);
 	const [showCategoryModal, setShowCategoryModal] = useState(false);
 	const [showPromptPreview, setShowPromptPreview] =
@@ -535,11 +545,16 @@ export default function SettingsPage() {
 			is_enabled: true,
 			is_default: false,
 		});
+		setShowModelAPIAdvanced(false);
 		setShowModelAPIModal(true);
 	};
 
 	const handleEditModelAPI = (config: ModelAPIConfig) => {
 		setEditingModelAPIConfig(config);
+		const hasPricingValue =
+			config.price_input_per_1k != null ||
+			config.price_output_per_1k != null ||
+			(!!config.currency && config.currency !== "USD");
 		setModelAPIFormData({
 			name: config.name,
 			base_url: config.base_url,
@@ -551,6 +566,7 @@ export default function SettingsPage() {
 			is_enabled: config.is_enabled,
 			is_default: config.is_default,
 		});
+		setShowModelAPIAdvanced(hasPricingValue);
 		setShowModelAPIModal(true);
 	};
 
@@ -577,6 +593,7 @@ export default function SettingsPage() {
 			showToast(editingModelAPIConfig ? "配置已更新" : "配置已创建");
 			fetchModelAPIConfigs();
 			setShowModelAPIModal(false);
+			setShowModelAPIAdvanced(false);
 			setEditingModelAPIConfig(null);
 		} catch (error) {
 			console.error("Failed to save model API config:", error);
@@ -734,6 +751,30 @@ export default function SettingsPage() {
 		if (status === "processing") return "处理中";
 		if (status === "cancelled") return "已取消";
 		return "待处理";
+	};
+
+	const getUsageContentTypeLabel = (contentType: string | null) => {
+		if (!contentType) return "-";
+		if (contentType === "summary") return "摘要";
+		if (contentType === "key_points") return "总结";
+		if (contentType === "outline") return "大纲";
+		if (contentType === "quotes") return "金句";
+		if (contentType === "translation") return "翻译";
+		return contentType;
+	};
+
+	const formatUsageDateTime = (value: string | null) => {
+		if (!value) return "-";
+		const date = new Date(value);
+		if (Number.isNaN(date.getTime())) return value;
+		const pad = (num: number) => String(num).padStart(2, "0");
+		const year = date.getFullYear();
+		const month = pad(date.getMonth() + 1);
+		const day = pad(date.getDate());
+		const hours = pad(date.getHours());
+		const minutes = pad(date.getMinutes());
+		const seconds = pad(date.getSeconds());
+		return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 	};
 
 	const usageCurrency =
@@ -1043,23 +1084,23 @@ export default function SettingsPage() {
 										</h2>
 										<div className="flex items-center gap-2">
 											{showUsageView ? (
-												<button
-													onClick={() => setShowUsageView(false)}
-													className="px-4 py-2 bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
-												>
-													返回配置列表
-												</button>
+											<button
+												onClick={() => setShowUsageView(false)}
+												className="px-4 py-2 text-sm bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
+											>
+												返回配置列表
+											</button>
 											) : (
 												<>
-													<button
-														onClick={() => {
-															setShowUsageView(true);
-															setUsagePage(1);
-														}}
-														className="px-4 py-2 bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
-													>
-														调用记录/计量
-													</button>
+												<button
+													onClick={() => {
+														setShowUsageView(true);
+														setUsagePage(1);
+													}}
+													className="px-4 py-2 text-sm bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
+												>
+													调用记录/计量
+												</button>
 													<button
 														onClick={handleCreateModelAPINew}
 														className="px-4 py-2 bg-primary text-white rounded-sm hover:bg-primary-ink transition"
@@ -1080,14 +1121,15 @@ export default function SettingsPage() {
 														{usageSummary?.calls ?? 0}
 													</div>
 												</div>
+										<div className="bg-surface border border-border rounded-sm p-3">
+											<div className="text-xs text-text-3">Tokens（输入/输出）</div>
+											<div className="text-lg font-semibold text-text-1">
+												{usageSummary?.prompt_tokens ?? 0}/
+												{usageSummary?.completion_tokens ?? 0}
+											</div>
+										</div>
 												<div className="bg-surface border border-border rounded-sm p-3">
-													<div className="text-xs text-text-3">Tokens</div>
-													<div className="text-lg font-semibold text-text-1">
-														{usageSummary?.total_tokens ?? 0}
-													</div>
-												</div>
-												<div className="bg-surface border border-border rounded-sm p-3">
-													<div className="text-xs text-text-3">费用合计</div>
+													<div className="text-xs text-text-3">费用合计（参考）</div>
 													<div className="text-lg font-semibold text-text-1">
 														{(usageSummary?.cost_total ?? 0).toFixed(4)}
 														{usageCurrency ? ` ${usageCurrency}` : ""}
@@ -1209,10 +1251,10 @@ export default function SettingsPage() {
 																<tr>
 																	<th className="text-left px-3 py-2">模型</th>
 																	<th className="text-left px-3 py-2">调用</th>
-																	<th className="text-left px-3 py-2">
-																		Tokens
-																	</th>
-																	<th className="text-left px-3 py-2">费用</th>
+															<th className="text-left px-3 py-2">
+																Tokens（输入/输出）
+															</th>
+																	<th className="text-left px-3 py-2">费用（参考）</th>
 																</tr>
 															</thead>
 															<tbody className="divide-y divide-border">
@@ -1229,9 +1271,9 @@ export default function SettingsPage() {
 																		<td className="px-3 py-2 text-text-2">
 																			{row.calls}
 																		</td>
-																		<td className="px-3 py-2 text-text-2">
-																			{row.total_tokens}
-																		</td>
+																<td className="px-3 py-2 text-text-2">
+																	{row.prompt_tokens ?? "-"}/{row.completion_tokens ?? "-"}
+																</td>
 																		<td className="px-3 py-2 text-text-2">
 																			{row.cost_total.toFixed(4)}
 																			{row.currency ? ` ${row.currency}` : ""}
@@ -1270,27 +1312,27 @@ export default function SettingsPage() {
 																	<th className="text-left px-3 py-2">模型</th>
 																	<th className="text-left px-3 py-2">类型</th>
 																	<th className="text-left px-3 py-2">
-																		Tokens
+																		Tokens（输入/输出）
 																	</th>
-																	<th className="text-left px-3 py-2">费用</th>
+																	<th className="text-left px-3 py-2">费用（参考）</th>
 																	<th className="text-left px-3 py-2">状态</th>
 																</tr>
 															</thead>
 															<tbody className="divide-y divide-border">
 																{usageLogs.map((log) => (
 																	<tr key={log.id} className="hover:bg-muted">
-																		<td className="px-3 py-2 text-text-2">
-																			{log.created_at}
-																		</td>
+																<td className="px-3 py-2 text-text-2">
+																	{formatUsageDateTime(log.created_at)}
+																</td>
 																		<td className="px-3 py-2 text-text-1">
 																			{log.model_api_config_name || "-"}
 																		</td>
-																		<td className="px-3 py-2 text-text-2">
-																			{log.content_type || "-"}
-																		</td>
-																		<td className="px-3 py-2 text-text-2">
-																			{log.total_tokens ?? "-"}
-																		</td>
+															<td className="px-3 py-2 text-text-2">
+																{getUsageContentTypeLabel(log.content_type)}
+															</td>
+															<td className="px-3 py-2 text-text-2">
+																{log.prompt_tokens ?? "-"}/{log.completion_tokens ?? "-"}
+															</td>
 																		<td className="px-3 py-2 text-text-2">
 																			{log.cost_total != null
 																				? log.cost_total.toFixed(4)
@@ -2045,10 +2087,13 @@ export default function SettingsPage() {
 				</div>
 
 				{showModelAPIModal && (
-					<div
-						className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-						onClick={() => setShowModelAPIModal(false)}
-					>
+										<div
+											className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+											onClick={() => {
+												setShowModelAPIModal(false);
+												setShowModelAPIAdvanced(false);
+											}}
+										>
 						<div
 							className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
 							onClick={(event) => event.stopPropagation()}
@@ -2059,10 +2104,13 @@ export default function SettingsPage() {
 										? "编辑模型API配置"
 										: "创建新模型API配置"}
 								</h3>
-								<button
-									onClick={() => setShowModelAPIModal(false)}
-									className="text-gray-500 hover:text-gray-700 text-2xl"
-								>
+												<button
+													onClick={() => {
+													setShowModelAPIModal(false);
+													setShowModelAPIAdvanced(false);
+												}}
+												className="text-gray-500 hover:text-gray-700 text-2xl"
+												>
 									×
 								</button>
 							</div>
@@ -2143,62 +2191,80 @@ export default function SettingsPage() {
 									/>
 								</div>
 
-								<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-									<div>
-										<label className="block text-sm font-medium text-gray-700 mb-2">
-											输入单价（每 1K tokens）
-										</label>
-										<input
-											type="number"
-											step="0.0001"
-											value={modelAPIFormData.price_input_per_1k}
-											onChange={(e) =>
-												setModelAPIFormData({
-													...modelAPIFormData,
-													price_input_per_1k: e.target.value,
-												})
-											}
-											className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-											placeholder="0.0000"
-										/>
-									</div>
-									<div>
-										<label className="block text-sm font-medium text-gray-700 mb-2">
-											输出单价（每 1K tokens）
-										</label>
-										<input
-											type="number"
-											step="0.0001"
-											value={modelAPIFormData.price_output_per_1k}
-											onChange={(e) =>
-												setModelAPIFormData({
-													...modelAPIFormData,
-													price_output_per_1k: e.target.value,
-												})
-											}
-											className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-											placeholder="0.0000"
-										/>
-									</div>
-								</div>
+							<div className="border border-gray-200 rounded-lg">
+								<button
+									type="button"
+									onClick={() =>
+										setShowModelAPIAdvanced(!showModelAPIAdvanced)
+									}
+									className="w-full flex items-center justify-between px-4 py-3 text-sm text-gray-700 hover:bg-gray-50"
+								>
+									<span>高级设置（可选）</span>
+									<span className="text-gray-400">
+										{showModelAPIAdvanced ? "收起" : "展开"}
+									</span>
+								</button>
+								{showModelAPIAdvanced && (
+									<div className="border-t border-gray-200 p-4 space-y-4">
+										<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+											<div>
+												<label className="block text-sm font-medium text-gray-700 mb-2">
+													输入单价（每 1K tokens）
+												</label>
+												<input
+													type="number"
+													step="0.0001"
+													value={modelAPIFormData.price_input_per_1k}
+													onChange={(e) =>
+														setModelAPIFormData({
+															...modelAPIFormData,
+															price_input_per_1k: e.target.value,
+														})
+													}
+													className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+													placeholder="0.0000"
+												/>
+											</div>
+											<div>
+												<label className="block text-sm font-medium text-gray-700 mb-2">
+													输出单价（每 1K tokens）
+												</label>
+												<input
+													type="number"
+													step="0.0001"
+													value={modelAPIFormData.price_output_per_1k}
+													onChange={(e) =>
+														setModelAPIFormData({
+															...modelAPIFormData,
+															price_output_per_1k: e.target.value,
+														})
+													}
+													className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+													placeholder="0.0000"
+												/>
+											</div>
+										</div>
 
-								<div>
-									<label className="block text-sm font-medium text-gray-700 mb-2">
-										币种
-									</label>
-									<input
-										type="text"
-										value={modelAPIFormData.currency}
-										onChange={(e) =>
-											setModelAPIFormData({
-												...modelAPIFormData,
-												currency: e.target.value,
-											})
-										}
-										className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-										placeholder="USD"
-									/>
-								</div>
+										<div>
+											<label className="block text-sm font-medium text-gray-700 mb-2">
+												币种
+											</label>
+											<Select
+												value={modelAPIFormData.currency || ""}
+												onChange={(value) =>
+													setModelAPIFormData({
+														...modelAPIFormData,
+														currency: value,
+													})
+												}
+												className="select-modern-antd w-full"
+												popupClassName="select-modern-dropdown"
+												options={CURRENCY_OPTIONS}
+											/>
+										</div>
+									</div>
+								)}
+							</div>
 
 								<div className="flex items-center gap-4">
 									<label className="flex items-center gap-2">
@@ -2234,10 +2300,13 @@ export default function SettingsPage() {
 							</div>
 
 							<div className="flex justify-end gap-2 p-6 border-t bg-gray-50">
-								<button
-									onClick={() => setShowModelAPIModal(false)}
-									className="px-4 py-2 bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
-								>
+										<button
+											onClick={() => {
+												setShowModelAPIModal(false);
+												setShowModelAPIAdvanced(false);
+											}}
+											className="px-4 py-2 bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
+										>
 									取消
 								</button>
 								<button
