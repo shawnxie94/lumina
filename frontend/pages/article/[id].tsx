@@ -820,6 +820,12 @@ export default function ArticleDetailPage() {
                 </Link>
               </div>
             )}
+            <div>
+              <span className="font-medium text-text-2">发表时间：</span>
+              {article.published_at
+                ? new Date(article.published_at).toLocaleDateString('zh-CN')
+                : new Date(article.created_at).toLocaleDateString('zh-CN')}
+            </div>
             {article.source_url && (
               <div>
                 <span className="font-medium text-text-2">来源：</span>
@@ -829,16 +835,10 @@ export default function ArticleDetailPage() {
                   rel="noopener noreferrer"
                   className="text-primary hover:underline"
                 >
-                  点击查看
+                  跳转
                 </a>
               </div>
             )}
-            <div>
-              <span className="font-medium text-text-2">发表时间：</span>
-              {article.published_at
-                ? new Date(article.published_at).toLocaleDateString('zh-CN')
-                : new Date(article.created_at).toLocaleDateString('zh-CN')}
-            </div>
           </div>
         </div>
       </section>
