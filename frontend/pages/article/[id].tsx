@@ -6,6 +6,8 @@ import Link from 'next/link';
 import { marked } from 'marked';
 
 import { articleApi, type ArticleDetail, type ModelAPIConfig, type PromptConfig } from '@/lib/api';
+import AppFooter from '@/components/AppFooter';
+import AppHeader from '@/components/AppHeader';
 import { useToast } from '@/components/Toast';
 import { BackToTop } from '@/components/BackToTop';
 import { IconBolt, IconBook, IconCopy, IconDoc, IconEdit, IconEye, IconEyeOff, IconList, IconRefresh, IconRobot, IconTrash } from '@/components/icons';
@@ -674,38 +676,41 @@ export default function ArticleDetailPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-app flex items-center justify-center">
-        <div className="text-text-3">加载中...</div>
+      <div className="min-h-screen bg-app flex flex-col">
+        <AppHeader />
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-text-3">加载中...</div>
+        </div>
+        <AppFooter />
       </div>
     );
   }
 
   if (!article) {
     return (
-      <div className="min-h-screen bg-app flex items-center justify-center">
-        <div className="text-text-3">文章不存在</div>
+      <div className="min-h-screen bg-app flex flex-col">
+        <AppHeader />
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-text-3">文章不存在</div>
+        </div>
+        <AppFooter />
       </div>
     );
   }
 
   return (
-    <div className={`min-h-screen ${immersiveMode ? 'bg-surface' : 'bg-app'}`}>
+    <div className={`min-h-screen ${immersiveMode ? 'bg-surface' : 'bg-app'} flex flex-col`}>
       <Head>
         <title>{article?.title ? `${article.title} - Lumina` : '文章详情 - Lumina'}</title>
       </Head>
       <ReadingProgress />
-       <nav className={`bg-surface ${immersiveMode ? '' : 'shadow-sm border-b border-border'}`}>
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between mb-3 relative">
-            <Link href="/" className="text-primary hover:text-primary-ink transition">
-              ← 返回列表
-            </Link>
-            <h1 className="text-2xl font-bold text-text-1 truncate absolute left-1/2 -translate-x-1/2 max-w-[70%] text-center">
-              {article.title}
-            </h1>
-            <div></div>
-          </div>
-          <div className={`flex flex-wrap gap-4 text-sm text-text-2 pb-3 justify-center ${immersiveMode ? '' : 'border-b border-border'}`}>
+      <AppHeader />
+      <section className={`bg-surface ${immersiveMode ? '' : 'border-b border-border'}`}>
+        <div className="max-w-7xl mx-auto px-4 py-6">
+          <h1 className="text-2xl font-bold text-text-1 text-center mb-3">
+            {article.title}
+          </h1>
+          <div className={`flex flex-wrap gap-4 text-sm text-text-2 justify-center ${immersiveMode ? '' : 'border-b border-border pb-3'}`}>
             {article.category && (
               <div>
                 <span className="font-medium text-text-2">分类：</span>
@@ -749,9 +754,9 @@ export default function ArticleDetailPage() {
             </div>
           </div>
         </div>
-      </nav>
+      </section>
 
-        <div className={`max-w-7xl mx-auto px-4 ${immersiveMode ? 'py-6' : 'py-8'}`}>
+        <div className={`max-w-7xl mx-auto px-4 ${immersiveMode ? 'py-6' : 'py-8'} flex-1`}>
           <div className="flex gap-4">
             {!immersiveMode && tocItems.length > 0 && (
               <aside className={`hidden xl:block flex-shrink-0 transition-all duration-300 ${tocCollapsed ? 'w-12' : 'w-48'}`}>
@@ -1274,6 +1279,7 @@ export default function ArticleDetailPage() {
         })()
       )}
 
+      <AppFooter />
       <BackToTop />
     </div>
   );

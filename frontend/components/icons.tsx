@@ -247,3 +247,12 @@ export function IconLink(props: IconProps) {
     </IconBase>
   );
 }
+
+export function IconGithub(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M9 19c-5 1.5-5-2.5-7-3" />
+      <path d="M14 22v-3.4a3.4 3.4 0 0 0-.9-2.4c3 0 6-1.4 6-6a4.5 4.5 0 0 0-1.2-3.3 4.2 4.2 0 0 0-.1-3.1s-1-.3-3.3 1.2a11.5 11.5 0 0 0-6 0C6.2 2.9 5.2 3.2 5.2 3.2a4.2 4.2 0 0 0-.1 3.1A4.5 4.5 0 0 0 3.9 9.6c0 4.6 3 6 6 6a3.4 3.4 0 0 0-.9 2.3V22" />
+    </IconBase>
+  );
+}

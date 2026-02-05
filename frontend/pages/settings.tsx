@@ -23,6 +23,8 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 
 import { articleApi, categoryApi, type ModelAPIConfig, type PromptConfig } from '@/lib/api';
+import AppFooter from '@/components/AppFooter';
+import AppHeader from '@/components/AppHeader';
 import { useToast } from '@/components/Toast';
 import { IconEdit, IconEye, IconLink, IconList, IconNote, IconPlug, IconRobot, IconTag, IconTrash } from '@/components/icons';
 import { useAuth } from '@/contexts/AuthContext';
@@ -717,47 +719,43 @@ export default function SettingsPage() {
 
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-gray-500">加载中...</div>
+      <div className="min-h-screen bg-app flex flex-col">
+        <AppHeader />
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-text-3">加载中...</div>
+        </div>
+        <AppFooter />
       </div>
     );
   }
 
   if (!isAdmin) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="text-gray-500 mb-4">无权限访问此页面</div>
-          <Link href="/login" className="text-blue-600 hover:underline">
-            去登录
-          </Link>
+      <div className="min-h-screen bg-app flex flex-col">
+        <AppHeader />
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <div className="text-text-3 mb-4">无权限访问此页面</div>
+            <Link href="/login" className="text-primary hover:underline">
+              去登录
+            </Link>
+          </div>
         </div>
+        <AppFooter />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-app flex flex-col">
       <Head>
         <title>管理台 - Lumina</title>
       </Head>
-      <nav className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <Link href="/" className="text-blue-600 hover:text-blue-700 transition">
-              ← 返回列表
-            </Link>
-            <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-              <img src="/favicon.png" alt="Lumina" className="h-6 w-6" />
-              <span>Lumina 管理台</span>
-            </h1>
-            <div className="w-20"></div>
-          </div>
-        </div>
-      </nav>
+      <AppHeader />
 
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        <div className="flex gap-6">
+      <div className="flex-1">
+        <div className="max-w-7xl mx-auto px-4 py-8">
+          <div className="flex gap-6">
           <aside className="w-64 flex-shrink-0">
             <div className="bg-white rounded-lg shadow-sm p-4">
               <h2 className="font-semibold text-text-1 mb-4">管理模块</h2>
@@ -1921,6 +1919,8 @@ export default function SettingsPage() {
           </div>
         </div>
       )}
+      </div>
+      <AppFooter />
     </div>
   );
 }

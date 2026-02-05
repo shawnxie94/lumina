@@ -7,9 +7,11 @@ import { ConfigProvider, DatePicker, Select } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
 
 import { articleApi, categoryApi, Article, Category } from '@/lib/api';
+import AppFooter from '@/components/AppFooter';
+import AppHeader from '@/components/AppHeader';
 import { useToast } from '@/components/Toast';
 import { BackToTop } from '@/components/BackToTop';
-import { IconEye, IconEyeOff, IconGlobe, IconLock, IconLogout, IconSearch, IconSettings, IconTag, IconTrash } from '@/components/icons';
+import { IconEye, IconEyeOff, IconGlobe, IconSearch, IconTag, IconTrash } from '@/components/icons';
 import { useAuth } from '@/contexts/AuthContext';
 
 const formatDate = (date: Date | null): string => {
@@ -65,7 +67,7 @@ const getDateRangeFromQuickOption = (option: QuickDateOption): [Date | null, Dat
 export default function Home() {
   const router = useRouter();
   const { showToast } = useToast();
-  const { isAdmin, logout } = useAuth();
+  const { isAdmin } = useAuth();
   const [articles, setArticles] = useState<Article[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [categoryStats, setCategoryStats] = useState<{ id: string; name: string; color: string | null; article_count: number }[]>([]);
@@ -429,56 +431,15 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-app">
+    <div className="min-h-screen bg-app flex flex-col">
       <Head>
         <title>Lumina - 信息知识库</title>
       </Head>
-      <nav className="bg-surface border-b border-border shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-text-1 flex items-center gap-2">
-                <img src="/favicon.png" alt="Lumina" className="h-7 w-7" />
-                <span>Lumina</span>
-              </h1>
-            </div>
-            <div className="flex gap-2 items-center">
-              {isAdmin && (
-                <Link
-                  href="/settings"
-                  className="flex items-center gap-1 px-3 py-1 rounded-sm text-sm text-text-3 hover:text-text-1 hover:bg-muted transition"
-                  title="设置"
-                >
-                  <IconSettings className="h-4 w-4" />
-                  <span>设置</span>
-                </Link>
-              )}
-              {isAdmin ? (
-                <button
-                  onClick={logout}
-                  className="flex items-center gap-1 px-3 py-1 rounded-sm text-sm text-text-3 hover:text-red-600 hover:bg-red-50 transition"
-                  title="退出登录"
-                >
-                  <IconLogout className="h-4 w-4" />
-                  <span>退出</span>
-                </button>
-              ) : (
-                <Link
-                  href="/login"
-                  className="flex items-center gap-1 px-3 py-1 rounded-sm text-sm text-text-3 hover:text-primary hover:bg-primary-soft transition"
-                  title="管理员登录"
-                >
-                  <IconLock className="h-4 w-4" />
-                  <span>登录</span>
-                </Link>
-              )}
-            </div>
-          </div>
-        </div>
-      </nav>
+      <AppHeader />
 
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        <div className="flex gap-6">
+      <div className="flex-1">
+        <div className="max-w-7xl mx-auto px-4 py-8">
+          <div className="flex gap-6">
           <aside className={`flex-shrink-0 transition-all duration-300 ${sidebarCollapsed ? 'w-12' : 'w-56'}`}>
             <div className="sticky top-4 bg-surface rounded-sm shadow-sm border border-border p-4 max-h-[calc(100vh-2rem)] overflow-y-auto">
               <div className="flex items-center justify-between mb-4">
@@ -946,6 +907,8 @@ export default function Home() {
           </main>
         </div>
       </div>
+      </div>
+      <AppFooter />
       <BackToTop />
     </div>
   );
