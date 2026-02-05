@@ -79,6 +79,8 @@ class Article(Base):
     category_id = Column(String, ForeignKey("categories.id"))
     created_at = Column(String, default=now_str)
     updated_at = Column(String, default=now_str)
+    note_content = Column(Text, nullable=True)
+    note_annotations = Column(Text, nullable=True)
 
     category = relationship("Category", back_populates="articles")
     ai_analysis = relationship("AIAnalysis", back_populates="article", uselist=False)
@@ -279,6 +281,14 @@ def init_db():
                 [
                     ("request_payload", "TEXT"),
                     ("response_payload", "TEXT"),
+                ],
+            )
+
+            ensure_columns(
+                "articles",
+                [
+                    ("note_content", "TEXT"),
+                    ("note_annotations", "TEXT"),
                 ],
             )
 

@@ -132,6 +132,8 @@ export interface ArticleDetail extends Article {
 	source_url: string;
 	published_at: string | null;
 	is_visible: boolean;
+	note_content?: string | null;
+	note_annotations?: string | null;
 	ai_analysis: {
 		summary: string | null;
 		summary_status: string | null;
@@ -262,6 +264,17 @@ export const articleApi = {
 
 	getArticle: async (id: string) => {
 		const response = await api.get(`/api/articles/${id}`);
+		return response.data;
+	},
+
+	updateArticleNotes: async (
+		id: string,
+		data: {
+			note_content?: string | null;
+			annotations?: Array<{ id: string; start: number; end: number; comment: string }>;
+		},
+	) => {
+		const response = await api.put(`/api/articles/${id}/notes`, data);
 		return response.data;
 	},
 

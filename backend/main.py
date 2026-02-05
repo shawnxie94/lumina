@@ -159,6 +159,11 @@ class CategoryCreate(BaseModel):
     sort_order: Optional[int] = 0
 
 
+class ArticleNotesUpdate(BaseModel):
+    note_content: Optional[str] = None
+    annotations: Optional[list[dict]] = None
+
+
 class ModelAPITestRequest(BaseModel):
     prompt: Optional[str] = None
     max_tokens: Optional[int] = None
@@ -391,6 +396,8 @@ async def get_article(
         "is_visible": article.is_visible,
         "published_at": article.published_at,
         "created_at": article.created_at,
+        "note_content": article.note_content,
+        "note_annotations": article.note_annotations,
         "ai_analysis": {
             "summary": article.ai_analysis.summary if article.ai_analysis else None,
             "summary_status": article.ai_analysis.summary_status
@@ -432,6 +439,26 @@ async def get_article(
         if next_article
         else None,
     }
+
+
+@app.put("/api/articles/{article_id}/notes")
+async def update_article_notes(
+    article_id: str,
+    payload: ArticleNotesUpdate,
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
+    article = article_service.get_article(db, article_id)
+    if not article:
+        raise HTTPException(status_code=404, detail="文章不存在")
+    if payload.note_content is not None:
+        article.note_content = payload.note_content
+    if payload.annotations is not None:
+        article.note_annotations = json.dumps(payload.annotations, ensure_ascii=False)
+    article.updated_at = now_str()
+    db.commit()
+    db.refresh(article)
+    return {"success": True}
 
 
 @app.delete("/api/articles/{article_id}")

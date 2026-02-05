@@ -1,5 +1,5 @@
 import Head from 'next/head';
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 
 import { useRouter } from 'next/router';
 import Link from 'next/link';
@@ -10,7 +10,7 @@ import AppFooter from '@/components/AppFooter';
 import AppHeader from '@/components/AppHeader';
 import { useToast } from '@/components/Toast';
 import { BackToTop } from '@/components/BackToTop';
-import { IconBolt, IconBook, IconCopy, IconDoc, IconEdit, IconEye, IconEyeOff, IconList, IconRefresh, IconRobot, IconTrash } from '@/components/icons';
+import { IconBolt, IconBook, IconCopy, IconDoc, IconEdit, IconEye, IconEyeOff, IconList, IconNote, IconRefresh, IconRobot, IconTrash } from '@/components/icons';
 import { useAuth } from '@/contexts/AuthContext';
 import { Select } from 'antd';
 
@@ -337,9 +337,124 @@ function ReadingProgress() {
   );
 }
 
+function createAnnotationId() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return `anno_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
+
+function getRangeOffsets(root: HTMLElement, range: Range) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let startOffset = 0;
+  let endOffset = 0;
+  let current = walker.nextNode();
+  let offset = 0;
+
+  while (current) {
+    const textNode = current as Text;
+    const length = textNode.data.length;
+    if (textNode === range.startContainer) {
+      startOffset = offset + range.startOffset;
+    }
+    if (textNode === range.endContainer) {
+      endOffset = offset + range.endOffset;
+      break;
+    }
+    offset += length;
+    current = walker.nextNode();
+  }
+
+  return { start: startOffset, end: endOffset };
+}
+
+function getRangeSnippet(root: HTMLElement, start: number, end: number, context = 40) {
+  if (start >= end) return '';
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let current = walker.nextNode();
+  let offset = 0;
+  let fullText = '';
+
+  while (current) {
+    const node = current as Text;
+    fullText += node.data;
+    current = walker.nextNode();
+  }
+
+  const safeStart = Math.max(0, start);
+  const safeEnd = Math.min(fullText.length, end);
+  const left = Math.max(0, safeStart - context);
+  const right = Math.min(fullText.length, safeEnd + context);
+  const prefix = left > 0 ? '…' : '';
+  const suffix = right < fullText.length ? '…' : '';
+  const before = fullText.slice(left, safeStart);
+  const middle = fullText.slice(safeStart, safeEnd);
+  const after = fullText.slice(safeEnd, right);
+  return `${prefix}${before}<mark class="annotation-highlight">${middle}</mark>${after}${suffix}`.trim();
+}
+
+function applyAnnotations(html: string, annotations: ArticleAnnotation[]) {
+  if (!annotations || annotations.length === 0) return html;
+  if (typeof window === 'undefined') return html;
+
+  const sorted = [...annotations].sort((a, b) => a.start - b.start);
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, 'text/html');
+
+  const textNodes: Array<{ node: Text; start: number; end: number }> = [];
+  const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
+  let offset = 0;
+  let current = walker.nextNode();
+  while (current) {
+    const node = current as Text;
+    const length = node.data.length;
+    textNodes.push({ node, start: offset, end: offset + length });
+    offset += length;
+    current = walker.nextNode();
+  }
+
+  sorted.forEach((annotation) => {
+    textNodes.forEach(({ node, start, end }) => {
+      if (end <= annotation.start) return;
+      if (start >= annotation.end) return;
+      if (!node.parentNode) return;
+      const text = node.data;
+      const highlightStart = Math.max(annotation.start - start, 0);
+      const highlightEnd = Math.min(annotation.end - start, text.length);
+      if (highlightStart >= highlightEnd) return;
+      const before = text.slice(0, highlightStart);
+      const middle = text.slice(highlightStart, highlightEnd);
+      const after = text.slice(highlightEnd);
+      const frag = doc.createDocumentFragment();
+      if (before) frag.appendChild(doc.createTextNode(before));
+      const mark = doc.createElement('mark');
+      mark.className = 'annotation-highlight';
+      mark.setAttribute('data-annotation-id', annotation.id);
+      mark.textContent = middle;
+      frag.appendChild(mark);
+      if (after) frag.appendChild(doc.createTextNode(after));
+      node.replaceWith(frag);
+    });
+  });
+
+  return doc.body.innerHTML;
+}
+
+function renderMarkdown(content: string) {
+  const result = marked.parse(content);
+  return typeof result === 'string' ? result : '';
+}
+
 interface ArticleNeighbor {
   id: string;
   title: string;
+}
+
+interface ArticleAnnotation {
+  id: string;
+  start: number;
+  end: number;
+  comment: string;
 }
 
 export default function ArticleDetailPage() {
@@ -368,6 +483,26 @@ export default function ArticleDetailPage() {
   const [editContent, setEditContent] = useState('');
   const [saving, setSaving] = useState(false);
 
+  const [noteContent, setNoteContent] = useState('');
+  const [noteDraft, setNoteDraft] = useState('');
+  const [showNoteModal, setShowNoteModal] = useState(false);
+  const [annotations, setAnnotations] = useState<ArticleAnnotation[]>([]);
+  const [activeAnnotationId, setActiveAnnotationId] = useState<string>('');
+  const [showAnnotationView, setShowAnnotationView] = useState(false);
+  const [pendingAnnotationRange, setPendingAnnotationRange] = useState<{
+    start: number;
+    end: number;
+  } | null>(null);
+  const [pendingAnnotationText, setPendingAnnotationText] = useState('');
+  const [pendingAnnotationComment, setPendingAnnotationComment] = useState('');
+  const [showAnnotationModal, setShowAnnotationModal] = useState(false);
+  const [activeAnnotationText, setActiveAnnotationText] = useState('');
+  const [annotationEditDraft, setAnnotationEditDraft] = useState('');
+  const [showSelectionToolbar, setShowSelectionToolbar] = useState(false);
+  const [selectionToolbarPos, setSelectionToolbarPos] = useState<{ x: number; y: number } | null>(null);
+  const [hoverAnnotationId, setHoverAnnotationId] = useState<string>('');
+  const [hoverTooltipPos, setHoverTooltipPos] = useState<{ x: number; y: number } | null>(null);
+
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [tocItems, setTocItems] = useState<TocItem[]>([]);
   const [activeTocId, setActiveTocId] = useState('');
@@ -395,6 +530,20 @@ export default function ArticleDetailPage() {
     }
     return false;
   }, []);
+
+  const renderedHtml = useMemo(() => {
+    if (!article) return '';
+    const baseHtml = showTranslation && article.content_trans
+      ? renderMarkdown(article.content_trans)
+      : article.content_md
+        ? renderMarkdown(article.content_md)
+        : article.content_html;
+    return applyAnnotations(baseHtml, annotations);
+  }, [article, annotations, showTranslation]);
+
+  const activeAnnotation = annotations.find(
+    (item) => item.id === activeAnnotationId,
+  );
   useEffect(() => {
     if (id) {
       fetchArticle();
@@ -428,6 +577,22 @@ export default function ArticleDetailPage() {
       }, POLLING_INTERVAL);
     }
   }, [article, id, needsPolling]);
+
+  useEffect(() => {
+    if (!article) return;
+    setNoteContent(article.note_content || '');
+    setNoteDraft(article.note_content || '');
+    if (article.note_annotations) {
+      try {
+        const parsed = JSON.parse(article.note_annotations) as ArticleAnnotation[];
+        setAnnotations(parsed || []);
+      } catch {
+        setAnnotations([]);
+      }
+    } else {
+      setAnnotations([]);
+    }
+  }, [article?.id]);
 
   useEffect(() => {
     if (!contentRef.current) return;
@@ -523,12 +688,58 @@ export default function ArticleDetailPage() {
 
   const handleContentClick = (event: React.MouseEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement | null;
-    if (!target || target.tagName !== 'IMG') return;
-    const img = target as HTMLImageElement;
-    if (img.src) {
-      setLightboxImage(img.src);
+    if (!target) return;
+    if (target.tagName === 'IMG') {
+      const img = target as HTMLImageElement;
+      if (img.src) {
+        setLightboxImage(img.src);
+      }
+      return;
+    }
+    const mark = target.closest('mark[data-annotation-id]') as HTMLElement | null;
+    if (mark) {
+      const annotationId = mark.getAttribute('data-annotation-id') || '';
+      setActiveAnnotationId(annotationId);
+      if (contentRef.current) {
+        const annotation = annotations.find((item) => item.id === annotationId);
+        if (annotation) {
+          setActiveAnnotationText(
+            getRangeSnippet(contentRef.current, annotation.start, annotation.end),
+          );
+          setAnnotationEditDraft(annotation.comment);
+        } else {
+          setActiveAnnotationText('');
+        }
+      }
+      setShowAnnotationView(true);
     }
   };
+
+  const handleContentMouseOver = (event: React.MouseEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLElement | null;
+    if (!target) return;
+    const mark = target.closest('mark[data-annotation-id]') as HTMLElement | null;
+    if (!mark) return;
+    const annotationId = mark.getAttribute('data-annotation-id') || '';
+    if (!annotationId) return;
+    const rect = mark.getBoundingClientRect();
+    setHoverAnnotationId(annotationId);
+    setHoverTooltipPos({
+      x: rect.left + rect.width / 2,
+      y: rect.top,
+    });
+  };
+
+  const handleContentMouseOut = (event: React.MouseEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLElement | null;
+    if (!target) return;
+    const mark = target.closest('mark[data-annotation-id]') as HTMLElement | null;
+    if (mark) {
+      setHoverAnnotationId('');
+      setHoverTooltipPos(null);
+    }
+  };
+
 
   const showSummarySection = isAdmin || Boolean(article?.ai_analysis?.summary);
   const showKeyPointsSection = isAdmin || Boolean(article?.ai_analysis?.key_points);
@@ -584,6 +795,37 @@ export default function ArticleDetailPage() {
   const showActiveGenerateButton = isAdmin
     && (!activeTabConfig?.status || activeTabConfig.status === 'completed' || activeTabConfig.status === 'failed');
   const showActiveCopyButton = Boolean(activeTabConfig?.content);
+
+
+  useEffect(() => {
+    const handleSelection = () => {
+      if (!contentRef.current) return;
+      const selection = window.getSelection();
+      if (!selection || selection.rangeCount === 0) {
+        setShowSelectionToolbar(false);
+        return;
+      }
+      const range = selection.getRangeAt(0);
+      if (range.collapsed) {
+        setShowSelectionToolbar(false);
+        return;
+      }
+      if (!contentRef.current.contains(range.commonAncestorContainer)) {
+        setShowSelectionToolbar(false);
+        return;
+      }
+      const rect = range.getBoundingClientRect();
+      setSelectionToolbarPos({
+        x: rect.right + 8,
+        y: rect.top - 8,
+      });
+      setShowSelectionToolbar(true);
+    };
+    document.addEventListener('selectionchange', handleSelection);
+    return () => {
+      document.removeEventListener('selectionchange', handleSelection);
+    };
+  }, []);
 
   function getAiTabStatusBadge(status?: string | null) {
     if (!status) return null;
@@ -714,6 +956,107 @@ export default function ArticleDetailPage() {
       console.error('Failed to copy:', error);
       showToast('复制失败', 'error');
     }
+  };
+
+  const saveNotes = async (nextNotes: string, nextAnnotations: ArticleAnnotation[]) => {
+    if (!article) return;
+    try {
+      await articleApi.updateArticleNotes(article.id, {
+        note_content: nextNotes,
+        annotations: nextAnnotations,
+      });
+    } catch (error) {
+      console.error('Failed to save notes:', error);
+      showToast('保存失败', 'error');
+    }
+  };
+
+  const handleSaveNoteContent = async () => {
+    setNoteContent(noteDraft);
+    setShowNoteModal(false);
+    await saveNotes(noteDraft, annotations);
+    showToast('已保存批注');
+  };
+
+  const handleStartAnnotation = () => {
+    if (!contentRef.current) return;
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) {
+      showToast('请先选择需要划线的文字', 'info');
+      return;
+    }
+    const range = selection.getRangeAt(0);
+    if (range.collapsed) {
+      showToast('请先选择需要划线的文字', 'info');
+      return;
+    }
+    if (!contentRef.current.contains(range.commonAncestorContainer)) {
+      showToast('请选择正文中的文字', 'info');
+      return;
+    }
+    const { start, end } = getRangeOffsets(contentRef.current, range);
+    if (start === end) {
+      showToast('请选择正文中的文字', 'info');
+      return;
+    }
+    setPendingAnnotationRange({ start, end });
+    setPendingAnnotationText(range.toString());
+    setPendingAnnotationComment('');
+    setShowAnnotationModal(true);
+    setShowSelectionToolbar(false);
+    selection.removeAllRanges();
+  };
+
+  const handleConfirmAnnotation = async () => {
+    if (!pendingAnnotationRange) return;
+    if (!pendingAnnotationComment.trim()) {
+      showToast('请输入评论内容', 'info');
+      return;
+    }
+    const existingId = activeAnnotationId;
+    const next = existingId
+      ? annotations.map((item) =>
+          item.id === existingId
+            ? { ...item, comment: pendingAnnotationComment.trim() }
+            : item,
+        )
+      : [
+          ...annotations,
+          {
+            id: createAnnotationId(),
+            start: pendingAnnotationRange.start,
+            end: pendingAnnotationRange.end,
+            comment: pendingAnnotationComment.trim(),
+          },
+        ];
+    setAnnotations(next);
+    setShowAnnotationModal(false);
+    setPendingAnnotationRange(null);
+    setActiveAnnotationId('');
+    await saveNotes(noteContent, next);
+    showToast(existingId ? '已更新评论' : '已添加评论');
+  };
+
+  const handleDeleteAnnotation = async (id: string) => {
+    const next = annotations.filter((item) => item.id !== id);
+    setAnnotations(next);
+    if (activeAnnotationId === id) {
+      setActiveAnnotationId('');
+    }
+    await saveNotes(noteContent, next);
+    showToast('已删除评论');
+  };
+
+  const handleUpdateAnnotation = async () => {
+    if (!activeAnnotation) return;
+    const next = annotations.map((item) =>
+      item.id === activeAnnotation.id
+        ? { ...item, comment: annotationEditDraft.trim() }
+        : item,
+    );
+    setAnnotations(next);
+    await saveNotes(noteContent, next);
+    showToast('已更新评论');
   };
 
   const openEditModal = (mode: 'original' | 'translation') => {
@@ -914,81 +1257,72 @@ export default function ArticleDetailPage() {
                   {isAdmin && (
                     <>
                       <button
-                        onClick={handleToggleVisibility}
-                        className="flex items-center gap-1 px-2 py-1 rounded-sm text-sm text-text-2 hover:text-text-1 hover:bg-muted transition"
-                        title={article.is_visible ? '点击隐藏' : '点击显示'}
+                        onClick={() => {
+                          setNoteDraft(noteContent);
+                          setShowNoteModal(true);
+                        }}
+                        className="flex items-center justify-center w-8 h-8 rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition"
                       >
-              {article.is_visible ? <IconEye className="h-4 w-4" /> : <IconEyeOff className="h-4 w-4" />}
-                        <span>{article.is_visible ? '隐藏' : '显示'}</span>
+                        <IconNote className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={handleToggleVisibility}
+                        className="flex items-center justify-center w-8 h-8 rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition"
+                      >
+                        {article.is_visible ? <IconEye className="h-4 w-4" /> : <IconEyeOff className="h-4 w-4" />}
                       </button>
                       <button
                         onClick={() => openEditModal(showTranslation && article.content_trans ? 'translation' : 'original')}
-                        className="flex items-center gap-1 px-2 py-1 rounded-sm text-sm text-text-2 hover:text-text-1 hover:bg-muted transition"
-                        title={'编辑'}
+                        className="flex items-center justify-center w-8 h-8 rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition"
                       >
                         <IconEdit className="h-4 w-4" />
-                        <span>{'编辑'}</span>
                       </button>
                       <button
                         onClick={() => setShowDeleteModal(true)}
-                        className="flex items-center gap-1 px-2 py-1 rounded-sm text-sm text-text-2 hover:text-red-600 hover:bg-red-50 transition"
-                        title="删除文章"
+                        className="flex items-center justify-center w-8 h-8 rounded-sm text-text-2 hover:text-red-600 hover:bg-red-50 transition"
                       >
-                <IconTrash className="h-4 w-4" />
-                        <span>删除</span>
+                        <IconTrash className="h-4 w-4" />
                       </button>
                     </>
                   )}
                   {article.content_trans && (
                     <button
                       onClick={() => setShowTranslation(!showTranslation)}
-                      className="flex items-center gap-1 px-2 py-1 rounded-sm text-sm text-text-2 hover:text-text-1 hover:bg-muted transition"
-                      title={showTranslation ? '当前查看中文' : '当前查看英文'}
+                      className="flex items-center justify-center w-8 h-8 rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition text-base"
                     >
-                      <span>{showTranslation ? '🇺🇸' : '🇨🇳'}</span>
-                      <span>{showTranslation ? '切换英文' : '切换中文'}</span>
+                      {showTranslation ? '🇺🇸' : '🇨🇳'}
                     </button>
                   )}
                   <button
                     onClick={() => setImmersiveMode(!immersiveMode)}
-                    className="flex items-center gap-1 px-2 py-1 rounded-sm text-sm text-text-2 hover:text-text-1 hover:bg-muted transition"
-                    title={immersiveMode ? '退出沉浸式阅读' : '进入沉浸式阅读'}
+                    className="flex items-center justify-center w-8 h-8 rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition"
                   >
                     <IconBook className="h-4 w-4" />
-                    <span>{immersiveMode ? '退出沉浸' : '沉浸式阅读'}</span>
                   </button>
                 </div>
               </div>
 
+              {noteContent && (
+                <div className="note-panel mb-4 rounded-sm p-4 text-sm text-text-2">
+                  <div className="note-panel-title text-sm mb-2">批注</div>
+                  <div
+                    className="prose prose-sm max-w-none"
+                    dangerouslySetInnerHTML={{ __html: renderMarkdown(noteContent) }}
+                  />
+                </div>
+              )}
               <div
                 ref={contentRef}
                 onClick={handleContentClick}
+                onMouseOver={handleContentMouseOver}
+                onMouseOut={handleContentMouseOut}
                 className={`prose prose-sm max-w-none prose-img:cursor-zoom-in prose-img:rounded-lg prose-img:border prose-img:border-gray-200 prose-img:bg-white prose-img:shadow-sm ${
                   immersiveMode
                     ? 'immersive-content'
                     : 'prose-img:max-w-[320px] sm:prose-img:max-w-[420px]'
                 }`}
-              >
-                {showTranslation && article.content_trans ? (
-                  <div
-                    dangerouslySetInnerHTML={{
-                      __html: marked(article.content_trans),
-                    }}
-                  />
-                ) : article.content_md ? (
-                  <div
-                    dangerouslySetInnerHTML={{
-                      __html: marked(article.content_md),
-                    }}
-                  />
-                ) : (
-                  <div
-                    dangerouslySetInnerHTML={{
-                      __html: article.content_html,
-                    }}
-                  />
-                )}
-              </div>
+                dangerouslySetInnerHTML={{ __html: renderedHtml }}
+              />
 
               <div className="flex items-center justify-between mt-6 text-sm">
                 <button
@@ -1329,6 +1663,220 @@ export default function ArticleDetailPage() {
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
               >
                 {saving ? '保存中...' : '保存'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showSelectionToolbar && selectionToolbarPos && isAdmin && (
+        <div
+          className="fixed z-40"
+          style={{ left: selectionToolbarPos.x, top: selectionToolbarPos.y }}
+        >
+          <button
+            onClick={handleStartAnnotation}
+            className="w-7 h-7 flex items-center justify-center border border-blue-400 text-blue-600 rounded-full bg-white/80 hover:bg-blue-50 transition"
+          >
+            <IconEdit className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+
+      {hoverAnnotationId && hoverTooltipPos && (
+        <div
+          className="fixed z-40 pointer-events-none"
+          style={{ left: hoverTooltipPos.x, top: hoverTooltipPos.y }}
+        >
+          <div
+            className="annotation-tooltip w-max max-w-[30rem] rounded-md text-xs px-3 py-2 shadow-lg backdrop-blur"
+            style={{ transform: 'translate(-50%, calc(-100% - 8px))' }}
+          >
+            <div className="max-h-[4.5rem] overflow-hidden">
+              <div
+                className="prose prose-sm max-w-none text-gray-800"
+                style={{
+                  display: '-webkit-box',
+                  WebkitLineClamp: 3,
+                  WebkitBoxOrient: 'vertical',
+                  overflow: 'hidden',
+                  whiteSpace: 'normal',
+                  wordBreak: 'break-word',
+                  overflowWrap: 'anywhere',
+                }}
+                dangerouslySetInnerHTML={{
+                  __html:
+                    renderMarkdown(
+                      annotations.find((item) => item.id === hoverAnnotationId)?.comment || ''
+                    ) || '',
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showAnnotationView && activeAnnotation && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          onClick={() => setShowAnnotationView(false)}
+        >
+          <div
+            className="bg-white rounded-lg shadow-xl max-w-lg w-full overflow-hidden"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between p-4 border-b">
+              <h3 className="text-lg font-semibold text-gray-900">评论内容</h3>
+              <button
+                onClick={() => setShowAnnotationView(false)}
+                className="text-gray-500 hover:text-gray-700 text-2xl"
+              >
+                ×
+              </button>
+            </div>
+            <div className="p-4 text-sm text-gray-700">
+              {activeAnnotationText && (
+                <div
+                  className="mb-3 p-3 bg-gray-50 border border-gray-200 rounded text-xs text-gray-600"
+                  dangerouslySetInnerHTML={{ __html: activeAnnotationText }}
+                />
+              )}
+              <div
+                className="prose prose-sm max-w-none"
+                style={{ wordBreak: 'break-word', overflowWrap: 'anywhere', whiteSpace: 'normal' }}
+                dangerouslySetInnerHTML={{
+                  __html: renderMarkdown(activeAnnotation.comment),
+                }}
+              />
+            </div>
+            <div className="flex justify-end gap-2 p-4 border-t bg-gray-50 rounded-b-lg">
+              {isAdmin && (
+                <>
+                  <button
+                    onClick={() => {
+                      setActiveAnnotationId(activeAnnotation.id);
+                      setPendingAnnotationRange({
+                        start: activeAnnotation.start,
+                        end: activeAnnotation.end,
+                      });
+                      setPendingAnnotationText(activeAnnotationText || '');
+                      setPendingAnnotationComment(activeAnnotation.comment);
+                      setShowAnnotationView(false);
+                      setShowAnnotationModal(true);
+                    }}
+                    className="px-4 py-2 text-blue-600 rounded-lg hover:bg-blue-50 transition"
+                  >
+                    编辑
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleDeleteAnnotation(activeAnnotation.id);
+                      setShowAnnotationView(false);
+                    }}
+                    className="px-4 py-2 text-red-600 rounded-lg hover:bg-red-50 transition"
+                  >
+                    删除
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showNoteModal && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          onClick={() => setShowNoteModal(false)}
+        >
+          <div
+            className="bg-white rounded-lg shadow-xl max-w-lg w-full"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between p-4 border-b">
+              <h3 className="text-lg font-semibold text-gray-900">批注内容</h3>
+              <button
+                onClick={() => setShowNoteModal(false)}
+                className="text-gray-500 hover:text-gray-700 text-2xl"
+              >
+                ×
+              </button>
+            </div>
+            <div className="p-4">
+              <textarea
+                value={noteDraft}
+                onChange={(e) => setNoteDraft(e.target.value)}
+                rows={6}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="输入批注内容，支持 Markdown"
+              />
+            </div>
+            <div className="flex justify-end gap-2 p-4 border-t bg-gray-50">
+              <button
+                onClick={() => setShowNoteModal(false)}
+                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleSaveNoteContent}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+              >
+                保存
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showAnnotationModal && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          onClick={() => setShowAnnotationModal(false)}
+        >
+          <div
+            className="bg-white rounded-lg shadow-xl max-w-lg w-full"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between p-4 border-b">
+              <h3 className="text-lg font-semibold text-gray-900">添加划线评论</h3>
+              <button
+                onClick={() => setShowAnnotationModal(false)}
+                className="text-gray-500 hover:text-gray-700 text-2xl"
+              >
+                ×
+              </button>
+            </div>
+            <div className="p-4 space-y-3">
+              <div className="text-xs text-gray-500">已选内容：</div>
+              <div className="p-3 bg-gray-50 border border-gray-200 rounded text-sm text-gray-700">
+                {pendingAnnotationText || '（无）'}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  评论内容
+                </label>
+                <textarea
+                  value={pendingAnnotationComment}
+                  onChange={(e) => setPendingAnnotationComment(e.target.value)}
+                  rows={4}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="输入评论内容"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 p-4 border-t bg-gray-50">
+              <button
+                onClick={() => setShowAnnotationModal(false)}
+                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleConfirmAnnotation}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+              >
+                {activeAnnotationId ? '保存' : '添加'}
               </button>
             </div>
           </div>

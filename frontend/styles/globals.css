@@ -125,6 +125,83 @@ body {
   );
 }
 
+.annotation-highlight {
+  background: rgba(250, 204, 21, 0.25);
+  border-bottom: 2px solid rgba(234, 179, 8, 0.8);
+  cursor: pointer;
+  padding: 0 2px;
+  border-radius: 2px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .annotation-highlight {
+    background: rgba(250, 204, 21, 0.22);
+    border-bottom-color: rgba(253, 224, 71, 0.9);
+  }
+}
+
+html[data-theme="dark"] .annotation-highlight {
+  background: rgba(250, 204, 21, 0.22);
+  border-bottom-color: rgba(253, 224, 71, 0.9);
+  color: #f8fafc;
+}
+
+.annotation-tooltip {
+  background: rgba(254, 243, 199, 0.5);
+  border: 1px solid rgba(251, 191, 36, 0.55);
+  color: #78350f;
+  box-shadow: 0 8px 16px rgba(120, 53, 15, 0.12);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  transform: translateZ(0);
+  will-change: transform;
+}
+
+@media (prefers-color-scheme: dark) {
+  .annotation-tooltip {
+    background: rgba(113, 63, 18, 0.4);
+    border: 1px solid rgba(234, 179, 8, 0.45);
+    color: #fde68a;
+    box-shadow: 0 8px 16px rgba(69, 26, 3, 0.28);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+}
+
+html[data-theme="dark"] .annotation-tooltip {
+  background: rgba(113, 63, 18, 0.4);
+  border: 1px solid rgba(234, 179, 8, 0.45);
+  color: #fde68a;
+  box-shadow: 0 8px 16px rgba(69, 26, 3, 0.28);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.note-panel {
+  background: linear-gradient(135deg, rgba(254, 243, 199, 0.7), rgba(254, 243, 199, 0.2));
+  border: 1px solid rgba(251, 191, 36, 0.4);
+  box-shadow: 0 6px 16px rgba(120, 53, 15, 0.12);
+}
+
+.note-panel-title {
+  font-weight: 700;
+  color: var(--text-1);
+}
+
+@media (prefers-color-scheme: dark) {
+  .note-panel {
+    background: linear-gradient(135deg, rgba(113, 63, 18, 0.6), rgba(113, 63, 18, 0.2));
+    border: 1px solid rgba(234, 179, 8, 0.35);
+    box-shadow: 0 6px 16px rgba(69, 26, 3, 0.35);
+  }
+}
+
+html[data-theme="dark"] .note-panel {
+  background: linear-gradient(135deg, rgba(113, 63, 18, 0.6), rgba(113, 63, 18, 0.2));
+  border: 1px solid rgba(234, 179, 8, 0.35);
+  box-shadow: 0 6px 16px rgba(69, 26, 3, 0.35);
+}
+
 .select-modern {
   appearance: none;
   background-color: var(--bg-surface);
