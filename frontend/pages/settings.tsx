@@ -26,6 +26,7 @@ import { articleApi, categoryApi, type ModelAPIConfig, type PromptConfig } from 
 import { useToast } from '@/components/Toast';
 import { IconEdit, IconEye, IconLink, IconList, IconNote, IconPlug, IconRobot, IconTag, IconTrash } from '@/components/icons';
 import { useAuth } from '@/contexts/AuthContext';
+import { Select } from 'antd';
 
 type SettingSection = 'ai' | 'categories' | 'tasks';
 type AISubSection = 'model-api' | 'prompt';
@@ -1208,34 +1209,38 @@ export default function SettingsPage() {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                   <div>
               <label className="block text-sm text-gray-700 mb-1">状态</label>
-                    <select
+                    <Select
                       value={taskStatusFilter}
-                      onChange={(e) => { setTaskStatusFilter(e.target.value); setTaskPage(1); }}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="">全部</option>
-                      <option value="pending">待处理</option>
-                      <option value="processing">处理中</option>
-                      <option value="completed">已完成</option>
-                      <option value="failed">失败</option>
-                      <option value="cancelled">已取消</option>
-                    </select>
+                      onChange={(value) => { setTaskStatusFilter(value); setTaskPage(1); }}
+                      className="select-modern-antd w-full"
+                      popupClassName="select-modern-dropdown"
+                      options={[
+                        { value: '', label: '全部' },
+                        { value: 'pending', label: '待处理' },
+                        { value: 'processing', label: '处理中' },
+                        { value: 'completed', label: '已完成' },
+                        { value: 'failed', label: '失败' },
+                        { value: 'cancelled', label: '已取消' },
+                      ]}
+                    />
                   </div>
                   <div>
               <label className="block text-sm text-gray-700 mb-1">任务类型</label>
-                    <select
+                    <Select
                       value={taskTypeFilter}
-                      onChange={(e) => { setTaskTypeFilter(e.target.value); setTaskPage(1); }}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="">全部</option>
-                      <option value="process_article_ai">文章摘要</option>
-                      <option value="process_article_translation">翻译生成</option>
-                      <option value="process_ai_content:summary">AI摘要</option>
-                      <option value="process_ai_content:outline">大纲生成</option>
-                      <option value="process_ai_content:quotes">金句生成</option>
-                      <option value="process_ai_content:key_points">总结生成</option>
-                    </select>
+                      onChange={(value) => { setTaskTypeFilter(value); setTaskPage(1); }}
+                      className="select-modern-antd w-full"
+                      popupClassName="select-modern-dropdown"
+                      options={[
+                        { value: '', label: '全部' },
+                        { value: 'process_article_ai', label: '文章摘要' },
+                        { value: 'process_article_translation', label: '翻译生成' },
+                        { value: 'process_ai_content:summary', label: 'AI摘要' },
+                        { value: 'process_ai_content:outline', label: '大纲生成' },
+                        { value: 'process_ai_content:quotes', label: '金句生成' },
+                        { value: 'process_ai_content:key_points', label: '总结生成' },
+                      ]}
+                    />
                   </div>
                   <div>
               <label className="block text-sm text-gray-700 mb-1">文章ID</label>
@@ -1361,15 +1366,17 @@ export default function SettingsPage() {
                 <div className="mt-6 flex items-center justify-between">
                   <div className="flex items-center gap-2 text-sm text-gray-600">
                     <span>每页显示</span>
-                    <select
+                    <Select
                       value={taskPageSize}
-                      onChange={(e) => { setTaskPageSize(Number(e.target.value)); setTaskPage(1); }}
-                      className="px-2 py-1 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value={10}>10</option>
-                      <option value={20}>20</option>
-                      <option value={50}>50</option>
-                    </select>
+                      onChange={(value) => { setTaskPageSize(Number(value)); setTaskPage(1); }}
+                      className="select-modern-antd"
+                      popupClassName="select-modern-dropdown"
+                      options={[
+                        { value: 10, label: '10' },
+                        { value: 20, label: '20' },
+                        { value: 50, label: '50' },
+                      ]}
+                    />
                     <span>条，共 {taskTotal} 条</span>
                   </div>
                   <div className="flex items-center gap-2">
@@ -1556,18 +1563,16 @@ export default function SettingsPage() {
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   分类
                 </label>
-                <select
+                <Select
                   value={promptFormData.category_id}
-                  onChange={(e) => setPromptFormData({ ...promptFormData, category_id: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">通用</option>
-                  {categories.map((cat) => (
-                    <option key={cat.id} value={cat.id}>
-                      {cat.name}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(value) => setPromptFormData({ ...promptFormData, category_id: value })}
+                  className="select-modern-antd w-full"
+                  popupClassName="select-modern-dropdown"
+                  options={[
+                    { value: '', label: '通用' },
+                    ...categories.map((cat) => ({ value: cat.id, label: cat.name })),
+                  ]}
+                />
               </div>
 
               <div>
@@ -1614,15 +1619,17 @@ export default function SettingsPage() {
                         <label className="block text-sm font-medium text-gray-700 mb-2">
                           响应格式
                         </label>
-                        <select
+                        <Select
                           value={promptFormData.response_format}
-                          onChange={(e) => setPromptFormData({ ...promptFormData, response_format: e.target.value })}
-                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        >
-                          <option value="">默认</option>
-                          <option value="text">text</option>
-                          <option value="json_object">json_object</option>
-                        </select>
+                          onChange={(value) => setPromptFormData({ ...promptFormData, response_format: value })}
+                          className="select-modern-antd w-full"
+                          popupClassName="select-modern-dropdown"
+                          options={[
+                            { value: '', label: '默认' },
+                            { value: 'text', label: 'text' },
+                            { value: 'json_object', label: 'json_object' },
+                          ]}
+                        />
                       </div>
 
                       <div>
@@ -1679,18 +1686,16 @@ export default function SettingsPage() {
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   关联模型API配置（可选）
                 </label>
-                <select
+                <Select
                   value={promptFormData.model_api_config_id}
-                  onChange={(e) => setPromptFormData({ ...promptFormData, model_api_config_id: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">使用默认</option>
-                  {modelAPIConfigs.map((config) => (
-                    <option key={config.id} value={config.id}>
-                      {config.name}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(value) => setPromptFormData({ ...promptFormData, model_api_config_id: value })}
+                  className="select-modern-antd w-full"
+                  popupClassName="select-modern-dropdown"
+                  options={[
+                    { value: '', label: '使用默认' },
+                    ...modelAPIConfigs.map((config) => ({ value: config.id, label: config.name })),
+                  ]}
+                />
               </div>
 
               <div className="flex items-center gap-4">

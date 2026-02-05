@@ -3,7 +3,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
-import { ConfigProvider, DatePicker } from 'antd';
+import { ConfigProvider, DatePicker, Select } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
 
 import { articleApi, categoryApi, Article, Category } from '@/lib/api';
@@ -306,7 +306,6 @@ export default function Home() {
     if (createdStartDate || createdEndDate) {
       filters.push(`创建：${formatDate(createdStartDate)} ~ ${formatDate(createdEndDate)}`.trim());
     }
-    if (quickDateFilter) filters.push(`创建快速：${quickDateFilter}`);
     if (sortBy === 'published_at_desc') filters.push('排序：发表时间倒序');
     if (sortBy === 'created_at_desc') filters.push('排序：创建时间倒序');
     return filters;
@@ -541,45 +540,51 @@ export default function Home() {
                 <div className="flex flex-wrap items-center justify-end gap-4">
                   <div className="flex items-center gap-2">
                     <span className="text-sm text-text-2">创建时间：</span>
-                    <select
+                    <Select
                       value={quickDateFilter}
-                      onChange={(e) => handleQuickDateChange(e.target.value as QuickDateOption)}
-                    className="px-3 py-1 text-sm border border-border-strong rounded-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                  >
-                    <option value="">全部</option>
-                    <option value="1d">1天内</option>
-                    <option value="3d">3天内</option>
-                    <option value="1w">1周内</option>
-                    <option value="1m">1个月</option>
-                    <option value="3m">3个月</option>
-                    <option value="6m">6个月</option>
-                    <option value="1y">1年内</option>
-                  </select>
+                      onChange={(value) => handleQuickDateChange(value as QuickDateOption)}
+                      className="select-modern-antd w-20"
+                      popupClassName="select-modern-dropdown"
+                      options={[
+                        { value: '', label: '全部' },
+                        { value: '1d', label: '1天内' },
+                        { value: '3d', label: '3天内' },
+                        { value: '1w', label: '1周内' },
+                        { value: '1m', label: '1个月' },
+                        { value: '3m', label: '3个月' },
+                        { value: '6m', label: '6个月' },
+                        { value: '1y', label: '1年内' },
+                      ]}
+                    />
                 </div>
                   {isAdmin && (
                     <div className="flex items-center gap-2">
                       <span className="text-sm text-text-2">可见：</span>
-                      <select
+                      <Select
                         value={visibilityFilter}
-                        onChange={(e) => { setVisibilityFilter(e.target.value); setPage(1); }}
-                        className="px-3 py-1 text-sm border border-border-strong rounded-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                      >
-                        <option value="">全部</option>
-                        <option value="visible">可见</option>
-                        <option value="hidden">隐藏</option>
-                      </select>
+                        onChange={(value) => { setVisibilityFilter(value); setPage(1); }}
+                        className="select-modern-antd"
+                        popupClassName="select-modern-dropdown"
+                        options={[
+                          { value: '', label: '全部' },
+                          { value: 'visible', label: '可见' },
+                          { value: 'hidden', label: '隐藏' },
+                        ]}
+                      />
                     </div>
                   )}
                   <div className="flex items-center gap-2">
                     <span className="text-sm text-text-2">排序：</span>
-                    <select
+                    <Select
                       value={sortBy}
-                      onChange={(e) => { setSortBy(e.target.value); setPage(1); }}
-                      className="px-3 py-1 text-sm border border-border-strong rounded-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                    >
-                      <option value="published_at_desc">发表时间倒序</option>
-                      <option value="created_at_desc">创建时间倒序</option>
-                    </select>
+                      onChange={(value) => { setSortBy(value); setPage(1); }}
+                      className="select-modern-antd"
+                      popupClassName="select-modern-dropdown"
+                      options={[
+                        { value: 'published_at_desc', label: '发表时间倒序' },
+                        { value: 'created_at_desc', label: '创建时间倒序' },
+                      ]}
+                    />
                   </div>
                 </div>
               </div>
@@ -599,29 +604,23 @@ export default function Home() {
                     </div>
                     <div>
                       <label className="block text-sm text-text-2 mb-1">来源</label>
-                      <select
+                      <Select
                         value={sourceDomain}
-                        onChange={(e) => { setSourceDomain(e.target.value); setPage(1); }}
-                        className="w-full px-3 py-2 text-sm border border-border-strong rounded-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                      >
-                        <option value="">全部来源</option>
-                        {sources.map((s) => (
-                          <option key={s} value={s}>{s}</option>
-                        ))}
-                      </select>
+                        onChange={(value) => { setSourceDomain(value); setPage(1); }}
+                        className="select-modern-antd w-full"
+                        popupClassName="select-modern-dropdown"
+                        options={[{ value: '', label: '全部来源' }, ...sources.map((s) => ({ value: s, label: s }))]}
+                      />
                     </div>
                     <div>
                       <label className="block text-sm text-text-2 mb-1">作者</label>
-                      <select
+                      <Select
                         value={author}
-                        onChange={(e) => { setAuthor(e.target.value); setPage(1); }}
-                        className="w-full px-3 py-2 text-sm border border-border-strong rounded-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                      >
-                        <option value="">全部作者</option>
-                        {authors.map((a) => (
-                          <option key={a} value={a}>{a}</option>
-                        ))}
-                      </select>
+                        onChange={(value) => { setAuthor(value); setPage(1); }}
+                        className="select-modern-antd w-full"
+                        popupClassName="select-modern-dropdown"
+                        options={[{ value: '', label: '全部作者' }, ...authors.map((a) => ({ value: a, label: a }))]}
+                      />
                     </div>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-2">
@@ -744,19 +743,17 @@ export default function Home() {
                           设为隐藏
                         </button>
                         <div className="flex items-center gap-2">
-                          <select
+                          <Select
                             value={batchCategoryId}
-                            onChange={(e) => setBatchCategoryId(e.target.value)}
-                            className="px-3 py-1 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          >
-                            <option value="">选择分类</option>
-                            <option value="__clear__">清空分类</option>
-                            {categories.map((category) => (
-                              <option key={category.id} value={category.id}>
-                                {category.name}
-                              </option>
-                            ))}
-                          </select>
+                            onChange={(value) => setBatchCategoryId(value)}
+                            className="select-modern-antd"
+                            popupClassName="select-modern-dropdown"
+                            options={[
+                              { value: '', label: '选择分类' },
+                              { value: '__clear__', label: '清空分类' },
+                              ...categories.map((category) => ({ value: category.id, label: category.name })),
+                            ]}
+                          />
                           <button
                             type="button"
                             onClick={handleBatchCategory}
@@ -892,16 +889,18 @@ export default function Home() {
                 <div className="mt-6 flex items-center justify-between">
                   <div className="flex items-center gap-2 text-sm text-gray-600">
                     <span>每页显示</span>
-                    <select
+                    <Select
                       value={pageSize}
-                      onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
-                      className="px-2 py-1 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value={10}>10</option>
-                      <option value={20}>20</option>
-                      <option value={50}>50</option>
-                      <option value={100}>100</option>
-                    </select>
+                      onChange={(value) => { setPageSize(Number(value)); setPage(1); }}
+                      className="select-modern-antd"
+                      popupClassName="select-modern-dropdown"
+                      options={[
+                        { value: 10, label: '10' },
+                        { value: 20, label: '20' },
+                        { value: 50, label: '50' },
+                        { value: 100, label: '100' },
+                      ]}
+                    />
                     <span>条，共 {total} 条</span>
                   </div>
                   <div className="flex items-center gap-2">

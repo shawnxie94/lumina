@@ -10,6 +10,7 @@ import { useToast } from '@/components/Toast';
 import { BackToTop } from '@/components/BackToTop';
 import { IconBolt, IconBook, IconCopy, IconDoc, IconEdit, IconEye, IconEyeOff, IconList, IconRefresh, IconRobot, IconTrash } from '@/components/icons';
 import { useAuth } from '@/contexts/AuthContext';
+import { Select } from 'antd';
 
 // 轮询间隔（毫秒）
 const POLLING_INTERVAL = 3000;
@@ -1047,36 +1048,38 @@ export default function ArticleDetailPage() {
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   模型配置
                 </label>
-                <select
+                <Select
                   value={selectedModelConfigId}
-                  onChange={(e) => setSelectedModelConfigId(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">使用默认配置</option>
-                  {modelConfigs.map((config) => (
-                    <option key={config.id} value={config.id}>
-                      {config.name} ({config.model_name})
-                    </option>
-                  ))}
-                </select>
+                  onChange={(value) => setSelectedModelConfigId(value)}
+                  className="select-modern-antd w-full"
+                  popupClassName="select-modern-dropdown"
+                  options={[
+                    { value: '', label: '使用默认配置' },
+                    ...modelConfigs.map((config) => ({
+                      value: config.id,
+                      label: `${config.name} (${config.model_name})`,
+                    })),
+                  ]}
+                />
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   提示词配置
                 </label>
-                <select
+                <Select
                   value={selectedPromptConfigId}
-                  onChange={(e) => setSelectedPromptConfigId(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">使用默认配置</option>
-                  {promptConfigs.map((config) => (
-                    <option key={config.id} value={config.id}>
-                      {config.name}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(value) => setSelectedPromptConfigId(value)}
+                  className="select-modern-antd w-full"
+                  popupClassName="select-modern-dropdown"
+                  options={[
+                    { value: '', label: '使用默认配置' },
+                    ...promptConfigs.map((config) => ({
+                      value: config.id,
+                      label: config.name,
+                    })),
+                  ]}
+                />
               </div>
             </div>
 
