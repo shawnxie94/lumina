@@ -427,7 +427,7 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-app">
       <Head>
-        <title>Lumina - AI驱动的知识库</title>
+        <title>Lumina - 信息知识库</title>
       </Head>
       <nav className="bg-surface border-b border-border shadow-sm">
         <div className="max-w-7xl mx-auto px-4 py-4">
@@ -475,7 +475,7 @@ export default function Home() {
 
       <div className="max-w-7xl mx-auto px-4 py-8">
         <div className="flex gap-6">
-          <aside className={`flex-shrink-0 transition-all duration-300 ${sidebarCollapsed ? 'w-12' : 'w-64'}`}>
+          <aside className={`flex-shrink-0 transition-all duration-300 ${sidebarCollapsed ? 'w-12' : 'w-56'}`}>
             <div className="sticky top-4 bg-surface rounded-sm shadow-sm border border-border p-4 max-h-[calc(100vh-2rem)] overflow-y-auto">
               <div className="flex items-center justify-between mb-4">
                 {!sidebarCollapsed && (
@@ -583,21 +583,21 @@ export default function Home() {
                 <div className="mt-4 pt-4 border-t border-border">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                     <div>
-                      <label className="block text-sm font-medium text-text-2 mb-1">文章标题</label>
+                      <label className="block text-sm text-text-2 mb-1">文章标题</label>
                       <input
                         type="text"
                         placeholder="模糊匹配标题..."
                         value={searchTerm}
                         onChange={(e) => { setSearchTerm(e.target.value); setPage(1); }}
-                        className="w-full px-3 py-2 border border-border-strong rounded-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                        className="w-full px-3 py-2 text-sm border border-border-strong rounded-sm focus:outline-none focus:ring-2 focus:ring-primary"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-text-2 mb-1">来源</label>
+                      <label className="block text-sm text-text-2 mb-1">来源</label>
                       <select
                         value={sourceDomain}
                         onChange={(e) => { setSourceDomain(e.target.value); setPage(1); }}
-                        className="w-full px-3 py-2 border border-border-strong rounded-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                        className="w-full px-3 py-2 text-sm border border-border-strong rounded-sm focus:outline-none focus:ring-2 focus:ring-primary"
                       >
                         <option value="">全部来源</option>
                         {sources.map((s) => (
@@ -606,11 +606,11 @@ export default function Home() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-text-2 mb-1">作者</label>
+                      <label className="block text-sm text-text-2 mb-1">作者</label>
                       <select
                         value={author}
                         onChange={(e) => { setAuthor(e.target.value); setPage(1); }}
-                        className="w-full px-3 py-2 border border-border-strong rounded-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                        className="w-full px-3 py-2 text-sm border border-border-strong rounded-sm focus:outline-none focus:ring-2 focus:ring-primary"
                       >
                         <option value="">全部作者</option>
                         {authors.map((a) => (
@@ -621,7 +621,7 @@ export default function Home() {
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-2">
                     <div>
-                      <label className="block text-sm font-medium text-text-2 mb-1">发表时间</label>
+                      <label className="block text-sm text-text-2 mb-1">发表时间</label>
                       <DatePicker
                         selectsRange
                         startDate={publishedStartDate}
@@ -630,12 +630,12 @@ export default function Home() {
                         isClearable
                         placeholderText="选择日期范围"
                         dateFormat="yyyy-MM-dd"
-                        className="w-full px-3 py-2 border border-border-strong rounded-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                        className="w-full px-3 py-2 text-sm border border-border-strong rounded-sm focus:outline-none focus:ring-2 focus:ring-primary"
                         wrapperClassName="w-full"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-text-2 mb-1">创建时间</label>
+                      <label className="block text-sm text-text-2 mb-1">创建时间</label>
                       <DatePicker
                         selectsRange
                         startDate={createdStartDate}
@@ -644,7 +644,7 @@ export default function Home() {
                         isClearable
                         placeholderText="选择日期范围"
                         dateFormat="yyyy-MM-dd"
-                        className="w-full px-3 py-2 border border-border-strong rounded-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                        className="w-full px-3 py-2 text-sm border border-border-strong rounded-sm focus:outline-none focus:ring-2 focus:ring-primary"
                         wrapperClassName="w-full"
                       />
                     </div>
@@ -661,7 +661,7 @@ export default function Home() {
                       activeFilters.map((filter) => (
                         <span
                           key={filter}
-                          className="px-2 py-1 text-xs bg-primary-soft text-primary-ink rounded-xs"
+                          className="px-2 py-1 text-sm bg-primary-soft text-primary-ink rounded-xs"
                         >
                           {filter}
                         </span>
@@ -860,7 +860,7 @@ export default function Home() {
                     <select
                       value={pageSize}
                       onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
-                      className="px-2 py-1 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="px-2 py-1 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
                       <option value={10}>10</option>
                       <option value={20}>20</option>
@@ -873,17 +873,17 @@ export default function Home() {
                     <button
                       onClick={() => setPage((p) => Math.max(1, p - 1))}
                       disabled={page === 1}
-                      className="px-4 py-2 bg-white border rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-4 py-2 text-sm bg-white border rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       上一页
                     </button>
-                    <span className="px-4 py-2 bg-white border rounded-lg">
+                    <span className="px-4 py-2 text-sm bg-white border rounded-lg">
                       第 {page} / {Math.ceil(total / pageSize) || 1} 页
                     </span>
                     <button
                       onClick={() => setPage((p) => p + 1)}
                       disabled={articles.length < pageSize}
-                      className="px-4 py-2 bg-white border rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-4 py-2 text-sm bg-white border rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       下一页
                     </button>
@@ -894,7 +894,7 @@ export default function Home() {
                         value={jumpToPage}
                         onChange={(e) => setJumpToPage(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && handleJumpToPage()}
-                        className="w-16 px-2 py-1 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-center"
+                        className="w-16 px-2 py-1 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-center"
                         min={1}
                         max={Math.ceil(total / pageSize) || 1}
                       />

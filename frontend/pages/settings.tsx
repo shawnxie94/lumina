@@ -1207,7 +1207,7 @@ export default function SettingsPage() {
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">状态</label>
+              <label className="block text-sm text-gray-700 mb-1">状态</label>
                     <select
                       value={taskStatusFilter}
                       onChange={(e) => { setTaskStatusFilter(e.target.value); setTaskPage(1); }}
@@ -1222,7 +1222,7 @@ export default function SettingsPage() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">任务类型</label>
+              <label className="block text-sm text-gray-700 mb-1">任务类型</label>
                     <select
                       value={taskTypeFilter}
                       onChange={(e) => { setTaskTypeFilter(e.target.value); setTaskPage(1); }}
@@ -1238,7 +1238,7 @@ export default function SettingsPage() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">文章ID</label>
+              <label className="block text-sm text-gray-700 mb-1">文章ID</label>
                     <input
                       value={taskArticleIdFilter}
                       onChange={(e) => { setTaskArticleIdFilter(e.target.value); setTaskPage(1); }}

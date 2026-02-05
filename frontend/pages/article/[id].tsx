@@ -8,7 +8,7 @@ import { marked } from 'marked';
 import { articleApi, type ArticleDetail, type ModelAPIConfig, type PromptConfig } from '@/lib/api';
 import { useToast } from '@/components/Toast';
 import { BackToTop } from '@/components/BackToTop';
-import { IconBolt, IconCopy, IconDoc, IconEye, IconEyeOff, IconList, IconRefresh, IconRobot, IconTrash } from '@/components/icons';
+import { IconBolt, IconBook, IconCopy, IconDoc, IconEdit, IconEye, IconEyeOff, IconList, IconRefresh, IconRobot, IconTrash } from '@/components/icons';
 import { useAuth } from '@/contexts/AuthContext';
 
 // 轮询间隔（毫秒）
@@ -200,7 +200,7 @@ function AIContentSection({
                     <div className="inline-block">
                       <MindMapTree node={tree} isRoot compact />
                     </div>
-                    <div className="absolute top-1 right-1 text-[10px] text-gray-400 bg-white/80 px-2 py-0.5 rounded">
+                    <div className="absolute top-1 right-1 text-xs text-gray-400 bg-white/80 px-2 py-0.5 rounded">
                       点击放大
                     </div>
                   </div>
@@ -814,8 +814,8 @@ export default function ArticleDetailPage() {
                         onClick={handleToggleVisibility}
                         className={`flex items-center gap-1 px-2 py-1 rounded-lg text-sm transition ${
                           article.is_visible
-                            ? 'text-green-700 bg-green-50 hover:bg-green-100'
-                            : 'text-gray-600 bg-gray-100 hover:bg-gray-200'
+                            ? 'text-green-700 hover:bg-green-50'
+                            : 'text-gray-600 hover:bg-gray-100'
                         }`}
                         title={article.is_visible ? '点击隐藏' : '点击显示'}
                       >
@@ -827,7 +827,7 @@ export default function ArticleDetailPage() {
                         className="flex items-center gap-1 px-2 py-1 rounded-lg text-sm text-gray-600 hover:text-blue-600 hover:bg-blue-50 transition"
                         title={'编辑'}
                       >
-                        ✏️
+                        <IconEdit className="h-4 w-4" />
                         <span>{'编辑'}</span>
                       </button>
                       <button
@@ -854,11 +854,12 @@ export default function ArticleDetailPage() {
                     onClick={() => setImmersiveMode(!immersiveMode)}
                     className={`flex items-center gap-1 px-2 py-1 rounded-lg text-sm transition ${
                       immersiveMode
-                        ? 'text-gray-700 bg-gray-100 hover:bg-gray-200'
-                        : 'text-blue-700 bg-blue-50 hover:bg-blue-100'
+                        ? 'text-gray-700 hover:bg-gray-100'
+                        : 'text-blue-700 hover:bg-blue-50'
                     }`}
                     title={immersiveMode ? '退出沉浸式阅读' : '进入沉浸式阅读'}
                   >
+                    <IconBook className="h-4 w-4" />
                     <span>{immersiveMode ? '退出沉浸' : '沉浸式阅读'}</span>
                   </button>
                 </div>
