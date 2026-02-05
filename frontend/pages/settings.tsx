@@ -24,6 +24,7 @@ import { CSS } from '@dnd-kit/utilities';
 
 import { articleApi, categoryApi, type ModelAPIConfig, type PromptConfig } from '@/lib/api';
 import { useToast } from '@/components/Toast';
+import { IconEdit, IconEye, IconLink, IconList, IconNote, IconPlug, IconRobot, IconTag, IconTrash } from '@/components/icons';
 import { useAuth } from '@/contexts/AuthContext';
 
 type SettingSection = 'ai' | 'categories' | 'tasks';
@@ -130,14 +131,14 @@ function SortableCategoryItem({ category, onEdit, onDelete }: SortableCategoryIt
           className="px-2 py-1 text-sm text-gray-500 rounded hover:bg-blue-100 hover:text-blue-600 transition"
           title="编辑"
         >
-          ✏️
+          <IconEdit className="h-4 w-4" />
         </button>
         <button
           onClick={() => onDelete(category.id)}
           className="px-2 py-1 text-sm text-gray-500 rounded hover:bg-red-100 hover:text-red-600 transition"
           title="删除"
         >
-          ✕
+          <IconTrash className="h-4 w-4" />
         </button>
       </div>
     </div>
@@ -758,57 +759,72 @@ export default function SettingsPage() {
         <div className="flex gap-6">
           <aside className="w-64 flex-shrink-0">
             <div className="bg-white rounded-lg shadow-sm p-4">
-              <h2 className="font-semibold text-gray-900 mb-4">管理模块</h2>
+              <h2 className="font-semibold text-text-1 mb-4">管理模块</h2>
               <div className="space-y-2">
                 <button
                   onClick={() => setActiveSection('categories')}
-                  className={`w-full text-left px-4 py-3 rounded-lg transition ${
-                    activeSection === 'categories' ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-100'
+                  className={`w-full text-left px-4 py-3 rounded-sm transition ${
+                    activeSection === 'categories' ? 'bg-primary-soft text-primary-ink' : 'hover:bg-muted'
                   }`}
                 >
-                  🏷️ 分类管理
+                  <span className="inline-flex items-center gap-2">
+                    <IconTag className="h-4 w-4" />
+                    <span>分类管理</span>
+                  </span>
                 </button>
                 <button
                   onClick={() => setActiveSection('ai')}
-                  className={`w-full text-left px-4 py-3 rounded-lg transition ${
-                    activeSection === 'ai' ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-100'
+                  className={`w-full text-left px-4 py-3 rounded-sm transition ${
+                    activeSection === 'ai' ? 'bg-primary-soft text-primary-ink' : 'hover:bg-muted'
                   }`}
                 >
-                  🤖 AI配置
+                  <span className="inline-flex items-center gap-2">
+                    <IconRobot className="h-4 w-4" />
+                    <span>AI配置</span>
+                  </span>
                 </button>
                 <button
                   onClick={() => {
                     setActiveSection('ai');
                     setAISubSection('model-api');
                   }}
-                  className={`w-full text-left px-6 py-2 text-sm rounded-lg transition ${
+                  className={`w-full text-left px-6 py-2 text-sm rounded-sm transition ${
                     activeSection === 'ai' && aiSubSection === 'model-api'
-                      ? 'bg-blue-50 text-blue-700'
-                      : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                      ? 'bg-primary-soft text-primary-ink'
+                      : 'text-text-3 hover:text-text-2 hover:bg-muted'
                   }`}
                 >
-                  🔌 模型API配置
+                  <span className="inline-flex items-center gap-2">
+                    <IconPlug className="h-4 w-4" />
+                    <span>模型API配置</span>
+                  </span>
                 </button>
                 <button
                   onClick={() => {
                     setActiveSection('ai');
                     setAISubSection('prompt');
                   }}
-                  className={`w-full text-left px-6 py-2 text-sm rounded-lg transition ${
+                  className={`w-full text-left px-6 py-2 text-sm rounded-sm transition ${
                     activeSection === 'ai' && aiSubSection === 'prompt'
-                      ? 'bg-blue-50 text-blue-700'
-                      : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                      ? 'bg-primary-soft text-primary-ink'
+                      : 'text-text-3 hover:text-text-2 hover:bg-muted'
                   }`}
                 >
-                  📝 提示词配置
+                  <span className="inline-flex items-center gap-2">
+                    <IconNote className="h-4 w-4" />
+                    <span>提示词配置</span>
+                  </span>
                 </button>
                 <button
                   onClick={() => setActiveSection('tasks')}
-                  className={`w-full text-left px-4 py-3 rounded-lg transition ${
-                    activeSection === 'tasks' ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-100'
+                  className={`w-full text-left px-4 py-3 rounded-sm transition ${
+                    activeSection === 'tasks' ? 'bg-primary-soft text-primary-ink' : 'hover:bg-muted'
                   }`}
                 >
-                  🧭 任务监控
+                  <span className="inline-flex items-center gap-2">
+                    <IconList className="h-4 w-4" />
+                    <span>任务监控</span>
+                  </span>
                 </button>
               </div>
             </div>
@@ -816,25 +832,25 @@ export default function SettingsPage() {
 
           <main className="flex-1">
             {activeSection === 'ai' && aiSubSection === 'model-api' && (
-              <div className="bg-white rounded-lg shadow-sm p-6">
+              <div className="bg-surface rounded-sm shadow-sm border border-border p-6">
                 <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-lg font-semibold text-gray-900">模型API配置列表</h2>
+                  <h2 className="text-lg font-semibold text-text-1">模型API配置列表</h2>
                   <button
                     onClick={handleCreateModelAPINew}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                    className="px-4 py-2 bg-primary text-white rounded-sm hover:bg-primary-ink transition"
                   >
                     + 创建配置
                   </button>
                 </div>
 
                 {modelLoading ? (
-                  <div className="text-center py-12 text-gray-500">加载中...</div>
+                  <div className="text-center py-12 text-text-3">加载中...</div>
                 ) : modelAPIConfigs.length === 0 ? (
-                  <div className="text-center py-12 text-gray-500">
+                  <div className="text-center py-12 text-text-3">
                     <div className="mb-4">暂无模型API配置</div>
                     <button
                       onClick={handleCreateModelAPINew}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                      className="px-4 py-2 bg-primary text-white rounded-sm hover:bg-primary-ink transition"
                     >
                       创建配置
                     </button>
@@ -900,14 +916,14 @@ export default function SettingsPage() {
                                 className="px-2 py-1 text-sm text-gray-500 rounded hover:bg-blue-100 hover:text-blue-600 transition"
                                 title="测试连接"
                               >
-                              🔗
+                              <IconLink className="h-4 w-4" />
                             </button>
                             <button
                               onClick={() => handleEditModelAPI(config)}
                               className="px-2 py-1 text-sm text-gray-500 rounded hover:bg-blue-100 hover:text-blue-600 transition"
                               title="编辑"
                             >
-                              ✏️
+                              <IconEdit className="h-4 w-4" />
                             </button>
                             <button
                               onClick={() => handleDeleteModelAPI(config.id)}
@@ -1085,21 +1101,21 @@ export default function SettingsPage() {
                                 className="px-2 py-1 text-sm text-gray-500 rounded hover:bg-blue-100 hover:text-blue-600 transition"
                               title="预览"
                             >
-                              👁️
+                              <IconEye className="h-4 w-4" />
                             </button>
                             <button
                               onClick={() => handleEditPrompt(config)}
                               className="px-2 py-1 text-sm text-gray-500 rounded hover:bg-blue-100 hover:text-blue-600 transition"
                               title="编辑"
                             >
-                              ✏️
+                              <IconEdit className="h-4 w-4" />
                             </button>
                             <button
                               onClick={() => handleDeletePrompt(config.id)}
                               className="px-2 py-1 text-sm text-gray-500 rounded hover:bg-red-100 hover:text-red-600 transition"
                               title="删除"
                             >
-                              🗑️
+                              <IconTrash className="h-4 w-4" />
                             </button>
                           </div>
                         </div>

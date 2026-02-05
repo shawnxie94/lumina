@@ -9,6 +9,7 @@ import 'react-datepicker/dist/react-datepicker.css';
 import { articleApi, categoryApi, Article, Category } from '@/lib/api';
 import { useToast } from '@/components/Toast';
 import { BackToTop } from '@/components/BackToTop';
+import { IconEye, IconEyeOff, IconGlobe, IconLock, IconLogout, IconSearch, IconSettings, IconTag, IconTrash } from '@/components/icons';
 import { useAuth } from '@/contexts/AuthContext';
 
 const formatDate = (date: Date | null): string => {
@@ -424,15 +425,15 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-app">
       <Head>
         <title>Lumina - AI驱动的知识库</title>
       </Head>
-      <nav className="bg-white shadow-sm border-b">
+      <nav className="bg-surface border-b border-border shadow-sm">
         <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+              <h1 className="text-2xl font-bold text-text-1 flex items-center gap-2">
                 <img src="/favicon.png" alt="Lumina" className="h-7 w-7" />
                 <span>Lumina</span>
               </h1>
@@ -441,29 +442,29 @@ export default function Home() {
               {isAdmin && (
                 <Link
                   href="/settings"
-                  className="flex items-center gap-1 px-3 py-1 rounded-lg text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition"
+                  className="flex items-center gap-1 px-3 py-1 rounded-sm text-sm text-text-3 hover:text-text-1 hover:bg-muted transition"
                   title="设置"
                 >
-                  ⚙️
+                  <IconSettings className="h-4 w-4" />
                   <span>设置</span>
                 </Link>
               )}
               {isAdmin ? (
                 <button
                   onClick={logout}
-                  className="flex items-center gap-1 px-3 py-1 rounded-lg text-sm text-gray-600 hover:text-red-600 hover:bg-red-50 transition"
+                  className="flex items-center gap-1 px-3 py-1 rounded-sm text-sm text-text-3 hover:text-red-600 hover:bg-red-50 transition"
                   title="退出登录"
                 >
-                  🚪
+                  <IconLogout className="h-4 w-4" />
                   <span>退出</span>
                 </button>
               ) : (
                 <Link
                   href="/login"
-                  className="flex items-center gap-1 px-3 py-1 rounded-lg text-sm text-gray-600 hover:text-blue-600 hover:bg-blue-50 transition"
+                  className="flex items-center gap-1 px-3 py-1 rounded-sm text-sm text-text-3 hover:text-primary hover:bg-primary-soft transition"
                   title="管理员登录"
                 >
-                  🔐
+                  <IconLock className="h-4 w-4" />
                   <span>登录</span>
                 </Link>
               )}
@@ -475,12 +476,17 @@ export default function Home() {
       <div className="max-w-7xl mx-auto px-4 py-8">
         <div className="flex gap-6">
           <aside className={`flex-shrink-0 transition-all duration-300 ${sidebarCollapsed ? 'w-12' : 'w-64'}`}>
-            <div className="sticky top-4 bg-white rounded-lg shadow-sm p-4 max-h-[calc(100vh-2rem)] overflow-y-auto">
+            <div className="sticky top-4 bg-surface rounded-sm shadow-sm border border-border p-4 max-h-[calc(100vh-2rem)] overflow-y-auto">
               <div className="flex items-center justify-between mb-4">
-                {!sidebarCollapsed && <h2 className="font-semibold text-gray-900">🏷️ 分类筛选</h2>}
+                {!sidebarCollapsed && (
+                  <h2 className="font-semibold text-text-1 inline-flex items-center gap-2">
+                    <IconTag className="h-4 w-4" />
+                    <span>分类筛选</span>
+                  </h2>
+                )}
                 <button
                   onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-                  className="text-gray-500 hover:text-gray-700 transition"
+                  className="text-text-3 hover:text-text-2 transition"
                   title={sidebarCollapsed ? '展开' : '收起'}
                 >
                   {sidebarCollapsed ? '»' : '«'}
@@ -490,8 +496,8 @@ export default function Home() {
                 <div className="space-y-2">
                   <button
                     onClick={() => { setSelectedCategory(''); setPage(1); }}
-                    className={`w-full text-left px-3 py-2 rounded-lg transition ${
-                      selectedCategory === '' ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-100'
+                    className={`w-full text-left px-3 py-2 rounded-sm transition ${
+                      selectedCategory === '' ? 'bg-primary-soft text-primary-ink' : 'hover:bg-muted'
                     }`}
                   >
                     全部文章 ({categoryStats.reduce((sum, c) => sum + c.article_count, 0)})
@@ -500,8 +506,8 @@ export default function Home() {
                     <button
                       key={category.id}
                       onClick={() => { setSelectedCategory(category.id); setPage(1); }}
-                      className={`w-full text-left px-3 py-2 rounded-lg transition ${
-                        selectedCategory === category.id ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-100'
+                      className={`w-full text-left px-3 py-2 rounded-sm transition ${
+                        selectedCategory === category.id ? 'bg-primary-soft text-primary-ink' : 'hover:bg-muted'
                       }`}
                     >
                       {category.name} ({category.article_count})
@@ -513,24 +519,27 @@ export default function Home() {
           </aside>
 
           <main className="flex-1">
-            <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
+            <div className="bg-surface rounded-sm shadow-sm border border-border p-6 mb-6">
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowFilters(!showFilters)}
-                    className={`px-4 py-1 text-sm rounded-lg transition ${showFilters ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
-                  >
-                    🔍 高级筛选
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowFilters(!showFilters)}
+                      className={`px-4 py-1 text-sm rounded-sm transition ${showFilters ? 'bg-primary-soft text-primary-ink' : 'bg-muted text-text-2 hover:bg-surface'}`}
+                    >
+                      <span className="inline-flex items-center gap-2">
+                        <IconSearch className="h-4 w-4" />
+                        <span>高级筛选</span>
+                      </span>
+                    </button>
                 </div>
                 <div className="flex flex-wrap items-center justify-end gap-4">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm text-gray-600">创建时间：</span>
+                    <span className="text-sm text-text-2">创建时间：</span>
                     <select
                       value={quickDateFilter}
                       onChange={(e) => handleQuickDateChange(e.target.value as QuickDateOption)}
-                    className="px-3 py-1 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="px-3 py-1 text-sm border border-border-strong rounded-sm focus:outline-none focus:ring-2 focus:ring-primary"
                   >
                     <option value="">全部</option>
                     <option value="1d">1天内</option>
@@ -544,11 +553,11 @@ export default function Home() {
                 </div>
                   {isAdmin && (
                     <div className="flex items-center gap-2">
-                      <span className="text-sm text-gray-600">可见：</span>
+                      <span className="text-sm text-text-2">可见：</span>
                       <select
                         value={visibilityFilter}
                         onChange={(e) => { setVisibilityFilter(e.target.value); setPage(1); }}
-                        className="px-3 py-1 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="px-3 py-1 text-sm border border-border-strong rounded-sm focus:outline-none focus:ring-2 focus:ring-primary"
                       >
                         <option value="">全部</option>
                         <option value="visible">可见</option>
@@ -557,11 +566,11 @@ export default function Home() {
                     </div>
                   )}
                   <div className="flex items-center gap-2">
-                    <span className="text-sm text-gray-600">排序：</span>
+                    <span className="text-sm text-text-2">排序：</span>
                     <select
                       value={sortBy}
                       onChange={(e) => { setSortBy(e.target.value); setPage(1); }}
-                      className="px-3 py-1 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="px-3 py-1 text-sm border border-border-strong rounded-sm focus:outline-none focus:ring-2 focus:ring-primary"
                     >
                       <option value="published_at_desc">发表时间倒序</option>
                       <option value="created_at_desc">创建时间倒序</option>
@@ -571,24 +580,24 @@ export default function Home() {
               </div>
 
               {showFilters && (
-                <div className="mt-4 pt-4 border-t border-gray-200">
+                <div className="mt-4 pt-4 border-t border-border">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">文章标题</label>
+                      <label className="block text-sm font-medium text-text-2 mb-1">文章标题</label>
                       <input
                         type="text"
                         placeholder="模糊匹配标题..."
                         value={searchTerm}
                         onChange={(e) => { setSearchTerm(e.target.value); setPage(1); }}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-3 py-2 border border-border-strong rounded-sm focus:outline-none focus:ring-2 focus:ring-primary"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">来源</label>
+                      <label className="block text-sm font-medium text-text-2 mb-1">来源</label>
                       <select
                         value={sourceDomain}
                         onChange={(e) => { setSourceDomain(e.target.value); setPage(1); }}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-3 py-2 border border-border-strong rounded-sm focus:outline-none focus:ring-2 focus:ring-primary"
                       >
                         <option value="">全部来源</option>
                         {sources.map((s) => (
@@ -597,11 +606,11 @@ export default function Home() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">作者</label>
+                      <label className="block text-sm font-medium text-text-2 mb-1">作者</label>
                       <select
                         value={author}
                         onChange={(e) => { setAuthor(e.target.value); setPage(1); }}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-3 py-2 border border-border-strong rounded-sm focus:outline-none focus:ring-2 focus:ring-primary"
                       >
                         <option value="">全部作者</option>
                         {authors.map((a) => (
@@ -612,7 +621,7 @@ export default function Home() {
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-2">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">发表时间</label>
+                      <label className="block text-sm font-medium text-text-2 mb-1">发表时间</label>
                       <DatePicker
                         selectsRange
                         startDate={publishedStartDate}
@@ -621,12 +630,12 @@ export default function Home() {
                         isClearable
                         placeholderText="选择日期范围"
                         dateFormat="yyyy-MM-dd"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-3 py-2 border border-border-strong rounded-sm focus:outline-none focus:ring-2 focus:ring-primary"
                         wrapperClassName="w-full"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">创建时间</label>
+                      <label className="block text-sm font-medium text-text-2 mb-1">创建时间</label>
                       <DatePicker
                         selectsRange
                         startDate={createdStartDate}
@@ -635,7 +644,7 @@ export default function Home() {
                         isClearable
                         placeholderText="选择日期范围"
                         dateFormat="yyyy-MM-dd"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-3 py-2 border border-border-strong rounded-sm focus:outline-none focus:ring-2 focus:ring-primary"
                         wrapperClassName="w-full"
                       />
                     </div>
@@ -643,16 +652,16 @@ export default function Home() {
                 </div>
               )}
 
-              <div className="mt-4 pt-4 border-t border-gray-200">
+              <div className="mt-4 pt-4 border-t border-border">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="flex flex-wrap gap-2">
                     {activeFilters.length === 0 ? (
-                      <span className="text-sm text-gray-500">暂无筛选条件</span>
+                      <span className="text-sm text-text-3">暂无筛选条件</span>
                     ) : (
                       activeFilters.map((filter) => (
                         <span
                           key={filter}
-                          className="px-2 py-1 text-xs bg-blue-50 text-blue-700 rounded"
+                          className="px-2 py-1 text-xs bg-primary-soft text-primary-ink rounded-xs"
                         >
                           {filter}
                         </span>
@@ -771,14 +780,18 @@ export default function Home() {
                               }`}
                               title={article.is_visible ? '点击隐藏' : '点击显示'}
                             >
-                              {article.is_visible ? '👁️' : '👁️‍🗨️'}
+                              {article.is_visible ? (
+                                <IconEye className="h-4 w-4" />
+                              ) : (
+                                <IconEyeOff className="h-4 w-4" />
+                              )}
                             </button>
                             <button
                               onClick={() => handleDelete(article.id)}
                               className="w-6 h-6 flex items-center justify-center text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition"
                               title="删除"
                             >
-                              ✕
+                              <IconTrash className="h-4 w-4" />
                             </button>
                           </div>
                         )}
@@ -816,11 +829,12 @@ export default function Home() {
                                    {article.category.name}
                                  </span>
                                )}
-                               {article.source_domain && (
-                                 <span className="px-2 py-1 bg-gray-100 rounded text-gray-600">
-                                   🌐 {article.source_domain}
-                                 </span>
-                               )}
+                                {article.source_domain && (
+                                  <span className="px-2 py-1 bg-gray-100 rounded text-gray-600 inline-flex items-center gap-1">
+                                    <IconGlobe className="h-3.5 w-3.5" />
+                                    {article.source_domain}
+                                  </span>
+                                )}
                                {article.author && <span>作者: {article.author}</span>}
                                <span>
                                 发表时间：

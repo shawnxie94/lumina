@@ -2,6 +2,33 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --bg-app: #f7f7f8;
+  --bg-surface: #ffffff;
+  --bg-muted: #f1f1f3;
+  --text-1: #111111;
+  --text-2: #434343;
+  --text-3: #7a7a7a;
+  --border: #e6e6e8;
+  --border-strong: #d4d4d8;
+  --accent: #3b82f6;
+  --accent-soft: #e8f0ff;
+  --accent-ink: #1e3a8a;
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 6px 18px rgba(0, 0, 0, 0.08);
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --font-sans: "LXGW WenKai Mono", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "LXGW WenKai Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
 @font-face {
   font-family: "LXGW WenKai Mono";
   src: url("/fonts/LXGWWenKaiMono.ttf") format("truetype");
@@ -13,7 +40,9 @@
 body {
   margin: 0;
   padding: 0;
-  font-family: "LXGW WenKai Mono", monospace;
+  font-family: var(--font-sans);
+  background: var(--bg-app);
+  color: var(--text-1);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }

@@ -15,12 +15,31 @@
         <span class="login-status logged-out" id="loginStatus">
           Lumina 未授权
         </span>
-      <button id="loginBtn" class="login-btn" title="授权">🔐</button>
-      <button id="logoutBtn" class="login-btn hidden" title="取消授权">🚪</button>
+      <button id="loginBtn" class="login-btn" title="授权">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="3" y="11" width="18" height="11" rx="2" />
+          <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+        </svg>
+      </button>
+      <button id="logoutBtn" class="login-btn hidden" title="取消授权">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+          <path d="M16 17l5-5-5-5" />
+          <path d="M21 12H9" />
+        </svg>
+      </button>
       <span class="connection-status" id="connectionStatus" title="检测中...">
         <span class="status-dot checking"></span>
       </span>
-      <button id="configBtn" class="config-btn">⚙️ 设置</button>
+      <button id="configBtn" class="config-btn">
+        <span class="icon" aria-hidden="true">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.04.04a2 2 0 0 1-1.42 3.42h-.1a1.7 1.7 0 0 0-1.66 1.18l-.02.07a2 2 0 0 1-3.83 0l-.02-.07a1.7 1.7 0 0 0-1.66-1.18h-.1a2 2 0 0 1-1.42-3.42l.04-.04A1.7 1.7 0 0 0 4.6 15a2 2 0 0 1 0-6 1.7 1.7 0 0 0-.34-1.87l-.04-.04A2 2 0 0 1 5.64 3.67h.1a1.7 1.7 0 0 0 1.66-1.18l.02-.07a2 2 0 0 1 3.83 0l.02.07a1.7 1.7 0 0 0 1.66 1.18h.1a2 2 0 0 1 1.42 3.42l-.04.04A1.7 1.7 0 0 0 19.4 9a2 2 0 0 1 0 6Z" />
+          </svg>
+        </span>
+        <span>设置</span>
+      </button>
       <button id="closeBtn" class="close-btn" title="关闭">×</button>
     </div>
   </div>
@@ -28,7 +47,13 @@
   <div id="loginPrompt" class="login-prompt hidden">
     <div class="login-prompt-content">
       <p>
-        🔒 需要 Lumina 管理员权限才能采集文章
+        <span class="icon" aria-hidden="true">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" />
+            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+          </svg>
+        </span>
+        需要 Lumina 管理员权限才能采集文章
       </p>
       <button id="loginPromptBtn" class="btn btn-primary">去授权</button>
       <button id="loginPromptConfigBtn" class="btn btn-secondary">修改 API 地址</button>
@@ -55,7 +80,17 @@
       准备就绪
     </div>
     <div class="quality-warnings hidden" id="qualityWarnings"></div>
-    <button class="retry-btn hidden" id="retryBtn">🔄 重试</button>
+    <button class="retry-btn hidden" id="retryBtn">
+      <span class="icon" aria-hidden="true">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 12a9 9 0 0 1-9 9 9 9 0 0 1-7.5-4" />
+          <path d="M3 12a9 9 0 0 1 9-9 9 9 0 0 1 7.5 4" />
+          <path d="M3 5v4h4" />
+          <path d="M21 19v-4h-4" />
+        </svg>
+      </span>
+      重试
+    </button>
 
     <div class="buttons">
       <button class="btn btn-secondary" id="cancelBtn">取消</button>
@@ -77,7 +112,15 @@
 
   <div id="configModal" class="config-modal">
     <div class="modal-content">
-      <h2>⚙️ 配置</h2>
+      <h2>
+        <span class="icon" aria-hidden="true">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.04.04a2 2 0 0 1-1.42 3.42h-.1a1.7 1.7 0 0 0-1.66 1.18l-.02.07a2 2 0 0 1-3.83 0l-.02-.07a1.7 1.7 0 0 0-1.66-1.18h-.1a2 2 0 0 1-1.42-3.42l.04-.04A1.7 1.7 0 0 0 4.6 15a2 2 0 0 1 0-6 1.7 1.7 0 0 0-.34-1.87l-.04-.04A2 2 0 0 1 5.64 3.67h.1a1.7 1.7 0 0 0 1.66-1.18l.02-.07a2 2 0 0 1 3.83 0l.02.07a1.7 1.7 0 0 0 1.66 1.18h.1a2 2 0 0 1 1.42 3.42l-.04.04A1.7 1.7 0 0 0 19.4 9a2 2 0 0 1 0 6Z" />
+          </svg>
+        </span>
+        配置
+      </h2>
 
       <div class="form-group">
         <label for="apiHostInput">

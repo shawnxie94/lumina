@@ -1,0 +1,229 @@
+import { ReactNode } from 'react';
+
+type IconProps = {
+  size?: number;
+  strokeWidth?: number;
+  className?: string;
+};
+
+type IconBaseProps = IconProps & {
+  children: ReactNode;
+};
+
+function IconBase({ size = 16, strokeWidth = 2, className, children }: IconBaseProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={strokeWidth}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      {children}
+    </svg>
+  );
+}
+
+export function IconSettings(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.04.04a2 2 0 0 1-1.42 3.42h-.1a1.7 1.7 0 0 0-1.66 1.18l-.02.07a2 2 0 0 1-3.83 0l-.02-.07a1.7 1.7 0 0 0-1.66-1.18h-.1a2 2 0 0 1-1.42-3.42l.04-.04A1.7 1.7 0 0 0 4.6 15a2 2 0 0 1 0-6 1.7 1.7 0 0 0-.34-1.87l-.04-.04A2 2 0 0 1 5.64 3.67h.1a1.7 1.7 0 0 0 1.66-1.18l.02-.07a2 2 0 0 1 3.83 0l.02.07a1.7 1.7 0 0 0 1.66 1.18h.1a2 2 0 0 1 1.42 3.42l-.04.04A1.7 1.7 0 0 0 19.4 9a2 2 0 0 1 0 6Z" />
+    </IconBase>
+  );
+}
+
+export function IconLogout(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+      <path d="M16 17l5-5-5-5" />
+      <path d="M21 12H9" />
+    </IconBase>
+  );
+}
+
+export function IconLock(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <rect x="3" y="11" width="18" height="11" rx="2" />
+      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+    </IconBase>
+  );
+}
+
+export function IconTag(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M20 10V6a2 2 0 0 0-2-2h-4l-8 8a2 2 0 0 0 0 2.83l3.17 3.17a2 2 0 0 0 2.83 0l8-8Z" />
+      <circle cx="15" cy="7" r="1.5" />
+    </IconBase>
+  );
+}
+
+export function IconSearch(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <circle cx="11" cy="11" r="7" />
+      <path d="m21 21-4.3-4.3" />
+    </IconBase>
+  );
+}
+
+export function IconEye(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12Z" />
+      <circle cx="12" cy="12" r="3" />
+    </IconBase>
+  );
+}
+
+export function IconEyeOff(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M17.94 17.94A10.94 10.94 0 0 1 12 19c-7 0-11-7-11-7a21.7 21.7 0 0 1 5.06-5.94" />
+      <path d="M1 1l22 22" />
+      <path d="M9.9 4.24A10.94 10.94 0 0 1 12 4c7 0 11 7 11 7a21.7 21.7 0 0 1-4.46 5.52" />
+      <path d="M14.12 14.12a3 3 0 0 1-4.24-4.24" />
+    </IconBase>
+  );
+}
+
+export function IconGlobe(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M3 12h18" />
+      <path d="M12 3a15 15 0 0 1 0 18" />
+      <path d="M12 3a15 15 0 0 0 0 18" />
+    </IconBase>
+  );
+}
+
+export function IconDoc(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
+      <path d="M14 2v6h6" />
+    </IconBase>
+  );
+}
+
+export function IconList(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M8 6h13" />
+      <path d="M8 12h13" />
+      <path d="M8 18h13" />
+      <path d="M3 6h.01" />
+      <path d="M3 12h.01" />
+      <path d="M3 18h.01" />
+    </IconBase>
+  );
+}
+
+export function IconRobot(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <rect x="4" y="7" width="16" height="12" rx="2" />
+      <path d="M12 3v4" />
+      <circle cx="9" cy="13" r="1" />
+      <circle cx="15" cy="13" r="1" />
+      <path d="M9 17h6" />
+    </IconBase>
+  );
+}
+
+export function IconNote(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
+      <path d="M14 2v6h6" />
+      <path d="M8 13h8" />
+      <path d="M8 17h6" />
+    </IconBase>
+  );
+}
+
+export function IconEdit(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+    </IconBase>
+  );
+}
+
+export function IconPlug(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M9 7v4" />
+      <path d="M15 7v4" />
+      <path d="M7 11h10" />
+      <path d="M12 11v6" />
+      <path d="M8 21h8" />
+      <path d="M9 3h6" />
+    </IconBase>
+  );
+}
+
+export function IconCheck(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M20 6 9 17l-5-5" />
+    </IconBase>
+  );
+}
+
+export function IconRefresh(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M21 12a9 9 0 0 1-9 9 9 9 0 0 1-7.5-4" />
+      <path d="M3 12a9 9 0 0 1 9-9 9 9 0 0 1 7.5 4" />
+      <path d="M3 5v4h4" />
+      <path d="M21 19v-4h-4" />
+    </IconBase>
+  );
+}
+
+export function IconBolt(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M13 2 3 14h7l-1 8 12-14h-7l1-6Z" />
+    </IconBase>
+  );
+}
+
+export function IconCopy(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <rect x="9" y="9" width="13" height="13" rx="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </IconBase>
+  );
+}
+
+export function IconTrash(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M3 6h18" />
+      <path d="M8 6V4h8v2" />
+      <path d="M6 6l1 14a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-14" />
+    </IconBase>
+  );
+}
+
+export function IconLink(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M10 13a5 5 0 0 0 7.07 0l2.83-2.83a5 5 0 1 0-7.07-7.07L10 5" />
+      <path d="M14 11a5 5 0 0 0-7.07 0L4.1 13.83a5 5 0 1 0 7.07 7.07L14 19" />
+    </IconBase>
+  );
+}

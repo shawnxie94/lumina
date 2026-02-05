@@ -6,6 +6,7 @@ import { addToHistory, getHistory, clearHistory, formatHistoryDate } from '../..
 import confetti from 'canvas-confetti';
 import { autoMatchCategory } from '../../utils/categoryKeywords';
 import { logError, setupGlobalErrorHandler } from '../../utils/errorLogger';
+import { icons } from '../../utils/icons';
 
 setupGlobalErrorHandler('popup');
 
@@ -624,7 +625,7 @@ class PopupController {
     if (!warningsContainer) return;
     
     warningsContainer.innerHTML = quality.warnings
-      .map(w => `<div class="quality-warning">⚠️ ${w}</div>`)
+      .map(w => `<div class="quality-warning">${icons.warning} ${w}</div>`)
       .join('');
     warningsContainer.classList.remove('hidden');
   }
@@ -644,28 +645,28 @@ class PopupController {
     }
 
     if (previewTitle && this.#articleData) {
-      const titlePrefix = isSelection ? '📋 ' : '';
-      previewTitle.textContent = titlePrefix + (this.#articleData.title || '(无标题)');
+      const title = this.escapeHtml(this.#articleData.title || '(无标题)');
+      previewTitle.innerHTML = `${isSelection ? `${icons.doc} ` : ''}${title}`;
     }
 
     if (previewMeta && this.#articleData) {
       const metaParts = [];
 
       if (this.#articleData.author) {
-        metaParts.push(`<span>✍️ ${this.#articleData.author}</span>`);
+        metaParts.push(`<span>${icons.pen} ${this.escapeHtml(this.#articleData.author)}</span>`);
       }
 
       if (this.#articleData.published_at) {
-        metaParts.push(`<span>📅 ${this.#articleData.published_at}</span>`);
+        metaParts.push(`<span>${icons.calendar} ${this.escapeHtml(this.#articleData.published_at)}</span>`);
       }
 
       if (this.#articleData.source_domain) {
-        metaParts.push(`<span>🔗 ${this.#articleData.source_domain}</span>`);
+        metaParts.push(`<span>${icons.link} ${this.escapeHtml(this.#articleData.source_domain)}</span>`);
       }
 
       const wordCount = this.#articleData.content_md?.length || 0;
       if (wordCount > 0) {
-        metaParts.push(`<span>📝 ${wordCount} 字</span>`);
+        metaParts.push(`<span>${icons.doc} ${wordCount} 字</span>`);
       }
 
       previewMeta.innerHTML = metaParts.join('<span class="meta-divider">·</span>');

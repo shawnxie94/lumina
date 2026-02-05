@@ -1,6 +1,7 @@
 import './history.css';
 import { getHistory, clearHistory, formatHistoryDate } from '../../utils/history';
 import { ApiClient } from '../../utils/api';
+import { icons } from '../../utils/icons';
 
 class HistoryController {
   #history = [];
@@ -85,7 +86,7 @@ class HistoryController {
 
       const imageHtml = item.topImage
         ? `<img class="history-item-image" src="${this.escapeHtml(item.topImage)}" alt="" />`
-        : `<div class="history-item-image placeholder">📄</div>`;
+        : `<div class="history-item-image placeholder">${icons.doc}</div>`;
 
       const articleUrl = item.articleId 
         ? `${this.#apiClient.frontendUrl}/article/${item.articleId}`
@@ -98,8 +99,8 @@ class HistoryController {
             <a href="${this.escapeHtml(articleUrl)}" target="_blank">${this.escapeHtml(item.title)}</a>
           </div>
           <div class="history-item-meta">
-            <span>🔗 ${this.escapeHtml(item.domain)}</span>
-            <span>🕐 ${formatHistoryDate(item.collectedAt)}</span>
+            <span>${icons.link} ${this.escapeHtml(item.domain)}</span>
+            <span>${icons.clock} ${formatHistoryDate(item.collectedAt)}</span>
           </div>
         </div>
         <div class="history-item-actions">

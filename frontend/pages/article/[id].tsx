@@ -8,6 +8,7 @@ import { marked } from 'marked';
 import { articleApi, type ArticleDetail, type ModelAPIConfig, type PromptConfig } from '@/lib/api';
 import { useToast } from '@/components/Toast';
 import { BackToTop } from '@/components/BackToTop';
+import { IconBolt, IconCopy, IconDoc, IconEye, IconEyeOff, IconList, IconRefresh, IconRobot, IconTrash } from '@/components/icons';
 import { useAuth } from '@/contexts/AuthContext';
 
 // 轮询间隔（毫秒）
@@ -165,7 +166,7 @@ function AIContentSection({
             className="text-gray-400 hover:text-blue-600 transition"
             title={content ? '重新生成' : '生成'}
           >
-          {content ? '🔄' : '⚡'}
+          {content ? <IconRefresh className="h-4 w-4" /> : <IconBolt className="h-4 w-4" />}
           </button>
         )}
         {content && (
@@ -174,7 +175,7 @@ function AIContentSection({
             className="text-gray-400 hover:text-blue-600 transition"
             title="复制内容"
           >
-            📋
+            <IconCopy className="h-4 w-4" />
           </button>
         )}
       </div>
@@ -672,55 +673,55 @@ export default function ArticleDetailPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-gray-500">加载中...</div>
+      <div className="min-h-screen bg-app flex items-center justify-center">
+        <div className="text-text-3">加载中...</div>
       </div>
     );
   }
 
   if (!article) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-gray-500">文章不存在</div>
+      <div className="min-h-screen bg-app flex items-center justify-center">
+        <div className="text-text-3">文章不存在</div>
       </div>
     );
   }
 
   return (
-    <div className={`min-h-screen ${immersiveMode ? 'bg-white' : 'bg-gray-50'}`}>
+    <div className={`min-h-screen ${immersiveMode ? 'bg-surface' : 'bg-app'}`}>
       <Head>
         <title>{article?.title ? `${article.title} - Lumina` : '文章详情 - Lumina'}</title>
       </Head>
       <ReadingProgress />
-       <nav className={`bg-white ${immersiveMode ? '' : 'shadow-sm border-b'}`}>
+       <nav className={`bg-surface ${immersiveMode ? '' : 'shadow-sm border-b border-border'}`}>
         <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between mb-3 relative">
-            <Link href="/" className="text-blue-600 hover:text-blue-700 transition">
+            <Link href="/" className="text-primary hover:text-primary-ink transition">
               ← 返回列表
             </Link>
-            <h1 className="text-2xl font-bold text-gray-900 truncate absolute left-1/2 -translate-x-1/2 max-w-[70%] text-center">
+            <h1 className="text-2xl font-bold text-text-1 truncate absolute left-1/2 -translate-x-1/2 max-w-[70%] text-center">
               {article.title}
             </h1>
             <div></div>
           </div>
-          <div className={`flex flex-wrap gap-4 text-sm text-gray-600 pb-3 justify-center ${immersiveMode ? '' : 'border-b border-gray-100'}`}>
+          <div className={`flex flex-wrap gap-4 text-sm text-text-2 pb-3 justify-center ${immersiveMode ? '' : 'border-b border-border'}`}>
             {article.category && (
               <div>
-                <span className="font-medium text-gray-700">分类：</span>
+                <span className="font-medium text-text-2">分类：</span>
                 <Link
                   href={`/?category_id=${article.category.id}`}
                   className="inline-flex items-center gap-1"
                 >
-                  <span className="text-blue-600 hover:underline">{article.category.name}</span>
+                  <span className="text-primary hover:underline">{article.category.name}</span>
                 </Link>
               </div>
             )}
             {article.author && (
               <div>
-                <span className="font-medium text-gray-700">作者：</span>
+                <span className="font-medium text-text-2">作者：</span>
                 <Link
                   href={`/?author=${encodeURIComponent(article.author)}`}
-                  className="text-blue-600 hover:underline"
+                  className="text-primary hover:underline"
                 >
                   {article.author}
                 </Link>
@@ -728,19 +729,19 @@ export default function ArticleDetailPage() {
             )}
             {article.source_url && (
               <div>
-                <span className="font-medium text-gray-700">来源：</span>
+                <span className="font-medium text-text-2">来源：</span>
                 <a
                   href={article.source_url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-blue-600 hover:underline"
+                  className="text-primary hover:underline"
                 >
                   点击查看
                 </a>
               </div>
             )}
             <div>
-              <span className="font-medium text-gray-700">发表时间：</span>
+              <span className="font-medium text-text-2">发表时间：</span>
               {article.published_at
                 ? new Date(article.published_at).toLocaleDateString('zh-CN')
                 : new Date(article.created_at).toLocaleDateString('zh-CN')}
@@ -753,12 +754,17 @@ export default function ArticleDetailPage() {
           <div className="flex gap-4">
             {!immersiveMode && tocItems.length > 0 && (
               <aside className={`hidden xl:block flex-shrink-0 transition-all duration-300 ${tocCollapsed ? 'w-12' : 'w-48'}`}>
-                <div className="sticky top-4 bg-white rounded-lg shadow-sm p-4 max-h-[calc(100vh-2rem)] overflow-y-auto">
+                <div className="sticky top-4 bg-surface rounded-sm shadow-sm border border-border p-4 max-h-[calc(100vh-2rem)] overflow-y-auto">
                   <div className="flex items-center justify-between mb-3">
-                    {!tocCollapsed && <h3 className="text-lg font-semibold text-gray-900">📑 目录</h3>}
+                    {!tocCollapsed && (
+                      <h3 className="text-lg font-semibold text-text-1 inline-flex items-center gap-2">
+                        <IconList className="h-4 w-4" />
+                        <span>目录</span>
+                      </h3>
+                    )}
                     <button
                       onClick={() => setTocCollapsed(!tocCollapsed)}
-                      className="text-gray-500 hover:text-gray-700 transition"
+                      className="text-text-3 hover:text-text-2 transition"
                       title={tocCollapsed ? '展开' : '收起'}
                     >
                       {tocCollapsed ? '»' : '«'}
@@ -769,10 +775,13 @@ export default function ArticleDetailPage() {
               </aside>
             )}
 
-            <div className={`flex-1 bg-white ${immersiveMode ? '' : 'rounded-lg shadow-sm p-6'}`}>
+            <div className={`flex-1 bg-surface ${immersiveMode ? '' : 'rounded-sm shadow-sm border border-border p-6'}`}>
               <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-2">
-                  <h2 className="text-lg font-semibold text-gray-900">📄 内容</h2>
+                  <h2 className="text-lg font-semibold text-text-1 inline-flex items-center gap-2">
+                    <IconDoc className="h-4 w-4" />
+                    <span>内容</span>
+                  </h2>
                   {article.translation_status && (
                     <>
                       <span className={`px-2 py-0.5 rounded text-xs ${
@@ -792,7 +801,7 @@ export default function ArticleDetailPage() {
                           className="text-gray-400 hover:text-blue-600 transition"
                           title={article.translation_error || '重新翻译'}
                         >
-                          🔄
+                          <IconRefresh className="h-4 w-4" />
                         </button>
                       )}
                     </>
@@ -810,7 +819,7 @@ export default function ArticleDetailPage() {
                         }`}
                         title={article.is_visible ? '点击隐藏' : '点击显示'}
                       >
-                        {article.is_visible ? '👁️' : '👁️‍🗨️'}
+              {article.is_visible ? <IconEye className="h-4 w-4" /> : <IconEyeOff className="h-4 w-4" />}
                         <span>{article.is_visible ? '隐藏' : '显示'}</span>
                       </button>
                       <button
@@ -826,7 +835,7 @@ export default function ArticleDetailPage() {
                         className="flex items-center gap-1 px-2 py-1 rounded-lg text-sm text-red-600 hover:bg-red-50 transition"
                         title="删除文章"
                       >
-                        🗑️
+                <IconTrash className="h-4 w-4" />
                         <span>删除</span>
                       </button>
                     </>
@@ -925,7 +934,10 @@ export default function ArticleDetailPage() {
                 <div className="flex items-center justify-between mb-4">
                   {!analysisCollapsed && (
                     <div>
-                      <h2 className="text-lg font-semibold text-gray-900">🤖 AI 解读</h2>
+                  <h2 className="text-lg font-semibold text-gray-900 inline-flex items-center gap-2">
+                    <IconRobot className="h-4 w-4" />
+                    <span>AI 解读</span>
+                  </h2>
                       {aiUpdatedAt && (
                         <div className="text-xs text-gray-500 mt-1">更新时间：{aiUpdatedAt}</div>
                       )}
@@ -944,7 +956,7 @@ export default function ArticleDetailPage() {
                   <div className="space-y-6">
                     {showSummarySection && (
                       <AIContentSection
-                        title="📝 摘要"
+                  title="摘要"
                         content={article.ai_analysis?.summary}
                         status={article.ai_analysis?.summary_status || (article.status === 'completed' ? 'completed' : article.status)}
                         onGenerate={() => handleGenerateContent('summary')}
@@ -957,7 +969,7 @@ export default function ArticleDetailPage() {
 
                     {showKeyPointsSection && (
                       <AIContentSection
-                        title="🧾 总结"
+                  title="总结"
                         content={article.ai_analysis?.key_points}
                         status={article.ai_analysis?.key_points_status}
                         onGenerate={() => handleGenerateContent('key_points')}
@@ -970,7 +982,7 @@ export default function ArticleDetailPage() {
 
                     {showOutlineSection && (
                       <AIContentSection
-                        title="🧭 大纲"
+                  title="大纲"
                         content={article.ai_analysis?.outline}
                         status={article.ai_analysis?.outline_status}
                         onGenerate={() => handleGenerateContent('outline')}
@@ -985,7 +997,7 @@ export default function ArticleDetailPage() {
 
                     {showQuotesSection && (
                       <AIContentSection
-                        title="✨ 金句"
+                        title="金句"
                         content={article.ai_analysis?.quotes}
                         status={article.ai_analysis?.quotes_status}
                         onGenerate={() => handleGenerateContent('quotes')}

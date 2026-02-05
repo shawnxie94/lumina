@@ -4,6 +4,7 @@ import { useRouter } from 'next/router';
 import Head from 'next/head';
 
 import { useAuth } from '@/contexts/AuthContext';
+import { IconCheck, IconLock, IconPlug } from '@/components/icons';
 import { getToken } from '@/lib/api';
 
 export default function ExtensionAuthPage() {
@@ -96,7 +97,9 @@ export default function ExtensionAuthPage() {
     </Head>
         <div className="min-h-screen flex items-center justify-center bg-gray-50">
           <div className="text-center">
-            <div className="text-6xl mb-4">✅</div>
+            <div className="text-6xl mb-4 inline-flex items-center justify-center">
+              <IconCheck className="h-12 w-12" />
+            </div>
             <h1 className="text-2xl font-bold text-gray-900 mb-2">授权成功</h1>
             <p className="text-gray-600 mb-4">浏览器扩展已获得管理员权限</p>
             <p className="text-sm text-gray-500">你可以关闭此页面，返回扩展继续使用</p>
@@ -114,7 +117,9 @@ export default function ExtensionAuthPage() {
     </Head>
         <div className="min-h-screen flex items-center justify-center bg-gray-50">
           <div className="text-center">
-            <div className="text-4xl mb-4">🔐</div>
+            <div className="text-4xl mb-4 inline-flex items-center justify-center">
+              <IconLock className="h-8 w-8" />
+            </div>
             <h1 className="text-xl font-bold text-gray-900 mb-2">正在授权扩展...</h1>
             {error && <p className="text-red-500 mb-4">{error}</p>}
             {!error && <p className="text-gray-500">请稍候</p>}
@@ -133,8 +138,9 @@ export default function ExtensionAuthPage() {
       <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-md w-full space-y-8">
           <div>
-            <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-              🔌 扩展授权
+            <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900 inline-flex items-center justify-center gap-2">
+              <IconPlug className="h-5 w-5" />
+              <span>扩展授权</span>
             </h2>
             <p className="mt-2 text-center text-sm text-gray-600">
               登录管理员账号以授权浏览器扩展

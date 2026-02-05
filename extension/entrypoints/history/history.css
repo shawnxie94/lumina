@@ -4,6 +4,33 @@
   box-sizing: border-box;
 }
 
+:root {
+  --bg-app: #f7f7f8;
+  --bg-surface: #ffffff;
+  --bg-muted: #f1f1f3;
+  --text-1: #111111;
+  --text-2: #434343;
+  --text-3: #7a7a7a;
+  --border: #e6e6e8;
+  --border-strong: #d4d4d8;
+  --accent: #3b82f6;
+  --accent-soft: #e8f0ff;
+  --accent-ink: #1e3a8a;
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 6px 18px rgba(0, 0, 0, 0.08);
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --font-sans: "LXGW WenKai Mono", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "LXGW WenKai Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
 @font-face {
   font-family: "LXGW WenKai Mono";
   src: url("/fonts/LXGWWenKaiMono.ttf") format("truetype");
@@ -13,9 +40,17 @@
 }
 
 body {
-  font-family: "LXGW WenKai Mono", monospace;
-  background: #f9fafb;
+  font-family: var(--font-sans);
+  background: var(--bg-app);
+  color: var(--text-1);
   min-height: 100vh;
+}
+
+.icon {
+  width: 16px;
+  height: 16px;
+  display: inline-block;
+  vertical-align: -2px;
 }
 
 .container {
@@ -30,13 +65,13 @@ body {
   justify-content: space-between;
   margin-bottom: 24px;
   padding-bottom: 16px;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--border);
 }
 
 .header h1 {
   font-size: 24px;
   font-weight: 600;
-  color: #111827;
+  color: var(--text-1);
 }
 
 .header-actions {
@@ -47,7 +82,7 @@ body {
 .btn {
   padding: 8px 16px;
   border: none;
-  border-radius: 6px;
+  border-radius: 4px;
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
@@ -69,9 +104,9 @@ body {
   gap: 16px;
   margin-bottom: 24px;
   padding: 16px;
-  background: white;
+  background: var(--bg-surface);
   border-radius: 8px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--border);
 }
 
 .stats:empty {
@@ -87,12 +122,12 @@ body {
 .stat-value {
   font-size: 24px;
   font-weight: 600;
-  color: #111827;
+  color: var(--text-1);
 }
 
 .stat-label {
   font-size: 12px;
-  color: #6b7280;
+  color: var(--text-3);
 }
 
 .history-list {
@@ -106,16 +141,16 @@ body {
   align-items: flex-start;
   gap: 16px;
   padding: 16px;
-  background: white;
-  border: 1px solid #e5e7eb;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.15s;
 }
 
 .history-item:hover {
-  border-color: #3b82f6;
-  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.1);
+  border-color: var(--accent);
+  box-shadow: var(--shadow-sm);
 }
 
 .history-item-image {
@@ -123,7 +158,7 @@ body {
   height: 60px;
   border-radius: 6px;
   object-fit: cover;
-  background: #f3f4f6;
+  background: var(--bg-muted);
   flex-shrink: 0;
 }
 
@@ -132,7 +167,7 @@ body {
   align-items: center;
   justify-content: center;
   font-size: 24px;
-  color: #9ca3af;
+  color: var(--text-3);
 }
 
 img.history-item-image {
@@ -147,7 +182,7 @@ img.history-item-image {
 .history-item-title {
   font-size: 16px;
   font-weight: 600;
-  color: #111827;
+  color: var(--text-1);
   margin-bottom: 8px;
   line-height: 1.4;
   display: -webkit-box;
@@ -162,7 +197,7 @@ img.history-item-image {
 }
 
 .history-item-title a:hover {
-  color: #3b82f6;
+  color: var(--accent);
 }
 
 .history-item-meta {
@@ -170,7 +205,7 @@ img.history-item-image {
   flex-wrap: wrap;
   gap: 12px;
   font-size: 13px;
-  color: #6b7280;
+  color: var(--text-3);
 }
 
 .history-item-meta span {
@@ -189,8 +224,8 @@ img.history-item-image {
 .history-item-category {
   font-size: 12px;
   padding: 4px 10px;
-  background: #e0e7ff;
-  color: #4338ca;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
   border-radius: 4px;
   white-space: nowrap;
 }
@@ -198,10 +233,10 @@ img.history-item-image {
 .delete-btn {
   padding: 6px 12px;
   background: none;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--border);
   border-radius: 4px;
   font-size: 12px;
-  color: #6b7280;
+  color: var(--text-3);
   cursor: pointer;
   transition: all 0.15s;
 }

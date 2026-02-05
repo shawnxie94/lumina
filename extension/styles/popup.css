@@ -4,6 +4,33 @@
   box-sizing: border-box;
 }
 
+:root {
+  --bg-app: #f7f7f8;
+  --bg-surface: #ffffff;
+  --bg-muted: #f1f1f3;
+  --text-1: #111111;
+  --text-2: #434343;
+  --text-3: #7a7a7a;
+  --border: #e6e6e8;
+  --border-strong: #d4d4d8;
+  --accent: #3b82f6;
+  --accent-soft: #e8f0ff;
+  --accent-ink: #1e3a8a;
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 6px 18px rgba(0, 0, 0, 0.08);
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --font-sans: "LXGW WenKai Mono", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "LXGW WenKai Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
 @font-face {
   font-family: "LXGW WenKai Mono";
   src: url("/fonts/LXGWWenKaiMono.ttf") format("truetype");
@@ -15,8 +42,16 @@
 body {
   width: 400px;
   padding: 16px;
-  font-family: "LXGW WenKai Mono", monospace;
-  background: #f9fafb;
+  font-family: var(--font-sans);
+  background: var(--bg-app);
+  color: var(--text-1);
+}
+
+.icon {
+  width: 16px;
+  height: 16px;
+  display: inline-block;
+  vertical-align: -2px;
 }
 
 .header {
@@ -25,14 +60,14 @@ body {
   justify-content: space-between;
   margin-bottom: 16px;
   padding-bottom: 12px;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--border);
   position: relative;
 }
 
 .header h1 {
   font-size: 16px;
   font-weight: 600;
-  color: #111827;
+  color: var(--text-1);
 }
 
 .header-right {
@@ -77,15 +112,15 @@ body {
   border: none;
   font-size: 20px;
   cursor: pointer;
-  color: #6b7280;
+  color: var(--text-3);
 }
 
 .preview {
   display: flex;
   align-items: flex-start;
   gap: 12px;
-  background: white;
-  border: 1px solid #e5e7eb;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 12px;
   margin-bottom: 16px;
@@ -112,7 +147,7 @@ body {
 .preview-title {
   font-size: 14px;
   font-weight: 600;
-  color: #111827;
+  color: var(--text-1);
   margin-bottom: 8px;
   line-height: 1.4;
 }
@@ -122,7 +157,7 @@ body {
   flex-wrap: wrap;
   gap: 8px;
   font-size: 12px;
-  color: #6b7280;
+  color: var(--text-3);
 }
 
 .preview-meta:empty {
@@ -147,7 +182,7 @@ body {
   display: block;
   font-size: 12px;
   font-weight: 500;
-  color: #374151;
+  color: var(--text-2);
   margin-bottom: 6px;
 }
 
@@ -155,10 +190,10 @@ body {
 .form-group input {
   width: 100%;
   padding: 8px 12px;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
   font-size: 14px;
-  background: white;
+  background: var(--bg-surface);
 }
 
 .status {
@@ -304,17 +339,17 @@ body {
 }
 
 .modal-content {
-  background: white;
+  background: var(--bg-surface);
   padding: 24px;
   border-radius: 12px;
   width: 320px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--shadow-md);
 }
 
 .modal-content h2 {
   margin: 0 0 16px 0;
   font-size: 18px;
-  color: #111827;
+  color: var(--text-1);
 }
 
 .modal-buttons {
@@ -326,22 +361,22 @@ body {
 
 .config-btn {
   padding: 8px 16px;
-  background: #f3f4f6;
-  border: 1px solid #d1d5db;
+  background: var(--bg-muted);
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
   font-size: 13px;
   cursor: pointer;
-  color: #6b7280;
+  color: var(--text-3);
 }
 
 .config-btn:hover {
-  background: #e5e7eb;
+  background: var(--bg-surface);
 }
 
 .history-section {
   margin-top: 16px;
   padding-top: 16px;
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid var(--border);
 }
 
 .history-section.hidden {
@@ -355,7 +390,7 @@ body {
   margin-bottom: 8px;
   font-size: 12px;
   font-weight: 500;
-  color: #6b7280;
+  color: var(--text-3);
 }
 
 .history-actions {
@@ -367,12 +402,12 @@ body {
   background: none;
   border: none;
   font-size: 11px;
-  color: #3b82f6;
+  color: var(--accent);
   cursor: pointer;
 }
 
 .view-all-btn:hover {
-  color: #2563eb;
+  color: var(--accent-ink);
   text-decoration: underline;
 }
 
@@ -380,7 +415,7 @@ body {
   background: none;
   border: none;
   font-size: 11px;
-  color: #9ca3af;
+  color: var(--text-3);
   cursor: pointer;
 }
 
@@ -401,16 +436,16 @@ body {
   align-items: center;
   gap: 8px;
   padding: 8px;
-  background: white;
-  border: 1px solid #e5e7eb;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.15s;
 }
 
 .history-item:hover {
-  border-color: #3b82f6;
-  background: #f0f9ff;
+  border-color: var(--accent);
+  background: var(--accent-soft);
 }
 
 .history-item-thumbnail {
