@@ -1032,7 +1032,7 @@ export default function ArticleDetailPage() {
                     <div>
                   <h2 className="text-lg font-semibold text-gray-900 inline-flex items-center gap-2">
                     <IconRobot className="h-4 w-4" />
-                    <span>AI 解读</span>
+                    <span>AI解读</span>
                   </h2>
                       {aiUpdatedAt && (
                         <div className="text-xs text-gray-500 mt-1">更新时间：{aiUpdatedAt}</div>

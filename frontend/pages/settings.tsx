@@ -26,7 +26,7 @@ import { articleApi, categoryApi, type ModelAPIConfig, type PromptConfig } from 
 import AppFooter from '@/components/AppFooter';
 import AppHeader from '@/components/AppHeader';
 import { useToast } from '@/components/Toast';
-import { IconEdit, IconEye, IconLink, IconList, IconNote, IconPlug, IconRobot, IconTag, IconTrash } from '@/components/icons';
+import { IconEdit, IconEye, IconGrip, IconLink, IconList, IconNote, IconPlug, IconRobot, IconTag, IconTrash } from '@/components/icons';
 import { useAuth } from '@/contexts/AuthContext';
 import { Select } from 'antd';
 
@@ -102,29 +102,29 @@ function SortableCategoryItem({ category, onEdit, onDelete }: SortableCategoryIt
     <div
       ref={setNodeRef}
       style={style}
-      className="border rounded-lg p-4 hover:shadow-md transition flex items-center justify-between bg-white"
+      className="border rounded-lg px-3 py-2 hover:shadow-sm transition flex items-center justify-between bg-white"
     >
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3">
         <button
           {...attributes}
           {...listeners}
           className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600 px-1"
           title="拖动排序"
         >
-          ⋮⋮
+          <IconGrip className="h-4 w-4" />
         </button>
         <div
-          className="w-10 h-10 rounded flex items-center justify-center text-white font-bold text-lg"
+          className="w-8 h-8 rounded flex items-center justify-center text-white font-bold text-sm"
           style={{ backgroundColor: category.color }}
         >
           {category.name.charAt(0).toUpperCase()}
         </div>
         <div>
-          <h3 className="font-semibold text-gray-900">{category.name}</h3>
-          <p className="text-sm text-gray-600">{category.description || '暂无描述'}</p>
-          <p className="text-xs text-gray-500 mt-1">
-            文章数: {category.article_count}
-          </p>
+          <div className="flex items-center gap-2">
+            <h3 className="font-semibold text-gray-900 text-sm">{category.name}</h3>
+            <span className="text-xs text-text-3">{category.article_count}</span>
+          </div>
+          <p className="text-xs text-gray-600">{category.description || '暂无描述'}</p>
         </div>
       </div>
 
@@ -763,7 +763,9 @@ export default function SettingsPage() {
                 <button
                   onClick={() => setActiveSection('categories')}
                   className={`w-full text-left px-4 py-3 rounded-sm transition ${
-                    activeSection === 'categories' ? 'bg-primary-soft text-primary-ink' : 'hover:bg-muted'
+                    activeSection === 'categories'
+                      ? 'bg-muted text-text-1'
+                      : 'text-text-2 hover:text-text-1 hover:bg-muted'
                   }`}
                 >
                   <span className="inline-flex items-center gap-2">
@@ -774,7 +776,9 @@ export default function SettingsPage() {
                 <button
                   onClick={() => setActiveSection('ai')}
                   className={`w-full text-left px-4 py-3 rounded-sm transition ${
-                    activeSection === 'ai' ? 'bg-primary-soft text-primary-ink' : 'hover:bg-muted'
+                    activeSection === 'ai'
+                      ? 'bg-muted text-text-1'
+                      : 'text-text-2 hover:text-text-1 hover:bg-muted'
                   }`}
                 >
                   <span className="inline-flex items-center gap-2">
@@ -789,8 +793,8 @@ export default function SettingsPage() {
                   }}
                   className={`w-full text-left px-6 py-2 text-sm rounded-sm transition ${
                     activeSection === 'ai' && aiSubSection === 'model-api'
-                      ? 'bg-primary-soft text-primary-ink'
-                      : 'text-text-3 hover:text-text-2 hover:bg-muted'
+                      ? 'bg-muted text-text-1'
+                      : 'text-text-2 hover:text-text-1 hover:bg-muted'
                   }`}
                 >
                   <span className="inline-flex items-center gap-2">
@@ -805,8 +809,8 @@ export default function SettingsPage() {
                   }}
                   className={`w-full text-left px-6 py-2 text-sm rounded-sm transition ${
                     activeSection === 'ai' && aiSubSection === 'prompt'
-                      ? 'bg-primary-soft text-primary-ink'
-                      : 'text-text-3 hover:text-text-2 hover:bg-muted'
+                      ? 'bg-muted text-text-1'
+                      : 'text-text-2 hover:text-text-1 hover:bg-muted'
                   }`}
                 >
                   <span className="inline-flex items-center gap-2">
@@ -817,7 +821,9 @@ export default function SettingsPage() {
                 <button
                   onClick={() => setActiveSection('tasks')}
                   className={`w-full text-left px-4 py-3 rounded-sm transition ${
-                    activeSection === 'tasks' ? 'bg-primary-soft text-primary-ink' : 'hover:bg-muted'
+                    activeSection === 'tasks'
+                      ? 'bg-muted text-text-1'
+                      : 'text-text-2 hover:text-text-1 hover:bg-muted'
                   }`}
                 >
                   <span className="inline-flex items-center gap-2">
@@ -929,7 +935,7 @@ export default function SettingsPage() {
                               className="px-2 py-1 text-sm text-gray-500 rounded hover:bg-red-100 hover:text-red-600 transition"
                               title="删除"
                             >
-                              ✕
+                              <IconTrash className="h-4 w-4" />
                             </button>
                           </div>
                         </div>
@@ -947,26 +953,26 @@ export default function SettingsPage() {
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => handleExportPromptConfigs('current')}
-                      className="px-3 py-2 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition"
+                      className="px-3 py-2 text-sm bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
                     >
                       导出当前
                     </button>
                     <button
                       onClick={() => handleExportPromptConfigs('all')}
-                      className="px-3 py-2 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition"
+                      className="px-3 py-2 text-sm bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
                     >
                       导出全部
                     </button>
                     <button
                       onClick={() => promptImportInputRef.current?.click()}
-                      className="px-3 py-2 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition"
+                      className="px-3 py-2 text-sm bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
                     >
                       导入
                     </button>
-                    <button
-                      onClick={handleCreatePromptNew}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
-                    >
+                  <button
+                    onClick={handleCreatePromptNew}
+                    className="px-4 py-2 bg-primary text-white rounded-sm hover:bg-primary-ink transition"
+                  >
                       + 创建配置
                     </button>
                   </div>
@@ -985,10 +991,10 @@ export default function SettingsPage() {
                     <button
                       key={type.value}
                       onClick={() => setSelectedPromptType(type.value)}
-                        className={`px-4 py-2 text-sm rounded-lg transition ${
+                        className={`px-4 py-2 text-sm rounded-sm transition ${
                           selectedPromptType === type.value
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                            ? 'bg-primary-soft text-primary-ink'
+                            : 'bg-muted text-text-2 hover:bg-surface hover:text-text-1'
                         }`}
                     >
                       {type.label}
@@ -1001,9 +1007,9 @@ export default function SettingsPage() {
                 ) : promptConfigs.filter(c => c.type === selectedPromptType).length === 0 ? (
                   <div className="text-center py-12 text-gray-500">
                     <div className="mb-4">暂无{PROMPT_TYPES.find(t => t.value === selectedPromptType)?.label}配置</div>
-                    <button
+                      <button
                       onClick={handleCreatePromptNew}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                      className="px-4 py-2 bg-primary text-white rounded-sm hover:bg-primary-ink transition"
                     >
                       创建配置
                     </button>
@@ -1131,7 +1137,7 @@ export default function SettingsPage() {
                   <h2 className="text-lg font-semibold text-gray-900">分类列表</h2>
                   <button
                     onClick={handleCreateCategoryNew}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                    className="px-4 py-2 bg-primary text-white rounded-sm hover:bg-primary-ink transition"
                   >
                     + 新增分类
                   </button>
@@ -1142,9 +1148,9 @@ export default function SettingsPage() {
                 ) : categories.length === 0 ? (
                   <div className="text-center py-12 text-gray-500">
                     <div className="mb-4">暂无分类</div>
-                    <button
+                      <button
                       onClick={handleCreateCategoryNew}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                      className="px-4 py-2 bg-primary text-white rounded-sm hover:bg-primary-ink transition"
                     >
                       新增分类
                     </button>
@@ -1183,21 +1189,21 @@ export default function SettingsPage() {
                     <p className="text-sm text-gray-500">查看、重试或取消后台任务</p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <button
+                      <button
                       onClick={() => {
                         setTaskStatusFilter('');
                         setTaskTypeFilter('');
                         setTaskArticleIdFilter('');
                         setTaskPage(1);
                       }}
-                      className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition"
+                      className="px-4 py-2 text-sm bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
                       disabled={!hasTaskFilters}
                     >
                       清空筛选
                     </button>
                     <button
                       onClick={fetchTasks}
-                      className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition"
+                      className="px-4 py-2 text-sm bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
                     >
                       刷新
                     </button>
@@ -1206,7 +1212,7 @@ export default function SettingsPage() {
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                   <div>
-              <label className="block text-sm text-gray-700 mb-1">状态</label>
+                    <label className="block text-sm text-text-2 mb-1">状态</label>
                     <Select
                       value={taskStatusFilter}
                       onChange={(value) => { setTaskStatusFilter(value); setTaskPage(1); }}
@@ -1223,7 +1229,7 @@ export default function SettingsPage() {
                     />
                   </div>
                   <div>
-              <label className="block text-sm text-gray-700 mb-1">任务类型</label>
+                    <label className="block text-sm text-text-2 mb-1">任务类型</label>
                     <Select
                       value={taskTypeFilter}
                       onChange={(value) => { setTaskTypeFilter(value); setTaskPage(1); }}
@@ -1241,12 +1247,12 @@ export default function SettingsPage() {
                     />
                   </div>
                   <div>
-              <label className="block text-sm text-gray-700 mb-1">文章ID</label>
+                    <label className="block text-sm text-text-2 mb-1">文章ID</label>
                     <input
                       value={taskArticleIdFilter}
                       onChange={(e) => { setTaskArticleIdFilter(e.target.value); setTaskPage(1); }}
                       placeholder="输入文章ID"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full h-9 px-3 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
                     />
                   </div>
                 </div>
@@ -1267,7 +1273,7 @@ export default function SettingsPage() {
                           <th className="text-left px-4 py-3">尝试</th>
                           <th className="text-left px-4 py-3">文章</th>
                           <th className="text-left px-4 py-3">时间</th>
-                          <th className="text-left px-4 py-3">操作</th>
+                          <th className="text-right px-4 py-3">操作</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100">
@@ -1277,7 +1283,6 @@ export default function SettingsPage() {
                               <div className="font-medium text-gray-900">
                                 {getTaskTypeLabel(task)}生成
                               </div>
-                              <div className="text-xs text-gray-500">{task.task_type}</div>
                             </td>
                             <td className="px-4 py-3">
                               <span
@@ -1340,14 +1345,14 @@ export default function SettingsPage() {
                               <div className="flex items-center justify-end gap-2">
                                 <button
                                   onClick={() => handleRetryTask(task.id)}
-                                  className="px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded"
+                                className="px-2 py-1 text-xs text-text-2 hover:text-text-1 hover:bg-muted rounded-sm"
                                   disabled={task.status === 'processing'}
                                 >
                                   重试
                                 </button>
                                 <button
                                   onClick={() => handleCancelTask(task.id)}
-                                  className="px-2 py-1 text-xs text-gray-600 hover:bg-gray-100 rounded"
+                                className="px-2 py-1 text-xs text-text-2 hover:text-red-600 hover:bg-red-50 rounded-sm"
                                   disabled={task.status === 'completed' || task.status === 'cancelled'}
                                 >
                                   取消
@@ -1381,17 +1386,17 @@ export default function SettingsPage() {
                     <button
                       onClick={() => setTaskPage((p) => Math.max(1, p - 1))}
                       disabled={taskPage === 1}
-                      className="px-4 py-2 bg-white border rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-4 py-2 bg-surface border border-border rounded-sm hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       上一页
                     </button>
-                    <span className="px-4 py-2 bg-white border rounded-lg">
+                    <span className="px-4 py-2 bg-surface border border-border rounded-sm">
                       第 {taskPage} / {Math.ceil(taskTotal / taskPageSize) || 1} 页
                     </span>
                     <button
                       onClick={() => setTaskPage((p) => p + 1)}
                       disabled={taskPage * taskPageSize >= taskTotal}
-                      className="px-4 py-2 bg-white border rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-4 py-2 bg-surface border border-border rounded-sm hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       下一页
                     </button>
@@ -1506,13 +1511,13 @@ export default function SettingsPage() {
             <div className="flex justify-end gap-2 p-6 border-t bg-gray-50">
               <button
                 onClick={() => setShowModelAPIModal(false)}
-                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
+                className="px-4 py-2 bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
               >
                 取消
               </button>
               <button
                 onClick={handleSaveModelAPI}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                className="px-4 py-2 bg-primary text-white rounded-sm hover:bg-primary-ink transition"
               >
                 {editingModelAPIConfig ? '保存' : '创建'}
               </button>
@@ -1722,13 +1727,13 @@ export default function SettingsPage() {
             <div className="flex justify-end gap-2 p-6 border-t bg-gray-50">
               <button
                 onClick={() => setShowPromptModal(false)}
-                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
+                className="px-4 py-2 bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
               >
                 取消
               </button>
               <button
                 onClick={handleSavePrompt}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                className="px-4 py-2 bg-primary text-white rounded-sm hover:bg-primary-ink transition"
               >
                 {editingPromptConfig ? '保存' : '创建'}
               </button>
@@ -1810,13 +1815,13 @@ export default function SettingsPage() {
             <div className="flex justify-end gap-2 p-6 border-t bg-gray-50">
               <button
                 onClick={() => setShowCategoryModal(false)}
-                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
+                className="px-4 py-2 bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
               >
                 取消
               </button>
               <button
                 onClick={handleSaveCategory}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                className="px-4 py-2 bg-primary text-white rounded-sm hover:bg-primary-ink transition"
               >
                 {editingCategory ? '保存' : '创建'}
               </button>
@@ -1905,13 +1910,13 @@ export default function SettingsPage() {
                   handleEditPrompt(showPromptPreview);
                   setShowPromptPreview(null);
                 }}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                className="px-4 py-2 bg-primary text-white rounded-sm hover:bg-primary-ink transition"
               >
                 编辑此配置
               </button>
               <button
                 onClick={() => setShowPromptPreview(null)}
-                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
+                className="px-4 py-2 bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
               >
                 关闭
               </button>
