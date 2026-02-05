@@ -29,6 +29,7 @@ interface AIContentSectionProps {
   onMindMapOpen?: () => void;
   showStatus?: boolean;
   statusLink?: string;
+  showHeader?: boolean;
 }
 
 interface MindMapNode {
@@ -131,6 +132,7 @@ function AIContentSection({
   onMindMapOpen,
   showStatus = false,
   statusLink,
+  showHeader = true,
 }: AIContentSectionProps) {
   const getStatusBadge = () => {
     if (!status) return null;
@@ -154,34 +156,42 @@ function AIContentSection({
 
   return (
     <div>
-      <div className="flex items-center gap-2 mb-2">
-        <h3 className="font-semibold text-gray-900">{title}</h3>
-        {statusBadge && statusLink ? (
-          <Link href={statusLink} className="hover:opacity-80 transition">
-            {statusBadge}
-          </Link>
-        ) : (
-          statusBadge
-        )}
-        {showGenerateButton && (
-          <button
-            onClick={onGenerate}
-            className="text-gray-400 hover:text-blue-600 transition"
-            title={content ? '重新生成' : '生成'}
-          >
-          {content ? <IconRefresh className="h-4 w-4" /> : <IconBolt className="h-4 w-4" />}
-          </button>
-        )}
-        {content && (
-          <button
-            onClick={onCopy}
-            className="text-gray-400 hover:text-blue-600 transition"
-            title="复制内容"
-          >
-            <IconCopy className="h-4 w-4" />
-          </button>
-        )}
-      </div>
+      {showHeader && (
+        <div className="flex items-center justify-between gap-4 mb-2">
+          <div className="flex items-center gap-2 pr-2">
+            <h3 className="font-semibold text-gray-900">{title}</h3>
+          </div>
+          <div className="flex items-center gap-2">
+            {statusBadge && statusLink ? (
+              <Link href={statusLink} className="hover:opacity-80 transition">
+                {statusBadge}
+              </Link>
+            ) : (
+              statusBadge
+            )}
+            {showGenerateButton && (
+              <button
+                onClick={onGenerate}
+                className="text-text-3 hover:text-primary transition"
+                title={content ? '重新生成' : '生成'}
+                type="button"
+              >
+              {content ? <IconRefresh className="h-4 w-4" /> : <IconBolt className="h-4 w-4" />}
+              </button>
+            )}
+            {content && (
+              <button
+                onClick={onCopy}
+                className="text-text-3 hover:text-primary transition"
+                title="复制内容"
+                type="button"
+              >
+                <IconCopy className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        </div>
+      )}
       {content ? (
         renderMindMap ? (
           (() => {
@@ -277,7 +287,7 @@ interface TocItem {
   level: number;
 }
 
-function TableOfContents({ items, activeId }: { items: TocItem[]; activeId: string }) {
+function TableOfContents({ items, activeId, onSelect }: { items: TocItem[]; activeId: string; onSelect: (id: string) => void }) {
   if (items.length === 0) return null;
 
   return (
@@ -286,6 +296,7 @@ function TableOfContents({ items, activeId }: { items: TocItem[]; activeId: stri
         <a
           key={item.id}
           href={`#${item.id}`}
+          onClick={() => onSelect(item.id)}
           className={`block text-xs truncate rounded px-2 py-1 transition ${
             activeId === item.id
               ? 'text-blue-700 font-semibold bg-blue-50'
@@ -340,6 +351,7 @@ export default function ArticleDetailPage() {
   const [loading, setLoading] = useState(true);
   const [showTranslation, setShowTranslation] = useState(true);
   const [analysisCollapsed, setAnalysisCollapsed] = useState(false);
+  const [activeAiTab, setActiveAiTab] = useState<'key_points' | 'outline' | 'quotes'>('key_points');
   
   const [showConfigModal, setShowConfigModal] = useState(false);
   const [configModalContentType, setConfigModalContentType] = useState<string>('');
@@ -525,6 +537,81 @@ export default function ArticleDetailPage() {
   const aiUpdatedAt = article?.ai_analysis?.updated_at
     ? new Date(article.ai_analysis.updated_at).toLocaleString('zh-CN')
     : '';
+
+  const aiTabConfigs = [
+    {
+      key: 'key_points' as const,
+      label: '总结',
+      enabled: showKeyPointsSection,
+      content: article?.ai_analysis?.key_points,
+      status: article?.ai_analysis?.key_points_status,
+      renderMarkdown: true,
+      renderMindMap: false,
+      onMindMapOpen: undefined,
+      onGenerate: () => handleGenerateContent('key_points'),
+      onCopy: () => handleCopyContent(article?.ai_analysis?.key_points, '总结'),
+    },
+    {
+      key: 'outline' as const,
+      label: '大纲',
+      enabled: showOutlineSection,
+      content: article?.ai_analysis?.outline,
+      status: article?.ai_analysis?.outline_status,
+      renderMarkdown: false,
+      renderMindMap: true,
+      onMindMapOpen: openMindMap,
+      onGenerate: () => handleGenerateContent('outline'),
+      onCopy: () => handleCopyContent(article?.ai_analysis?.outline, '大纲'),
+    },
+    {
+      key: 'quotes' as const,
+      label: '金句',
+      enabled: showQuotesSection,
+      content: article?.ai_analysis?.quotes,
+      status: article?.ai_analysis?.quotes_status,
+      renderMarkdown: true,
+      renderMindMap: false,
+      onMindMapOpen: undefined,
+      onGenerate: () => handleGenerateContent('quotes'),
+      onCopy: () => handleCopyContent(article?.ai_analysis?.quotes, '金句'),
+    },
+  ];
+
+  const activeTabConfig = aiTabConfigs.find((tab) => tab.key === activeAiTab)
+    ?? aiTabConfigs.find((tab) => tab.enabled);
+  const aiStatusLink = article ? `/settings?section=tasks&article_id=${article.id}` : '';
+  const activeStatusBadge = isAdmin ? getAiTabStatusBadge(activeTabConfig?.status) : null;
+  const showActiveGenerateButton = isAdmin
+    && (!activeTabConfig?.status || activeTabConfig.status === 'completed' || activeTabConfig.status === 'failed');
+  const showActiveCopyButton = Boolean(activeTabConfig?.content);
+
+  function getAiTabStatusBadge(status?: string | null) {
+    if (!status) return null;
+    const statusConfig: Record<string, { bg: string; text: string; label: string }> = {
+      pending: { bg: 'bg-gray-100', text: 'text-gray-600', label: '等待处理' },
+      processing: { bg: 'bg-blue-100', text: 'text-blue-700', label: '生成中...' },
+      completed: { bg: 'bg-green-100', text: 'text-green-700', label: '已完成' },
+      failed: { bg: 'bg-red-100', text: 'text-red-700', label: '失败' },
+    };
+    const config = statusConfig[status];
+    if (!config) return null;
+    return (
+      <span className={`px-2 py-0.5 rounded text-xs ${config.bg} ${config.text}`}>
+        {config.label}
+      </span>
+    );
+  }
+
+  useEffect(() => {
+    const availableTabs: Array<'key_points' | 'outline' | 'quotes'> = [];
+    if (showKeyPointsSection) availableTabs.push('key_points');
+    if (showOutlineSection) availableTabs.push('outline');
+    if (showQuotesSection) availableTabs.push('quotes');
+    if (availableTabs.length === 0) return;
+    if (!availableTabs.includes(activeAiTab)) {
+      setActiveAiTab(availableTabs[0]);
+    }
+  }, [activeAiTab, showKeyPointsSection, showOutlineSection, showQuotesSection]);
 
   const fetchConfigs = async (contentType: string) => {
     try {
@@ -776,7 +863,13 @@ export default function ArticleDetailPage() {
                       {tocCollapsed ? '»' : '«'}
                     </button>
                   </div>
-                  {!tocCollapsed && <TableOfContents items={tocItems} activeId={activeTocId} />}
+                  {!tocCollapsed && (
+                    <TableOfContents
+                      items={tocItems}
+                      activeId={activeTocId}
+                      onSelect={setActiveTocId}
+                    />
+                  )}
                 </div>
               </aside>
             )}
@@ -818,11 +911,7 @@ export default function ArticleDetailPage() {
                     <>
                       <button
                         onClick={handleToggleVisibility}
-                        className={`flex items-center gap-1 px-2 py-1 rounded-lg text-sm transition ${
-                          article.is_visible
-                            ? 'text-green-700 hover:bg-green-50'
-                            : 'text-gray-600 hover:bg-gray-100'
-                        }`}
+                        className="flex items-center gap-1 px-2 py-1 rounded-sm text-sm text-text-2 hover:text-text-1 hover:bg-muted transition"
                         title={article.is_visible ? '点击隐藏' : '点击显示'}
                       >
               {article.is_visible ? <IconEye className="h-4 w-4" /> : <IconEyeOff className="h-4 w-4" />}
@@ -830,7 +919,7 @@ export default function ArticleDetailPage() {
                       </button>
                       <button
                         onClick={() => openEditModal(showTranslation && article.content_trans ? 'translation' : 'original')}
-                        className="flex items-center gap-1 px-2 py-1 rounded-lg text-sm text-gray-600 hover:text-blue-600 hover:bg-blue-50 transition"
+                        className="flex items-center gap-1 px-2 py-1 rounded-sm text-sm text-text-2 hover:text-text-1 hover:bg-muted transition"
                         title={'编辑'}
                       >
                         <IconEdit className="h-4 w-4" />
@@ -838,7 +927,7 @@ export default function ArticleDetailPage() {
                       </button>
                       <button
                         onClick={() => setShowDeleteModal(true)}
-                        className="flex items-center gap-1 px-2 py-1 rounded-lg text-sm text-red-600 hover:bg-red-50 transition"
+                        className="flex items-center gap-1 px-2 py-1 rounded-sm text-sm text-text-2 hover:text-red-600 hover:bg-red-50 transition"
                         title="删除文章"
                       >
                 <IconTrash className="h-4 w-4" />
@@ -849,7 +938,7 @@ export default function ArticleDetailPage() {
                   {article.content_trans && (
                     <button
                       onClick={() => setShowTranslation(!showTranslation)}
-                      className="flex items-center gap-1 px-2 py-1 rounded-lg text-sm text-blue-700 bg-blue-50 hover:bg-blue-100 transition"
+                      className="flex items-center gap-1 px-2 py-1 rounded-sm text-sm text-text-2 hover:text-text-1 hover:bg-muted transition"
                       title={showTranslation ? '当前查看中文' : '当前查看英文'}
                     >
                       <span>{showTranslation ? '🇺🇸' : '🇨🇳'}</span>
@@ -858,11 +947,7 @@ export default function ArticleDetailPage() {
                   )}
                   <button
                     onClick={() => setImmersiveMode(!immersiveMode)}
-                    className={`flex items-center gap-1 px-2 py-1 rounded-lg text-sm transition ${
-                      immersiveMode
-                        ? 'text-gray-700 hover:bg-gray-100'
-                        : 'text-blue-700 hover:bg-blue-50'
-                    }`}
+                    className="flex items-center gap-1 px-2 py-1 rounded-sm text-sm text-text-2 hover:text-text-1 hover:bg-muted transition"
                     title={immersiveMode ? '退出沉浸式阅读' : '进入沉浸式阅读'}
                   >
                     <IconBook className="h-4 w-4" />
@@ -874,7 +959,11 @@ export default function ArticleDetailPage() {
               <div
                 ref={contentRef}
                 onClick={handleContentClick}
-                className="prose prose-sm max-w-none prose-img:cursor-zoom-in prose-img:rounded-lg prose-img:border prose-img:border-gray-200 prose-img:bg-white prose-img:shadow-sm prose-img:max-w-[320px] sm:prose-img:max-w-[420px]"
+                className={`prose prose-sm max-w-none prose-img:cursor-zoom-in prose-img:rounded-lg prose-img:border prose-img:border-gray-200 prose-img:bg-white prose-img:shadow-sm ${
+                  immersiveMode
+                    ? 'immersive-content'
+                    : 'prose-img:max-w-[320px] sm:prose-img:max-w-[420px]'
+                }`}
               >
                 {showTranslation && article.content_trans ? (
                   <div
@@ -974,46 +1063,76 @@ export default function ArticleDetailPage() {
                       />
                     )}
 
-                    {showKeyPointsSection && (
-                      <AIContentSection
-                  title="总结"
-                        content={article.ai_analysis?.key_points}
-                        status={article.ai_analysis?.key_points_status}
-                        onGenerate={() => handleGenerateContent('key_points')}
-                        onCopy={() => handleCopyContent(article.ai_analysis?.key_points, '总结')}
-                        canEdit={isAdmin}
-                        showStatus={isAdmin}
-                        statusLink={`/settings?section=tasks&article_id=${article.id}`}
-                      />
-                    )}
+                    {(showKeyPointsSection || showOutlineSection || showQuotesSection) && (
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between gap-4">
+                          <div className="relative flex-1">
+                            <div className="flex items-center gap-2 overflow-x-auto pb-1 pr-6">
+                              {aiTabConfigs.filter((tab) => tab.enabled).map((tab) => (
+                                <button
+                                  key={tab.key}
+                                  type="button"
+                                  onClick={() => setActiveAiTab(tab.key)}
+                                  className={`px-3 py-1.5 text-base font-semibold rounded-sm transition ${
+                                    activeAiTab === tab.key
+                                      ? 'bg-muted text-text-1'
+                                      : 'text-text-2 hover:text-text-1 hover:bg-muted'
+                                  }`}
+                                >
+                                  {tab.label}
+                                </button>
+                              ))}
+                            </div>
+                            <div className="pointer-events-none absolute right-0 top-0 h-full w-8 bg-gradient-to-l from-white via-white/80 to-transparent" />
+                          </div>
+                          <div className="flex items-center gap-2 pr-2 shrink-0">
+                            {activeStatusBadge && aiStatusLink ? (
+                              <Link href={aiStatusLink} className="hover:opacity-80 transition">
+                                {activeStatusBadge}
+                              </Link>
+                            ) : (
+                              activeStatusBadge
+                            )}
+                            {showActiveGenerateButton && activeTabConfig && (
+                              <button
+                                onClick={activeTabConfig.onGenerate}
+                                className="text-text-3 hover:text-primary transition"
+                                title={activeTabConfig.content ? '重新生成' : '生成'}
+                                type="button"
+                              >
+                                {activeTabConfig.content ? <IconRefresh className="h-4 w-4" /> : <IconBolt className="h-4 w-4" />}
+                              </button>
+                            )}
+                            {showActiveCopyButton && activeTabConfig && (
+                              <button
+                                onClick={activeTabConfig.onCopy}
+                                className="text-text-3 hover:text-primary transition"
+                                title="复制内容"
+                                type="button"
+                              >
+                                <IconCopy className="h-4 w-4" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
 
-                    {showOutlineSection && (
-                      <AIContentSection
-                  title="大纲"
-                        content={article.ai_analysis?.outline}
-                        status={article.ai_analysis?.outline_status}
-                        onGenerate={() => handleGenerateContent('outline')}
-                        onCopy={() => handleCopyContent(article.ai_analysis?.outline, '大纲')}
-                        canEdit={isAdmin}
-                        renderMindMap
-                        onMindMapOpen={openMindMap}
-                        showStatus={isAdmin}
-                        statusLink={`/settings?section=tasks&article_id=${article.id}`}
-                      />
-                    )}
-
-                    {showQuotesSection && (
-                      <AIContentSection
-                        title="金句"
-                        content={article.ai_analysis?.quotes}
-                        status={article.ai_analysis?.quotes_status}
-                        onGenerate={() => handleGenerateContent('quotes')}
-                        onCopy={() => handleCopyContent(article.ai_analysis?.quotes, '金句')}
-                        canEdit={isAdmin}
-                        renderMarkdown
-                        showStatus={isAdmin}
-                        statusLink={`/settings?section=tasks&article_id=${article.id}`}
-                      />
+                        {activeTabConfig && (
+                          <AIContentSection
+                            title={activeTabConfig.label}
+                            content={activeTabConfig.content}
+                            status={activeTabConfig.status}
+                            onGenerate={activeTabConfig.onGenerate}
+                            onCopy={activeTabConfig.onCopy}
+                            canEdit={isAdmin}
+                            renderMarkdown={activeTabConfig.renderMarkdown}
+                            renderMindMap={activeTabConfig.renderMindMap}
+                            onMindMapOpen={activeTabConfig.onMindMapOpen}
+                            showStatus={isAdmin}
+                            statusLink={aiStatusLink}
+                            showHeader={false}
+                          />
+                        )}
+                      </div>
                     )}
 
                     {isAdmin && article.ai_analysis?.error_message && (
