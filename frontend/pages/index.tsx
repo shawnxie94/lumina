@@ -3,8 +3,8 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
-import DatePicker from 'react-datepicker';
-import 'react-datepicker/dist/react-datepicker.css';
+import { ConfigProvider, DatePicker } from 'antd';
+import dayjs, { type Dayjs } from 'dayjs';
 
 import { articleApi, categoryApi, Article, Category } from '@/lib/api';
 import { useToast } from '@/components/Toast';
@@ -22,6 +22,11 @@ const formatDate = (date: Date | null): string => {
 
 // Quick date filter options
 type QuickDateOption = '' | '1d' | '3d' | '1w' | '1m' | '3m' | '6m' | '1y';
+
+const toDayjsRange = (range: [Date | null, Date | null]): [Dayjs | null, Dayjs | null] => [
+  range[0] ? dayjs(range[0]) : null,
+  range[1] ? dayjs(range[1]) : null,
+];
 
 
 const getDateRangeFromQuickOption = (option: QuickDateOption): [Date | null, Date | null] => {
@@ -619,35 +624,65 @@ export default function Home() {
                       </select>
                     </div>
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-2">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-2">
                     <div>
                       <label className="block text-sm text-text-2 mb-1">发表时间</label>
-                      <DatePicker
-                        selectsRange
-                        startDate={publishedStartDate}
-                        endDate={publishedEndDate}
-                        onChange={(update) => { setPublishedDateRange(update); setPage(1); }}
-                        isClearable
-                        placeholderText="选择日期范围"
-                        dateFormat="yyyy-MM-dd"
-                        className="w-full px-3 py-2 text-sm border border-border-strong rounded-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                        wrapperClassName="w-full"
-                      />
+                      <ConfigProvider
+                        theme={{
+                          token: {
+                            colorPrimary: '#3B82F6',
+                            borderRadius: 4,
+                            fontSize: 14,
+                            controlHeight: 36,
+                          },
+                        }}
+                      >
+                        <DatePicker.RangePicker
+                          value={toDayjsRange(publishedDateRange)}
+                          onChange={(values: [Dayjs | null, Dayjs | null] | null) => {
+                            const [start, end] = values || [];
+                            setPublishedDateRange([start ? start.toDate() : null, end ? end.toDate() : null]);
+                            setPage(1);
+                          }}
+                          className="w-full"
+                          size="middle"
+                          allowClear
+                          placeholder={['开始日期', '结束日期']}
+                          format="YYYY-MM-DD"
+                          style={{ height: 36, width: '100%', minWidth: 0 }}
+                        />
+                      </ConfigProvider>
                     </div>
                     <div>
                       <label className="block text-sm text-text-2 mb-1">创建时间</label>
-                      <DatePicker
-                        selectsRange
-                        startDate={createdStartDate}
-                        endDate={createdEndDate}
-                        onChange={(update) => { setCreatedDateRange(update); setQuickDateFilter(''); setPage(1); }}
-                        isClearable
-                        placeholderText="选择日期范围"
-                        dateFormat="yyyy-MM-dd"
-                        className="w-full px-3 py-2 text-sm border border-border-strong rounded-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                        wrapperClassName="w-full"
-                      />
+                      <ConfigProvider
+                        theme={{
+                          token: {
+                            colorPrimary: '#3B82F6',
+                            borderRadius: 4,
+                            fontSize: 14,
+                            controlHeight: 36,
+                          },
+                        }}
+                      >
+                        <DatePicker.RangePicker
+                          value={toDayjsRange(createdDateRange)}
+                          onChange={(values: [Dayjs | null, Dayjs | null] | null) => {
+                            const [start, end] = values || [];
+                            setCreatedDateRange([start ? start.toDate() : null, end ? end.toDate() : null]);
+                            setQuickDateFilter('');
+                            setPage(1);
+                          }}
+                          className="w-full"
+                          size="middle"
+                          allowClear
+                          placeholder={['开始日期', '结束日期']}
+                          format="YYYY-MM-DD"
+                          style={{ height: 36, width: '100%', minWidth: 0 }}
+                        />
+                      </ConfigProvider>
                     </div>
+                    <div className="hidden md:block" />
                   </div>
                 </div>
               )}
