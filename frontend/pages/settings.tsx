@@ -19,7 +19,7 @@ import { Select } from "antd";
 import Head from "next/head";
 import Link from "next/link";
 import { useRouter } from "next/router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import AppFooter from "@/components/AppFooter";
 import AppHeader from "@/components/AppHeader";
 import {
@@ -29,7 +29,7 @@ import {
 	IconLink,
 	IconList,
 	IconCopy,
-	IconDoc,
+	IconMoney,
 	IconNote,
 	IconPlug,
 	IconRobot,
@@ -866,9 +866,19 @@ export default function SettingsPage() {
 		if (tokens == null || price == null) {
 			return `${label}：-`;
 		}
-		const cost = (tokens / 1000) * price;
-		return `${label}：${tokens} / 1000 * ${price.toFixed(6)} = ${cost.toFixed(6)} ${currency}`;
-	};
+	const cost = (tokens / 1000) * price;
+	return `${label}：${tokens} / 1000 * ${price.toFixed(6)} = ${cost.toFixed(6)} ${currency}`;
+};
+
+const formatPrice = (value: number | null | undefined) => {
+	if (value == null) return "-";
+	const raw = String(value);
+	if (!raw.includes("e") && !raw.includes("E")) {
+		return raw;
+	}
+	const fixed = value.toFixed(10);
+	return fixed.replace(/\.?0+$/, "");
+};
 
 	const openUsageCost = (log: AIUsageLogItem) => {
 		const currency = log.currency || "USD";
@@ -926,8 +936,17 @@ export default function SettingsPage() {
 		return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 	};
 
-	const usageCurrency =
-		usageByModel.find((item) => item.currency)?.currency || "";
+	const usageCostByCurrency = useMemo(() => {
+		const totals = new Map<string, number>();
+		usageByModel.forEach((item) => {
+			if (item.cost_total == null) return;
+			const currency = item.currency || "未设置";
+			totals.set(currency, (totals.get(currency) ?? 0) + item.cost_total);
+		});
+		return Array.from(totals.entries()).sort((a, b) =>
+			a[0].localeCompare(b[0]),
+		);
+	}, [usageByModel]);
 
 	const handleDeletePrompt = async (id: string) => {
 		if (!confirm("确定要删除这个提示词配置吗？")) return;
@@ -1253,7 +1272,7 @@ export default function SettingsPage() {
 											}`}
 										>
 											<span className="inline-flex items-center gap-2">
-												<IconDoc className="h-4 w-4" />
+												<IconMoney className="h-4 w-4" />
 												<span>模型记录/计量</span>
 											</span>
 										</button>
@@ -1299,8 +1318,18 @@ export default function SettingsPage() {
 												<div className="bg-surface border border-border rounded-sm p-3">
 													<div className="text-xs text-text-3">费用合计（参考）</div>
 													<div className="text-lg font-semibold text-text-1">
-														{(usageSummary?.cost_total ?? 0).toFixed(4)}
-														{usageCurrency ? ` ${usageCurrency}` : ""}
+														{usageCostByCurrency.length > 0 ? (
+															<div className="space-y-1">
+																{usageCostByCurrency.map(([currency, total]) => (
+																	<div key={currency}>
+																		{formatPrice(total)}{" "}
+																		{currency}
+																	</div>
+																))}
+															</div>
+														) : (
+															<span>{formatPrice(0)}</span>
+														)}
 													</div>
 												</div>
 												<div className="bg-surface border border-border rounded-sm p-3">
@@ -1691,13 +1720,13 @@ export default function SettingsPage() {
 																		<span className="font-medium">计费：</span>
 																		<span>
 																			输入{" "}
-																			{config.price_input_per_1k != null
-																				? config.price_input_per_1k.toFixed(4)
-																				: "-"}
+																			{formatPrice(
+																				config.price_input_per_1k,
+																			)}
 																			/ 输出{" "}
-																			{config.price_output_per_1k != null
-																				? config.price_output_per_1k.toFixed(4)
-																				: "-"}
+																			{formatPrice(
+																				config.price_output_per_1k,
+																			)}
 																			{config.currency
 																				? ` ${config.currency}`
 																				: ""}
@@ -2435,7 +2464,7 @@ export default function SettingsPage() {
 												</label>
 												<input
 													type="number"
-													step="0.0001"
+													step="0.00001"
 													value={modelAPIFormData.price_input_per_1k}
 													onChange={(e) =>
 														setModelAPIFormData({
@@ -2444,7 +2473,7 @@ export default function SettingsPage() {
 														})
 													}
 													className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-													placeholder="0.0000"
+													placeholder="0.00000"
 												/>
 											</div>
 											<div>
@@ -2453,7 +2482,7 @@ export default function SettingsPage() {
 												</label>
 												<input
 													type="number"
-													step="0.0001"
+													step="0.00001"
 													value={modelAPIFormData.price_output_per_1k}
 													onChange={(e) =>
 														setModelAPIFormData({
@@ -2462,7 +2491,7 @@ export default function SettingsPage() {
 														})
 													}
 													className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-													placeholder="0.0000"
+													placeholder="0.00000"
 												/>
 											</div>
 										</div>
