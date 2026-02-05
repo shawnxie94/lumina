@@ -1087,7 +1087,7 @@ export default function ArticleDetailPage() {
                                 </button>
                               ))}
                             </div>
-                            <div className="pointer-events-none absolute right-0 top-0 h-full w-8 bg-gradient-to-l from-white via-white/80 to-transparent" />
+                            <div className="pointer-events-none absolute right-0 top-0 h-full w-8 ai-tab-fade" />
                           </div>
                           <div className="flex items-center gap-2 pr-2 shrink-0">
                             {activeStatusBadge && aiStatusLink ? (

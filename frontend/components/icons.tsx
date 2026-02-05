@@ -137,6 +137,40 @@ export function IconList(props: IconProps) {
   );
 }
 
+export function IconSun(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2v2" />
+      <path d="M12 20v2" />
+      <path d="M4.93 4.93l1.41 1.41" />
+      <path d="M17.66 17.66l1.41 1.41" />
+      <path d="M2 12h2" />
+      <path d="M20 12h2" />
+      <path d="M4.93 19.07l1.41-1.41" />
+      <path d="M17.66 6.34l1.41-1.41" />
+    </IconBase>
+  );
+}
+
+export function IconMoon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79Z" />
+    </IconBase>
+  );
+}
+
+export function IconMonitor(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <rect x="3" y="4" width="18" height="12" rx="2" />
+      <path d="M8 20h8" />
+      <path d="M12 16v4" />
+    </IconBase>
+  );
+}
+
 export function IconGrip(props: IconProps) {
   return (
     <IconBase {...props}>

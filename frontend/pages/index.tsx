@@ -697,7 +697,7 @@ export default function Home() {
                       <span className="text-sm text-gray-600">已选 {selectedArticleIds.size} 篇</span>
                       <button
                         onClick={handleExport}
-                        className="px-3 py-1 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
+                        className="px-3 py-1 text-sm rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition"
                       >
                         导出选中 ({selectedArticleIds.size})
                       </button>
@@ -707,14 +707,14 @@ export default function Home() {
                         <button
                           type="button"
                           onClick={() => handleBatchVisibility(true)}
-                          className="px-3 py-1 text-sm bg-green-50 text-green-700 rounded-lg hover:bg-green-100 transition"
+                          className="px-3 py-1 text-sm rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition"
                         >
                           设为可见
                         </button>
                         <button
                           type="button"
                           onClick={() => handleBatchVisibility(false)}
-                          className="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition"
+                          className="px-3 py-1 text-sm rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition"
                         >
                           设为隐藏
                         </button>
@@ -733,7 +733,7 @@ export default function Home() {
                           <button
                             type="button"
                             onClick={handleBatchCategory}
-                            className="px-3 py-1 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                            className="px-3 py-1 text-sm rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition"
                           >
                             应用分类
                           </button>
@@ -741,7 +741,7 @@ export default function Home() {
                         <button
                           type="button"
                           onClick={handleBatchDelete}
-                          className="px-3 py-1 text-sm bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition"
+                          className="px-3 py-1 text-sm rounded-sm text-text-2 hover:text-red-600 hover:bg-red-50 transition"
                         >
                           批量删除
                         </button>
@@ -760,7 +760,7 @@ export default function Home() {
                 <> 
                   {isAdmin && (
                     <div className="mb-4">
-                      <label className="flex items-center gap-2 cursor-pointer">
+                      <div className="flex items-center gap-2">
                         <input
                           type="checkbox"
                           checked={selectedArticleIds.size === articles.length}
@@ -768,7 +768,7 @@ export default function Home() {
                           className="w-4 h-4 text-blue-600 rounded"
                         />
                         <span className="text-sm text-gray-600">全选 ({selectedArticleIds.size}/{articles.length})</span>
-                      </label>
+                      </div>
                     </div>
                   )}
                   <div className="space-y-4">
@@ -784,7 +784,7 @@ export default function Home() {
                               onClick={() => handleToggleVisibility(article.id, article.is_visible)}
                               className={`w-6 h-6 flex items-center justify-center rounded transition ${
                                 article.is_visible
-                                  ? 'text-green-500 hover:text-green-700 hover:bg-green-50'
+                                  ? 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
                                   : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
                               }`}
                               title={article.is_visible ? '点击隐藏' : '点击显示'}
