@@ -792,8 +792,8 @@ export default function ArticleDetailPage() {
       </Head>
       <ReadingProgress />
       <AppHeader />
-      <section className={`bg-surface ${immersiveMode ? '' : 'border-b border-border'}`}>
-        <div className="max-w-7xl mx-auto px-4 py-6">
+		<section className={`bg-surface ${immersiveMode ? '' : 'border-b border-border'}`}>
+			<div className="max-w-7xl mx-auto px-4 py-6">
           <h1 className="text-2xl font-bold text-text-1 text-center mb-3">
             {article.title}
           </h1>
@@ -843,7 +843,11 @@ export default function ArticleDetailPage() {
         </div>
       </section>
 
-        <div className={`max-w-7xl mx-auto px-4 ${immersiveMode ? 'py-6' : 'py-8'} flex-1`}>
+			<div
+				className={`max-w-7xl w-full mx-auto px-4 ${
+					immersiveMode ? 'py-6' : 'py-8'
+				} flex-1`}
+			>
           <div className="flex gap-4">
             {!immersiveMode && tocItems.length > 0 && (
               <aside className={`hidden xl:block flex-shrink-0 transition-all duration-300 ${tocCollapsed ? 'w-12' : 'w-48'}`}>
