@@ -23,6 +23,7 @@ extension/
 
 ## CONVENTIONS
 - Entry points are file-based: each page has its own `index.html` + `main.js` + CSS.
+- Background/content entrypoints are TypeScript (`background.ts`, `content.ts`); UI entrypoints use `main.js`.
 - API host and token are stored in `chrome.storage.local`.
 - Use `chrome.scripting.executeScript` for extraction; no persistent content scripts.
 

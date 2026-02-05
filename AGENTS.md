@@ -1,7 +1,7 @@
 # PROJECT KNOWLEDGE BASE
 
-**Generated:** 2026-02-04 21:08 Asia/Shanghai
-**Commit:** d629f15
+**Generated:** 2026-02-05 13:19 Asia/Shanghai
+**Commit:** 0d035de
 **Branch:** main
 
 ## OVERVIEW
@@ -43,6 +43,7 @@ Article Database System: Next.js 14 frontend (pages router) + FastAPI backend + 
 - TypeScript uses `strict: true`, `moduleResolution: "bundler"`, `target: "es5"`, `noEmit: true`, `@/*` path alias.
 - Backend requires Python 3.11 and uses setuptools with explicit `py-modules` list.
 - WXT manifest enables `<all_urls>` host permissions and devtools; build target `esnext`.
+- Biome disables `noUnknownAtRules` in `biome.json` and `frontend/biome.json` (Tailwind).
 - User-facing text is Chinese; keep alerts and UI strings in Chinese.
 - Tests are not configured; no `test` scripts or test configs are present.
 
@@ -53,9 +54,11 @@ Article Database System: Next.js 14 frontend (pages router) + FastAPI backend + 
 - Extension uses multi-entrypoint pages (`entrypoints/*/index.html` + `main.js`).
 - Extraction uses `chrome.scripting.executeScript` injection; no persistent content scripts.
 - API clients are duplicated in frontend and extension; keep endpoints aligned with backend.
+- Frontend theme tokens are CSS variables in `frontend/styles/globals.css` mapped into Tailwind.
 
 ## LOCAL AGENTS
 - `backend/AGENTS.md`
+- `frontend/AGENTS.md`
 - `frontend/pages/AGENTS.md`
 - `extension/AGENTS.md`
 - `extension/utils/AGENTS.md`
@@ -94,4 +97,5 @@ docker-compose logs api
 - `docker-compose.yml` defines a separate `worker` service with AI polling env vars.
 - `data/` is a persistent SQLite volume; reset with `docker-compose down -v`.
 - Extension requires manual browser testing via Chrome extension load.
-- Repo contains generated artifacts: `backend/.venv`, `frontend/.next`, `.ruff_cache`, `data/articles.db`.
+- `docker-compose.yml` is gitignored; local edits won't show in git status.
+- Repo contains generated artifacts: `backend/.venv`, `frontend/.next`, `frontend/tsconfig.tsbuildinfo`, `extension/.output`, `extension/.wxt`, `data/articles.db`.
