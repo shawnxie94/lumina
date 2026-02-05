@@ -5,6 +5,7 @@ from models import (
     Article,
     AIAnalysis,
     AITask,
+    AIUsageLog,
     Category,
     SessionLocal,
     ModelAPIConfig,
@@ -76,6 +77,10 @@ class ArticleService:
             "base_url": model_config.base_url,
             "api_key": model_config.api_key,
             "model_name": model_config.model_name,
+            "model_api_config_id": model_config.id,
+            "price_input_per_1k": model_config.price_input_per_1k,
+            "price_output_per_1k": model_config.price_output_per_1k,
+            "currency": model_config.currency,
             "prompt_template": prompt_config.prompt if prompt_config else None,
         }
 
@@ -88,6 +93,64 @@ class ArticleService:
             base_url=config["base_url"],
             api_key=config["api_key"],
             model_name=config["model_name"],
+        )
+
+    def _extract_usage_value(self, usage, key: str):
+        if usage is None:
+            return None
+        if isinstance(usage, dict):
+            return usage.get(key)
+        return getattr(usage, key, None)
+
+    def _log_ai_usage(
+        self,
+        db: Session,
+        model_config_id: str | None,
+        article_id: str | None,
+        task_type: str | None,
+        content_type: str | None,
+        usage,
+        latency_ms: int | None,
+        status: str,
+        error_message: str | None,
+        price_input_per_1k: float | None,
+        price_output_per_1k: float | None,
+        currency: str | None,
+    ) -> None:
+        prompt_tokens = self._extract_usage_value(usage, "prompt_tokens")
+        completion_tokens = self._extract_usage_value(usage, "completion_tokens")
+        total_tokens = self._extract_usage_value(usage, "total_tokens")
+
+        if prompt_tokens is None and completion_tokens is None:
+            cost_input = None
+            cost_output = None
+            cost_total = None
+        else:
+            input_price = price_input_per_1k or 0
+            output_price = price_output_per_1k or 0
+            cost_input = ((prompt_tokens or 0) / 1000) * input_price
+            cost_output = ((completion_tokens or 0) / 1000) * output_price
+            cost_total = cost_input + cost_output
+
+        db.add(
+            AIUsageLog(
+                model_api_config_id=model_config_id,
+                task_id=None,
+                article_id=article_id,
+                task_type=task_type,
+                content_type=content_type,
+                status=status,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                total_tokens=total_tokens,
+                cost_input=cost_input,
+                cost_output=cost_output,
+                cost_total=cost_total,
+                currency=currency,
+                latency_ms=latency_ms,
+                error_message=error_message,
+                created_at=now_str(),
+            )
         )
 
     def enqueue_task(
@@ -220,16 +283,67 @@ class ArticleService:
             ai_client = self.create_ai_client(ai_config)
             parameters = ai_config.get("parameters") or {}
             prompt = ai_config.get("prompt_template")
+            pricing = {
+                "model_api_config_id": ai_config.get("model_api_config_id"),
+                "price_input_per_1k": ai_config.get("price_input_per_1k"),
+                "price_output_per_1k": ai_config.get("price_output_per_1k"),
+                "currency": ai_config.get("currency"),
+            }
 
             try:
-                summary = await asyncio.wait_for(
+                summary_result = await asyncio.wait_for(
                     ai_client.generate_summary(
                         article.content_md, prompt=prompt, parameters=parameters
                     ),
                     timeout=300.0,
                 )
+                summary = summary_result.get("content")
+                self._log_ai_usage(
+                    db,
+                    model_config_id=pricing.get("model_api_config_id"),
+                    article_id=article_id,
+                    task_type="process_article_ai",
+                    content_type="summary",
+                    usage=summary_result.get("usage"),
+                    latency_ms=summary_result.get("latency_ms"),
+                    status="completed",
+                    error_message=None,
+                    price_input_per_1k=pricing.get("price_input_per_1k"),
+                    price_output_per_1k=pricing.get("price_output_per_1k"),
+                    currency=pricing.get("currency"),
+                )
             except asyncio.TimeoutError:
+                self._log_ai_usage(
+                    db,
+                    model_config_id=pricing.get("model_api_config_id"),
+                    article_id=article_id,
+                    task_type="process_article_ai",
+                    content_type="summary",
+                    usage=None,
+                    latency_ms=None,
+                    status="failed",
+                    error_message="AI生成超时，请稍后重试",
+                    price_input_per_1k=pricing.get("price_input_per_1k"),
+                    price_output_per_1k=pricing.get("price_output_per_1k"),
+                    currency=pricing.get("currency"),
+                )
                 raise Exception("AI生成超时，请稍后重试")
+            except Exception as e:
+                self._log_ai_usage(
+                    db,
+                    model_config_id=pricing.get("model_api_config_id"),
+                    article_id=article_id,
+                    task_type="process_article_ai",
+                    content_type="summary",
+                    usage=None,
+                    latency_ms=None,
+                    status="failed",
+                    error_message=str(e),
+                    price_input_per_1k=pricing.get("price_input_per_1k"),
+                    price_output_per_1k=pricing.get("price_output_per_1k"),
+                    currency=pricing.get("currency"),
+                )
+                raise
 
             # Auto-translate English articles to Chinese
             content_trans = None
@@ -246,11 +360,13 @@ class ArticleService:
                     )
                     trans_prompt = None
                     trans_parameters = {}
+                    trans_pricing = ai_config
 
                     # 如果有翻译专用配置，使用翻译配置的AI客户端
                     if trans_config:
                         trans_prompt = trans_config.get("prompt_template")
                         trans_parameters = trans_config.get("parameters") or {}
+                        trans_pricing = trans_config
                         # 如果翻译配置有独立的模型配置，使用它
                         if trans_config.get("base_url") and trans_config.get("api_key"):
                             trans_client = self.create_ai_client(trans_config)
@@ -258,7 +374,6 @@ class ArticleService:
                             trans_client = ai_client
                     else:
                         trans_client = ai_client
-
                     content_trans = await asyncio.wait_for(
                         trans_client.translate_to_chinese(
                             article.content_md,
@@ -267,14 +382,60 @@ class ArticleService:
                         ),
                         timeout=300.0,
                     )
+                    if isinstance(content_trans, dict):
+                        self._log_ai_usage(
+                            db,
+                            model_config_id=trans_pricing.get("model_api_config_id"),
+                            article_id=article_id,
+                            task_type="process_article_ai",
+                            content_type="translation",
+                            usage=content_trans.get("usage"),
+                            latency_ms=content_trans.get("latency_ms"),
+                            status="completed",
+                            error_message=None,
+                            price_input_per_1k=trans_pricing.get("price_input_per_1k"),
+                            price_output_per_1k=trans_pricing.get(
+                                "price_output_per_1k"
+                            ),
+                            currency=trans_pricing.get("currency"),
+                        )
+                        content_trans = content_trans.get("content")
                     print(f"翻译完成: {article.title}")
                     article.translation_status = "completed"
                     article.translation_error = None
                 except asyncio.TimeoutError:
+                    self._log_ai_usage(
+                        db,
+                        model_config_id=trans_pricing.get("model_api_config_id"),
+                        article_id=article_id,
+                        task_type="process_article_ai",
+                        content_type="translation",
+                        usage=None,
+                        latency_ms=None,
+                        status="failed",
+                        error_message="翻译超时，请稍后重试",
+                        price_input_per_1k=trans_pricing.get("price_input_per_1k"),
+                        price_output_per_1k=trans_pricing.get("price_output_per_1k"),
+                        currency=trans_pricing.get("currency"),
+                    )
                     print(f"翻译超时: {article.title}")
                     article.translation_status = "failed"
                     article.translation_error = "翻译超时，请稍后重试"
                 except Exception as e:
+                    self._log_ai_usage(
+                        db,
+                        model_config_id=trans_pricing.get("model_api_config_id"),
+                        article_id=article_id,
+                        task_type="process_article_ai",
+                        content_type="translation",
+                        usage=None,
+                        latency_ms=None,
+                        status="failed",
+                        error_message=str(e),
+                        price_input_per_1k=trans_pricing.get("price_input_per_1k"),
+                        price_output_per_1k=trans_pricing.get("price_output_per_1k"),
+                        currency=trans_pricing.get("currency"),
+                    )
                     print(f"翻译失败: {article.title}, 错误: {e}")
                     article.translation_status = "failed"
                     article.translation_error = str(e)
@@ -513,6 +674,12 @@ class ArticleService:
                 return
 
             ai_client = self.create_ai_client(ai_config)
+            pricing = {
+                "model_api_config_id": ai_config.get("model_api_config_id"),
+                "price_input_per_1k": ai_config.get("price_input_per_1k"),
+                "price_output_per_1k": ai_config.get("price_output_per_1k"),
+                "currency": ai_config.get("currency"),
+            }
 
             # 获取翻译类型的提示词配置
             trans_config = self.get_ai_config(
@@ -524,6 +691,12 @@ class ArticleService:
             if trans_config:
                 trans_prompt = trans_config.get("prompt_template")
                 trans_parameters = trans_config.get("parameters") or {}
+                pricing = {
+                    "model_api_config_id": trans_config.get("model_api_config_id"),
+                    "price_input_per_1k": trans_config.get("price_input_per_1k"),
+                    "price_output_per_1k": trans_config.get("price_output_per_1k"),
+                    "currency": trans_config.get("currency"),
+                }
                 if trans_config.get("base_url") and trans_config.get("api_key"):
                     trans_client = self.create_ai_client(trans_config)
                 else:
@@ -540,15 +713,59 @@ class ArticleService:
                     ),
                     timeout=300.0,
                 )
+                if isinstance(content_trans, dict):
+                    self._log_ai_usage(
+                        db,
+                        model_config_id=pricing.get("model_api_config_id"),
+                        article_id=article_id,
+                        task_type="process_article_translation",
+                        content_type="translation",
+                        usage=content_trans.get("usage"),
+                        latency_ms=content_trans.get("latency_ms"),
+                        status="completed",
+                        error_message=None,
+                        price_input_per_1k=pricing.get("price_input_per_1k"),
+                        price_output_per_1k=pricing.get("price_output_per_1k"),
+                        currency=pricing.get("currency"),
+                    )
+                    content_trans = content_trans.get("content")
                 article.content_trans = content_trans
                 article.translation_status = "completed"
                 article.translation_error = None
                 print(f"翻译完成: {article.title}")
             except asyncio.TimeoutError:
+                self._log_ai_usage(
+                    db,
+                    model_config_id=pricing.get("model_api_config_id"),
+                    article_id=article_id,
+                    task_type="process_article_translation",
+                    content_type="translation",
+                    usage=None,
+                    latency_ms=None,
+                    status="failed",
+                    error_message="翻译超时，请稍后重试",
+                    price_input_per_1k=pricing.get("price_input_per_1k"),
+                    price_output_per_1k=pricing.get("price_output_per_1k"),
+                    currency=pricing.get("currency"),
+                )
                 article.translation_status = "failed"
                 article.translation_error = "翻译超时，请稍后重试"
                 print(f"翻译超时: {article.title}")
             except Exception as e:
+                self._log_ai_usage(
+                    db,
+                    model_config_id=pricing.get("model_api_config_id"),
+                    article_id=article_id,
+                    task_type="process_article_translation",
+                    content_type="translation",
+                    usage=None,
+                    latency_ms=None,
+                    status="failed",
+                    error_message=str(e),
+                    price_input_per_1k=pricing.get("price_input_per_1k"),
+                    price_output_per_1k=pricing.get("price_output_per_1k"),
+                    currency=pricing.get("currency"),
+                )
                 article.translation_status = "failed"
                 article.translation_error = str(e)
                 print(f"翻译失败: {article.title}, 错误: {e}")
@@ -637,6 +854,10 @@ class ArticleService:
                         "base_url": model_config.base_url,
                         "api_key": model_config.api_key,
                         "model_name": model_config.model_name,
+                        "model_api_config_id": model_config.id,
+                        "price_input_per_1k": model_config.price_input_per_1k,
+                        "price_output_per_1k": model_config.price_output_per_1k,
+                        "currency": model_config.currency,
                     }
 
             if prompt_config_id:
@@ -661,6 +882,10 @@ class ArticleService:
                                 "base_url": model_config.base_url,
                                 "api_key": model_config.api_key,
                                 "model_name": model_config.model_name,
+                                "model_api_config_id": model_config.id,
+                                "price_input_per_1k": model_config.price_input_per_1k,
+                                "price_output_per_1k": model_config.price_output_per_1k,
+                                "currency": model_config.currency,
                             }
 
             if not ai_config:
@@ -685,6 +910,12 @@ class ArticleService:
             parameters = ai_config.get("parameters") or {}
             if prompt_parameters:
                 parameters = {**parameters, **prompt_parameters}
+            pricing = {
+                "model_api_config_id": ai_config.get("model_api_config_id"),
+                "price_input_per_1k": ai_config.get("price_input_per_1k"),
+                "price_output_per_1k": ai_config.get("price_output_per_1k"),
+                "currency": ai_config.get("currency"),
+            }
 
             try:
                 result = await asyncio.wait_for(
@@ -693,17 +924,61 @@ class ArticleService:
                     ),
                     timeout=300.0,
                 )
+                if isinstance(result, dict):
+                    self._log_ai_usage(
+                        db,
+                        model_config_id=pricing.get("model_api_config_id"),
+                        article_id=article_id,
+                        task_type="process_ai_content",
+                        content_type=content_type,
+                        usage=result.get("usage"),
+                        latency_ms=result.get("latency_ms"),
+                        status="completed",
+                        error_message=None,
+                        price_input_per_1k=pricing.get("price_input_per_1k"),
+                        price_output_per_1k=pricing.get("price_output_per_1k"),
+                        currency=pricing.get("currency"),
+                    )
+                    result = result.get("content")
                 setattr(article.ai_analysis, content_type, result)
                 setattr(article.ai_analysis, f"{content_type}_status", "completed")
                 article.ai_analysis.error_message = None
                 article.ai_analysis.updated_at = now_str()
                 print(f"{content_type} 生成完成: {article.title}")
             except asyncio.TimeoutError:
+                self._log_ai_usage(
+                    db,
+                    model_config_id=pricing.get("model_api_config_id"),
+                    article_id=article_id,
+                    task_type="process_ai_content",
+                    content_type=content_type,
+                    usage=None,
+                    latency_ms=None,
+                    status="failed",
+                    error_message="AI生成超时，请稍后重试",
+                    price_input_per_1k=pricing.get("price_input_per_1k"),
+                    price_output_per_1k=pricing.get("price_output_per_1k"),
+                    currency=pricing.get("currency"),
+                )
                 setattr(article.ai_analysis, f"{content_type}_status", "failed")
                 article.ai_analysis.error_message = "AI生成超时，请稍后重试"
                 article.ai_analysis.updated_at = now_str()
                 print(f"{content_type} 生成超时: {article.title}")
             except Exception as e:
+                self._log_ai_usage(
+                    db,
+                    model_config_id=pricing.get("model_api_config_id"),
+                    article_id=article_id,
+                    task_type="process_ai_content",
+                    content_type=content_type,
+                    usage=None,
+                    latency_ms=None,
+                    status="failed",
+                    error_message=str(e),
+                    price_input_per_1k=pricing.get("price_input_per_1k"),
+                    price_output_per_1k=pricing.get("price_output_per_1k"),
+                    currency=pricing.get("currency"),
+                )
                 setattr(article.ai_analysis, f"{content_type}_status", "failed")
                 article.ai_analysis.error_message = str(e)
                 article.ai_analysis.updated_at = now_str()

@@ -130,6 +130,32 @@ class AITask(Base):
     finished_at = Column(String, nullable=True)
 
 
+class AIUsageLog(Base):
+    __tablename__ = "ai_usage_logs"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    model_api_config_id = Column(
+        String, ForeignKey("model_api_configs.id", ondelete="SET NULL"), nullable=True
+    )
+    task_id = Column(String, nullable=True)
+    article_id = Column(
+        String, ForeignKey("articles.id", ondelete="SET NULL"), nullable=True
+    )
+    task_type = Column(String, nullable=True)
+    content_type = Column(String, nullable=True)
+    status = Column(String, nullable=False, default="completed")
+    prompt_tokens = Column(Integer, nullable=True)
+    completion_tokens = Column(Integer, nullable=True)
+    total_tokens = Column(Integer, nullable=True)
+    cost_input = Column(Float, nullable=True)
+    cost_output = Column(Float, nullable=True)
+    cost_total = Column(Float, nullable=True)
+    currency = Column(String, nullable=True)
+    latency_ms = Column(Integer, nullable=True)
+    error_message = Column(Text, nullable=True)
+    created_at = Column(String, default=now_str)
+
+
 class ModelAPIConfig(Base):
     __tablename__ = "model_api_configs"
 
@@ -138,6 +164,9 @@ class ModelAPIConfig(Base):
     base_url = Column(String, nullable=False, default="https://api.openai.com/v1")
     api_key = Column(String, nullable=False)
     model_name = Column(String, nullable=False, default="gpt-4o")
+    price_input_per_1k = Column(Float, nullable=True)
+    price_output_per_1k = Column(Float, nullable=True)
+    currency = Column(String, nullable=True)
     is_enabled = Column(Boolean, default=True)
     is_default = Column(Boolean, default=False)
     created_at = Column(String, default=today_str)
@@ -234,6 +263,15 @@ def init_db():
                 ],
             )
 
+            ensure_columns(
+                "model_api_configs",
+                [
+                    ("price_input_per_1k", "REAL"),
+                    ("price_output_per_1k", "REAL"),
+                    ("currency", "TEXT"),
+                ],
+            )
+
             conn.execute(
                 text(
                     "CREATE INDEX IF NOT EXISTS idx_ai_tasks_status_run_at ON ai_tasks (status, run_at)"
@@ -242,6 +280,22 @@ def init_db():
             conn.execute(
                 text(
                     "CREATE INDEX IF NOT EXISTS idx_ai_tasks_article_id ON ai_tasks (article_id)"
+                )
+            )
+
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_ai_usage_logs_model ON ai_usage_logs (model_api_config_id)"
+                )
+            )
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_ai_usage_logs_created_at ON ai_usage_logs (created_at)"
+                )
+            )
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_ai_usage_logs_status ON ai_usage_logs (status)"
                 )
             )
 

@@ -1,5 +1,6 @@
 from openai import AsyncOpenAI
 import json
+import time
 from typing import Optional, Dict, Any
 
 
@@ -62,7 +63,7 @@ class ConfigurableAIClient:
         max_tokens: int = 500,
         temperature: float = 0.7,
         parameters: Optional[Dict[str, Any]] = None,
-    ) -> str:
+    ) -> Dict[str, Any]:
         if not prompt:
             prompt = f"请为以下文章生成一个简洁的摘要（100-200字）：\n\n{content}"
         else:
@@ -99,8 +100,15 @@ class ConfigurableAIClient:
             request_params["response_format"] = response_format
 
         try:
+            start_time = time.monotonic()
             response = await self.client.chat.completions.create(**request_params)
-            return response.choices[0].message.content
+            latency_ms = int((time.monotonic() - start_time) * 1000)
+            return {
+                "content": response.choices[0].message.content,
+                "usage": getattr(response, "usage", None),
+                "model": getattr(response, "model", self.model_name),
+                "latency_ms": latency_ms,
+            }
         except Exception as e:
             print(f"AI生成失败: {e}")
             raise
@@ -112,7 +120,7 @@ class ConfigurableAIClient:
         max_tokens: int = 16000,
         temperature: float = 0.3,
         parameters: Optional[Dict[str, Any]] = None,
-    ) -> str:
+    ) -> Dict[str, Any]:
         """
         Translate English content to Chinese.
 
@@ -176,12 +184,19 @@ class ConfigurableAIClient:
             print(
                 f"翻译请求 - 模型: {self.model_name}, prompt长度: {len(final_prompt)}"
             )
+            start_time = time.monotonic()
             response = await self.client.chat.completions.create(**request_params)
+            latency_ms = int((time.monotonic() - start_time) * 1000)
             result = response.choices[0].message.content
             print(
                 f"翻译响应 - 结果长度: {len(result) if result else 0}, 前100字符: {result[:100] if result else 'None'}"
             )
-            return result
+            return {
+                "content": result,
+                "usage": getattr(response, "usage", None),
+                "model": getattr(response, "model", self.model_name),
+                "latency_ms": latency_ms,
+            }
         except Exception as e:
             print(f"翻译失败: {e}")
             raise

@@ -15,10 +15,12 @@ from models import (
     Category,
     Article,
     AITask,
+    AIUsageLog,
     ModelAPIConfig,
     PromptConfig,
 )
 from article_service import ArticleService
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from auth import (
     LoginRequest,
@@ -166,6 +168,9 @@ class ModelAPIConfigBase(BaseModel):
     base_url: str
     api_key: str
     model_name: str = "gpt-4o"
+    price_input_per_1k: Optional[float] = None
+    price_output_per_1k: Optional[float] = None
+    currency: Optional[str] = None
     is_enabled: bool = True
     is_default: bool = False
 
@@ -706,6 +711,167 @@ async def cancel_ai_tasks(
     return {"updated": updated}
 
 
+@app.get("/api/ai-usage")
+async def get_ai_usage_logs(
+    model_api_config_id: Optional[str] = None,
+    status: Optional[str] = None,
+    task_type: Optional[str] = None,
+    content_type: Optional[str] = None,
+    start: Optional[str] = None,
+    end: Optional[str] = None,
+    page: int = 1,
+    size: int = 20,
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
+    query = db.query(AIUsageLog, ModelAPIConfig.name).outerjoin(
+        ModelAPIConfig, AIUsageLog.model_api_config_id == ModelAPIConfig.id
+    )
+
+    if model_api_config_id:
+        query = query.filter(AIUsageLog.model_api_config_id == model_api_config_id)
+    if status:
+        query = query.filter(AIUsageLog.status == status)
+    if task_type:
+        query = query.filter(AIUsageLog.task_type == task_type)
+    if content_type:
+        query = query.filter(AIUsageLog.content_type == content_type)
+    if start:
+        query = query.filter(AIUsageLog.created_at >= start)
+    if end:
+        query = query.filter(AIUsageLog.created_at <= end)
+
+    total = query.count()
+    logs = (
+        query.order_by(AIUsageLog.created_at.desc())
+        .offset((page - 1) * size)
+        .limit(size)
+        .all()
+    )
+
+    items = []
+    for log, model_name in logs:
+        items.append(
+            {
+                "id": log.id,
+                "model_api_config_id": log.model_api_config_id,
+                "model_api_config_name": model_name,
+                "task_id": log.task_id,
+                "article_id": log.article_id,
+                "task_type": log.task_type,
+                "content_type": log.content_type,
+                "status": log.status,
+                "prompt_tokens": log.prompt_tokens,
+                "completion_tokens": log.completion_tokens,
+                "total_tokens": log.total_tokens,
+                "cost_input": log.cost_input,
+                "cost_output": log.cost_output,
+                "cost_total": log.cost_total,
+                "currency": log.currency,
+                "latency_ms": log.latency_ms,
+                "error_message": log.error_message,
+                "created_at": log.created_at,
+            }
+        )
+
+    return {"items": items, "total": total, "page": page, "size": size}
+
+
+@app.get("/api/ai-usage/summary")
+async def get_ai_usage_summary(
+    model_api_config_id: Optional[str] = None,
+    status: Optional[str] = None,
+    task_type: Optional[str] = None,
+    content_type: Optional[str] = None,
+    start: Optional[str] = None,
+    end: Optional[str] = None,
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
+    base_query = db.query(AIUsageLog)
+
+    if model_api_config_id:
+        base_query = base_query.filter(
+            AIUsageLog.model_api_config_id == model_api_config_id
+        )
+    if status:
+        base_query = base_query.filter(AIUsageLog.status == status)
+    if task_type:
+        base_query = base_query.filter(AIUsageLog.task_type == task_type)
+    if content_type:
+        base_query = base_query.filter(AIUsageLog.content_type == content_type)
+    if start:
+        base_query = base_query.filter(AIUsageLog.created_at >= start)
+    if end:
+        base_query = base_query.filter(AIUsageLog.created_at <= end)
+
+    overall = base_query.with_entities(
+        func.count(AIUsageLog.id),
+        func.coalesce(func.sum(AIUsageLog.prompt_tokens), 0),
+        func.coalesce(func.sum(AIUsageLog.completion_tokens), 0),
+        func.coalesce(func.sum(AIUsageLog.total_tokens), 0),
+        func.coalesce(func.sum(AIUsageLog.cost_total), 0.0),
+    ).first()
+
+    grouped = (
+        base_query.join(
+            ModelAPIConfig,
+            AIUsageLog.model_api_config_id == ModelAPIConfig.id,
+            isouter=True,
+        )
+        .with_entities(
+            AIUsageLog.model_api_config_id,
+            ModelAPIConfig.name,
+            ModelAPIConfig.currency,
+            func.count(AIUsageLog.id),
+            func.coalesce(func.sum(AIUsageLog.prompt_tokens), 0),
+            func.coalesce(func.sum(AIUsageLog.completion_tokens), 0),
+            func.coalesce(func.sum(AIUsageLog.total_tokens), 0),
+            func.coalesce(func.sum(AIUsageLog.cost_total), 0.0),
+        )
+        .group_by(
+            AIUsageLog.model_api_config_id, ModelAPIConfig.name, ModelAPIConfig.currency
+        )
+        .order_by(func.coalesce(func.sum(AIUsageLog.cost_total), 0.0).desc())
+        .all()
+    )
+
+    by_model = []
+    for (
+        config_id,
+        model_name,
+        currency,
+        calls,
+        prompt_tokens,
+        completion_tokens,
+        total_tokens,
+        cost_total,
+    ) in grouped:
+        by_model.append(
+            {
+                "model_api_config_id": config_id,
+                "model_api_config_name": model_name,
+                "currency": currency,
+                "calls": calls,
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens": total_tokens,
+                "cost_total": cost_total,
+            }
+        )
+
+    return {
+        "summary": {
+            "calls": overall[0] or 0,
+            "prompt_tokens": overall[1] or 0,
+            "completion_tokens": overall[2] or 0,
+            "total_tokens": overall[3] or 0,
+            "cost_total": overall[4] or 0.0,
+        },
+        "by_model": by_model,
+    }
+
+
 class VisibilityUpdate(BaseModel):
     is_visible: bool
 
@@ -1015,6 +1181,9 @@ async def get_model_api_configs(
             "base_url": c.base_url,
             "api_key": c.api_key,
             "model_name": c.model_name,
+            "price_input_per_1k": c.price_input_per_1k,
+            "price_output_per_1k": c.price_output_per_1k,
+            "currency": c.currency,
             "is_enabled": c.is_enabled,
             "is_default": c.is_default,
             "created_at": c.created_at,
@@ -1041,6 +1210,9 @@ async def get_model_api_config(
         "base_url": config.base_url,
         "api_key": config.api_key,
         "model_name": config.model_name,
+        "price_input_per_1k": config.price_input_per_1k,
+        "price_output_per_1k": config.price_output_per_1k,
+        "currency": config.currency,
         "is_enabled": config.is_enabled,
         "is_default": config.is_default,
         "created_at": config.created_at,
@@ -1071,6 +1243,9 @@ async def create_model_api_config(
             "base_url": new_config.base_url,
             "api_key": new_config.api_key,
             "model_name": new_config.model_name,
+            "price_input_per_1k": new_config.price_input_per_1k,
+            "price_output_per_1k": new_config.price_output_per_1k,
+            "currency": new_config.currency,
             "is_enabled": new_config.is_enabled,
             "is_default": new_config.is_default,
             "created_at": new_config.created_at,
@@ -1106,6 +1281,9 @@ async def update_model_api_config(
         existing_config.base_url = config.base_url
         existing_config.api_key = config.api_key
         existing_config.model_name = config.model_name
+        existing_config.price_input_per_1k = config.price_input_per_1k
+        existing_config.price_output_per_1k = config.price_output_per_1k
+        existing_config.currency = config.currency
         existing_config.is_enabled = config.is_enabled
         existing_config.is_default = config.is_default
 
@@ -1118,6 +1296,9 @@ async def update_model_api_config(
             "base_url": existing_config.base_url,
             "api_key": existing_config.api_key,
             "model_name": existing_config.model_name,
+            "price_input_per_1k": existing_config.price_input_per_1k,
+            "price_output_per_1k": existing_config.price_output_per_1k,
+            "currency": existing_config.currency,
             "is_enabled": existing_config.is_enabled,
             "is_default": existing_config.is_default,
             "created_at": existing_config.created_at,
