@@ -365,6 +365,21 @@ export default function Home() {
     });
   };
 
+  const handleOpenArticle = (
+    event: React.MouseEvent<HTMLDivElement>,
+    id: string,
+  ) => {
+    const target = event.target as HTMLElement | null;
+    if (
+      target?.closest(
+        "button, a, input, textarea, select, option, label, svg",
+      )
+    ) {
+      return;
+    }
+    router.push(`/article/${id}`);
+  };
+
   const handleSelectAll = () => {
     if (selectedArticleIds.size === articles.length) {
       setSelectedArticleIds(new Set());
@@ -758,10 +773,11 @@ export default function Home() {
                   )}
                   <div className="space-y-4">
                     {articles.map((article) => (
-                       <div
-                         key={article.id}
-                         className={`bg-white rounded-lg shadow-sm p-6 hover:shadow-md transition relative ${!article.is_visible && isAdmin ? 'opacity-60' : ''}`}
-                       >
+                      <div
+                        key={article.id}
+                        onClick={(event) => handleOpenArticle(event, article.id)}
+                        className={`bg-white rounded-lg shadow-sm p-6 hover:shadow-md transition relative cursor-pointer ${!article.is_visible && isAdmin ? 'opacity-60' : ''}`}
+                      >
                          {isAdmin && (
                            <div className="absolute top-3 right-3 flex items-center gap-1">
                             <button
