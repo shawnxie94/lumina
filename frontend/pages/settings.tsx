@@ -28,9 +28,12 @@ import {
 	IconGrip,
 	IconLink,
 	IconList,
+	IconCopy,
+	IconDoc,
 	IconNote,
 	IconPlug,
 	IconRobot,
+	IconSearch,
 	IconTag,
 	IconTrash,
 } from "@/components/icons";
@@ -47,8 +50,9 @@ import {
 	type PromptConfig,
 } from "@/lib/api";
 
-type SettingSection = "ai" | "categories" | "tasks";
+type SettingSection = "ai" | "categories" | "monitoring";
 type AISubSection = "model-api" | "prompt";
+type MonitoringSubSection = "tasks" | "ai-usage";
 type PromptType =
 	| "summary"
 	| "translation"
@@ -212,6 +216,8 @@ export default function SettingsPage() {
 	const [activeSection, setActiveSection] =
 		useState<SettingSection>("categories");
 	const [aiSubSection, setAISubSection] = useState<AISubSection>("model-api");
+	const [monitoringSubSection, setMonitoringSubSection] =
+		useState<MonitoringSubSection>("tasks");
 	const [modelAPIConfigs, setModelAPIConfigs] = useState<ModelAPIConfig[]>([]);
 	const [promptConfigs, setPromptConfigs] = useState<PromptConfig[]>([]);
 	const [categories, setCategories] = useState<Category[]>([]);
@@ -232,7 +238,6 @@ export default function SettingsPage() {
 		taskStatusFilter || taskTypeFilter || taskArticleIdFilter,
 	);
 
-	const [showUsageView, setShowUsageView] = useState(false);
 	const [usageLogs, setUsageLogs] = useState<AIUsageLogItem[]>([]);
 	const [usageSummary, setUsageSummary] = useState<
 		AIUsageSummaryResponse["summary"] | null
@@ -252,6 +257,13 @@ export default function SettingsPage() {
 	const [showUsagePayloadModal, setShowUsagePayloadModal] = useState(false);
 	const [usagePayloadTitle, setUsagePayloadTitle] = useState("");
 	const [usagePayloadContent, setUsagePayloadContent] = useState("");
+	const [showUsageCostModal, setShowUsageCostModal] = useState(false);
+	const [usageCostTitle, setUsageCostTitle] = useState("");
+	const [usageCostDetails, setUsageCostDetails] = useState("");
+	const showUsageView =
+		activeSection === "monitoring" && monitoringSubSection === "ai-usage";
+	const prevActiveSectionRef = useRef<SettingSection | null>(null);
+	const prevMonitoringSubSectionRef = useRef<MonitoringSubSection | null>(null);
 
 	const [showModelAPIModal, setShowModelAPIModal] = useState(false);
 	const [showModelAPIAdvanced, setShowModelAPIAdvanced] = useState(false);
@@ -276,17 +288,26 @@ export default function SettingsPage() {
 		if (typeof window === "undefined") return;
 		const storedSection = localStorage.getItem("settings_active_section");
 		const storedAiSubSection = localStorage.getItem("settings_ai_sub_section");
+		const storedMonitoringSubSection = localStorage.getItem(
+			"settings_monitoring_sub_section",
+		);
 		const storedPromptType = localStorage.getItem("settings_prompt_type");
 
 		if (
 			storedSection === "ai" ||
 			storedSection === "categories" ||
-			storedSection === "tasks"
+			storedSection === "monitoring"
 		) {
 			setActiveSection(storedSection);
 		}
 		if (storedAiSubSection === "model-api" || storedAiSubSection === "prompt") {
 			setAISubSection(storedAiSubSection);
+		}
+		if (
+			storedMonitoringSubSection === "tasks" ||
+			storedMonitoringSubSection === "ai-usage"
+		) {
+			setMonitoringSubSection(storedMonitoringSubSection);
 		}
 		if (PROMPT_TYPES.some((type) => type.value === storedPromptType)) {
 			setSelectedPromptType(storedPromptType as PromptType);
@@ -297,10 +318,12 @@ export default function SettingsPage() {
 		if (!router.isReady) return;
 		const { section, article_id: articleIdParam } = router.query;
 		if (section === "tasks") {
-			setActiveSection("tasks");
+			setActiveSection("monitoring");
+			setMonitoringSubSection("tasks");
 		}
 		if (articleIdParam && typeof articleIdParam === "string") {
-			setActiveSection("tasks");
+			setActiveSection("monitoring");
+			setMonitoringSubSection("tasks");
 			setTaskArticleIdFilter(articleIdParam);
 			setTaskPage(1);
 		}
@@ -310,8 +333,12 @@ export default function SettingsPage() {
 		if (typeof window === "undefined") return;
 		localStorage.setItem("settings_active_section", activeSection);
 		localStorage.setItem("settings_ai_sub_section", aiSubSection);
+		localStorage.setItem(
+			"settings_monitoring_sub_section",
+			monitoringSubSection,
+		);
 		localStorage.setItem("settings_prompt_type", selectedPromptType);
-	}, [activeSection, aiSubSection, selectedPromptType]);
+	}, [activeSection, aiSubSection, monitoringSubSection, selectedPromptType]);
 
 	const sensors = useSensors(
 		useSensor(PointerSensor),
@@ -478,6 +505,22 @@ export default function SettingsPage() {
 		}
 	};
 
+	const resetTaskFilters = () => {
+		setTaskStatusFilter("");
+		setTaskTypeFilter("");
+		setTaskArticleIdFilter("");
+		setTaskPage(1);
+	};
+
+	const resetUsageFilters = () => {
+		setUsageModelId("");
+		setUsageStatus("");
+		setUsageContentType("");
+		setUsageStart("");
+		setUsageEnd("");
+		setUsagePage(1);
+	};
+
 	useEffect(() => {
 		if (activeSection === "categories") {
 			fetchCategories();
@@ -491,19 +534,53 @@ export default function SettingsPage() {
 			}
 			return;
 		}
-		if (activeSection === "tasks") {
-			fetchTasks();
+		if (activeSection === "monitoring") {
+			if (monitoringSubSection === "tasks") {
+				fetchTasks();
+			} else {
+				fetchModelAPIConfigs();
+				fetchUsageSummary();
+				fetchUsageLogs();
+			}
 		}
-	}, [activeSection, aiSubSection]);
+	}, [activeSection, aiSubSection, monitoringSubSection]);
 
 	useEffect(() => {
-		if (activeSection !== "ai" || aiSubSection !== "model-api") {
-			setShowUsageView(false);
+		const prevSection = prevActiveSectionRef.current;
+		const prevMonitoringSubSection = prevMonitoringSubSectionRef.current;
+
+		if (prevSection && prevSection !== activeSection) {
+			if (prevSection === "monitoring") {
+				resetTaskFilters();
+				resetUsageFilters();
+			}
+			if (activeSection === "monitoring") {
+				if (monitoringSubSection === "tasks") {
+					resetTaskFilters();
+				} else {
+					resetUsageFilters();
+				}
+			}
 		}
-	}, [activeSection, aiSubSection]);
+
+		if (
+			activeSection === "monitoring" &&
+			prevMonitoringSubSection &&
+			prevMonitoringSubSection !== monitoringSubSection
+		) {
+			if (monitoringSubSection === "tasks") {
+				resetTaskFilters();
+			} else {
+				resetUsageFilters();
+			}
+		}
+
+		prevActiveSectionRef.current = activeSection;
+		prevMonitoringSubSectionRef.current = monitoringSubSection;
+	}, [activeSection, monitoringSubSection]);
 
 	useEffect(() => {
-		if (activeSection !== "tasks") return;
+		if (activeSection !== "monitoring" || monitoringSubSection !== "tasks") return;
 		fetchTasks();
 	}, [
 		taskPage,
@@ -512,20 +589,18 @@ export default function SettingsPage() {
 		taskTypeFilter,
 		taskArticleIdFilter,
 		activeSection,
+		monitoringSubSection,
 	]);
 
 	useEffect(() => {
-		if (
-			!(activeSection === "ai" && aiSubSection === "model-api" && showUsageView)
-		) {
+		if (activeSection !== "monitoring" || monitoringSubSection !== "ai-usage") {
 			return;
 		}
 		fetchUsageSummary();
 		fetchUsageLogs();
 	}, [
 		activeSection,
-		aiSubSection,
-		showUsageView,
+		monitoringSubSection,
 		usageModelId,
 		usageStatus,
 		usageContentType,
@@ -780,6 +855,61 @@ export default function SettingsPage() {
 		setUsagePayloadTitle(title);
 		setUsagePayloadContent(formatJsonPayload(payload));
 		setShowUsagePayloadModal(true);
+	};
+
+	const formatCostLine = (
+		label: string,
+		tokens: number | null,
+		price: number | null,
+		currency: string,
+	) => {
+		if (tokens == null || price == null) {
+			return `${label}：-`;
+		}
+		const cost = (tokens / 1000) * price;
+		return `${label}：${tokens} / 1000 * ${price.toFixed(6)} = ${cost.toFixed(6)} ${currency}`;
+	};
+
+	const openUsageCost = (log: AIUsageLogItem) => {
+		const currency = log.currency || "USD";
+		const inputPrice =
+			log.cost_input != null && log.prompt_tokens != null && log.prompt_tokens > 0
+				? log.cost_input / (log.prompt_tokens / 1000)
+				: null;
+		const outputPrice =
+			log.cost_output != null &&
+			log.completion_tokens != null &&
+			log.completion_tokens > 0
+				? log.cost_output / (log.completion_tokens / 1000)
+				: null;
+		const inputLine = formatCostLine(
+			"输入",
+			log.prompt_tokens,
+			inputPrice,
+			currency,
+		);
+		const outputLine = formatCostLine(
+			"输出",
+			log.completion_tokens,
+			outputPrice,
+			currency,
+		);
+		const total = log.cost_total != null
+			? `${log.cost_total.toFixed(6)} ${currency}`
+			: "-";
+		setUsageCostTitle("费用计算逻辑（仅供参考）");
+		setUsageCostDetails(`${inputLine}\n${outputLine}\n合计：${total}`);
+		setShowUsageCostModal(true);
+	};
+
+	const handleCopyPayload = async () => {
+		try {
+			await navigator.clipboard.writeText(usagePayloadContent);
+			showToast("已复制");
+		} catch (error) {
+			console.error("复制失败", error);
+			showToast("复制失败", "error");
+		}
 	};
 
 	const formatUsageDateTime = (value: string | null) => {
@@ -1061,72 +1191,91 @@ export default function SettingsPage() {
 											<span>模型API配置</span>
 										</span>
 									</button>
-									<button
-										onClick={() => {
-											setActiveSection("ai");
-											setAISubSection("prompt");
-										}}
-										className={`w-full text-left px-6 py-2 text-sm rounded-sm transition ${
-											activeSection === "ai" && aiSubSection === "prompt"
-												? "bg-muted text-text-1"
-												: "text-text-2 hover:text-text-1 hover:bg-muted"
-										}`}
-									>
-										<span className="inline-flex items-center gap-2">
-											<IconNote className="h-4 w-4" />
-											<span>提示词配置</span>
-										</span>
-									</button>
-									<button
-										onClick={() => setActiveSection("tasks")}
-										className={`w-full text-left px-4 py-3 rounded-sm transition ${
-											activeSection === "tasks"
-												? "bg-muted text-text-1"
-												: "text-text-2 hover:text-text-1 hover:bg-muted"
-										}`}
-									>
-										<span className="inline-flex items-center gap-2">
-											<IconList className="h-4 w-4" />
-											<span>任务监控</span>
-										</span>
-									</button>
+										<button
+											onClick={() => {
+												setActiveSection("ai");
+												setAISubSection("prompt");
+											}}
+											className={`w-full text-left px-6 py-2 text-sm rounded-sm transition ${
+												activeSection === "ai" && aiSubSection === "prompt"
+													? "bg-muted text-text-1"
+													: "text-text-2 hover:text-text-1 hover:bg-muted"
+											}`}
+										>
+											<span className="inline-flex items-center gap-2">
+												<IconNote className="h-4 w-4" />
+												<span>提示词配置</span>
+											</span>
+										</button>
+										<button
+											onClick={() => {
+												setActiveSection("monitoring");
+												setMonitoringSubSection("tasks");
+											}}
+											className={`w-full text-left px-4 py-3 rounded-sm transition ${
+												activeSection === "monitoring"
+													? "bg-muted text-text-1"
+													: "text-text-2 hover:text-text-1 hover:bg-muted"
+											}`}
+										>
+											<span className="inline-flex items-center gap-2">
+												<IconSearch className="h-4 w-4" />
+												<span>数据监控</span>
+											</span>
+										</button>
+										<button
+											onClick={() => {
+												setActiveSection("monitoring");
+												setMonitoringSubSection("tasks");
+											}}
+											className={`w-full text-left px-6 py-2 text-sm rounded-sm transition ${
+												activeSection === "monitoring" &&
+												monitoringSubSection === "tasks"
+													? "bg-muted text-text-1"
+													: "text-text-2 hover:text-text-1 hover:bg-muted"
+											}`}
+										>
+											<span className="inline-flex items-center gap-2">
+												<IconList className="h-4 w-4" />
+												<span>任务监控</span>
+											</span>
+										</button>
+										<button
+											onClick={() => {
+												setActiveSection("monitoring");
+												setMonitoringSubSection("ai-usage");
+											}}
+											className={`w-full text-left px-6 py-2 text-sm rounded-sm transition ${
+												activeSection === "monitoring" &&
+												monitoringSubSection === "ai-usage"
+													? "bg-muted text-text-1"
+													: "text-text-2 hover:text-text-1 hover:bg-muted"
+											}`}
+										>
+											<span className="inline-flex items-center gap-2">
+												<IconDoc className="h-4 w-4" />
+												<span>模型记录/计量</span>
+											</span>
+										</button>
 								</div>
 							</div>
 						</aside>
 
 						<main className="flex-1">
-							{activeSection === "ai" && aiSubSection === "model-api" && (
+							{((activeSection === "ai" && aiSubSection === "model-api") || showUsageView) && (
 								<div className="bg-surface rounded-sm shadow-sm border border-border p-6">
 									<div className="flex items-center justify-between mb-6">
 										<h2 className="text-lg font-semibold text-text-1">
-											模型API配置列表
+											{showUsageView ? "模型记录/计量" : "模型API配置列表"}
 										</h2>
 										<div className="flex items-center gap-2">
-											{showUsageView ? (
-											<button
-												onClick={() => setShowUsageView(false)}
-												className="px-4 py-2 text-sm bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
-											>
-												返回配置列表
-											</button>
-											) : (
-												<>
+											{!showUsageView && (
 												<button
-													onClick={() => {
-														setShowUsageView(true);
-														setUsagePage(1);
-													}}
-													className="px-4 py-2 text-sm bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
+													onClick={handleCreateModelAPINew}
+													className="px-4 py-2 bg-primary text-white rounded-sm hover:bg-primary-ink transition"
 												>
-													调用记录/计量
+													+ 创建配置
 												</button>
-													<button
-														onClick={handleCreateModelAPINew}
-														className="px-4 py-2 bg-primary text-white rounded-sm hover:bg-primary-ink transition"
-													>
-														+ 创建配置
-													</button>
-												</>
 											)}
 										</div>
 									</div>
@@ -1271,7 +1420,7 @@ export default function SettingsPage() {
 																	<th className="text-left px-3 py-2">模型</th>
 																	<th className="text-left px-3 py-2">调用</th>
 															<th className="text-left px-3 py-2">
-																Tokens（输入/输出，单位：tokens）
+																Tokens（输入/输出）
 															</th>
 																	<th className="text-left px-3 py-2">费用（参考）</th>
 																</tr>
@@ -1327,8 +1476,9 @@ export default function SettingsPage() {
 														<table className="min-w-full text-sm">
 															<thead className="bg-muted text-text-2">
 																<tr>
-																	<th className="text-left px-3 py-2">时间</th>
+																<th className="text-left px-3 py-2">时间</th>
 																	<th className="text-left px-3 py-2">模型</th>
+																	<th className="text-left px-3 py-2">文章</th>
 																	<th className="text-left px-3 py-2">类型</th>
 																	<th className="text-left px-3 py-2">
 																		Tokens（输入/输出）
@@ -1344,21 +1494,41 @@ export default function SettingsPage() {
 																<td className="px-3 py-2 text-text-2">
 																	{formatUsageDateTime(log.created_at)}
 																</td>
-																		<td className="px-3 py-2 text-text-1">
-																			{log.model_api_config_name || "-"}
-																		</td>
-															<td className="px-3 py-2 text-text-2">
-																{getUsageContentTypeLabel(log.content_type)}
-															</td>
+																<td className="px-3 py-2 text-text-1">
+																	{log.model_api_config_name || "-"}
+																</td>
+																<td className="px-3 py-2 text-text-2">
+																	{log.article_id ? (
+																		<Link
+																			href={`/article/${log.article_id}`}
+																			className="text-primary hover:text-primary-ink"
+																		>
+																			查看
+																		</Link>
+																	) : (
+																		"-"
+																	)}
+																</td>
+																<td className="px-3 py-2 text-text-2">
+																	{getUsageContentTypeLabel(log.content_type)}
+																</td>
 															<td className="px-3 py-2 text-text-2">
 																{log.prompt_tokens ?? "-"}/{log.completion_tokens ?? "-"}
 															</td>
-																		<td className="px-3 py-2 text-text-2">
-																			{log.cost_total != null
-																				? log.cost_total.toFixed(4)
-																				: "-"}
-																			{log.currency ? ` ${log.currency}` : ""}
-																		</td>
+																<td className="px-3 py-2 text-text-2">
+																		{log.cost_total != null ? (
+																			<button
+																				type="button"
+																				onClick={() => openUsageCost(log)}
+																				className="text-primary hover:text-primary-ink"
+																			>
+																				{log.cost_total.toFixed(4)}
+																				{log.currency ? ` ${log.currency}` : ""}
+																			</button>
+																		) : (
+																			"-"
+																		)}
+																</td>
 															<td className="px-3 py-2 text-text-2">
 																{getUsageStatusLabel(log.status)}
 															</td>
@@ -1848,7 +2018,7 @@ export default function SettingsPage() {
 								</div>
 							)}
 
-							{activeSection === "tasks" && (
+							{activeSection === "monitoring" && monitoringSubSection === "tasks" && (
 								<div className="bg-white rounded-lg shadow-sm p-6">
 									<div className="flex items-center justify-between mb-6">
 										<div>
@@ -2382,9 +2552,18 @@ export default function SettingsPage() {
 											onClick={(event) => event.stopPropagation()}
 										>
 											<div className="flex items-center justify-between p-6 border-b">
-												<h3 className="text-lg font-semibold text-gray-900">
-													{usagePayloadTitle}
-												</h3>
+												<div className="flex items-center gap-2">
+													<h3 className="text-lg font-semibold text-gray-900">
+														{usagePayloadTitle}
+													</h3>
+													<button
+														onClick={handleCopyPayload}
+														className="p-2 text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
+														aria-label="复制"
+													>
+														<IconCopy className="h-4 w-4" />
+													</button>
+												</div>
 												<button
 													onClick={() => setShowUsagePayloadModal(false)}
 													className="text-gray-500 hover:text-gray-700 text-2xl"
@@ -2395,6 +2574,35 @@ export default function SettingsPage() {
 											<div className="p-6">
 												<pre className="text-xs text-gray-800 whitespace-pre-wrap bg-gray-50 border border-gray-200 rounded-lg p-4">
 													{usagePayloadContent}
+												</pre>
+											</div>
+										</div>
+									</div>
+								)}
+
+								{showUsageCostModal && (
+									<div
+										className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+										onClick={() => setShowUsageCostModal(false)}
+									>
+										<div
+											className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+											onClick={(event) => event.stopPropagation()}
+										>
+											<div className="flex items-center justify-between p-6 border-b">
+												<h3 className="text-lg font-semibold text-gray-900">
+													{usageCostTitle}
+												</h3>
+												<button
+													onClick={() => setShowUsageCostModal(false)}
+													className="text-gray-500 hover:text-gray-700 text-2xl"
+												>
+													×
+												</button>
+											</div>
+											<div className="p-6">
+												<pre className="text-xs text-gray-800 whitespace-pre-wrap bg-gray-50 border border-gray-200 rounded-lg p-4">
+													{usageCostDetails}
 												</pre>
 											</div>
 										</div>
