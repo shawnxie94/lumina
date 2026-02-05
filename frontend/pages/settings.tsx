@@ -400,6 +400,21 @@ export default function SettingsPage() {
 	});
 	const [showPromptAdvanced, setShowPromptAdvanced] = useState(false);
 	const promptImportInputRef = useRef<HTMLInputElement>(null);
+	const [modelOptions, setModelOptions] = useState<string[]>([]);
+	const [modelOptionsLoading, setModelOptionsLoading] = useState(false);
+	const [modelOptionsError, setModelOptionsError] = useState("");
+	const [modelNameManual, setModelNameManual] = useState(false);
+	const [showModelAPITestModal, setShowModelAPITestModal] = useState(false);
+	const [modelAPITestConfig, setModelAPITestConfig] =
+		useState<ModelAPIConfig | null>(null);
+	const [modelAPITestPrompt, setModelAPITestPrompt] = useState("");
+	const [modelAPITestResult, setModelAPITestResult] = useState("");
+	const [modelAPITestRaw, setModelAPITestRaw] = useState("");
+	const [modelAPITestError, setModelAPITestError] = useState("");
+	const [modelAPITestLoading, setModelAPITestLoading] = useState(false);
+	const modelOptionsFetchRef = useRef<ReturnType<typeof setTimeout> | null>(
+		null,
+	);
 
 	const [categoryFormData, setCategoryFormData] = useState({
 		name: "",
@@ -623,6 +638,9 @@ export default function SettingsPage() {
 			is_enabled: true,
 			is_default: false,
 		});
+		setModelOptions([]);
+		setModelOptionsError("");
+		setModelNameManual(false);
 		setShowModelAPIAdvanced(false);
 		setShowModelAPIModal(true);
 	};
@@ -644,6 +662,9 @@ export default function SettingsPage() {
 			is_enabled: config.is_enabled,
 			is_default: config.is_default,
 		});
+		setModelOptions([]);
+		setModelOptionsError("");
+		setModelNameManual(false);
 		setShowModelAPIAdvanced(hasPricingValue);
 		setShowModelAPIModal(true);
 	};
@@ -692,17 +713,88 @@ export default function SettingsPage() {
 		}
 	};
 
-	const handleTestModelAPI = async (id: string) => {
+	const handleTestModelAPI = (config: ModelAPIConfig) => {
+		setModelAPITestConfig(config);
+		setModelAPITestPrompt("请回复：OK");
+		setModelAPITestResult("");
+		setModelAPITestRaw("");
+		setModelAPITestError("");
+		setShowModelAPITestModal(true);
+	};
+
+	const handleFetchModelOptions = async () => {
+		if (!modelAPIFormData.base_url || !modelAPIFormData.api_key) {
+			showToast("请先填写API地址与密钥", "info");
+			return;
+		}
+		setModelOptionsLoading(true);
+		setModelOptionsError("");
 		try {
-			const result = await articleApi.testModelAPIConfig(id);
+			const result = await articleApi.getModelAPIModels({
+				base_url: modelAPIFormData.base_url,
+				api_key: modelAPIFormData.api_key,
+			});
 			if (result.success) {
-				showToast("连接测试成功");
+				setModelOptions(result.models || []);
+				showToast("已获取模型列表");
 			} else {
-				showToast(`连接测试失败: ${result.message}`, "error");
+				setModelOptions([]);
+				setModelOptionsError(result.message || "获取模型失败");
+				showToast("获取模型失败", "error");
+			}
+		} catch (error) {
+			console.error("Failed to fetch model list:", error);
+			setModelOptions([]);
+			setModelOptionsError("获取模型失败");
+			showToast("获取模型失败", "error");
+		} finally {
+			setModelOptionsLoading(false);
+		}
+	};
+
+	useEffect(() => {
+		if (!showModelAPIModal) return;
+		if (!modelAPIFormData.base_url || !modelAPIFormData.api_key) return;
+		if (modelOptionsFetchRef.current) {
+			clearTimeout(modelOptionsFetchRef.current);
+		}
+		modelOptionsFetchRef.current = setTimeout(() => {
+			handleFetchModelOptions();
+		}, 500);
+		return () => {
+			if (modelOptionsFetchRef.current) {
+				clearTimeout(modelOptionsFetchRef.current);
+			}
+		};
+	}, [showModelAPIModal, modelAPIFormData.base_url, modelAPIFormData.api_key]);
+
+	const handleRunModelAPITest = async () => {
+		if (!modelAPITestConfig) return;
+		setModelAPITestLoading(true);
+		setModelAPITestResult("");
+		setModelAPITestRaw("");
+		setModelAPITestError("");
+		try {
+			const result = await articleApi.testModelAPIConfig(
+				modelAPITestConfig.id,
+				{ prompt: modelAPITestPrompt },
+			);
+			if (result.success) {
+				setModelAPITestResult(result.content || "");
+				setModelAPITestRaw(result.raw_response || "");
+				showToast("调用成功");
+			} else {
+				setModelAPITestError(result.message || "调用失败");
+				setModelAPITestResult(result.content || "");
+				setModelAPITestRaw(result.raw_response || "");
+				showToast("调用失败", "error");
 			}
 		} catch (error) {
 			console.error("Failed to test model API config:", error);
-			showToast("测试失败", "error");
+			setModelAPITestError("调用失败");
+			showToast("调用失败", "error");
+		} finally {
+			setModelAPITestLoading(false);
 		}
 	};
 
@@ -1745,7 +1837,7 @@ const formatPrice = (value: number | null | undefined) => {
 
 															<div className="flex gap-1">
 																<button
-																	onClick={() => handleTestModelAPI(config.id)}
+																	onClick={() => handleTestModelAPI(config)}
 																	className="px-2 py-1 text-sm text-gray-500 rounded hover:bg-blue-100 hover:text-blue-600 transition"
 																	title="测试连接"
 																>
@@ -2427,19 +2519,65 @@ const formatPrice = (value: number | null | undefined) => {
 									<label className="block text-sm font-medium text-gray-700 mb-2">
 										模型名称
 									</label>
-									<input
-										type="text"
-										value={modelAPIFormData.model_name}
-										onChange={(e) =>
-											setModelAPIFormData({
-												...modelAPIFormData,
-												model_name: e.target.value,
-											})
-										}
-										className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-										placeholder="gpt-4o"
-										required
-									/>
+									{modelNameManual ? (
+										<div className="flex items-center gap-2">
+											<input
+												type="text"
+												value={modelAPIFormData.model_name}
+												onChange={(e) =>
+													setModelAPIFormData({
+														...modelAPIFormData,
+														model_name: e.target.value,
+													})
+												}
+												className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+												placeholder="手动输入模型名称"
+												required
+											/>
+											<button
+												type="button"
+												onClick={() => setModelNameManual(false)}
+												className="px-3 py-2 text-sm bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
+												title="切换为选择"
+											>
+												<IconList className="h-4 w-4" />
+											</button>
+										</div>
+									) : (
+										<div className="flex items-center gap-2">
+											<Select
+												value={modelAPIFormData.model_name || undefined}
+												onChange={(value) =>
+													setModelAPIFormData({
+														...modelAPIFormData,
+														model_name: value,
+													})
+												}
+												className="select-modern-antd w-full h-10"
+												style={{ height: 40 }}
+												popupClassName="select-modern-dropdown"
+												placeholder="请选择模型"
+												options={modelOptions.map((model) => ({
+													value: model,
+													label: model,
+												}))}
+												loading={modelOptionsLoading}
+											/>
+											<button
+												type="button"
+												onClick={() => setModelNameManual(true)}
+												className="px-3 py-2 text-sm bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
+												title="手动输入"
+											>
+												<IconEdit className="h-4 w-4" />
+											</button>
+										</div>
+									)}
+									{modelOptionsError && (
+										<p className="text-xs text-red-600 mt-2">
+											{modelOptionsError}
+										</p>
+									)}
 								</div>
 
 							<div className="border border-gray-200 rounded-lg">
@@ -3108,6 +3246,93 @@ const formatPrice = (value: number | null | undefined) => {
 									className="px-4 py-2 bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
 								>
 									关闭
+								</button>
+							</div>
+						</div>
+					</div>
+				)}
+
+				{showModelAPITestModal && (
+					<div
+						className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+						onClick={() => setShowModelAPITestModal(false)}
+					>
+						<div
+							className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+							onClick={(event) => event.stopPropagation()}
+						>
+							<div className="flex items-center justify-between p-6 border-b">
+								<div>
+									<h3 className="text-lg font-semibold text-gray-900">
+										模型连接测试
+									</h3>
+									{modelAPITestConfig && (
+										<p className="text-sm text-gray-500 mt-1">
+											{modelAPITestConfig.name} ·{" "}
+											{modelAPITestConfig.model_name}
+										</p>
+									)}
+								</div>
+								<button
+									onClick={() => setShowModelAPITestModal(false)}
+									className="text-gray-500 hover:text-gray-700 text-2xl"
+								>
+									×
+								</button>
+							</div>
+
+							<div className="p-6 space-y-4">
+								<div>
+									<label className="block text-sm font-medium text-gray-700 mb-2">
+										测试输入
+									</label>
+									<textarea
+										value={modelAPITestPrompt}
+										onChange={(e) => setModelAPITestPrompt(e.target.value)}
+										rows={4}
+										className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+										placeholder="请输入要发送给模型的内容"
+									/>
+								</div>
+
+								<div>
+									<label className="block text-sm font-medium text-gray-700 mb-2">
+										返回结果
+									</label>
+									<div className="w-full p-4 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-800 whitespace-pre-wrap min-h-[120px]">
+										{modelAPITestLoading
+											? "调用中..."
+											: modelAPITestError
+												? modelAPITestError
+												: modelAPITestResult || "暂无返回"}
+									</div>
+								</div>
+
+								{modelAPITestError && (
+									<div>
+										<label className="block text-sm font-medium text-gray-700 mb-2">
+											原始响应
+										</label>
+										<pre className="w-full p-4 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-800 whitespace-pre-wrap max-h-64 overflow-y-auto">
+											{modelAPITestRaw || "暂无原始响应"}
+										</pre>
+									</div>
+								)}
+							</div>
+
+							<div className="flex justify-end gap-2 p-6 border-t bg-gray-50">
+								<button
+									onClick={() => setShowModelAPITestModal(false)}
+									className="px-4 py-2 bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
+								>
+									关闭
+								</button>
+								<button
+									onClick={handleRunModelAPITest}
+									disabled={modelAPITestLoading}
+									className="px-4 py-2 bg-primary text-white rounded-sm hover:bg-primary-ink transition disabled:opacity-50 disabled:cursor-not-allowed"
+								>
+									{modelAPITestLoading ? "调用中..." : "开始测试"}
 								</button>
 							</div>
 						</div>

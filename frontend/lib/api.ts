@@ -431,9 +431,24 @@ export const articleApi = {
 		return response.data;
 	},
 
-	testModelAPIConfig: async (configId: string) => {
-		const response = await api.post(`/api/model-api-configs/${configId}/test`);
+	testModelAPIConfig: async (
+		configId: string,
+		data?: { prompt?: string; max_tokens?: number },
+	) => {
+		const response = await api.post(
+			`/api/model-api-configs/${configId}/test`,
+			data,
+		);
 		return response.data;
+	},
+	getModelAPIModels: async (data: { base_url: string; api_key: string }) => {
+		const response = await api.post("/api/model-api-configs/models", data);
+		return response.data as {
+			success: boolean;
+			models?: string[];
+			message?: string;
+			raw_response?: string;
+		};
 	},
 
 	getPromptConfigs: async (params?: {

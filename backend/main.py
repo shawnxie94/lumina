@@ -159,6 +159,16 @@ class CategoryCreate(BaseModel):
     sort_order: Optional[int] = 0
 
 
+class ModelAPITestRequest(BaseModel):
+    prompt: Optional[str] = None
+    max_tokens: Optional[int] = None
+
+
+class ModelAPIModelsRequest(BaseModel):
+    base_url: str
+    api_key: str
+
+
 class ExportRequest(BaseModel):
     article_ids: List[str]
 
@@ -1331,6 +1341,7 @@ async def delete_model_api_config(
 @app.post("/api/model-api-configs/{config_id}/test")
 async def test_model_api_config(
     config_id: str,
+    payload: Optional[ModelAPITestRequest] = None,
     db: Session = Depends(get_db),
     _: bool = Depends(get_current_admin),
 ):
@@ -1343,6 +1354,9 @@ async def test_model_api_config(
         # Test API connection by making a simple request
         import httpx
 
+        prompt = payload.prompt if payload and payload.prompt else "test"
+        max_tokens = payload.max_tokens if payload and payload.max_tokens else 200
+
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 f"{config.base_url}/chat/completions",
@@ -1352,21 +1366,75 @@ async def test_model_api_config(
                 },
                 json={
                     "model": config.model_name,
-                    "messages": [{"role": "user", "content": "test"}],
-                    "max_tokens": 5,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": max_tokens,
+                    "temperature": 0.2,
                 },
                 timeout=10.0,
             )
 
             if response.status_code in [200, 201]:
-                return {"success": True, "message": "连接测试成功"}
-            else:
+                content = ""
+                try:
+                    data = response.json()
+                    content = (
+                        data.get("choices", [{}])[0]
+                        .get("message", {})
+                        .get("content", "")
+                    )
+                except Exception:
+                    content = response.text
+                return {
+                    "success": True,
+                    "message": "调用成功",
+                    "content": content,
+                    "raw_response": response.text,
+                    "status_code": response.status_code,
+                }
+            return {
+                "success": False,
+                "message": f"调用失败: {response.status_code}",
+                "content": response.text,
+                "raw_response": response.text,
+                "status_code": response.status_code,
+            }
+    except Exception as e:
+        return {"success": False, "message": f"调用失败: {str(e)}"}
+
+
+@app.post("/api/model-api-configs/models")
+async def fetch_model_api_models(
+    payload: ModelAPIModelsRequest,
+    _: bool = Depends(get_current_admin),
+):
+    try:
+        import httpx
+
+        base_url = payload.base_url.rstrip("/")
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{base_url}/models",
+                headers={
+                    "Authorization": f"Bearer {payload.api_key}",
+                    "Content-Type": "application/json",
+                },
+                timeout=10.0,
+            )
+            if response.status_code not in [200, 201]:
                 return {
                     "success": False,
-                    "message": f"连接测试失败: {response.status_code}",
+                    "message": f"获取模型失败: {response.status_code}",
+                    "raw_response": response.text,
                 }
+            data = response.json()
+            models = []
+            if isinstance(data, dict):
+                items = data.get("data") or data.get("models") or []
+                if isinstance(items, list):
+                    models = [item.get("id") for item in items if item.get("id")]
+            return {"success": True, "models": models, "raw_response": response.text}
     except Exception as e:
-        return {"success": False, "message": f"连接测试失败: {str(e)}"}
+        return {"success": False, "message": f"获取模型失败: {str(e)}"}
 
 
 # Prompt Config endpoints
