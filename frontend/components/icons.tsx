@@ -328,6 +328,14 @@ export function IconLink(props: IconProps) {
   );
 }
 
+export function IconFilter(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M4 5h16l-6 7v5l-4 2v-7Z" />
+    </IconBase>
+  );
+}
+
 export function IconGithub(props: IconProps) {
   return (
     <IconBase {...props}>

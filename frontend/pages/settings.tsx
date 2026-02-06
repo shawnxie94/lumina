@@ -36,6 +36,7 @@ import {
 	IconSearch,
 	IconTag,
 	IconTrash,
+	IconFilter,
 } from "@/components/icons";
 import { useToast } from "@/components/Toast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -55,6 +56,7 @@ import {
 type SettingSection = "ai" | "categories" | "monitoring" | "comments";
 type AISubSection = "model-api" | "prompt";
 type MonitoringSubSection = "tasks" | "ai-usage";
+type CommentSubSection = "keys" | "filters";
 type PromptType =
 	| "summary"
 	| "translation"
@@ -220,6 +222,8 @@ export default function SettingsPage() {
 	const [aiSubSection, setAISubSection] = useState<AISubSection>("model-api");
 	const [monitoringSubSection, setMonitoringSubSection] =
 		useState<MonitoringSubSection>("tasks");
+	const [commentSubSection, setCommentSubSection] =
+		useState<CommentSubSection>("keys");
 	const [modelAPIConfigs, setModelAPIConfigs] = useState<ModelAPIConfig[]>([]);
 	const [promptConfigs, setPromptConfigs] = useState<PromptConfig[]>([]);
 	const [categories, setCategories] = useState<Category[]>([]);
@@ -310,6 +314,9 @@ export default function SettingsPage() {
 		const storedMonitoringSubSection = localStorage.getItem(
 			"settings_monitoring_sub_section",
 		);
+		const storedCommentSubSection = localStorage.getItem(
+			"settings_comment_sub_section",
+		);
 		const storedPromptType = localStorage.getItem("settings_prompt_type");
 
 		if (
@@ -328,6 +335,9 @@ export default function SettingsPage() {
 			storedMonitoringSubSection === "ai-usage"
 		) {
 			setMonitoringSubSection(storedMonitoringSubSection);
+		}
+		if (storedCommentSubSection === "keys" || storedCommentSubSection === "filters") {
+			setCommentSubSection(storedCommentSubSection);
 		}
 		if (PROMPT_TYPES.some((type) => type.value === storedPromptType)) {
 			setSelectedPromptType(storedPromptType as PromptType);
@@ -357,8 +367,9 @@ export default function SettingsPage() {
 			"settings_monitoring_sub_section",
 			monitoringSubSection,
 		);
+		localStorage.setItem("settings_comment_sub_section", commentSubSection);
 		localStorage.setItem("settings_prompt_type", selectedPromptType);
-	}, [activeSection, aiSubSection, monitoringSubSection, selectedPromptType]);
+	}, [activeSection, aiSubSection, monitoringSubSection, commentSubSection, selectedPromptType]);
 
 	const sensors = useSensors(
 		useSensor(PointerSensor),
@@ -671,8 +682,13 @@ export default function SettingsPage() {
 		}
 		if (activeSection === "comments") {
 			fetchCommentSettings();
+			return;
 		}
-	}, [activeSection, aiSubSection, monitoringSubSection]);
+	}, [activeSection, aiSubSection, monitoringSubSection, commentSubSection]);
+
+	useEffect(() => {
+		setCommentValidationResult(null);
+	}, [commentSubSection]);
 
 	useEffect(() => {
 		const prevSection = prevActiveSectionRef.current;
@@ -1495,6 +1511,38 @@ const formatPrice = (value: number | null | undefined) => {
 											<span>评论配置</span>
 										</span>
 									</button>
+									<button
+										onClick={() => {
+											setActiveSection("comments");
+											setCommentSubSection("keys");
+										}}
+										className={`w-full text-left px-6 py-2 text-sm rounded-sm transition ${
+											activeSection === "comments" && commentSubSection === "keys"
+												? "bg-muted text-text-1"
+												: "text-text-2 hover:text-text-1 hover:bg-muted"
+										}`}
+									>
+										<span className="inline-flex items-center gap-2">
+											<IconPlug className="h-4 w-4" />
+											<span>登录密钥</span>
+										</span>
+									</button>
+									<button
+										onClick={() => {
+											setActiveSection("comments");
+											setCommentSubSection("filters");
+										}}
+										className={`w-full text-left px-6 py-2 text-sm rounded-sm transition ${
+											activeSection === "comments" && commentSubSection === "filters"
+												? "bg-muted text-text-1"
+												: "text-text-2 hover:text-text-1 hover:bg-muted"
+										}`}
+									>
+										<span className="inline-flex items-center gap-2">
+											<IconFilter className="h-4 w-4" />
+											<span>过滤规则</span>
+										</span>
+									</button>
 								</div>
 							</div>
 						</aside>
@@ -2269,21 +2317,23 @@ const formatPrice = (value: number | null | undefined) => {
 							{activeSection === "comments" && (
 								<div className="bg-surface rounded-sm shadow-sm border border-border p-6">
 									<div className="flex items-center justify-between mb-6">
-									<div>
-										<h2 className="text-lg font-semibold text-text-1">
-											评论配置
-										</h2>
-										<p className="text-sm text-text-3">
-											配置第三方登录并启用文章评论功能
-										</p>
-									</div>
+										<div>
+											<h2 className="text-lg font-semibold text-text-1">
+												评论配置
+											</h2>
+											<p className="text-sm text-text-3">
+												配置第三方登录并启用文章评论功能
+											</p>
+										</div>
 										<div className="flex items-center gap-2">
-											<button
-												onClick={handleValidateCommentSettings}
-												className="px-4 py-2 text-sm bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
-											>
-												验证配置
-											</button>
+											{commentSubSection === "keys" && (
+												<button
+													onClick={handleValidateCommentSettings}
+													className="px-4 py-2 text-sm bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
+												>
+													验证配置
+												</button>
+											)}
 											<button
 												onClick={handleSaveCommentSettings}
 												disabled={commentSettingsSaving}
@@ -2294,12 +2344,14 @@ const formatPrice = (value: number | null | undefined) => {
 										</div>
 									</div>
 
-									{commentSettingsLoading ? (
-										<div className="text-center py-12 text-text-3">
-											加载中...
-										</div>
-									) : (
-										<div className="space-y-6">
+											{commentSettingsLoading ? (
+												<div className="text-center py-12 text-text-3">
+													加载中...
+												</div>
+											) : (
+												<div className="space-y-6">
+													{commentSubSection === "keys" && (
+														<>
 											<div className="flex items-center justify-between border border-border rounded-sm p-4 bg-surface">
 												<div>
 													<div className="text-sm font-medium text-text-1">
@@ -2422,63 +2474,69 @@ const formatPrice = (value: number | null | undefined) => {
 													</button>
 												</div>
 											</div>
+														</>
+													)}
 
-											<div className="flex items-center justify-between border border-border rounded-sm p-4 bg-surface">
-												<div>
-													<div className="text-sm font-medium text-text-1">
-														敏感词过滤
-													</div>
-													<div className="text-xs text-text-3 mt-1">
-														启用后将拦截包含敏感词的评论
-													</div>
-												</div>
-												<label className="inline-flex items-center gap-2 text-sm text-text-2 cursor-pointer">
-													<input
-														type="checkbox"
-														checked={commentSettings.sensitive_filter_enabled}
-														onChange={(e) =>
-															setCommentSettings((prev) => ({
-																...prev,
-																sensitive_filter_enabled: e.target.checked,
-															}))
-														}
-														className="h-4 w-4"
-													/>
-													<span>
-														{commentSettings.sensitive_filter_enabled ? "已开启" : "已关闭"}
-													</span>
-												</label>
-											</div>
+													{commentSubSection === "filters" && (
+														<>
+															<div className="flex items-center justify-between border border-border rounded-sm p-4 bg-surface">
+																<div>
+																	<div className="text-sm font-medium text-text-1">
+																		敏感词过滤
+																	</div>
+																	<div className="text-xs text-text-3 mt-1">
+																		启用后将拦截包含敏感词的评论
+																	</div>
+																</div>
+																<label className="inline-flex items-center gap-2 text-sm text-text-2 cursor-pointer">
+																	<input
+																		type="checkbox"
+																		checked={commentSettings.sensitive_filter_enabled}
+																		onChange={(e) =>
+																			setCommentSettings((prev) => ({
+																				...prev,
+																				sensitive_filter_enabled: e.target.checked,
+																			}))
+																		}
+																		className="h-4 w-4"
+																	/>
+																	<span>
+																		{commentSettings.sensitive_filter_enabled ? "已开启" : "已关闭"}
+																	</span>
+																</label>
+															</div>
 
-											<div>
-												<div className="flex items-center gap-2 mb-1">
-													<label className="block text-sm text-text-2">
-														敏感词列表
-													</label>
-													<div className="relative group">
-														<span className="h-5 w-5 rounded-full border border-border text-text-3 inline-flex items-center justify-center text-xs cursor-default">
-															?
-														</span>
-														<div className="pointer-events-none absolute left-1/2 top-full mt-2 -translate-x-1/2 whitespace-nowrap rounded-sm border border-border bg-surface px-2 py-1 text-xs text-text-2 shadow-sm opacity-0 group-hover:opacity-100 transition">
-															支持换行或逗号分隔
-														</div>
-													</div>
-												</div>
-												<textarea
-													value={commentSettings.sensitive_words}
-													onChange={(e) =>
-														setCommentSettings((prev) => ({
-															...prev,
-															sensitive_words: e.target.value,
-														}))
-													}
-													rows={4}
-													placeholder="每行一个敏感词，或使用逗号分隔"
-													className="w-full px-3 py-2 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
-												/>
-											</div>
+															<div>
+																<div className="flex items-center gap-2 mb-1">
+																	<label className="block text-sm text-text-2">
+																		敏感词列表
+																	</label>
+																	<div className="relative group">
+																		<span className="h-5 w-5 rounded-full border border-border text-text-3 inline-flex items-center justify-center text-xs cursor-default">
+																			?
+																		</span>
+																		<div className="pointer-events-none absolute left-1/2 top-full mt-2 -translate-x-1/2 whitespace-nowrap rounded-sm border border-border bg-surface px-2 py-1 text-xs text-text-2 shadow-sm opacity-0 group-hover:opacity-100 transition">
+																			支持换行或逗号分隔
+																		</div>
+																	</div>
+																</div>
+																<textarea
+																	value={commentSettings.sensitive_words}
+																	onChange={(e) =>
+																		setCommentSettings((prev) => ({
+																			...prev,
+																			sensitive_words: e.target.value,
+																		}))
+																	}
+																	rows={4}
+																	placeholder="每行一个敏感词，或使用逗号分隔"
+																	className="w-full px-3 py-2 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
+																/>
+															</div>
+														</>
+													)}
 
-											{commentValidationResult && (
+											{commentSubSection === "keys" && commentValidationResult && (
 												<div
 													className={`rounded-sm border p-3 text-xs ${
 														commentValidationResult.ok
@@ -2508,10 +2566,12 @@ const formatPrice = (value: number | null | undefined) => {
 													)}
 												</div>
 											)}
+											{commentSubSection === "keys" && (
+												<div className="text-xs text-text-3">
+													保存后立即生效，如登录异常请检查 OAuth 回调地址配置。
+												</div>
+											)}
 
-											<div className="text-xs text-text-3">
-												保存后立即生效，如登录异常请检查 OAuth 回调地址配置。
-											</div>
 										</div>
 									)}
 								</div>
