@@ -111,12 +111,8 @@ export default function AppHeader() {
                 href="/"
                 className="px-3 py-1 rounded-sm transition text-text-1 hover:bg-muted"
               >
-                文章
+                信息流
               </Link>
-              <span className="px-3 py-1 rounded-sm text-text-3">播客</span>
-              <span className="px-3 py-1 rounded-sm text-text-3">视频</span>
-              <span className="px-3 py-1 rounded-sm text-text-3">书籍</span>
-              <span className="px-3 py-1 rounded-sm text-text-3">想法</span>
             </div>
           </div>
           <div className="flex items-center gap-2">
