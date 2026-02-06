@@ -8,6 +8,7 @@ import { marked } from 'marked';
 import { articleApi, commentApi, commentSettingsApi, type ArticleComment, type ArticleDetail, type ModelAPIConfig, type PromptConfig } from '@/lib/api';
 import AppFooter from '@/components/AppFooter';
 import AppHeader from '@/components/AppHeader';
+import Button from '@/components/Button';
 import IconButton from '@/components/IconButton';
 import { useToast } from '@/components/Toast';
 import { BackToTop } from '@/components/BackToTop';
@@ -2156,18 +2157,19 @@ export default function ArticleDetailPage() {
 
                     {totalCommentPages > 1 && (
                       <div className="mt-4 flex items-center justify-between text-xs text-text-3">
-                        <button
+                        <Button
                           type="button"
                           onClick={() => setCommentPage((prev) => Math.max(1, prev - 1))}
                           disabled={commentPage === 1}
-                          className="px-2 py-1 rounded-sm border border-border text-text-2 hover:text-text-1 hover:bg-muted transition disabled:opacity-50"
+                          variant="secondary"
+                          size="sm"
                         >
                           上一页
-                        </button>
-                        <span>
+                        </Button>
+                        <span className="px-4 py-2 text-sm bg-surface border border-border rounded-sm text-text-2">
                           {commentPage} / {totalCommentPages}
                         </span>
-                        <button
+                        <Button
                           type="button"
                           onClick={() =>
                             setCommentPage((prev) =>
@@ -2175,10 +2177,11 @@ export default function ArticleDetailPage() {
                             )
                           }
                           disabled={commentPage === totalCommentPages}
-                          className="px-2 py-1 rounded-sm border border-border text-text-2 hover:text-text-1 hover:bg-muted transition disabled:opacity-50"
+                          variant="secondary"
+                          size="sm"
                         >
                           下一页
-                        </button>
+                        </Button>
                       </div>
                     )}
                   </div>

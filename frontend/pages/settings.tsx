@@ -2028,28 +2028,30 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 															<span>条，共 {usageTotal} 条</span>
 														</div>
 														<div className="flex items-center gap-2">
-															<button
-																onClick={() =>
-																	setUsagePage((page) => Math.max(1, page - 1))
-																}
-																disabled={usagePage === 1}
-																className="px-4 py-2 bg-surface border border-border rounded-sm hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
-															>
-																上一页
-															</button>
-															<span className="px-4 py-2 bg-surface border border-border rounded-sm">
-																第 {usagePage} /{" "}
-																{Math.ceil(usageTotal / usagePageSize) || 1} 页
-															</span>
-															<button
-																onClick={() => setUsagePage((page) => page + 1)}
-																disabled={
-																	usagePage * usagePageSize >= usageTotal
-																}
-																className="px-4 py-2 bg-surface border border-border rounded-sm hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
-															>
-																下一页
-															</button>
+														<Button
+															onClick={() =>
+																setUsagePage((page) => Math.max(1, page - 1))
+															}
+															disabled={usagePage === 1}
+															variant="secondary"
+															size="sm"
+														>
+															上一页
+														</Button>
+														<span className="px-4 py-2 text-sm bg-surface border border-border rounded-sm text-text-2">
+															第 {usagePage} /{" "}
+															{Math.ceil(usageTotal / usagePageSize) || 1} 页
+														</span>
+														<Button
+															onClick={() => setUsagePage((page) => page + 1)}
+															disabled={
+																usagePage * usagePageSize >= usageTotal
+															}
+															variant="secondary"
+															size="sm"
+														>
+															下一页
+														</Button>
 														</div>
 													</div>
 												)}
@@ -2956,24 +2958,26 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 											<span>条，共 {taskTotal} 条</span>
 										</div>
 										<div className="flex items-center gap-2">
-											<button
+											<Button
 												onClick={() => setTaskPage((p) => Math.max(1, p - 1))}
 												disabled={taskPage === 1}
-												className="px-4 py-2 bg-surface border border-border rounded-sm hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
+												variant="secondary"
+												size="sm"
 											>
 												上一页
-											</button>
-											<span className="px-4 py-2 bg-surface border border-border rounded-sm">
+											</Button>
+											<span className="px-4 py-2 text-sm bg-surface border border-border rounded-sm text-text-2">
 												第 {taskPage} /{" "}
 												{Math.ceil(taskTotal / taskPageSize) || 1} 页
 											</span>
-											<button
+											<Button
 												onClick={() => setTaskPage((p) => p + 1)}
 												disabled={taskPage * taskPageSize >= taskTotal}
-												className="px-4 py-2 bg-surface border border-border rounded-sm hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
+												variant="secondary"
+												size="sm"
 											>
 												下一页
-											</button>
+											</Button>
 										</div>
 									</div>
 								</div>
@@ -3224,26 +3228,28 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 												<span>条，共 {commentListTotal} 条</span>
 											</div>
 											<div className="flex items-center gap-2">
-												<button
+												<Button
 													onClick={() =>
 														setCommentListPage((p) => Math.max(1, p - 1))
 													}
 													disabled={commentListPage === 1}
-													className="px-4 py-2 bg-surface border border-border rounded-sm hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
+													variant="secondary"
+													size="sm"
 												>
 													上一页
-												</button>
-												<span className="px-4 py-2 bg-surface border border-border rounded-sm text-text-2">
+												</Button>
+												<span className="px-4 py-2 text-sm bg-surface border border-border rounded-sm text-text-2">
 													第 {commentListPage} /{" "}
 													{Math.ceil(commentListTotal / commentListPageSize) || 1} 页
 												</span>
-												<button
+												<Button
 													onClick={() => setCommentListPage((p) => p + 1)}
 													disabled={commentListPage * commentListPageSize >= commentListTotal}
-													className="px-4 py-2 bg-surface border border-border rounded-sm hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
+													variant="secondary"
+													size="sm"
 												>
 													下一页
-												</button>
+												</Button>
 											</div>
 									</div>
 								</div>
