@@ -8,6 +8,7 @@ import { marked } from 'marked';
 import { articleApi, commentApi, commentSettingsApi, type ArticleComment, type ArticleDetail, type ModelAPIConfig, type PromptConfig } from '@/lib/api';
 import AppFooter from '@/components/AppFooter';
 import AppHeader from '@/components/AppHeader';
+import IconButton from '@/components/IconButton';
 import { useToast } from '@/components/Toast';
 import { BackToTop } from '@/components/BackToTop';
 import { IconBolt, IconBook, IconCopy, IconDoc, IconEdit, IconEye, IconEyeOff, IconList, IconNote, IconRefresh, IconRobot, IconTrash, IconCheck, IconReply, IconChevronDown, IconChevronUp } from '@/components/icons';
@@ -1781,63 +1782,75 @@ export default function ArticleDetailPage() {
                                 <div className="flex items-center gap-1.5">
                                   {isEditing ? (
                                     <>
-                                      <button
+                                       <IconButton
                                         onClick={() => {
                                           setEditingCommentId(null);
                                           setEditingCommentDraft('');
                                           setEditingCommentPrefix('');
                                         }}
-                                        className="h-7 w-7 inline-flex items-center justify-center rounded-full border border-border text-text-2 hover:text-text-1 hover:bg-muted transition"
+                                        variant="ghost"
+                                        size="sm"
                                         title="取消"
+                                        className="rounded-full border border-border"
                                       >
                                         ×
-                                      </button>
-                                      <button
+                                      </IconButton>
+                                      <IconButton
                                         onClick={handleSaveEditComment}
-                                        className="h-7 w-7 inline-flex items-center justify-center rounded-full bg-primary text-white hover:opacity-90 transition"
+                                        variant="primary"
+                                        size="sm"
                                         title="保存"
+                                        className="rounded-full"
                                       >
                                         <IconCheck className="h-3.5 w-3.5" />
-                                      </button>
+                                      </IconButton>
                                     </>
                                   ) : (
                                     <>
-                                      <button
+                                      <IconButton
                                         onClick={() => handleReplyTo(comment)}
-                                        className="h-7 w-7 inline-flex items-center justify-center rounded-full border border-border text-text-2 hover:text-text-1 hover:bg-muted transition"
+                                        variant="ghost"
+                                        size="sm"
                                         title="回复"
+                                        className="rounded-full border border-border"
                                       >
                                         <IconReply className="h-3.5 w-3.5" />
-                                      </button>
+                                      </IconButton>
                                           {isAdmin && (
-                                            <button
+                                            <IconButton
                                               onClick={() => handleToggleCommentHidden(comment)}
-                                              className="h-7 w-7 inline-flex items-center justify-center rounded-full border border-border text-text-2 hover:text-text-1 hover:bg-muted transition"
+                                              variant="ghost"
+                                              size="sm"
                                               title={comment.is_hidden ? "显示" : "隐藏"}
+                                              className="rounded-full border border-border"
                                             >
                                               {comment.is_hidden ? (
                                                 <IconEye className="h-3.5 w-3.5" />
                                               ) : (
                                                 <IconEyeOff className="h-3.5 w-3.5" />
                                               )}
-                                            </button>
+                                            </IconButton>
                                           )}
                                           {isOwner && (
                                             <>
-                                              <button
+                                              <IconButton
                                                 onClick={() => handleStartEditComment(comment)}
-                                                className="h-7 w-7 inline-flex items-center justify-center rounded-full border border-border text-text-2 hover:text-text-1 hover:bg-muted transition"
-                                            title="编辑"
-                                          >
-                                            <IconEdit className="h-3.5 w-3.5" />
-                                          </button>
-                                              <button
+                                                variant="ghost"
+                                                size="sm"
+                                                title="编辑"
+                                                className="rounded-full border border-border"
+                                              >
+                                                <IconEdit className="h-3.5 w-3.5" />
+                                              </IconButton>
+                                              <IconButton
                                                 onClick={() => openDeleteCommentModal(comment.id)}
-                                                className="h-7 w-7 inline-flex items-center justify-center rounded-full border border-border text-text-2 hover:text-red-600 hover:bg-red-50 transition"
+                                                variant="danger"
+                                                size="sm"
                                                 title="删除"
+                                                className="rounded-full border border-border"
                                               >
                                                 <IconTrash className="h-3.5 w-3.5" />
-                                              </button>
+                                              </IconButton>
                                             </>
                                           )}
                                     </>
@@ -1899,25 +1912,29 @@ export default function ArticleDetailPage() {
                                     placeholder="写下你的回复，支持 Markdown"
                                   />
                                   <div className="flex justify-end gap-1.5 mt-2">
-                                    <button
+                                    <IconButton
                                       onClick={() => {
                                         setReplyToId(null);
                                         setReplyToUser('');
                                         setReplyTargetId(null);
                                         setReplyPrefix('');
                                       }}
-                                      className="h-7 w-7 inline-flex items-center justify-center rounded-full border border-border text-text-2 hover:text-text-1 hover:bg-muted transition"
+                                      variant="ghost"
+                                      size="sm"
                                       title="取消"
+                                      className="rounded-full border border-border"
                                     >
                                       ×
-                                    </button>
-                                    <button
+                                    </IconButton>
+                                    <IconButton
                                       onClick={handleSubmitComment}
-                                      className="h-7 w-7 inline-flex items-center justify-center rounded-full bg-primary text-white hover:opacity-90 transition"
+                                      variant="primary"
+                                      size="sm"
                                       title="发布"
+                                      className="rounded-full"
                                     >
                                       <IconCheck className="h-3.5 w-3.5" />
-                                    </button>
+                                    </IconButton>
                                   </div>
                                 </div>
                               )}
@@ -1969,63 +1986,75 @@ export default function ArticleDetailPage() {
                                             <div className="flex items-center gap-1.5">
                                               {editingCommentId === reply.id ? (
                                                 <>
-                                                  <button
+                                                  <IconButton
                                                     onClick={() => {
                                                       setEditingCommentId(null);
                                                       setEditingCommentDraft('');
                                                       setEditingCommentPrefix('');
                                                     }}
-                                                    className="h-7 w-7 inline-flex items-center justify-center rounded-full border border-border text-text-2 hover:text-text-1 hover:bg-muted transition"
+                                                    variant="ghost"
+                                                    size="sm"
                                                     title="取消"
+                                                    className="rounded-full border border-border"
                                                   >
                                                     ×
-                                                  </button>
-                                                  <button
+                                                  </IconButton>
+                                                  <IconButton
                                                     onClick={handleSaveEditComment}
-                                                    className="h-7 w-7 inline-flex items-center justify-center rounded-full bg-primary text-white hover:opacity-90 transition"
+                                                    variant="primary"
+                                                    size="sm"
                                                     title="保存"
+                                                    className="rounded-full"
                                                   >
                                                     <IconCheck className="h-3.5 w-3.5" />
-                                                  </button>
+                                                  </IconButton>
                                                 </>
                                               ) : (
                                                 <>
-                                                  <button
+                                                  <IconButton
                                                     onClick={() => handleReplyTo(reply, comment.id)}
-                                                    className="h-7 w-7 inline-flex items-center justify-center rounded-full border border-border text-text-2 hover:text-text-1 hover:bg-muted transition"
+                                                    variant="ghost"
+                                                    size="sm"
                                                     title="回复"
+                                                    className="rounded-full border border-border"
                                                   >
                                                     <IconReply className="h-3.5 w-3.5" />
-                                                  </button>
+                                                  </IconButton>
                                                 {isAdmin && (
-                                                  <button
+                                                  <IconButton
                                                     onClick={() => handleToggleCommentHidden(reply)}
-                                                    className="h-7 w-7 inline-flex items-center justify-center rounded-full border border-border text-text-2 hover:text-text-1 hover:bg-muted transition"
+                                                    variant="ghost"
+                                                    size="sm"
                                                     title={reply.is_hidden ? "显示" : "隐藏"}
+                                                    className="rounded-full border border-border"
                                                   >
                                                     {reply.is_hidden ? (
                                                       <IconEye className="h-3.5 w-3.5" />
                                                     ) : (
                                                       <IconEyeOff className="h-3.5 w-3.5" />
                                                     )}
-                                                  </button>
+                                                  </IconButton>
                                                 )}
                                                 {session?.user?.id === reply.user_id && (
                                                   <>
-                                                    <button
+                                                    <IconButton
                                                       onClick={() => handleStartEditComment(reply)}
-                                                      className="h-7 w-7 inline-flex items-center justify-center rounded-full border border-border text-text-2 hover:text-text-1 hover:bg-muted transition"
-                                                        title="编辑"
-                                                      >
-                                                        <IconEdit className="h-3.5 w-3.5" />
-                                                      </button>
-                                                    <button
+                                                      variant="ghost"
+                                                      size="sm"
+                                                      title="编辑"
+                                                      className="rounded-full border border-border"
+                                                    >
+                                                      <IconEdit className="h-3.5 w-3.5" />
+                                                    </IconButton>
+                                                    <IconButton
                                                       onClick={() => openDeleteCommentModal(reply.id)}
-                                                      className="h-7 w-7 inline-flex items-center justify-center rounded-full border border-border text-text-2 hover:text-red-600 hover:bg-red-50 transition"
+                                                      variant="danger"
+                                                      size="sm"
                                                       title="删除"
+                                                      className="rounded-full border border-border"
                                                     >
                                                       <IconTrash className="h-3.5 w-3.5" />
-                                                    </button>
+                                                    </IconButton>
                                                   </>
                                                 )}
                                                 </>
@@ -2087,25 +2116,29 @@ export default function ArticleDetailPage() {
                                                 placeholder="写下你的回复，支持 Markdown"
                                               />
                                               <div className="flex justify-end gap-1.5 mt-2">
-                                                <button
+                                                <IconButton
                                                   onClick={() => {
                                                     setReplyToId(null);
                                                     setReplyToUser('');
                                                     setReplyTargetId(null);
                                                     setReplyPrefix('');
                                                   }}
-                                                  className="h-7 w-7 inline-flex items-center justify-center rounded-full border border-border text-text-2 hover:text-text-1 hover:bg-muted transition"
+                                                  variant="ghost"
+                                                  size="sm"
                                                   title="取消"
+                                                  className="rounded-full border border-border"
                                                 >
                                                   ×
-                                                </button>
-                                                <button
+                                                </IconButton>
+                                                <IconButton
                                                   onClick={handleSubmitComment}
-                                                  className="h-7 w-7 inline-flex items-center justify-center rounded-full bg-primary text-white hover:opacity-90 transition"
+                                                  variant="primary"
+                                                  size="sm"
                                                   title="发布"
+                                                  className="rounded-full"
                                                 >
                                                   <IconCheck className="h-3.5 w-3.5" />
-                                                </button>
+                                                </IconButton>
                                               </div>
                                             </div>
                                           )}

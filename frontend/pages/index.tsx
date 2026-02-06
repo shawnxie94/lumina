@@ -9,10 +9,12 @@ import dayjs, { type Dayjs } from 'dayjs';
 import { articleApi, categoryApi, Article, Category } from '@/lib/api';
 import AppFooter from '@/components/AppFooter';
 import AppHeader from '@/components/AppHeader';
+import Button from '@/components/Button';
 import DateRangePicker from '@/components/DateRangePicker';
 import FilterInput from '@/components/FilterInput';
 import FilterSelect from '@/components/FilterSelect';
 import FilterSelectInline from '@/components/FilterSelectInline';
+import IconButton from '@/components/IconButton';
 import { useToast } from '@/components/Toast';
 import { BackToTop } from '@/components/BackToTop';
 import { IconEye, IconEyeOff, IconGlobe, IconSearch, IconTag, IconTrash } from '@/components/icons';
@@ -730,13 +732,10 @@ export default function Home() {
                       >
                          {isAdmin && (
                            <div className="absolute top-3 right-3 flex items-center gap-1">
-                            <button
+                            <IconButton
                               onClick={() => handleToggleVisibility(article.id, article.is_visible)}
-                              className={`w-6 h-6 flex items-center justify-center rounded transition ${
-                                article.is_visible
-                                  ? 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
-                                  : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
-                              }`}
+                              variant="default"
+                              size="sm"
                               title={article.is_visible ? '点击隐藏' : '点击显示'}
                             >
                               {article.is_visible ? (
@@ -744,14 +743,15 @@ export default function Home() {
                               ) : (
                                 <IconEyeOff className="h-4 w-4" />
                               )}
-                            </button>
-                            <button
+                            </IconButton>
+                            <IconButton
                               onClick={() => handleDelete(article.id)}
-                              className="w-6 h-6 flex items-center justify-center text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition"
+                              variant="danger"
+                              size="sm"
                               title="删除"
                             >
                               <IconTrash className="h-4 w-4" />
-                            </button>
+                            </IconButton>
                           </div>
                         )}
                          <div className="flex gap-4">
@@ -831,40 +831,43 @@ export default function Home() {
                     <span>条，共 {total} 条</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <button
+                    <Button
                       onClick={() => setPage((p) => Math.max(1, p - 1))}
                       disabled={page === 1}
-                      className="px-4 py-2 text-sm bg-white border rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      variant="secondary"
+                      size="sm"
                     >
                       上一页
-                    </button>
-                    <span className="px-4 py-2 text-sm bg-white border rounded-lg">
+                    </Button>
+                    <span className="px-4 py-2 text-sm bg-surface border border-border rounded-sm text-text-2">
                       第 {page} / {Math.ceil(total / pageSize) || 1} 页
                     </span>
-                    <button
+                    <Button
                       onClick={() => setPage((p) => p + 1)}
                       disabled={articles.length < pageSize}
-                      className="px-4 py-2 text-sm bg-white border rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      variant="secondary"
+                      size="sm"
                     >
                       下一页
-                    </button>
+                    </Button>
                     <div className="flex items-center gap-1 ml-2">
-                      <span className="text-sm text-gray-600">跳转</span>
+                      <span className="text-sm text-text-2">跳转</span>
                       <input
                         type="number"
                         value={jumpToPage}
                         onChange={(e) => setJumpToPage(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && handleJumpToPage()}
-                        className="w-16 px-2 py-1 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-center"
+                        className="w-16 px-2 py-1.5 text-sm border border-border rounded-sm focus:outline-none focus:ring-2 focus:ring-accent/20 text-center bg-surface"
                         min={1}
                         max={Math.ceil(total / pageSize) || 1}
                       />
-                      <button
+                      <Button
                         onClick={handleJumpToPage}
-                        className="px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm"
+                        variant="primary"
+                        size="sm"
                       >
                         GO
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 </div>

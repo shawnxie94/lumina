@@ -24,9 +24,11 @@ import { useRouter } from "next/router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import AppFooter from "@/components/AppFooter";
 import AppHeader from "@/components/AppHeader";
+import Button from "@/components/Button";
 import DateRangePicker from "@/components/DateRangePicker";
 import FilterInput from "@/components/FilterInput";
 import FilterSelect from "@/components/FilterSelect";
+import IconButton from "@/components/IconButton";
 import {
 	IconEdit,
 	IconEye,
@@ -203,20 +205,22 @@ function SortableCategoryItem({
 			</div>
 
 			<div className="flex gap-1">
-				<button
+				<IconButton
 					onClick={() => onEdit(category)}
-					className="px-2 py-1 text-sm text-gray-500 rounded hover:bg-blue-100 hover:text-blue-600 transition"
+					variant="primary"
+					size="sm"
 					title="编辑"
 				>
 					<IconEdit className="h-4 w-4" />
-				</button>
-				<button
+				</IconButton>
+				<IconButton
 					onClick={() => onDelete(category.id)}
-					className="px-2 py-1 text-sm text-gray-500 rounded hover:bg-red-100 hover:text-red-600 transition"
+					variant="danger"
+					size="sm"
 					title="删除"
 				>
 					<IconTrash className="h-4 w-4" />
-				</button>
+				</IconButton>
 			</div>
 		</div>
 	);
@@ -2148,29 +2152,32 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 															</div>
 
 															<div className="flex gap-1">
-																<button
-																	onClick={() => handleTestModelAPI(config)}
-																	className="px-2 py-1 text-sm text-gray-500 rounded hover:bg-blue-100 hover:text-blue-600 transition"
-																	title="测试连接"
-																>
-																	<IconLink className="h-4 w-4" />
-																</button>
-																<button
-																	onClick={() => handleEditModelAPI(config)}
-																	className="px-2 py-1 text-sm text-gray-500 rounded hover:bg-blue-100 hover:text-blue-600 transition"
-																	title="编辑"
-																>
-																	<IconEdit className="h-4 w-4" />
-																</button>
-																<button
-																	onClick={() =>
-																		handleDeleteModelAPI(config.id)
-																	}
-																	className="px-2 py-1 text-sm text-gray-500 rounded hover:bg-red-100 hover:text-red-600 transition"
-																	title="删除"
-																>
-																	<IconTrash className="h-4 w-4" />
-																</button>
+															<IconButton
+																onClick={() => handleTestModelAPI(config)}
+																variant="primary"
+																size="sm"
+																title="测试连接"
+															>
+																<IconLink className="h-4 w-4" />
+															</IconButton>
+															<IconButton
+																onClick={() => handleEditModelAPI(config)}
+																variant="primary"
+																size="sm"
+																title="编辑"
+															>
+																<IconEdit className="h-4 w-4" />
+															</IconButton>
+															<IconButton
+																onClick={() =>
+																	handleDeleteModelAPI(config.id)
+																}
+																variant="danger"
+																size="sm"
+																title="删除"
+															>
+																<IconTrash className="h-4 w-4" />
+															</IconButton>
 															</div>
 														</div>
 													</div>
@@ -2367,27 +2374,30 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 															</div>
 
 															<div className="flex gap-1">
-																<button
+																<IconButton
 																	onClick={() => setShowPromptPreview(config)}
-																	className="px-2 py-1 text-sm text-gray-500 rounded hover:bg-blue-100 hover:text-blue-600 transition"
+																	variant="primary"
+																	size="sm"
 																	title="预览"
 																>
 																	<IconEye className="h-4 w-4" />
-																</button>
-																<button
+																</IconButton>
+																<IconButton
 																	onClick={() => handleEditPrompt(config)}
-																	className="px-2 py-1 text-sm text-gray-500 rounded hover:bg-blue-100 hover:text-blue-600 transition"
+																	variant="primary"
+																	size="sm"
 																	title="编辑"
 																>
 																	<IconEdit className="h-4 w-4" />
-																</button>
-																<button
+																</IconButton>
+																<IconButton
 																	onClick={() => handleDeletePrompt(config.id)}
-																	className="px-2 py-1 text-sm text-gray-500 rounded hover:bg-red-100 hover:text-red-600 transition"
+																	variant="danger"
+																	size="sm"
 																	title="删除"
 																>
 																	<IconTrash className="h-4 w-4" />
-																</button>
+																</IconButton>
 															</div>
 														</div>
 													</div>
@@ -3158,31 +3168,33 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 																</span>
 															</td>
 															<td className="px-4 py-3 text-right">
-																<div className="flex items-center justify-end gap-2">
-																	<button
-																		onClick={() =>
-																			handleToggleCommentVisibility(
-																				comment.id,
-																				!comment.is_hidden,
-																			)
-																	}
-																		className="px-2 py-1 text-xs text-text-2 hover:text-text-1 hover:bg-muted rounded-sm"
-																		title={
-																			comment.is_hidden ? "设为可见" : "设为隐藏"
-																		}
-																	>
-																		<IconEye className="h-4 w-4" />
-																	</button>
-																	<button
-																		onClick={() =>
-																			handleDeleteCommentAdmin(comment.id)
-																		}
-																		className="px-2 py-1 text-xs text-text-2 hover:text-red-600 hover:bg-red-50 rounded-sm"
-																		title="删除"
-																	>
-																		<IconTrash className="h-4 w-4" />
-																	</button>
-																</div>
+																			<div className="flex items-center justify-end gap-2">
+																				<IconButton
+																					onClick={() =>
+																						handleToggleCommentVisibility(
+																							comment.id,
+																							!comment.is_hidden,
+																						)
+																					}
+																					variant="ghost"
+																					size="sm"
+																					title={
+																						comment.is_hidden ? "设为可见" : "设为隐藏"
+																					}
+																				>
+																					<IconEye className="h-4 w-4" />
+																				</IconButton>
+																				<IconButton
+																					onClick={() =>
+																						handleDeleteCommentAdmin(comment.id)
+																					}
+																					variant="danger"
+																					size="sm"
+																					title="删除"
+																				>
+																					<IconTrash className="h-4 w-4" />
+																				</IconButton>
+																			</div>
 															</td>
 														</tr>
 													);
