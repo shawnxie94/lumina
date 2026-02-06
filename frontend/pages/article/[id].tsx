@@ -13,7 +13,7 @@ import { BackToTop } from '@/components/BackToTop';
 import { IconBolt, IconBook, IconCopy, IconDoc, IconEdit, IconEye, IconEyeOff, IconList, IconNote, IconRefresh, IconRobot, IconTrash, IconCheck, IconReply, IconChevronDown, IconChevronUp } from '@/components/icons';
 import { useAuth } from '@/contexts/AuthContext';
 import { Select } from 'antd';
-import { signIn, useSession } from 'next-auth/react';
+import { signIn, signOut, useSession } from 'next-auth/react';
 
 // 轮询间隔（毫秒）
 const POLLING_INTERVAL = 3000;
@@ -1647,14 +1647,24 @@ export default function ArticleDetailPage() {
                       </div>
                       {session ? (
                         <div className="flex items-center gap-2 text-xs text-text-3">
-                          {session.user.image && (
-                            <img
-                              src={session.user.image}
-                              alt={session.user.name || '访客'}
-                              className="h-6 w-6 rounded-full object-cover"
-                            />
-                          )}
                           <span>{session.user.name || '访客'}</span>
+                          <div className="relative group">
+                            {session.user.image && (
+                              <img
+                                src={session.user.image}
+                                alt={session.user.name || '访客'}
+                                className="h-6 w-6 rounded-full object-cover"
+                              />
+                            )}
+                            <div className="absolute right-0 mt-2 min-w-[120px] rounded-sm border border-border bg-surface shadow-sm text-xs text-text-2 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition">
+                              <button
+                                onClick={() => signOut()}
+                                className="w-full text-left px-3 py-2 hover:bg-muted hover:text-text-1 transition"
+                              >
+                                退出登录
+                              </button>
+                            </div>
+                          </div>
                         </div>
                       ) : (
                         <div className="flex items-center gap-2">
