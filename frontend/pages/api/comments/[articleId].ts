@@ -52,6 +52,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return;
     }
     const content = typeof req.body?.content === 'string' ? req.body.content : '';
+    const replyToId = typeof req.body?.reply_to_id === 'string' ? req.body.reply_to_id : '';
     if (!content.trim()) {
       res.status(400).json({ message: '评论内容不能为空' });
       return;
@@ -67,6 +68,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           content,
+          reply_to_id: replyToId || null,
           user_id: session.user.id,
           user_name: session.user.name || '访客',
           user_avatar: session.user.image || '',

@@ -158,6 +158,7 @@ export interface ArticleComment {
 	user_avatar: string | null;
 	provider: string | null;
 	content: string;
+	reply_to_id?: string | null;
 	created_at: string;
 	updated_at: string;
 }
@@ -638,11 +639,15 @@ export const commentApi = {
 		}
 		return response.json();
 	},
-	createArticleComment: async (articleId: string, content: string) => {
+	createArticleComment: async (
+		articleId: string,
+		content: string,
+		replyToId?: string | null,
+	) => {
 		const response = await fetch(`/api/comments/${articleId}`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ content }),
+			body: JSON.stringify({ content, reply_to_id: replyToId || null }),
 			credentials: "same-origin",
 		});
 		const data = await response.json();

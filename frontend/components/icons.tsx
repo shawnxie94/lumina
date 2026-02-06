@@ -285,6 +285,30 @@ export function IconCopy(props: IconProps) {
   );
 }
 
+export function IconReply(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M4 6h16v9a2 2 0 0 1-2 2H9l-4 3v-3H6a2 2 0 0 1-2-2Z" />
+    </IconBase>
+  );
+}
+
+export function IconChevronDown(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="m6 9 6 6 6-6" />
+    </IconBase>
+  );
+}
+
+export function IconChevronUp(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="m6 15 6-6 6 6" />
+    </IconBase>
+  );
+}
+
 export function IconTrash(props: IconProps) {
   return (
     <IconBase {...props}>

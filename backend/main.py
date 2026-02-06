@@ -263,10 +263,12 @@ class CommentCreate(BaseModel):
     user_name: str
     user_avatar: Optional[str] = None
     provider: Optional[str] = None
+    reply_to_id: Optional[str] = None
 
 
 class CommentUpdate(BaseModel):
     content: str
+    reply_to_id: Optional[str] = None
 
 
 class CommentSettingsUpdate(BaseModel):
@@ -599,6 +601,7 @@ async def get_article_comments(article_id: str, db: Session = Depends(get_db)):
             "user_avatar": c.user_avatar,
             "provider": c.provider,
             "content": c.content,
+            "reply_to_id": c.reply_to_id,
             "created_at": c.created_at,
             "updated_at": c.updated_at,
         }
@@ -629,6 +632,7 @@ async def create_article_comment(
         user_avatar=payload.user_avatar,
         provider=payload.provider,
         content=content,
+        reply_to_id=payload.reply_to_id,
         created_at=now_str(),
         updated_at=now_str(),
     )
@@ -643,6 +647,7 @@ async def create_article_comment(
         "user_avatar": comment.user_avatar,
         "provider": comment.provider,
         "content": comment.content,
+        "reply_to_id": comment.reply_to_id,
         "created_at": comment.created_at,
         "updated_at": comment.updated_at,
     }
@@ -663,6 +668,7 @@ async def get_comment(comment_id: str, db: Session = Depends(get_db)):
         "user_avatar": comment.user_avatar,
         "provider": comment.provider,
         "content": comment.content,
+        "reply_to_id": comment.reply_to_id,
         "created_at": comment.created_at,
         "updated_at": comment.updated_at,
     }
@@ -683,6 +689,8 @@ async def update_comment(
     if len(content) > 1000:
         raise HTTPException(status_code=400, detail="评论内容过长")
     comment.content = content
+    if payload.reply_to_id is not None:
+        comment.reply_to_id = payload.reply_to_id or None
     comment.updated_at = now_str()
     db.commit()
     db.refresh(comment)
@@ -694,6 +702,7 @@ async def update_comment(
         "user_avatar": comment.user_avatar,
         "provider": comment.provider,
         "content": comment.content,
+        "reply_to_id": comment.reply_to_id,
         "created_at": comment.created_at,
         "updated_at": comment.updated_at,
     }

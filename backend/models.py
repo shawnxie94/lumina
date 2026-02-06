@@ -10,7 +10,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 import json
 import uuid
 import os
@@ -40,7 +40,7 @@ def today_str():
 
 
 def now_str():
-    return datetime.now().isoformat()
+    return datetime.now(timezone.utc).isoformat()
 
 
 class Category(Base):
@@ -97,6 +97,7 @@ class ArticleComment(Base):
     user_avatar = Column(String, nullable=True)
     provider = Column(String, nullable=True)
     content = Column(Text, nullable=False)
+    reply_to_id = Column(String, nullable=True)
     created_at = Column(String, default=now_str)
     updated_at = Column(String, default=now_str)
 
@@ -324,6 +325,12 @@ def init_db():
                     ("google_client_id", "TEXT"),
                     ("google_client_secret", "TEXT"),
                     ("nextauth_secret", "TEXT"),
+                ],
+            )
+            ensure_columns(
+                "article_comments",
+                [
+                    ("reply_to_id", "TEXT"),
                 ],
             )
 

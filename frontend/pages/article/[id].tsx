@@ -10,7 +10,7 @@ import AppFooter from '@/components/AppFooter';
 import AppHeader from '@/components/AppHeader';
 import { useToast } from '@/components/Toast';
 import { BackToTop } from '@/components/BackToTop';
-import { IconBolt, IconBook, IconCopy, IconDoc, IconEdit, IconEye, IconEyeOff, IconList, IconNote, IconRefresh, IconRobot, IconTrash } from '@/components/icons';
+import { IconBolt, IconBook, IconCopy, IconDoc, IconEdit, IconEye, IconEyeOff, IconList, IconNote, IconRefresh, IconRobot, IconTrash, IconCheck, IconReply, IconChevronDown, IconChevronUp } from '@/components/icons';
 import { useAuth } from '@/contexts/AuthContext';
 import { Select } from 'antd';
 import { signIn, useSession } from 'next-auth/react';
@@ -65,6 +65,30 @@ function parseMindMapOutline(content: string): MindMapNode | null {
   } catch {
     return null;
   }
+}
+
+function extractReplyPrefix(content: string): { prefix: string; body: string } {
+  if (!content) return { prefix: '', body: '' };
+  const lines = content.split('\n');
+  const prefixLines: string[] = [];
+  let index = 0;
+  while (index < lines.length) {
+    const line = lines[index];
+    if (line.startsWith('> 回复 @') || line.startsWith('> [原评论链接](')) {
+      prefixLines.push(line);
+      index += 1;
+      continue;
+    }
+    if (prefixLines.length > 0 && line.trim() === '') {
+      index += 1;
+      break;
+    }
+    break;
+  }
+  if (prefixLines.length === 0) {
+    return { prefix: '', body: content };
+  }
+  return { prefix: prefixLines.join('\n'), body: lines.slice(index).join('\n') };
 }
 
 function MindMapTree({ node, isRoot = false, compact = false, depth = 0 }: { node: MindMapNode; isRoot?: boolean; compact?: boolean; depth?: number }) {
@@ -509,8 +533,20 @@ export default function ArticleDetailPage() {
   const [commentDraft, setCommentDraft] = useState('');
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editingCommentDraft, setEditingCommentDraft] = useState('');
+  const [editingCommentPrefix, setEditingCommentPrefix] = useState('');
   const [commentsEnabled, setCommentsEnabled] = useState(true);
   const [commentProviders, setCommentProviders] = useState({ github: false, google: false });
+  const commentInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const [replyToId, setReplyToId] = useState<string | null>(null);
+  const [replyToUser, setReplyToUser] = useState<string>('');
+  const [replyTargetId, setReplyTargetId] = useState<string | null>(null);
+  const [replyPrefix, setReplyPrefix] = useState<string>('');
+  const [pendingScrollId, setPendingScrollId] = useState<string | null>(null);
+  const [commentPage, setCommentPage] = useState(1);
+  const commentPageSize = 5;
+  const [pendingDeleteCommentId, setPendingDeleteCommentId] = useState<string | null>(null);
+  const [showDeleteCommentModal, setShowDeleteCommentModal] = useState(false);
+  const [expandedReplies, setExpandedReplies] = useState<Record<string, boolean>>({});
 
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [tocItems, setTocItems] = useState<TocItem[]>([]);
@@ -553,6 +589,32 @@ export default function ArticleDetailPage() {
   const activeAnnotation = annotations.find(
     (item) => item.id === activeAnnotationId,
   );
+
+  const sortedTopComments = useMemo(() => {
+    return [...comments]
+      .filter((comment) => !comment.reply_to_id)
+      .sort(
+        (a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      );
+  }, [comments]);
+
+  const totalTopComments = sortedTopComments.length;
+  const totalCommentPages = Math.max(
+    1,
+    Math.ceil(totalTopComments / commentPageSize),
+  );
+
+  const pagedTopComments = useMemo(() => {
+    const start = (commentPage - 1) * commentPageSize;
+    return sortedTopComments.slice(start, start + commentPageSize);
+  }, [sortedTopComments, commentPage]);
+
+  useEffect(() => {
+    if (commentPage > totalCommentPages) {
+      setCommentPage(totalCommentPages);
+    }
+  }, [commentPage, totalCommentPages]);
   useEffect(() => {
     if (id) {
       fetchArticle();
@@ -573,6 +635,49 @@ export default function ArticleDetailPage() {
   useEffect(() => {
     fetchCommentSettings();
   }, []);
+
+  useEffect(() => {
+    const handleHashCheck = () => {
+      if (typeof window === 'undefined') return;
+      const hash = window.location.hash || '';
+      if (!hash.startsWith('#comment-')) return;
+      const targetId = hash.slice(1);
+      const target = document.getElementById(targetId);
+      if (!target) {
+        showToast('原评论不存在', 'info');
+      }
+    };
+
+    handleHashCheck();
+    window.addEventListener('hashchange', handleHashCheck);
+    return () => window.removeEventListener('hashchange', handleHashCheck);
+  }, [showToast]);
+
+  useEffect(() => {
+    if (!replyTargetId) return;
+    const handleScroll = () => {
+      const target = document.getElementById(`reply-box-${replyTargetId}`);
+      if (target) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      focusCommentInput();
+    };
+    const timer = window.setTimeout(handleScroll, 0);
+    return () => window.clearTimeout(timer);
+  }, [replyTargetId]);
+
+  useEffect(() => {
+    if (!pendingScrollId) return;
+    const handleScroll = () => {
+      const target = document.getElementById(`comment-${pendingScrollId}`);
+      if (target) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      setPendingScrollId(null);
+    };
+    const timer = window.setTimeout(handleScroll, 0);
+    return () => window.clearTimeout(timer);
+  }, [pendingScrollId]);
 
 
   useEffect(() => {
@@ -1105,14 +1210,25 @@ export default function ArticleDetailPage() {
   };
 
   const handleSubmitComment = async () => {
-    if (!commentDraft.trim()) {
+    const content = replyPrefix ? `${replyPrefix}\n${commentDraft}` : commentDraft;
+    if (!content.trim()) {
       showToast('请输入评论内容', 'info');
       return;
     }
     try {
-      const data = await commentApi.createArticleComment(id as string, commentDraft.trim());
-      setComments((prev) => [...prev, data]);
+      const data = await commentApi.createArticleComment(
+        id as string,
+        content.trim(),
+        replyToId,
+      );
+      setComments((prev) => [data, ...prev]);
+      setCommentPage(1);
       setCommentDraft('');
+      setReplyToId(null);
+      setReplyToUser('');
+      setReplyTargetId(null);
+      setReplyPrefix('');
+      setPendingScrollId(data.id);
       showToast('评论已发布');
     } catch (error: any) {
       showToast(error?.message || '发布评论失败', 'error');
@@ -1121,7 +1237,9 @@ export default function ArticleDetailPage() {
 
   const handleStartEditComment = (comment: ArticleComment) => {
     setEditingCommentId(comment.id);
-    setEditingCommentDraft(comment.content);
+    const parsed = extractReplyPrefix(comment.content);
+    setEditingCommentPrefix(parsed.prefix);
+    setEditingCommentDraft(parsed.body);
   };
 
   const handleSaveEditComment = async () => {
@@ -1131,10 +1249,20 @@ export default function ArticleDetailPage() {
       return;
     }
     try {
-      const data = await commentApi.updateComment(editingCommentId, editingCommentDraft.trim());
-      setComments((prev) => prev.map((item) => (item.id === data.id ? data : item)));
+      const nextContent = editingCommentPrefix
+        ? `${editingCommentPrefix}\n${editingCommentDraft.trim()}`
+        : editingCommentDraft.trim();
+      const data = await commentApi.updateComment(editingCommentId, nextContent);
+      setComments((prev) =>
+        prev.map((item) =>
+          item.id === data.id
+            ? { ...item, content: data.content, updated_at: data.updated_at }
+            : item,
+        ),
+      );
       setEditingCommentId(null);
       setEditingCommentDraft('');
+      setEditingCommentPrefix('');
       showToast('评论已更新');
     } catch (error: any) {
       showToast(error?.message || '更新评论失败', 'error');
@@ -1150,6 +1278,34 @@ export default function ArticleDetailPage() {
       showToast(error?.message || '删除评论失败', 'error');
     }
   };
+
+  const openDeleteCommentModal = (commentId: string) => {
+    setPendingDeleteCommentId(commentId);
+    setShowDeleteCommentModal(true);
+  };
+
+  const focusCommentInput = () => {
+    if (commentInputRef.current) {
+      commentInputRef.current.focus();
+    }
+  };
+
+  const handleReplyTo = (comment: ArticleComment, rootId?: string) => {
+    if (!session) {
+      showToast('请先登录后再回复', 'info');
+      return;
+    }
+    const link =
+      typeof window !== 'undefined'
+        ? `${window.location.origin}${window.location.pathname}#comment-${comment.id}`
+        : '';
+    setReplyToId(rootId || comment.id);
+    setReplyToUser(comment.user_name);
+    setReplyTargetId(comment.id);
+    setReplyPrefix(`> 回复 @${comment.user_name}\n${link ? `> [原评论](${link})\n` : ''}`);
+    focusCommentInput();
+  };
+
 
   const openEditModal = (mode: 'original' | 'translation') => {
     if (!article) return;
@@ -1382,7 +1538,7 @@ export default function ArticleDetailPage() {
                       onClick={() => setShowTranslation(!showTranslation)}
                       className="flex items-center justify-center w-8 h-8 rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition text-base"
                     >
-                      {showTranslation ? '🇺🇸' : '🇨🇳'}
+                      {showTranslation ? '原文' : '译文'}
                     </button>
                   )}
                   <button
@@ -1453,11 +1609,14 @@ export default function ArticleDetailPage() {
                 </button>
               </div>
 
-              {commentsEnabled && (
+              {commentsEnabled && !immersiveMode && (
                 <section className="mt-10">
                   <div className="bg-surface border border-border rounded-sm p-5">
                     <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-base font-semibold text-text-1">访客评论</h3>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-base font-semibold text-text-1">评论</h3>
+                        <span className="text-xs text-text-3">({totalTopComments})</span>
+                      </div>
                       {session ? (
                         <div className="flex items-center gap-2 text-xs text-text-3">
                           {session.user.image && (
@@ -1494,9 +1653,27 @@ export default function ArticleDetailPage() {
                       )}
                     </div>
 
-                    {session && (
+                    {session && !replyToId && (
                       <div className="mb-5">
+                        {replyToId && (
+                          <div className="mb-2 flex items-center justify-between rounded-sm border border-border bg-muted px-3 py-2 text-xs text-text-2">
+                            <span>
+                              回复 {replyToUser ? `@${replyToUser}` : ''}
+                            </span>
+                            <button
+                              onClick={() => {
+                                setReplyToId(null);
+                                setReplyToUser('');
+                                setReplyTargetId(null);
+                              }}
+                              className="text-text-3 hover:text-text-1 transition"
+                            >
+                              取消回复
+                            </button>
+                          </div>
+                        )}
                         <textarea
+                          ref={commentInputRef}
                           value={commentDraft}
                           onChange={(e) => setCommentDraft(e.target.value)}
                           rows={4}
@@ -1516,28 +1693,96 @@ export default function ArticleDetailPage() {
 
                     {commentsLoading ? (
                       <div className="text-sm text-text-3">评论加载中...</div>
-                    ) : comments.length === 0 ? (
+                    ) : totalTopComments === 0 ? (
                       <div className="text-sm text-text-3">暂无评论</div>
                     ) : (
                       <div className="space-y-4">
-                        {comments.map((comment) => {
+                        {pagedTopComments.map((comment) => {
                           const isOwner = session?.user?.id === comment.user_id;
                           const isEditing = editingCommentId === comment.id;
+                          const replies = [...comments]
+                            .filter((item) => item.reply_to_id === comment.id)
+                            .sort(
+                              (a, b) =>
+                                new Date(b.created_at).getTime() -
+                                new Date(a.created_at).getTime(),
+                            );
+                          const isExpanded = expandedReplies[comment.id] ?? false;
                           return (
                             <div
                               key={comment.id}
-                              className="border border-border rounded-lg p-4 bg-surface"
+                              id={`comment-${comment.id}`}
+                              className="border border-border rounded-lg p-4 bg-surface scroll-mt-24"
                             >
-                              <div className="flex items-center gap-2 mb-2">
-                                {comment.user_avatar && (
-                                  <img
-                                    src={comment.user_avatar}
-                                    alt={comment.user_name}
-                                    className="h-6 w-6 rounded-full object-cover"
-                                  />
-                                )}
-                                <div className="text-sm text-text-1">{comment.user_name}</div>
-                                <div className="text-xs text-text-3">{new Date(comment.created_at).toLocaleString()}</div>
+                              <div className="flex items-start justify-between gap-2 mb-2">
+                                <div className="flex items-center gap-2">
+                                  {comment.user_avatar && (
+                                    <img
+                                      src={comment.user_avatar}
+                                      alt={comment.user_name}
+                                      className="h-6 w-6 rounded-full object-cover"
+                                    />
+                                  )}
+                                  <div className="text-sm text-text-1">{comment.user_name}</div>
+                                  <a
+                                    href={`#comment-${comment.id}`}
+                                    className="text-xs text-text-3 hover:text-text-1 transition"
+                                  >
+                                    {new Date(comment.created_at).toLocaleString()}
+                                  </a>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                  {isEditing ? (
+                                    <>
+                                      <button
+                                        onClick={() => {
+                                          setEditingCommentId(null);
+                                          setEditingCommentDraft('');
+                                          setEditingCommentPrefix('');
+                                        }}
+                                        className="h-7 w-7 inline-flex items-center justify-center rounded-full border border-border text-text-2 hover:text-text-1 hover:bg-muted transition"
+                                        title="取消"
+                                      >
+                                        ×
+                                      </button>
+                                      <button
+                                        onClick={handleSaveEditComment}
+                                        className="h-7 w-7 inline-flex items-center justify-center rounded-full bg-primary text-white hover:opacity-90 transition"
+                                        title="保存"
+                                      >
+                                        <IconCheck className="h-3.5 w-3.5" />
+                                      </button>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <button
+                                        onClick={() => handleReplyTo(comment)}
+                                        className="h-7 w-7 inline-flex items-center justify-center rounded-full border border-border text-text-2 hover:text-text-1 hover:bg-muted transition"
+                                        title="回复"
+                                      >
+                                        <IconReply className="h-3.5 w-3.5" />
+                                      </button>
+                                      {isOwner && (
+                                        <>
+                                          <button
+                                            onClick={() => handleStartEditComment(comment)}
+                                            className="h-7 w-7 inline-flex items-center justify-center rounded-full border border-border text-text-2 hover:text-text-1 hover:bg-muted transition"
+                                            title="编辑"
+                                          >
+                                            <IconEdit className="h-3.5 w-3.5" />
+                                          </button>
+                                          <button
+                                            onClick={() => openDeleteCommentModal(comment.id)}
+                                            className="h-7 w-7 inline-flex items-center justify-center rounded-full border border-border text-text-2 hover:text-red-600 hover:bg-red-50 transition"
+                                            title="删除"
+                                          >
+                                            <IconTrash className="h-3.5 w-3.5" />
+                                          </button>
+                                        </>
+                                      )}
+                                    </>
+                                  )}
+                                </div>
                               </div>
                               {isEditing ? (
                                 <div>
@@ -1547,23 +1792,6 @@ export default function ArticleDetailPage() {
                                     rows={4}
                                     className="w-full px-3 py-2 border border-border rounded-lg bg-surface text-text-1 focus:outline-none focus:ring-2 focus:ring-primary"
                                   />
-                                  <div className="flex justify-end gap-2 mt-2">
-                                    <button
-                                      onClick={() => {
-                                        setEditingCommentId(null);
-                                        setEditingCommentDraft('');
-                                      }}
-                                      className="px-3 py-1 text-xs rounded-full border border-border text-text-2 hover:text-text-1 hover:bg-muted transition"
-                                    >
-                                      取消
-                                    </button>
-                                    <button
-                                      onClick={handleSaveEditComment}
-                                      className="px-3 py-1 text-xs rounded-full bg-primary text-white hover:opacity-90 transition"
-                                    >
-                                      保存
-                                    </button>
-                                  </div>
                                 </div>
                               ) : (
                                 <div
@@ -1572,25 +1800,239 @@ export default function ArticleDetailPage() {
                                   dangerouslySetInnerHTML={{ __html: renderMarkdown(comment.content) }}
                                 />
                               )}
-                              {isOwner && !isEditing && (
-                                <div className="flex justify-end gap-2 mt-3">
+
+                              {session && replyTargetId === comment.id && (
+                                <div
+                                  id={`reply-box-${comment.id}`}
+                                  className="mt-3 border border-border rounded-lg p-3 bg-muted"
+                                >
+                                  <div className="mb-2 text-xs text-text-2">
+                                    回复 {replyToUser ? `@${replyToUser}` : ''}
+                                  </div>
+                                  <textarea
+                                    ref={commentInputRef}
+                                    value={commentDraft}
+                                    onChange={(e) => setCommentDraft(e.target.value)}
+                                    rows={3}
+                                    className="w-full px-3 py-2 border border-border rounded-lg bg-surface text-text-1 focus:outline-none focus:ring-2 focus:ring-primary"
+                                    placeholder="写下你的回复，支持 Markdown"
+                                  />
+                                  <div className="flex justify-end gap-1.5 mt-2">
+                                    <button
+                                      onClick={() => {
+                                        setReplyToId(null);
+                                        setReplyToUser('');
+                                        setReplyTargetId(null);
+                                        setReplyPrefix('');
+                                      }}
+                                      className="h-7 w-7 inline-flex items-center justify-center rounded-full border border-border text-text-2 hover:text-text-1 hover:bg-muted transition"
+                                      title="取消"
+                                    >
+                                      ×
+                                    </button>
+                                    <button
+                                      onClick={handleSubmitComment}
+                                      className="h-7 w-7 inline-flex items-center justify-center rounded-full bg-primary text-white hover:opacity-90 transition"
+                                      title="发布"
+                                    >
+                                      <IconCheck className="h-3.5 w-3.5" />
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+
+                              {replies.length > 0 && (
+                                <div className="mt-4 border-t border-border pt-3">
                                   <button
-                                    onClick={() => handleStartEditComment(comment)}
-                                    className="px-3 py-1 text-xs rounded-full border border-border text-text-2 hover:text-text-1 hover:bg-muted transition"
+                                    onClick={() =>
+                                      setExpandedReplies((prev) => ({
+                                        ...prev,
+                                        [comment.id]: !isExpanded,
+                                      }))
+                                    }
+                                    className="inline-flex items-center gap-1 text-xs text-text-3 hover:text-text-1 transition"
+                                    title={isExpanded ? "收起回复" : "查看回复"}
                                   >
-                                    编辑
+                                    {isExpanded ? (
+                                      <IconChevronUp className="h-3.5 w-3.5" />
+                                    ) : (
+                                      <IconChevronDown className="h-3.5 w-3.5" />
+                                    )}
+                                    <span>{replies.length}</span>
                                   </button>
-                                  <button
-                                    onClick={() => handleDeleteComment(comment.id)}
-                                    className="px-3 py-1 text-xs rounded-full border border-border text-red-600 hover:bg-red-50 transition"
-                                  >
-                                    删除
-                                  </button>
+                                  {isExpanded && (
+                                    <div className="mt-3 space-y-3">
+                                      {replies.map((reply) => (
+                                        <div
+                                          key={reply.id}
+                                          id={`comment-${reply.id}`}
+                                          className="border border-border rounded-lg p-3 bg-muted"
+                                        >
+                                          <div className="flex items-start justify-between gap-2 mb-2">
+                                            <div className="flex items-center gap-2">
+                                              {reply.user_avatar && (
+                                                <img
+                                                  src={reply.user_avatar}
+                                                  alt={reply.user_name}
+                                                  className="h-5 w-5 rounded-full object-cover"
+                                                />
+                                              )}
+                                              <div className="text-xs text-text-1">{reply.user_name}</div>
+                                              <a
+                                                href={`#comment-${reply.id}`}
+                                                className="text-xs text-text-3 hover:text-text-1 transition"
+                                              >
+                                                {new Date(reply.created_at).toLocaleString()}
+                                              </a>
+                                            </div>
+                                            <div className="flex items-center gap-1.5">
+                                              {editingCommentId === reply.id ? (
+                                                <>
+                                                  <button
+                                                    onClick={() => {
+                                                      setEditingCommentId(null);
+                                                      setEditingCommentDraft('');
+                                                      setEditingCommentPrefix('');
+                                                    }}
+                                                    className="h-7 w-7 inline-flex items-center justify-center rounded-full border border-border text-text-2 hover:text-text-1 hover:bg-muted transition"
+                                                    title="取消"
+                                                  >
+                                                    ×
+                                                  </button>
+                                                  <button
+                                                    onClick={handleSaveEditComment}
+                                                    className="h-7 w-7 inline-flex items-center justify-center rounded-full bg-primary text-white hover:opacity-90 transition"
+                                                    title="保存"
+                                                  >
+                                                    <IconCheck className="h-3.5 w-3.5" />
+                                                  </button>
+                                                </>
+                                              ) : (
+                                                <>
+                                                  <button
+                                                    onClick={() => handleReplyTo(reply, comment.id)}
+                                                    className="h-7 w-7 inline-flex items-center justify-center rounded-full border border-border text-text-2 hover:text-text-1 hover:bg-muted transition"
+                                                    title="回复"
+                                                  >
+                                                    <IconReply className="h-3.5 w-3.5" />
+                                                  </button>
+                                                  {session?.user?.id === reply.user_id && (
+                                                    <>
+                                                      <button
+                                                        onClick={() => handleStartEditComment(reply)}
+                                                        className="h-7 w-7 inline-flex items-center justify-center rounded-full border border-border text-text-2 hover:text-text-1 hover:bg-muted transition"
+                                                        title="编辑"
+                                                      >
+                                                        <IconEdit className="h-3.5 w-3.5" />
+                                                      </button>
+                                                      <button
+                                                        onClick={() => openDeleteCommentModal(reply.id)}
+                                                        className="h-7 w-7 inline-flex items-center justify-center rounded-full border border-border text-text-2 hover:text-red-600 hover:bg-red-50 transition"
+                                                        title="删除"
+                                                      >
+                                                        <IconTrash className="h-3.5 w-3.5" />
+                                                      </button>
+                                                    </>
+                                                  )}
+                                                </>
+                                              )}
+                                            </div>
+                                          </div>
+                                          {editingCommentId === reply.id ? (
+                                            <div>
+                                              <textarea
+                                                value={editingCommentDraft}
+                                                onChange={(e) => setEditingCommentDraft(e.target.value)}
+                                                rows={3}
+                                                className="w-full px-3 py-2 border border-border rounded-lg bg-surface text-text-1 focus:outline-none focus:ring-2 focus:ring-primary"
+                                              />
+                                            </div>
+                                          ) : (
+                                            <>
+                                              <div
+                                                className="prose prose-sm max-w-none text-text-2"
+                                                style={{ wordBreak: 'break-word', overflowWrap: 'anywhere', whiteSpace: 'normal' }}
+                                                dangerouslySetInnerHTML={{ __html: renderMarkdown(reply.content) }}
+                                              />
+                                            </>
+                                          )}
+
+                                          {session && replyTargetId === reply.id && (
+                                            <div
+                                              id={`reply-box-${reply.id}`}
+                                              className="mt-3 border border-border rounded-lg p-3 bg-surface"
+                                            >
+                                              <div className="mb-2 text-xs text-text-2">
+                                                回复 {replyToUser ? `@${replyToUser}` : ''}
+                                              </div>
+                                              <textarea
+                                                ref={commentInputRef}
+                                                value={commentDraft}
+                                                onChange={(e) => setCommentDraft(e.target.value)}
+                                                rows={3}
+                                                className="w-full px-3 py-2 border border-border rounded-lg bg-surface text-text-1 focus:outline-none focus:ring-2 focus:ring-primary"
+                                                placeholder="写下你的回复，支持 Markdown"
+                                              />
+                                              <div className="flex justify-end gap-1.5 mt-2">
+                                                <button
+                                                  onClick={() => {
+                                                    setReplyToId(null);
+                                                    setReplyToUser('');
+                                                    setReplyTargetId(null);
+                                                    setReplyPrefix('');
+                                                  }}
+                                                  className="h-7 w-7 inline-flex items-center justify-center rounded-full border border-border text-text-2 hover:text-text-1 hover:bg-muted transition"
+                                                  title="取消"
+                                                >
+                                                  ×
+                                                </button>
+                                                <button
+                                                  onClick={handleSubmitComment}
+                                                  className="h-7 w-7 inline-flex items-center justify-center rounded-full bg-primary text-white hover:opacity-90 transition"
+                                                  title="发布"
+                                                >
+                                                  <IconCheck className="h-3.5 w-3.5" />
+                                                </button>
+                                              </div>
+                                            </div>
+                                          )}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
                                 </div>
                               )}
                             </div>
                           );
                         })}
+                      </div>
+                    )}
+
+                    {totalCommentPages > 1 && (
+                      <div className="mt-4 flex items-center justify-between text-xs text-text-3">
+                        <button
+                          type="button"
+                          onClick={() => setCommentPage((prev) => Math.max(1, prev - 1))}
+                          disabled={commentPage === 1}
+                          className="px-2 py-1 rounded-sm border border-border text-text-2 hover:text-text-1 hover:bg-muted transition disabled:opacity-50"
+                        >
+                          上一页
+                        </button>
+                        <span>
+                          {commentPage} / {totalCommentPages}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setCommentPage((prev) =>
+                              Math.min(totalCommentPages, prev + 1),
+                            )
+                          }
+                          disabled={commentPage === totalCommentPages}
+                          className="px-2 py-1 rounded-sm border border-border text-text-2 hover:text-text-1 hover:bg-muted transition disabled:opacity-50"
+                        >
+                          下一页
+                        </button>
                       </div>
                     )}
                   </div>
@@ -2118,6 +2560,25 @@ export default function ArticleDetailPage() {
           </div>
         </div>
       )}
+
+      <ConfirmModal
+        isOpen={showDeleteCommentModal}
+        title="删除评论"
+        message="确定要删除这条评论吗？此操作不可撤销。"
+        confirmText="删除"
+        cancelText="取消"
+        onConfirm={() => {
+          if (pendingDeleteCommentId) {
+            handleDeleteComment(pendingDeleteCommentId);
+          }
+          setShowDeleteCommentModal(false);
+          setPendingDeleteCommentId(null);
+        }}
+        onCancel={() => {
+          setShowDeleteCommentModal(false);
+          setPendingDeleteCommentId(null);
+        }}
+      />
 
       <ConfirmModal
         isOpen={showDeleteModal}
