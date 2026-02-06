@@ -9,6 +9,7 @@ from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List
+from datetime import datetime, timezone
 from models import (
     get_db,
     init_db,
@@ -23,7 +24,7 @@ from models import (
     AdminSettings,
 )
 from article_service import ArticleService
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 from auth import (
     LoginRequest,
@@ -94,6 +95,30 @@ def contains_sensitive_word(content: str, words: list[str]) -> bool:
     if not content:
         return False
     return any(word in content for word in words)
+
+
+def normalize_date_bound(value: Optional[str], is_end: bool) -> Optional[str]:
+    if not value:
+        return None
+    raw = value.strip()
+    if not raw:
+        return None
+    try:
+        if raw.endswith("Z"):
+            raw = raw[:-1] + "+00:00"
+        if "T" in raw:
+            dt = datetime.fromisoformat(raw)
+        else:
+            dt = datetime.fromisoformat(raw)
+            if is_end:
+                dt = dt.replace(hour=23, minute=59, second=59, microsecond=0)
+            else:
+                dt = dt.replace(hour=0, minute=0, second=0, microsecond=0)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.isoformat()
+    except Exception:
+        return None
 
 
 def ensure_nextauth_secret(db: Session, admin: AdminSettings) -> str:
@@ -720,6 +745,83 @@ async def get_comment(comment_id: str, db: Session = Depends(get_db)):
         "is_hidden": bool(comment.is_hidden),
         "created_at": comment.created_at,
         "updated_at": comment.updated_at,
+    }
+
+
+@app.get("/api/comments")
+async def list_comments(
+    query: Optional[str] = None,
+    article_id: Optional[str] = None,
+    author: Optional[str] = None,
+    created_start: Optional[str] = None,
+    created_end: Optional[str] = None,
+    is_hidden: Optional[bool] = None,
+    has_reply: Optional[bool] = None,
+    page: int = 1,
+    size: int = 20,
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
+    page = max(page, 1)
+    size = min(max(size, 1), 100)
+    query_stmt = db.query(ArticleComment)
+
+    if article_id:
+        query_stmt = query_stmt.filter(ArticleComment.article_id == article_id)
+    if author:
+        query_stmt = query_stmt.filter(ArticleComment.user_name.contains(author))
+    if query:
+        query_stmt = query_stmt.filter(
+            or_(
+                ArticleComment.content.contains(query),
+                ArticleComment.user_name.contains(query),
+            )
+        )
+
+    start_bound = normalize_date_bound(created_start, False)
+    end_bound = normalize_date_bound(created_end, True)
+    if start_bound:
+        query_stmt = query_stmt.filter(ArticleComment.created_at >= start_bound)
+    if end_bound:
+        query_stmt = query_stmt.filter(ArticleComment.created_at <= end_bound)
+
+    if is_hidden is not None:
+        query_stmt = query_stmt.filter(ArticleComment.is_hidden == bool(is_hidden))
+    if has_reply is True:
+        query_stmt = query_stmt.filter(ArticleComment.reply_to_id.isnot(None))
+    if has_reply is False:
+        query_stmt = query_stmt.filter(ArticleComment.reply_to_id.is_(None))
+
+    total = query_stmt.count()
+    items = (
+        query_stmt.order_by(ArticleComment.created_at.desc())
+        .offset((page - 1) * size)
+        .limit(size)
+        .all()
+    )
+    return {
+        "items": [
+            {
+                "id": c.id,
+                "article_id": c.article_id,
+                "user_id": c.user_id,
+                "user_name": c.user_name,
+                "user_avatar": c.user_avatar,
+                "provider": c.provider,
+                "content": c.content,
+                "reply_to_id": c.reply_to_id,
+                "is_hidden": bool(c.is_hidden),
+                "created_at": c.created_at,
+                "updated_at": c.updated_at,
+            }
+            for c in items
+        ],
+        "pagination": {
+            "page": page,
+            "size": size,
+            "total": total,
+            "total_pages": (total + size - 1) // size,
+        },
     }
 
 

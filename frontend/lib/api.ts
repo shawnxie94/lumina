@@ -175,6 +175,16 @@ export interface CommentSettings {
 	sensitive_words: string;
 }
 
+export interface CommentListResponse {
+	items: ArticleComment[];
+	pagination: {
+		page: number;
+		size: number;
+		total: number;
+		total_pages: number;
+	};
+}
+
 export interface Category {
 	id: string;
 	name: string;
@@ -713,5 +723,26 @@ export const commentSettingsApi = {
 	}> => {
 		const response = await api.get("/api/settings/comments/public");
 		return response.data;
+	},
+};
+
+export const commentAdminApi = {
+	list: async (params: {
+		query?: string;
+		article_id?: string;
+		author?: string;
+		created_start?: string;
+		created_end?: string;
+		is_hidden?: boolean;
+		has_reply?: boolean;
+		page?: number;
+		size?: number;
+	}): Promise<CommentListResponse> => {
+		const response = await api.get("/api/comments", { params });
+		return response.data;
+	},
+	delete: async (commentId: string) => {
+		const response = await api.delete(`/api/comments/${commentId}`);
+		return response.data as { success: boolean };
 	},
 };

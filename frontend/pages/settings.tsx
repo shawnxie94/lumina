@@ -16,12 +16,15 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Select } from "antd";
+import type { Dayjs } from "dayjs";
+import dayjs from "dayjs";
 import Head from "next/head";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import AppFooter from "@/components/AppFooter";
 import AppHeader from "@/components/AppHeader";
+import DateRangePicker from "@/components/DateRangePicker";
 import {
 	IconEdit,
 	IconEye,
@@ -47,7 +50,10 @@ import {
 	aiUsageApi,
 	articleApi,
 	categoryApi,
+	commentAdminApi,
+	commentApi,
 	commentSettingsApi,
+	type CommentListResponse,
 	type CommentSettings,
 	type ModelAPIConfig,
 	type PromptConfig,
@@ -55,7 +61,7 @@ import {
 
 type SettingSection = "ai" | "categories" | "monitoring" | "comments";
 type AISubSection = "model-api" | "prompt";
-type MonitoringSubSection = "tasks" | "ai-usage";
+type MonitoringSubSection = "tasks" | "ai-usage" | "comments";
 type CommentSubSection = "keys" | "filters";
 type PromptType =
 	| "summary"
@@ -268,6 +274,8 @@ export default function SettingsPage() {
 	const [usageCostDetails, setUsageCostDetails] = useState("");
 	const showUsageView =
 		activeSection === "monitoring" && monitoringSubSection === "ai-usage";
+	const showCommentListView =
+		activeSection === "monitoring" && monitoringSubSection === "comments";
 	const prevActiveSectionRef = useRef<SettingSection | null>(null);
 	const prevMonitoringSubSectionRef = useRef<MonitoringSubSection | null>(null);
 
@@ -294,6 +302,28 @@ export default function SettingsPage() {
 		messages: string[];
 		callbacks: string[];
 	} | null>(null);
+
+	const [commentList, setCommentList] = useState<CommentListResponse["items"]>([]);
+	const [commentListLoading, setCommentListLoading] = useState(false);
+	const [commentListPage, setCommentListPage] = useState(1);
+	const [commentListPageSize, setCommentListPageSize] = useState(20);
+	const [commentListTotal, setCommentListTotal] = useState(0);
+	const [commentQuery, setCommentQuery] = useState("");
+	const [commentArticleId, setCommentArticleId] = useState("");
+	const [commentAuthor, setCommentAuthor] = useState("");
+	const [commentStart, setCommentStart] = useState("");
+	const [commentEnd, setCommentEnd] = useState("");
+	const [commentVisibility, setCommentVisibility] = useState("");
+	const [commentReplyFilter, setCommentReplyFilter] = useState("");
+	const hasCommentFilters = Boolean(
+		commentQuery ||
+			commentArticleId ||
+			commentAuthor ||
+			commentStart ||
+			commentEnd ||
+			commentVisibility ||
+			commentReplyFilter,
+	);
 
 	const [editingModelAPIConfig, setEditingModelAPIConfig] =
 		useState<ModelAPIConfig | null>(null);
@@ -332,7 +362,8 @@ export default function SettingsPage() {
 		}
 		if (
 			storedMonitoringSubSection === "tasks" ||
-			storedMonitoringSubSection === "ai-usage"
+			storedMonitoringSubSection === "ai-usage" ||
+			storedMonitoringSubSection === "comments"
 		) {
 			setMonitoringSubSection(storedMonitoringSubSection);
 		}
@@ -551,6 +582,44 @@ export default function SettingsPage() {
 		}
 	};
 
+	const fetchCommentList = async () => {
+		setCommentListLoading(true);
+		try {
+			const params: {
+				query?: string;
+				article_id?: string;
+				author?: string;
+				created_start?: string;
+				created_end?: string;
+				is_hidden?: boolean;
+				has_reply?: boolean;
+				page?: number;
+				size?: number;
+			} = {
+				page: commentListPage,
+				size: commentListPageSize,
+			};
+			if (commentQuery) params.query = commentQuery;
+			if (commentArticleId) params.article_id = commentArticleId;
+			if (commentAuthor) params.author = commentAuthor;
+			if (commentStart) params.created_start = `${commentStart}T00:00:00+00:00`;
+			if (commentEnd) params.created_end = `${commentEnd}T23:59:59+00:00`;
+			if (commentVisibility === "visible") params.is_hidden = false;
+			if (commentVisibility === "hidden") params.is_hidden = true;
+			if (commentReplyFilter === "reply") params.has_reply = true;
+			if (commentReplyFilter === "main") params.has_reply = false;
+
+			const response = await commentAdminApi.list(params);
+			setCommentList(response.items || []);
+			setCommentListTotal(response.pagination?.total || 0);
+		} catch (error) {
+			console.error("Failed to fetch comments:", error);
+			showToast("评论列表加载失败", "error");
+		} finally {
+			setCommentListLoading(false);
+		}
+	};
+
 	const fetchCommentSettings = async () => {
 		setCommentSettingsLoading(true);
 		try {
@@ -641,6 +710,29 @@ export default function SettingsPage() {
 		showToast(ok ? "OAuth 配置检查通过" : "OAuth 配置存在问题", ok ? "success" : "error");
 	};
 
+	const handleToggleCommentVisibility = async (commentId: string, nextHidden: boolean) => {
+		try {
+			await commentApi.toggleHidden(commentId, nextHidden);
+			showToast(nextHidden ? "评论已隐藏" : "评论已显示");
+			fetchCommentList();
+		} catch (error) {
+			console.error("Failed to toggle comment visibility:", error);
+			showToast("更新失败", "error");
+		}
+	};
+
+	const handleDeleteCommentAdmin = async (commentId: string) => {
+		if (!confirm("确定要删除这条评论吗？")) return;
+		try {
+			await commentAdminApi.delete(commentId);
+			showToast("删除成功");
+			fetchCommentList();
+		} catch (error) {
+			console.error("Failed to delete comment:", error);
+			showToast("删除失败", "error");
+		}
+	};
+
 	const resetTaskFilters = () => {
 		setTaskStatusFilter("");
 		setTaskTypeFilter("");
@@ -655,6 +747,17 @@ export default function SettingsPage() {
 		setUsageStart("");
 		setUsageEnd("");
 		setUsagePage(1);
+	};
+
+	const resetCommentFilters = () => {
+		setCommentQuery("");
+		setCommentArticleId("");
+		setCommentAuthor("");
+		setCommentStart("");
+		setCommentEnd("");
+		setCommentVisibility("");
+		setCommentReplyFilter("");
+		setCommentListPage(1);
 	};
 
 	useEffect(() => {
@@ -674,9 +777,14 @@ export default function SettingsPage() {
 			if (monitoringSubSection === "tasks") {
 				fetchTasks();
 			} else {
-				fetchModelAPIConfigs();
-				fetchUsageSummary();
-				fetchUsageLogs();
+				if (monitoringSubSection === "ai-usage") {
+					fetchModelAPIConfigs();
+					fetchUsageSummary();
+					fetchUsageLogs();
+				}
+				if (monitoringSubSection === "comments") {
+					fetchCommentList();
+				}
 			}
 			return;
 		}
@@ -715,8 +823,10 @@ export default function SettingsPage() {
 		) {
 			if (monitoringSubSection === "tasks") {
 				resetTaskFilters();
-			} else {
+			} else if (monitoringSubSection === "ai-usage") {
 				resetUsageFilters();
+			} else if (monitoringSubSection === "comments") {
+				resetCommentFilters();
 			}
 		}
 
@@ -753,6 +863,25 @@ export default function SettingsPage() {
 		usageEnd,
 		usagePage,
 		usagePageSize,
+	]);
+
+	useEffect(() => {
+		if (activeSection !== "monitoring" || monitoringSubSection !== "comments") {
+			return;
+		}
+		fetchCommentList();
+	}, [
+		activeSection,
+		monitoringSubSection,
+		commentListPage,
+		commentListPageSize,
+		commentQuery,
+		commentArticleId,
+		commentAuthor,
+		commentStart,
+		commentEnd,
+		commentVisibility,
+		commentReplyFilter,
 	]);
 
 	const handleCreateModelAPINew = () => {
@@ -1100,6 +1229,24 @@ const formatPrice = (value: number | null | undefined) => {
 	}
 	const fixed = value.toFixed(10);
 	return fixed.replace(/\.?0+$/, "");
+};
+
+const stripReplyPrefix = (content: string) => {
+	if (!content) return "";
+	const lines = content.split("\n");
+	if (!lines[0]?.startsWith("> 回复 @")) return content;
+	const blankIndex = lines.findIndex((line, index) => index > 0 && !line.trim());
+	if (blankIndex >= 0) {
+		return lines.slice(blankIndex + 1).join("\n").trim();
+	}
+	return lines.slice(1).join("\n").trim();
+};
+
+const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
+	if (!start && !end) return null;
+	const startDate = start ? dayjs(start) : null;
+	const endDate = end ? dayjs(end) : null;
+	return [startDate, endDate] as [Dayjs | null, Dayjs | null];
 };
 
 	const openUsageCost = (log: AIUsageLogItem) => {
@@ -1541,6 +1688,23 @@ const formatPrice = (value: number | null | undefined) => {
 											<span className="inline-flex items-center gap-2">
 												<IconMoney className="h-4 w-4" />
 											<span>模型记录/计量</span>
+										</span>
+									</button>
+									<button
+										onClick={() => {
+											setActiveSection("monitoring");
+											setMonitoringSubSection("comments");
+										}}
+										className={`w-full text-left px-6 py-2 text-sm rounded-sm transition ${
+											activeSection === "monitoring" &&
+											monitoringSubSection === "comments"
+												? "bg-muted text-text-1"
+												: "text-text-2 hover:text-text-1 hover:bg-muted"
+										}`}
+									>
+										<span className="inline-flex items-center gap-2">
+											<IconNote className="h-4 w-4" />
+											<span>评论列表</span>
 										</span>
 									</button>
 								</div>
@@ -2863,6 +3027,292 @@ const formatPrice = (value: number | null | undefined) => {
 									</div>
 								</div>
 							)}
+
+							{activeSection === "monitoring" &&
+								monitoringSubSection === "comments" && (
+									<div className="bg-surface rounded-sm shadow-sm border border-border p-6">
+										<div className="flex items-center justify-between mb-6">
+											<div>
+												<h2 className="text-lg font-semibold text-text-1">
+													评论列表
+												</h2>
+												<p className="text-sm text-text-3">
+													查看与管理所有评论与回复
+												</p>
+											</div>
+											<div className="flex items-center gap-2">
+												<button
+													onClick={resetCommentFilters}
+													className="px-4 py-2 text-sm bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
+													disabled={!hasCommentFilters}
+												>
+													清空筛选
+												</button>
+												<button
+													onClick={fetchCommentList}
+													className="px-4 py-2 text-sm bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
+												>
+													刷新
+												</button>
+											</div>
+										</div>
+
+										<div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+											<div>
+												<label className="block text-sm text-text-2 mb-1">
+													关键词
+												</label>
+												<input
+													value={commentQuery}
+													onChange={(event) => {
+														setCommentQuery(event.target.value);
+														setCommentListPage(1);
+													}}
+													placeholder="内容/作者"
+													className="w-full h-9 px-3 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
+												/>
+											</div>
+											<div>
+												<label className="block text-sm text-text-2 mb-1">
+													文章ID
+												</label>
+												<input
+													value={commentArticleId}
+													onChange={(event) => {
+														setCommentArticleId(event.target.value);
+														setCommentListPage(1);
+													}}
+													placeholder="输入文章ID"
+													className="w-full h-9 px-3 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
+												/>
+											</div>
+											<div>
+												<label className="block text-sm text-text-2 mb-1">
+													作者
+												</label>
+												<input
+													value={commentAuthor}
+													onChange={(event) => {
+														setCommentAuthor(event.target.value);
+														setCommentListPage(1);
+													}}
+													placeholder="作者昵称"
+													className="w-full h-9 px-3 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
+												/>
+											</div>
+											<div>
+												<label className="block text-sm text-text-2 mb-1">
+													可见性
+												</label>
+												<Select
+													value={commentVisibility}
+													onChange={(value) => {
+														setCommentVisibility(value);
+														setCommentListPage(1);
+													}}
+													className="select-modern-antd w-full"
+													popupClassName="select-modern-dropdown"
+													options={[
+														{ value: "", label: "全部" },
+														{ value: "visible", label: "可见" },
+														{ value: "hidden", label: "已隐藏" },
+													]}
+												/>
+											</div>
+											<div>
+												<label className="block text-sm text-text-2 mb-1">
+													类型
+												</label>
+												<Select
+													value={commentReplyFilter}
+													onChange={(value) => {
+														setCommentReplyFilter(value);
+														setCommentListPage(1);
+													}}
+													className="select-modern-antd w-full"
+													popupClassName="select-modern-dropdown"
+													options={[
+														{ value: "", label: "全部" },
+														{ value: "main", label: "主评论" },
+														{ value: "reply", label: "回复" },
+													]}
+												/>
+											</div>
+											<div>
+												<label className="block text-sm text-text-2 mb-1">
+													开始日期
+												</label>
+												<DateRangePicker
+													value={toDayjsRangeFromDateStrings(
+														commentStart,
+														commentEnd,
+													)}
+													onChange={(values) => {
+														const [start, end] = values || [];
+														setCommentStart(
+															start ? start.format("YYYY-MM-DD") : "",
+														);
+														setCommentEnd(end ? end.format("YYYY-MM-DD") : "");
+														setCommentListPage(1);
+													}}
+													className="w-full"
+												/>
+											</div>
+										</div>
+
+										{commentListLoading ? (
+											<div className="text-center py-12 text-text-3">
+												加载中...
+											</div>
+										) : commentList.length === 0 ? (
+											<div className="text-center py-12 text-text-3">
+												{hasCommentFilters ? "暂无匹配评论" : "暂无评论"}
+											</div>
+										) : (
+											<div className="overflow-x-auto">
+												<table className="min-w-full text-sm">
+													<thead className="bg-muted text-text-2">
+														<tr>
+															<th className="text-left px-4 py-3">内容</th>
+															<th className="text-left px-4 py-3">作者</th>
+															<th className="text-left px-4 py-3">文章</th>
+															<th className="text-left px-4 py-3">类型</th>
+															<th className="text-left px-4 py-3">状态</th>
+															<th className="text-left px-4 py-3">时间</th>
+															<th className="text-right px-4 py-3">操作</th>
+														</tr>
+													</thead>
+													<tbody className="divide-y divide-border">
+														{commentList.map((comment) => {
+															const contentPreview = stripReplyPrefix(
+																comment.content,
+															);
+															return (
+																<tr key={comment.id} className="hover:bg-muted/40">
+																	<td className="px-4 py-3">
+																		<div className="text-text-1 line-clamp-2">
+																			{contentPreview || "-"}
+																		</div>
+																	</td>
+																	<td className="px-4 py-3">
+																		<div className="text-text-1">
+																			{comment.user_name || "匿名"}
+																		</div>
+																		<div className="text-xs text-text-3">
+																			{comment.provider || "-"}
+																		</div>
+																	</td>
+																	<td className="px-4 py-3">
+																		<div className="text-xs text-text-3 break-all">
+																			{comment.article_id}
+																		</div>
+																		<Link
+																			href={`/article/${comment.article_id}#comment-${comment.id}`}
+																			className="inline-flex items-center gap-1 text-xs text-accent hover:underline"
+																			target="_blank"
+																		>
+																			<IconLink className="h-3 w-3" />
+																			查看
+																		</Link>
+																	</td>
+																	<td className="px-4 py-3">
+																		<span className="text-xs text-text-2 bg-muted px-2 py-1 rounded-sm">
+																			{comment.reply_to_id ? "回复" : "主评论"}
+																		</span>
+																	</td>
+																	<td className="px-4 py-3">
+																		<span
+																			className={`text-xs px-2 py-1 rounded-sm ${
+																				comment.is_hidden
+																					? "bg-red-50 text-red-600"
+																					: "bg-green-50 text-green-600"
+																			}`}
+																		>
+																			{comment.is_hidden ? "已隐藏" : "可见"}
+																		</span>
+																	</td>
+																	<td className="px-4 py-3 text-text-2">
+																		{new Date(comment.created_at).toLocaleString("zh-CN")}
+																	</td>
+																	<td className="px-4 py-3 text-right">
+																		<div className="flex items-center justify-end gap-2">
+																			<button
+																				onClick={() =>
+																					handleToggleCommentVisibility(
+																						comment.id,
+																						!comment.is_hidden,
+																					)
+																				}
+																				className="px-2 py-1 text-xs text-text-2 hover:text-text-1 hover:bg-muted rounded-sm"
+																				title={
+																					comment.is_hidden ? "设为可见" : "设为隐藏"
+																				}
+																			>
+																				<IconEye className="h-4 w-4" />
+																			</button>
+																			<button
+																				onClick={() =>
+																					handleDeleteCommentAdmin(comment.id)
+																				}
+																				className="px-2 py-1 text-xs text-text-2 hover:text-red-600 hover:bg-red-50 rounded-sm"
+																				title="删除"
+																			>
+																				<IconTrash className="h-4 w-4" />
+																			</button>
+																		</div>
+																	</td>
+																</tr>
+															);
+														})}
+													</tbody>
+												</table>
+											</div>
+										)}
+
+										<div className="mt-6 flex items-center justify-between">
+											<div className="flex items-center gap-2 text-sm text-text-2">
+												<span>每页显示</span>
+												<Select
+													value={commentListPageSize}
+													onChange={(value) => {
+														setCommentListPageSize(Number(value));
+														setCommentListPage(1);
+													}}
+													className="select-modern-antd"
+													popupClassName="select-modern-dropdown"
+													options={[
+														{ value: 10, label: "10" },
+														{ value: 20, label: "20" },
+														{ value: 50, label: "50" },
+													]}
+												/>
+												<span>条，共 {commentListTotal} 条</span>
+											</div>
+											<div className="flex items-center gap-2">
+												<button
+													onClick={() =>
+														setCommentListPage((p) => Math.max(1, p - 1))
+													}
+													disabled={commentListPage === 1}
+													className="px-4 py-2 bg-surface border border-border rounded-sm hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
+												>
+													上一页
+												</button>
+												<span className="px-4 py-2 bg-surface border border-border rounded-sm text-text-2">
+													第 {commentListPage} /{" "}
+													{Math.ceil(commentListTotal / commentListPageSize) || 1} 页
+												</span>
+												<button
+													onClick={() => setCommentListPage((p) => p + 1)}
+													disabled={commentListPage * commentListPageSize >= commentListTotal}
+													className="px-4 py-2 bg-surface border border-border rounded-sm hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
+												>
+													下一页
+												</button>
+											</div>
+										</div>
+									</div>
+								)}
 						</main>
 					</div>
 				</div>

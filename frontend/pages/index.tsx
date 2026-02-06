@@ -3,12 +3,13 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
-import { ConfigProvider, DatePicker, Select } from 'antd';
+import { Select } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
 
 import { articleApi, categoryApi, Article, Category } from '@/lib/api';
 import AppFooter from '@/components/AppFooter';
 import AppHeader from '@/components/AppHeader';
+import DateRangePicker from '@/components/DateRangePicker';
 import { useToast } from '@/components/Toast';
 import { BackToTop } from '@/components/BackToTop';
 import { IconEye, IconEyeOff, IconGlobe, IconSearch, IconTag, IconTrash } from '@/components/icons';
@@ -602,60 +603,28 @@ export default function Home() {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-2">
                     <div>
                       <label className="block text-sm text-text-2 mb-1">发表时间</label>
-                      <ConfigProvider
-                        theme={{
-                          token: {
-                            colorPrimary: '#3B82F6',
-                            borderRadius: 4,
-                            fontSize: 14,
-                            controlHeight: 36,
-                          },
+                      <DateRangePicker
+                        value={toDayjsRange(publishedDateRange)}
+                        onChange={(values) => {
+                          const [start, end] = values || [];
+                          setPublishedDateRange([start ? start.toDate() : null, end ? end.toDate() : null]);
+                          setPage(1);
                         }}
-                      >
-                        <DatePicker.RangePicker
-                          value={toDayjsRange(publishedDateRange)}
-                          onChange={(values: [Dayjs | null, Dayjs | null] | null) => {
-                            const [start, end] = values || [];
-                            setPublishedDateRange([start ? start.toDate() : null, end ? end.toDate() : null]);
-                            setPage(1);
-                          }}
-                          className="w-full"
-                          size="middle"
-                          allowClear
-                          placeholder={['开始日期', '结束日期']}
-                          format="YYYY-MM-DD"
-                          style={{ height: 36, width: '100%', minWidth: 0 }}
-                        />
-                      </ConfigProvider>
+                        className="w-full"
+                      />
                     </div>
                     <div>
                       <label className="block text-sm text-text-2 mb-1">创建时间</label>
-                      <ConfigProvider
-                        theme={{
-                          token: {
-                            colorPrimary: '#3B82F6',
-                            borderRadius: 4,
-                            fontSize: 14,
-                            controlHeight: 36,
-                          },
+                      <DateRangePicker
+                        value={toDayjsRange(createdDateRange)}
+                        onChange={(values) => {
+                          const [start, end] = values || [];
+                          setCreatedDateRange([start ? start.toDate() : null, end ? end.toDate() : null]);
+                          setQuickDateFilter('');
+                          setPage(1);
                         }}
-                      >
-                        <DatePicker.RangePicker
-                          value={toDayjsRange(createdDateRange)}
-                          onChange={(values: [Dayjs | null, Dayjs | null] | null) => {
-                            const [start, end] = values || [];
-                            setCreatedDateRange([start ? start.toDate() : null, end ? end.toDate() : null]);
-                            setQuickDateFilter('');
-                            setPage(1);
-                          }}
-                          className="w-full"
-                          size="middle"
-                          allowClear
-                          placeholder={['开始日期', '结束日期']}
-                          format="YYYY-MM-DD"
-                          style={{ height: 36, width: '100%', minWidth: 0 }}
-                        />
-                      </ConfigProvider>
+                        className="w-full"
+                      />
                     </div>
                     <div className="hidden md:block" />
                   </div>
