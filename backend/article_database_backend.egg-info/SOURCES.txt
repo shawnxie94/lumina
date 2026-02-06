@@ -4,6 +4,7 @@ auth.py
 main.py
 models.py
 pyproject.toml
+slug_utils.py
 article_database_backend.egg-info/PKG-INFO
 article_database_backend.egg-info/SOURCES.txt
 article_database_backend.egg-info/dependency_links.txt

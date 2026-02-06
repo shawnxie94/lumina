@@ -83,11 +83,7 @@ def get_sensitive_words(db: Session) -> tuple[bool, list[str]]:
         return False, []
     enabled = bool(admin.sensitive_filter_enabled)
     words_raw = admin.sensitive_words or ""
-    words = [
-        w.strip()
-        for w in words_raw.replace(",", "\n").splitlines()
-        if w.strip()
-    ]
+    words = [w.strip() for w in words_raw.replace(",", "\n").splitlines() if w.strip()]
     return enabled, words
 
 
@@ -486,7 +482,10 @@ async def create_article(
 ):
     try:
         article_id = await article_service.create_article(article.dict(), db)
-        return {"id": article_id, "status": "processing"}
+        # 获取生成的slug
+        article_obj = db.query(Article).filter(Article.id == article_id).first()
+        slug = article_obj.slug if article_obj else article_id
+        return {"id": article_id, "slug": slug, "status": "processing"}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -528,6 +527,7 @@ async def get_articles(
         "data": [
             {
                 "id": a.id,
+                "slug": a.slug,
                 "title": a.title,
                 "summary": a.ai_analysis.summary if a.ai_analysis else "",
                 "top_image": a.top_image,
@@ -562,7 +562,8 @@ async def get_article(
     db: Session = Depends(get_db),
     is_admin: bool = Depends(check_is_admin),
 ):
-    article = article_service.get_article(db, article_id)
+    # 支持通过slug或id查询文章（完全兼容旧版）
+    article = article_service.get_article_by_slug(db, article_id)
     if not article:
         raise HTTPException(status_code=404, detail="文章不存在")
 
@@ -575,6 +576,7 @@ async def get_article(
 
     return {
         "id": article.id,
+        "slug": article.slug,
         "title": article.title,
         "content_html": article.content_html,
         "content_md": article.content_md,
@@ -623,12 +625,14 @@ async def get_article(
         else None,
         "prev_article": {
             "id": prev_article.id,
+            "slug": prev_article.slug,
             "title": prev_article.title,
         }
         if prev_article
         else None,
         "next_article": {
             "id": next_article.id,
+            "slug": next_article.slug,
             "title": next_article.title,
         }
         if next_article
@@ -645,7 +649,7 @@ async def get_article_comments(
 ):
     if not comments_enabled(db):
         raise HTTPException(status_code=403, detail="评论已关闭")
-    article = db.query(Article).filter(Article.id == article_id).first()
+    article = article_service.get_article_by_slug(db, article_id)
     if not article:
         raise HTTPException(status_code=404, detail="文章不存在")
     is_admin = False
@@ -654,7 +658,7 @@ async def get_article_comments(
             is_admin = bool(get_current_admin(credentials=credentials, db=db))
         except HTTPException:
             is_admin = False
-    query = db.query(ArticleComment).filter(ArticleComment.article_id == article_id)
+    query = db.query(ArticleComment).filter(ArticleComment.article_id == article.id)
     if not is_admin:
         query = query.filter(
             (ArticleComment.is_hidden == False) | (ArticleComment.is_hidden.is_(None))
@@ -664,6 +668,7 @@ async def get_article_comments(
         {
             "id": c.id,
             "article_id": c.article_id,
+            "article_slug": article.slug,
             "user_id": c.user_id,
             "user_name": c.user_name,
             "user_avatar": c.user_avatar,
@@ -686,9 +691,11 @@ async def create_article_comment(
 ):
     if not comments_enabled(db):
         raise HTTPException(status_code=403, detail="评论已关闭")
-    article = db.query(Article).filter(Article.id == article_id).first()
+    article = article_service.get_article_by_slug(db, article_id)
     if not article:
         raise HTTPException(status_code=404, detail="文章不存在")
+    # 使用实际的 article.id (UUID) 来存储评论
+    actual_article_id = article.id
     content = payload.content.strip()
     if not content:
         raise HTTPException(status_code=400, detail="评论内容不能为空")
@@ -698,7 +705,7 @@ async def create_article_comment(
     if filter_enabled and words and contains_sensitive_word(content, words):
         raise HTTPException(status_code=400, detail="评论包含敏感词")
     comment = ArticleComment(
-        article_id=article_id,
+        article_id=actual_article_id,
         user_id=payload.user_id,
         user_name=payload.user_name,
         user_avatar=payload.user_avatar,
@@ -799,11 +806,18 @@ async def list_comments(
         .limit(size)
         .all()
     )
+
+    # 获取所有相关文章的slug
+    article_ids = [c.article_id for c in items]
+    articles = db.query(Article).filter(Article.id.in_(article_ids)).all()
+    article_slug_map = {a.id: a.slug for a in articles}
+
     return {
         "items": [
             {
                 "id": c.id,
                 "article_id": c.article_id,
+                "article_slug": article_slug_map.get(c.article_id, c.article_id),
                 "user_id": c.user_id,
                 "user_name": c.user_name,
                 "user_avatar": c.user_avatar,
@@ -903,7 +917,7 @@ async def update_article_notes(
     db: Session = Depends(get_db),
     _: bool = Depends(get_current_admin),
 ):
-    article = article_service.get_article(db, article_id)
+    article = article_service.get_article_by_slug(db, article_id)
     if not article:
         raise HTTPException(status_code=404, detail="文章不存在")
     if payload.note_content is not None:
@@ -1069,18 +1083,26 @@ async def list_ai_tasks(
     article_map = {}
     if article_ids:
         articles = (
-            db.query(Article.id, Article.title)
+            db.query(Article.id, Article.title, Article.slug)
             .filter(Article.id.in_(article_ids))
             .all()
         )
-        article_map = {article.id: article.title for article in articles}
+        article_map = {
+            article.id: {"title": article.title, "slug": article.slug}
+            for article in articles
+        }
 
     return {
         "data": [
             {
                 "id": task.id,
                 "article_id": task.article_id,
-                "article_title": article_map.get(task.article_id),
+                "article_title": article_map.get(task.article_id, {}).get("title")
+                if task.article_id
+                else None,
+                "article_slug": article_map.get(task.article_id, {}).get("slug")
+                if task.article_id
+                else None,
                 "task_type": task.task_type,
                 "content_type": task.content_type,
                 "status": task.status,
@@ -1241,6 +1263,15 @@ async def get_ai_usage_logs(
         .all()
     )
 
+    # 获取所有相关文章的slug
+    article_ids = [log.article_id for log, _ in logs if log.article_id]
+    article_map = {}
+    if article_ids:
+        articles = (
+            db.query(Article.id, Article.slug).filter(Article.id.in_(article_ids)).all()
+        )
+        article_map = {article.id: article.slug for article in articles}
+
     items = []
     for log, model_name in logs:
         items.append(
@@ -1250,6 +1281,9 @@ async def get_ai_usage_logs(
                 "model_api_config_name": model_name,
                 "task_id": log.task_id,
                 "article_id": log.article_id,
+                "article_slug": article_map.get(log.article_id)
+                if log.article_id
+                else None,
                 "task_type": log.task_type,
                 "content_type": log.content_type,
                 "status": log.status,

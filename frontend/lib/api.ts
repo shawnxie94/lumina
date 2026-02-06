@@ -111,6 +111,7 @@ export const authApi = {
 
 export interface Article {
 	id: string;
+	slug: string;  // SEO友好的URL slug
 	title: string;
 	summary: string;
 	top_image: string;
@@ -146,13 +147,14 @@ export interface ArticleDetail extends Article {
 		error_message?: string | null;
 		updated_at?: string | null;
 	} | null;
-	prev_article?: { id: string; title: string } | null;
-	next_article?: { id: string; title: string } | null;
+	prev_article?: { id: string; slug: string; title: string } | null;
+	next_article?: { id: string; slug: string; title: string } | null;
 }
 
 export interface ArticleComment {
 	id: string;
 	article_id: string;
+	article_slug?: string;
 	user_id: string;
 	user_name: string;
 	user_avatar: string | null;
@@ -214,6 +216,7 @@ export interface AIUsageLogItem {
 	model_api_config_name: string | null;
 	task_id: string | null;
 	article_id: string | null;
+	article_slug?: string | null;
 	task_type: string | null;
 	content_type: string | null;
 	status: string;

@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, useCallback, ReactNode 
 
 interface ReadingArticle {
   id: string;
+  slug: string;
   title: string;
 }
 

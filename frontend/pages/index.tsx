@@ -373,7 +373,7 @@ export default function Home() {
 
   const handleOpenArticle = (
     event: React.MouseEvent<HTMLDivElement>,
-    id: string,
+    article: Article,
   ) => {
     const target = event.target as HTMLElement | null;
     if (
@@ -383,7 +383,8 @@ export default function Home() {
     ) {
       return;
     }
-    router.push(`/article/${id}`);
+    // 使用 slug 作为 URL，seo 更友好
+    router.push(`/article/${article.slug}`);
   };
 
   const handleSelectAll = () => {
@@ -727,7 +728,7 @@ export default function Home() {
                     {articles.map((article) => (
                       <div
                         key={article.id}
-                        onClick={(event) => handleOpenArticle(event, article.id)}
+                        onClick={(event) => handleOpenArticle(event, article)}
                         className={`bg-white rounded-lg shadow-sm p-6 hover:shadow-md transition relative cursor-pointer ${!article.is_visible && isAdmin ? 'opacity-60' : ''}`}
                       >
                          {isAdmin && (
@@ -771,7 +772,7 @@ export default function Home() {
                             />
                           )}
                           <div className="flex-1 pr-6">
-                            <Link href={`/article/${article.id}`}>
+                            <Link href={`/article/${article.slug}`}>
                               <h3 className="text-xl font-semibold text-gray-900 hover:text-blue-600 transition cursor-pointer">
                                 {article.title}
                               </h3>

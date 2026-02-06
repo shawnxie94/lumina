@@ -1,433 +1,469 @@
-import { ApiClient } from '../../utils/api';
-import { marked } from 'marked';
-import TurndownService from 'turndown';
-import { gfm } from 'turndown-plugin-gfm';
-import { addToHistory } from '../../utils/history';
-import { logError, setupGlobalErrorHandler } from '../../utils/errorLogger';
+import { marked } from "marked";
+import TurndownService from "turndown";
+import { gfm } from "turndown-plugin-gfm";
+import { ApiClient } from "../../utils/api";
+import { logError, setupGlobalErrorHandler } from "../../utils/errorLogger";
+import { addToHistory } from "../../utils/history";
 
-setupGlobalErrorHandler('editor');
+setupGlobalErrorHandler("editor");
 
 class EditorController {
-  #apiClient;
-  #articleData = null;
-  #categories = [];
-  #turndown;
+	#apiClient;
+	#articleData = null;
+	#categories = [];
+	#turndown;
 
-  constructor() {
-    this.#apiClient = new ApiClient();
-    this.#turndown = new TurndownService({
-      headingStyle: 'atx',
-      codeBlockStyle: 'fenced',
-      fence: '```',
-      bulletListMarker: '-',
-      emDelimiter: '*',
-      strongDelimiter: '**',
-      linkStyle: 'inlined',
-    });
-    this.#turndown.use(gfm);
-    this.#turndown.remove(['script', 'style', 'noscript', 'iframe', 'nav', 'footer', 'aside']);
-    
-    this.#turndown.addRule('improvedImage', {
-      filter: 'img',
-      replacement: (_content, node) => {
-        let src = node.getAttribute('src') || '';
-        if (!src || src.startsWith('data:image/svg+xml') || src.startsWith('data:image/gif;base64,R0lGOD')) {
-          src = node.getAttribute('data-src') || node.getAttribute('data-original') || '';
-        }
-        if (!src) return '';
-        
-        let alt = node.getAttribute('alt') || node.getAttribute('title') || '';
-        alt = alt.replace(/"/g, '&quot;');
-        return `<img src="${src}" alt="${alt}" style="max-width: 600px;" />`;
-      },
-    });
-  }
+	constructor() {
+		this.#apiClient = new ApiClient();
+		this.#turndown = new TurndownService({
+			headingStyle: "atx",
+			codeBlockStyle: "fenced",
+			fence: "```",
+			bulletListMarker: "-",
+			emDelimiter: "*",
+			strongDelimiter: "**",
+			linkStyle: "inlined",
+		});
+		this.#turndown.use(gfm);
+		this.#turndown.remove([
+			"script",
+			"style",
+			"noscript",
+			"iframe",
+			"nav",
+			"footer",
+			"aside",
+		]);
 
-  async init() {
-    try {
-      await this.loadConfig();
-      await this.loadArticleData();
-      await this.loadCategories();
-      await this.setupEventListeners();
-      this.setupPreviewToggles();
-      this.populateForm();
-      this.updateStatus('idle', '准备就绪');
-    } catch (error) {
-      console.error('Failed to initialize editor:', error);
-      logError('editor', error, { action: 'init' });
-      this.updateStatus('error', '初始化失败');
-    }
-  }
+		this.#turndown.addRule("improvedImage", {
+			filter: "img",
+			replacement: (_content, node) => {
+				let src = node.getAttribute("src") || "";
+				if (
+					!src ||
+					src.startsWith("data:image/svg+xml") ||
+					src.startsWith("data:image/gif;base64,R0lGOD")
+				) {
+					src =
+						node.getAttribute("data-src") ||
+						node.getAttribute("data-original") ||
+						"";
+				}
+				if (!src) return "";
 
-  async loadConfig() {
-    const apiHost = await ApiClient.loadApiHost();
-    const token = await ApiClient.loadToken();
-    this.#apiClient = new ApiClient(apiHost);
-    if (token) {
-      this.#apiClient.setToken(token);
-    }
-  }
+				let alt = node.getAttribute("alt") || node.getAttribute("title") || "";
+				alt = alt.replace(/"/g, "&quot;");
+				return `<img src="${src}" alt="${alt}" style="max-width: 600px;" />`;
+			},
+		});
+	}
 
-  async loadCategories() {
-    try {
-      this.#categories = await this.#apiClient.getCategories();
-      this.populateCategories();
-    } catch (error) {
-      console.error('Failed to load categories:', error);
-      logError('editor', error, { action: 'loadCategories' });
-    }
-  }
+	async init() {
+		try {
+			await this.loadConfig();
+			await this.loadArticleData();
+			await this.loadCategories();
+			await this.setupEventListeners();
+			this.setupPreviewToggles();
+			this.populateForm();
+			this.updateStatus("idle", "准备就绪");
+		} catch (error) {
+			console.error("Failed to initialize editor:", error);
+			logError("editor", error, { action: "init" });
+			this.updateStatus("error", "初始化失败");
+		}
+	}
 
-  populateCategories() {
-    const select = document.getElementById('categorySelect');
-    if (!select) return;
+	async loadConfig() {
+		const apiHost = await ApiClient.loadApiHost();
+		const token = await ApiClient.loadToken();
+		this.#apiClient = new ApiClient(apiHost);
+		if (token) {
+			this.#apiClient.setToken(token);
+		}
+	}
 
-    select.innerHTML = '<option value="">选择分类...</option>';
+	async loadCategories() {
+		try {
+			this.#categories = await this.#apiClient.getCategories();
+			this.populateCategories();
+		} catch (error) {
+			console.error("Failed to load categories:", error);
+			logError("editor", error, { action: "loadCategories" });
+		}
+	}
 
-    this.#categories.forEach((category) => {
-      const option = document.createElement('option');
-      option.value = category.id;
-      option.textContent = category.name;
-      if (this.#articleData && this.#articleData.category_id === category.id) {
-        option.selected = true;
-      }
-      select.appendChild(option);
-    });
-  }
+	populateCategories() {
+		const select = document.getElementById("categorySelect");
+		if (!select) return;
 
-  async loadArticleData() {
-    try {
-      const urlParams = new URLSearchParams(window.location.search);
-      const articleId = urlParams.get('id');
+		select.innerHTML = '<option value="">选择分类...</option>';
 
-      if (!articleId) {
-        throw new Error('No article ID found');
-      }
+		this.#categories.forEach((category) => {
+			const option = document.createElement("option");
+			option.value = category.id;
+			option.textContent = category.name;
+			if (this.#articleData && this.#articleData.category_id === category.id) {
+				option.selected = true;
+			}
+			select.appendChild(option);
+		});
+	}
 
-      return new Promise((resolve, reject) => {
-        chrome.storage.local.get([articleId], (result) => {
-          if (chrome.runtime.lastError) {
-            reject(chrome.runtime.lastError);
-          } else if (!result[articleId]) {
-            reject(new Error('Article data not found'));
-          } else {
-            this.#articleData = result[articleId];
-            
-            if (!this.#articleData.content_md && this.#articleData.content_html) {
-              this.#articleData.content_md = this.#turndown.turndown(this.#articleData.content_html);
-            }
-            
-            chrome.storage.local.remove([articleId]);
-            resolve();
-          }
-        });
-      });
-    } catch (error) {
-      console.error('Failed to load article data:', error);
-      logError('editor', error, { action: 'loadArticleData' });
-      throw error;
-    }
-  }
+	async loadArticleData() {
+		try {
+			const urlParams = new URLSearchParams(window.location.search);
+			const articleId = urlParams.get("id");
 
-  populateForm() {
-    if (!this.#articleData) return;
+			if (!articleId) {
+				throw new Error("No article ID found");
+			}
 
-    const titleInput = document.getElementById('titleInput');
-    const authorInput = document.getElementById('authorInput');
-    const sourceUrlInput = document.getElementById('sourceUrlInput');
-    const contentMd = document.getElementById('contentMd');
-    const publishedAtInput = document.getElementById('publishedAtInput');
-    const mdPreview = document.getElementById('mdPreview');
+			return new Promise((resolve, reject) => {
+				chrome.storage.local.get([articleId], (result) => {
+					if (chrome.runtime.lastError) {
+						reject(chrome.runtime.lastError);
+					} else if (!result[articleId]) {
+						reject(new Error("Article data not found"));
+					} else {
+						this.#articleData = result[articleId];
 
-    if (titleInput) {
-      titleInput.value = this.#articleData.title || '';
-    }
+						if (
+							!this.#articleData.content_md &&
+							this.#articleData.content_html
+						) {
+							this.#articleData.content_md = this.#turndown.turndown(
+								this.#articleData.content_html,
+							);
+						}
 
-    if (authorInput) {
-      authorInput.value = this.#articleData.author || '';
-    }
+						chrome.storage.local.remove([articleId]);
+						resolve();
+					}
+				});
+			});
+		} catch (error) {
+			console.error("Failed to load article data:", error);
+			logError("editor", error, { action: "loadArticleData" });
+			throw error;
+		}
+	}
 
-    if (sourceUrlInput) {
-      sourceUrlInput.value = this.#articleData.source_url || '';
-    }
+	populateForm() {
+		if (!this.#articleData) return;
 
-    if (contentMd) {
-      contentMd.value = this.#articleData.content_md || '';
-    }
+		const titleInput = document.getElementById("titleInput");
+		const authorInput = document.getElementById("authorInput");
+		const sourceUrlInput = document.getElementById("sourceUrlInput");
+		const contentMd = document.getElementById("contentMd");
+		const publishedAtInput = document.getElementById("publishedAtInput");
+		const mdPreview = document.getElementById("mdPreview");
 
-    if (mdPreview) {
-      try {
-        const mdContent = this.#articleData.content_md || '';
-        if (mdContent.trim()) {
-          mdPreview.innerHTML = marked.parse(mdContent);
-        } else {
-          mdPreview.innerHTML = '<p>无内容</p>';
-        }
-      } catch (error) {
-        console.error('Failed to parse Markdown:', error);
-        logError('editor', error, { action: 'populateForm.parseMarkdown' });
-        mdPreview.innerHTML = '<p>Markdown 解析失败</p>';
-      }
-    }
+		if (titleInput) {
+			titleInput.value = this.#articleData.title || "";
+		}
 
-    if (this.#articleData.top_image) {
-      this.setupTopImageSelector(this.#articleData.content_md, this.#articleData.top_image);
-    }
+		if (authorInput) {
+			authorInput.value = this.#articleData.author || "";
+		}
 
-    if (publishedAtInput) {
-      if (this.#articleData.published_at) {
-        const publishedAt = this.normalizeDate(this.#articleData.published_at);
-        if (publishedAt) {
-          publishedAtInput.value = publishedAt;
-        }
-      } 
-    }
-  }
+		if (sourceUrlInput) {
+			sourceUrlInput.value = this.#articleData.source_url || "";
+		}
 
-  normalizeDate(dateStr) {
-    if (!dateStr) return null;
+		if (contentMd) {
+			contentMd.value = this.#articleData.content_md || "";
+		}
 
-    try {
-      const date = new Date(dateStr);
-      if (isNaN(date.getTime())) return null;
+		if (mdPreview) {
+			try {
+				const mdContent = this.#articleData.content_md || "";
+				if (mdContent.trim()) {
+					mdPreview.innerHTML = marked.parse(mdContent);
+				} else {
+					mdPreview.innerHTML = "<p>无内容</p>";
+				}
+			} catch (error) {
+				console.error("Failed to parse Markdown:", error);
+				logError("editor", error, { action: "populateForm.parseMarkdown" });
+				mdPreview.innerHTML = "<p>Markdown 解析失败</p>";
+			}
+		}
 
-      const year = date.getFullYear();
-      const month = String(date.getMonth() +1).padStart(2, '0');
-      const day = String(date.getDate()).padStart(2, '0');
+		if (this.#articleData.top_image) {
+			this.setupTopImageSelector(
+				this.#articleData.content_md,
+				this.#articleData.top_image,
+			);
+		}
 
-      return `${year}-${month}-${day}`;
-    } catch (error) {
-      console.error('Failed to normalize date:', error);
-      logError('editor', error, { action: 'normalizeDate', dateStr });
-      return null;
-    }
-  }
+		if (publishedAtInput) {
+			if (this.#articleData.published_at) {
+				const publishedAt = this.normalizeDate(this.#articleData.published_at);
+				if (publishedAt) {
+					publishedAtInput.value = publishedAt;
+				}
+			}
+		}
+	}
 
-  setupTopImageSelector(mdContent, defaultImage) {
-    const topImageGroup = document.getElementById('topImageGroup');
-    const topImageSelect = document.getElementById('topImageSelect');
-    const topImagePreview = document.getElementById('topImagePreview');
+	normalizeDate(dateStr) {
+		if (!dateStr) return null;
 
-    if (!topImageGroup || !topImageSelect || !topImagePreview) return;
+		try {
+			const date = new Date(dateStr);
+			if (isNaN(date.getTime())) return null;
 
-    const uniqueImages = new Set();
-    
-    if (defaultImage) {
-      uniqueImages.add(defaultImage);
-    }
+			const year = date.getFullYear();
+			const month = String(date.getMonth() + 1).padStart(2, "0");
+			const day = String(date.getDate()).padStart(2, "0");
 
-    const imgRegex = /!\[.*?\]\((.*?)\)/g;
-    let match;
-    while ((match = imgRegex.exec(mdContent)) !== null) {
-      if (match[1]) {
-        uniqueImages.add(match[1]);
-      }
-    }
+			return `${year}-${month}-${day}`;
+		} catch (error) {
+			console.error("Failed to normalize date:", error);
+			logError("editor", error, { action: "normalizeDate", dateStr });
+			return null;
+		}
+	}
 
-    const imageArray = Array.from(uniqueImages);
+	setupTopImageSelector(mdContent, defaultImage) {
+		const topImageGroup = document.getElementById("topImageGroup");
+		const topImageSelect = document.getElementById("topImageSelect");
+		const topImagePreview = document.getElementById("topImagePreview");
 
-    imageArray.forEach((imageUrl, index) => {
-      const option = document.createElement('option');
-      option.value = imageUrl;
-      option.textContent = `图片 ${index + 1}`;
-      if (imageUrl === defaultImage) {
-        option.selected = true;
-      }
-      topImageSelect.appendChild(option);
-    });
+		if (!topImageGroup || !topImageSelect || !topImagePreview) return;
 
-    if (imageArray.length > 0) {
-      topImageGroup.style.display = 'block';
-      this.updateTopImagePreview(defaultImage || imageArray[0]);
-    }
+		const uniqueImages = new Set();
 
-    topImageSelect.addEventListener('change', (e) => {
-      this.updateTopImagePreview(e.target.value);
-    });
-  }
+		if (defaultImage) {
+			uniqueImages.add(defaultImage);
+		}
 
-  updateTopImagePreview(imageUrl) {
-    const topImagePreview = document.getElementById('topImagePreview');
-    if (!topImagePreview) return;
+		const imgRegex = /!\[.*?\]\((.*?)\)/g;
+		let match;
+		while ((match = imgRegex.exec(mdContent)) !== null) {
+			if (match[1]) {
+				uniqueImages.add(match[1]);
+			}
+		}
 
-    if (imageUrl) {
-      topImagePreview.innerHTML = `<img src="${imageUrl}" alt="头图预览" />`;
-      topImagePreview.classList.remove('empty');
-      topImagePreview.onclick = () => this.openImageModal(imageUrl);
-    } else {
-      topImagePreview.innerHTML = '未选择图片';
-      topImagePreview.classList.add('empty');
-      topImagePreview.onclick = null;
-    }
-  }
+		const imageArray = Array.from(uniqueImages);
 
-  openImageModal(imageUrl) {
-    const modal = document.getElementById('imageModal');
-    const modalImage = document.getElementById('modalImage');
-    const closeBtn = document.getElementById('closeModalBtn');
-    const backdrop = modal?.querySelector('.image-modal-backdrop');
+		imageArray.forEach((imageUrl, index) => {
+			const option = document.createElement("option");
+			option.value = imageUrl;
+			option.textContent = `图片 ${index + 1}`;
+			if (imageUrl === defaultImage) {
+				option.selected = true;
+			}
+			topImageSelect.appendChild(option);
+		});
 
-    if (!modal || !modalImage) return;
+		if (imageArray.length > 0) {
+			topImageGroup.style.display = "block";
+			this.updateTopImagePreview(defaultImage || imageArray[0]);
+		}
 
-    modalImage.src = imageUrl;
-    modal.classList.remove('hidden');
+		topImageSelect.addEventListener("change", (e) => {
+			this.updateTopImagePreview(e.target.value);
+		});
+	}
 
-    const closeModal = () => {
-      modal.classList.add('hidden');
-      modalImage.src = '';
-    };
+	updateTopImagePreview(imageUrl) {
+		const topImagePreview = document.getElementById("topImagePreview");
+		if (!topImagePreview) return;
 
-    closeBtn?.addEventListener('click', closeModal, { once: true });
-    backdrop?.addEventListener('click', closeModal, { once: true });
+		if (imageUrl) {
+			topImagePreview.innerHTML = `<img src="${imageUrl}" alt="头图预览" />`;
+			topImagePreview.classList.remove("empty");
+			topImagePreview.onclick = () => this.openImageModal(imageUrl);
+		} else {
+			topImagePreview.innerHTML = "未选择图片";
+			topImagePreview.classList.add("empty");
+			topImagePreview.onclick = null;
+		}
+	}
 
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') closeModal();
-    }, { once: true });
-  }
+	openImageModal(imageUrl) {
+		const modal = document.getElementById("imageModal");
+		const modalImage = document.getElementById("modalImage");
+		const closeBtn = document.getElementById("closeModalBtn");
+		const backdrop = modal?.querySelector(".image-modal-backdrop");
 
-  async setupEventListeners() {
-    document.getElementById('submitBtn')?.addEventListener('click', () => this.submitArticle());
+		if (!modal || !modalImage) return;
 
-    document.getElementById('cancelBtn')?.addEventListener('click', () => {
-      window.close();
-    });
-  }
+		modalImage.src = imageUrl;
+		modal.classList.remove("hidden");
 
-  setupPreviewToggles() {
-    const contentMd = document.getElementById('contentMd');
-    const mdPreview = document.getElementById('mdPreview');
+		const closeModal = () => {
+			modal.classList.add("hidden");
+			modalImage.src = "";
+		};
 
-    if (contentMd && mdPreview) {
-      contentMd.addEventListener('input', () => {
-        this.updateMdPreview();
-      });
+		closeBtn?.addEventListener("click", closeModal, { once: true });
+		backdrop?.addEventListener("click", closeModal, { once: true });
 
-      contentMd.addEventListener('scroll', () => {
-        this.syncScroll(contentMd, mdPreview);
-      });
-    }
-  }
+		document.addEventListener(
+			"keydown",
+			(e) => {
+				if (e.key === "Escape") closeModal();
+			},
+			{ once: true },
+		);
+	}
 
-  syncScroll(source, target) {
-    const scrollPercentage = source.scrollTop / (source.scrollHeight - source.clientHeight);
-    const targetScrollTop = scrollPercentage * (target.scrollHeight - target.clientHeight);
-    target.scrollTop = targetScrollTop;
-  }
+	async setupEventListeners() {
+		document
+			.getElementById("submitBtn")
+			?.addEventListener("click", () => this.submitArticle());
 
-  updateMdPreview() {
-    const contentMd = document.getElementById('contentMd');
-    const mdPreview = document.getElementById('mdPreview');
+		document.getElementById("cancelBtn")?.addEventListener("click", () => {
+			window.close();
+		});
+	}
 
-    if (!contentMd || !mdPreview) return;
+	setupPreviewToggles() {
+		const contentMd = document.getElementById("contentMd");
+		const mdPreview = document.getElementById("mdPreview");
 
-    try {
-      const mdContent = contentMd.value || '';
-      if (mdContent.trim()) {
-        mdPreview.innerHTML = marked.parse(mdContent);
-      } else {
-        mdPreview.innerHTML = '<p style="color: #9ca3af;">预览区域</p>';
-      }
-    } catch (error) {
-      console.error('Failed to parse Markdown:', error);
-      logError('editor', error, { action: 'updateMdPreview' });
-      mdPreview.innerHTML = '<p>Markdown 解析失败</p>';
-    }
-  }
+		if (contentMd && mdPreview) {
+			contentMd.addEventListener("input", () => {
+				this.updateMdPreview();
+			});
 
-  async submitArticle() {
-    if (!this.#articleData) {
-      this.updateStatus('error', '没有文章数据');
-      return;
-    }
+			contentMd.addEventListener("scroll", () => {
+				this.syncScroll(contentMd, mdPreview);
+			});
+		}
+	}
 
-    const titleInput = document.getElementById('titleInput');
-    const authorInput = document.getElementById('authorInput');
-    const categorySelect = document.getElementById('categorySelect');
-    const contentMd = document.getElementById('contentMd');
-    const publishedAtInput = document.getElementById('publishedAtInput');
-    const topImageSelect = document.getElementById('topImageSelect');
+	syncScroll(source, target) {
+		const scrollPercentage =
+			source.scrollTop / (source.scrollHeight - source.clientHeight);
+		const targetScrollTop =
+			scrollPercentage * (target.scrollHeight - target.clientHeight);
+		target.scrollTop = targetScrollTop;
+	}
 
-    const title = titleInput?.value?.trim();
-    const author = authorInput?.value?.trim();
-    const categoryId = categorySelect?.value;
-    const mdContent = contentMd?.value;
-    const publishedAt = publishedAtInput?.value || '';
-    const topImage = topImageSelect?.value || null;
+	updateMdPreview() {
+		const contentMd = document.getElementById("contentMd");
+		const mdPreview = document.getElementById("mdPreview");
 
-    if (!title) {
-      this.updateStatus('error', '请输入标题');
-      return;
-    }
+		if (!contentMd || !mdPreview) return;
 
-    if (!categoryId) {
-      this.updateStatus('error', '请选择分类');
-      return;
-    }
+		try {
+			const mdContent = contentMd.value || "";
+			if (mdContent.trim()) {
+				mdPreview.innerHTML = marked.parse(mdContent);
+			} else {
+				mdPreview.innerHTML = '<p style="color: #9ca3af;">预览区域</p>';
+			}
+		} catch (error) {
+			console.error("Failed to parse Markdown:", error);
+			logError("editor", error, { action: "updateMdPreview" });
+			mdPreview.innerHTML = "<p>Markdown 解析失败</p>";
+		}
+	}
 
-    if (!mdContent) {
-      this.updateStatus('error', '请输入文章内容');
-      return;
-    }
+	async submitArticle() {
+		if (!this.#articleData) {
+			this.updateStatus("error", "没有文章数据");
+			return;
+		}
 
-    this.updateStatus('loading', '正在提交文章...');
+		const titleInput = document.getElementById("titleInput");
+		const authorInput = document.getElementById("authorInput");
+		const categorySelect = document.getElementById("categorySelect");
+		const contentMd = document.getElementById("contentMd");
+		const publishedAtInput = document.getElementById("publishedAtInput");
+		const topImageSelect = document.getElementById("topImageSelect");
 
-    try {
-      const articleData = {
-        title,
-        author,
-        content_md: mdContent || '',
-        source_url: this.#articleData.source_url,
-        top_image: topImage,
-        published_at: publishedAt,
-        source_domain: this.#articleData.source_domain,
-        category_id: categoryId,
-      };
+		const title = titleInput?.value?.trim();
+		const author = authorInput?.value?.trim();
+		const categoryId = categorySelect?.value;
+		const mdContent = contentMd?.value;
+		const publishedAt = publishedAtInput?.value || "";
+		const topImage = topImageSelect?.value || null;
 
-      const result = await this.#apiClient.createArticle(articleData);
+		if (!title) {
+			this.updateStatus("error", "请输入标题");
+			return;
+		}
 
-      const category = this.#categories.find(c => c.id === categoryId);
-      await addToHistory({
-        articleId: result.id,
-        title: title,
-        url: this.#articleData.source_url,
-        domain: this.#articleData.source_domain,
-        categoryName: category?.name,
-        topImage: topImage,
-      });
+		if (!categoryId) {
+			this.updateStatus("error", "请选择分类");
+			return;
+		}
 
-      this.updateStatus('success', `提交成功！文章ID: ${result.id}`);
+		if (!mdContent) {
+			this.updateStatus("error", "请输入文章内容");
+			return;
+		}
 
-      setTimeout(() => {
-        chrome.tabs.create({
-          url: `${this.#apiClient.frontendUrl}/article/${result.id}`,
-        });
-        window.close();
-      }, 1000);
-    } catch (error) {
-      console.error('Failed to submit article:', error);
-      logError('editor', error, { action: 'submitArticle', title: this.#articleData?.title });
-      if (error.message === 'UNAUTHORIZED') {
-        await ApiClient.removeToken();
-        this.updateStatus('error', '登录已过期，请重新登录');
-        return;
-      }
-      const errorMessage = error.message || '提交失败，请重试';
-      this.updateStatus('error', errorMessage);
-    }
-  }
+		this.updateStatus("loading", "正在提交文章...");
 
-  updateStatus(type, message) {
-    const statusEl = document.getElementById('status');
-    if (statusEl) {
-      statusEl.className = `status ${type}`;
-      statusEl.textContent = message;
-    }
-  }
+		try {
+			const articleData = {
+				title,
+				author,
+				content_md: mdContent || "",
+				source_url: this.#articleData.source_url,
+				top_image: topImage,
+				published_at: publishedAt,
+				source_domain: this.#articleData.source_domain,
+				category_id: categoryId,
+			};
+
+			const result = await this.#apiClient.createArticle(articleData);
+
+			const category = this.#categories.find((c) => c.id === categoryId);
+			await addToHistory({
+				articleId: result.id,
+				slug: result.slug,
+				title: title,
+				url: this.#articleData.source_url,
+				domain: this.#articleData.source_domain,
+				categoryName: category?.name,
+				topImage: topImage,
+			});
+
+			const articleSlug = result.slug || result.id;
+			this.updateStatus("success", `提交成功！文章ID: ${result.id}`);
+
+			setTimeout(() => {
+				chrome.tabs.create({
+					url: `${this.#apiClient.frontendUrl}/article/${articleSlug}`,
+				});
+				window.close();
+			}, 1000);
+		} catch (error) {
+			console.error("Failed to submit article:", error);
+			logError("editor", error, {
+				action: "submitArticle",
+				title: this.#articleData?.title,
+			});
+			if (error.message === "UNAUTHORIZED") {
+				await ApiClient.removeToken();
+				this.updateStatus("error", "登录已过期，请重新登录");
+				return;
+			}
+			const errorMessage = error.message || "提交失败，请重试";
+			this.updateStatus("error", errorMessage);
+		}
+	}
+
+	updateStatus(type, message) {
+		const statusEl = document.getElementById("status");
+		if (statusEl) {
+			statusEl.className = `status ${type}`;
+			statusEl.textContent = message;
+		}
+	}
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-  const controller = new EditorController();
-  controller.init();
+document.addEventListener("DOMContentLoaded", () => {
+	const controller = new EditorController();
+	controller.init();
 });
 
 export default EditorController;

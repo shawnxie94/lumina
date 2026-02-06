@@ -83,7 +83,7 @@ export function ContinueReadingBanner() {
                 }`}
               >
                 <Link
-                  href={`/article/${article.id}`}
+                  href={`/article/${article.slug}`}
                   className={`text-sm transition flex-1 truncate ${
                     isCurrentArticle
                       ? 'text-primary-ink'

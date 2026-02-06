@@ -487,6 +487,7 @@ function renderMarkdown(content: string) {
 
 interface ArticleNeighbor {
   id: string;
+  slug: string;
   title: string;
 }
 
@@ -767,10 +768,10 @@ export default function ArticleDetailPage() {
   }, [article?.id]);
 
   useEffect(() => {
-    if (article?.id && article?.title) {
-      addArticle({ id: article.id, title: article.title });
+    if (article?.id && article?.title && article?.slug) {
+      addArticle({ id: article.id, slug: article.slug, title: article.title });
     }
-  }, [article?.id, article?.title, addArticle]);
+  }, [article?.id, article?.slug, article?.title, addArticle]);
 
   useEffect(() => {
     if (!contentRef.current) return;
@@ -1635,7 +1636,7 @@ export default function ArticleDetailPage() {
 
               <div className="flex items-center justify-between mt-6 text-sm">
                 <button
-                  onClick={() => prevArticle && router.push(`/article/${prevArticle.id}`)}
+                  onClick={() => prevArticle && router.push(`/article/${prevArticle.slug}`)}
                   disabled={!prevArticle}
                   className={`px-3 py-2 rounded-lg transition text-left ${
                     prevArticle
@@ -1652,7 +1653,7 @@ export default function ArticleDetailPage() {
                   )}
                 </button>
                 <button
-                  onClick={() => nextArticle && router.push(`/article/${nextArticle.id}`)}
+                  onClick={() => nextArticle && router.push(`/article/${nextArticle.slug}`)}
                   disabled={!nextArticle}
                   className={`px-3 py-2 rounded-lg transition text-right ${
                     nextArticle

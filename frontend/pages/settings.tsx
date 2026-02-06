@@ -131,6 +131,7 @@ interface AITaskItem {
 	id: string;
 	article_id: string | null;
 	article_title?: string | null;
+	article_slug?: string | null;
 	task_type: string;
 	content_type: string | null;
 	status: string;
@@ -1938,16 +1939,16 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 																	{log.model_api_config_name || "-"}
 																</td>
 																<td className="px-3 py-2 text-text-2">
-																	{log.article_id ? (
-																		<Link
-																			href={`/article/${log.article_id}`}
-																			className="text-primary hover:text-primary-ink"
-																		>
-																			查看
-																		</Link>
-																	) : (
-																		"-"
-																	)}
+{log.article_id ? (
+															<Link
+																href={`/article/${log.article_slug || log.article_id}`}
+																className="text-primary hover:text-primary-ink"
+															>
+																查看
+															</Link>
+														) : (
+															"-"
+														)}
 																</td>
 																<td className="px-3 py-2 text-text-2">
 																	{getUsageContentTypeLabel(log.content_type)}
@@ -2879,7 +2880,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 															<td className="px-4 py-3 text-gray-600">
 																{task.article_id ? (
 																	<Link
-																		href={`/article/${task.article_id}`}
+																		href={`/article/${task.article_slug || task.article_id}`}
 																		className="text-blue-600 hover:underline"
 																		title={
 																			task.article_title || task.article_id
@@ -3154,7 +3155,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 															</td>
 												<td className="px-4 py-3">
 													<Link
-														href={`/article/${comment.article_id}#comment-${comment.id}`}
+														href={`/article/${comment.article_slug || comment.article_id}#comment-${comment.id}`}
 														className="inline-flex items-center gap-1 text-xs text-accent hover:underline"
 														target="_blank"
 													>

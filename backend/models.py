@@ -62,6 +62,7 @@ class Article(Base):
 
     id = Column(String, primary_key=True, default=generate_uuid)
     title = Column(String, nullable=False)
+    slug = Column(String, nullable=True, index=True)  # SEO友好的URL slug
     content_html = Column(Text, nullable=True)
     content_md = Column(Text)
     content_trans = Column(Text)
@@ -84,14 +85,18 @@ class Article(Base):
 
     category = relationship("Category", back_populates="articles")
     ai_analysis = relationship("AIAnalysis", back_populates="article", uselist=False)
-    comments = relationship("ArticleComment", back_populates="article", cascade="all, delete-orphan")
+    comments = relationship(
+        "ArticleComment", back_populates="article", cascade="all, delete-orphan"
+    )
 
 
 class ArticleComment(Base):
     __tablename__ = "article_comments"
 
     id = Column(String, primary_key=True, default=generate_uuid)
-    article_id = Column(String, ForeignKey("articles.id", ondelete="CASCADE"), nullable=False)
+    article_id = Column(
+        String, ForeignKey("articles.id", ondelete="CASCADE"), nullable=False
+    )
     user_id = Column(String, nullable=False)
     user_name = Column(String, nullable=False)
     user_avatar = Column(String, nullable=True)
@@ -316,6 +321,7 @@ def init_db():
                 [
                     ("note_content", "TEXT"),
                     ("note_annotations", "TEXT"),
+                    ("slug", "TEXT"),
                 ],
             )
 
@@ -572,7 +578,7 @@ def init_db():
                         "type": "key_points",
                         "name": "默认-总结",
                         "system_prompt": "你是一名资深内容分析师，擅长从复杂信息中剥离噪音，提取核心价值并进行专业重构。输出必须为中文、客观、无主观评价；禁止任何开场白/结束语或解释性文字；严禁使用任何列表符号；段落数量严格控制在2-3段。",
-                        "prompt": "请阅读提供的文本内容，生成一份干练、客观的中文总结。\n\n要求：\n1) 彻底去噪：剔除营销推广、招聘信息、课程宣传、免责声明、社交媒体引导语等无关内容。\n2) 聚焦核心：只保留核心观点、关键事实与重要结论。\n3) 逻辑重构：不要摘抄原句，重组语言，信息密度高、行文连贯。\n4) 段落衔接：段落内自然衔接（可用\"此外/另一方面/综上所述\"等连接词）。\n5) 格式强化：善用 Markdown 格式突出关键信息，具体规则如下：\n - **加粗**：用于核心概念、关键术语、重要人名/机构名、关键数据（如\"**GDP 增长 5.2%**\"、\"**OpenAI**\"）。\n- *斜体*：用于需要特别区分或存在争议/不确定性的表述（如\"*据未经证实的消息*\"、\"*该观点尚存分歧*\"），也可用于对比场景中标注对立面。\n - **加粗 + 斜体结合**（***文字***）：仅用于全文最核心的结论或转折性判断，不超过 1–2 处。\n\n字数：300–500 字。\n\n待总结内容：\n{content}",
+                        "prompt": '请阅读提供的文本内容，生成一份干练、客观的中文总结。\n\n要求：\n1) 彻底去噪：剔除营销推广、招聘信息、课程宣传、免责声明、社交媒体引导语等无关内容。\n2) 聚焦核心：只保留核心观点、关键事实与重要结论。\n3) 逻辑重构：不要摘抄原句，重组语言，信息密度高、行文连贯。\n4) 段落衔接：段落内自然衔接（可用"此外/另一方面/综上所述"等连接词）。\n5) 格式强化：善用 Markdown 格式突出关键信息，具体规则如下：\n - **加粗**：用于核心概念、关键术语、重要人名/机构名、关键数据（如"**GDP 增长 5.2%**"、"**OpenAI**"）。\n- *斜体*：用于需要特别区分或存在争议/不确定性的表述（如"*据未经证实的消息*"、"*该观点尚存分歧*"），也可用于对比场景中标注对立面。\n - **加粗 + 斜体结合**（***文字***）：仅用于全文最核心的结论或转折性判断，不超过 1–2 处。\n\n字数：300–500 字。\n\n待总结内容：\n{content}',
                         "response_format": "text",
                         "temperature": 0.4,
                         "max_tokens": 1000,

@@ -3,3 +3,4 @@ article_service
 auth
 main
 models
+slug_utils

@@ -14,6 +14,7 @@ from models import (
 )
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
+from slug_utils import generate_article_slug
 
 
 def build_parameters(model) -> dict:
@@ -209,6 +210,10 @@ class ArticleService:
         )
         return prev_article, next_article
 
+    def get_article_by_slug(self, db: Session, slug: str) -> Article | None:
+        """通过slug查询文章"""
+        return db.query(Article).filter(Article.slug == slug).first()
+
     async def create_article(self, article_data: dict, db: Session) -> str:
         category = (
             db.query(Category)
@@ -216,6 +221,7 @@ class ArticleService:
             .first()
         )
 
+        # 先创建文章对象以获取ID
         article = Article(
             title=article_data.get("title"),
             content_html=article_data.get("content_html"),
@@ -233,6 +239,11 @@ class ArticleService:
             db.add(article)
             db.commit()
             db.refresh(article)
+
+            # 生成并保存slug
+            article.slug = generate_article_slug(article.title, article.id)
+            db.commit()
+
         except IntegrityError as e:
             db.rollback()
             error_str = str(e).lower()
@@ -566,9 +577,6 @@ class ArticleService:
 
         articles = query.all()
         return articles, total
-
-    def get_article(self, db: Session, article_id: str):
-        return db.query(Article).filter(Article.id == article_id).first()
 
     def export_articles(self, db: Session, article_ids: list):
         articles = db.query(Article).filter(Article.id.in_(article_ids)).all()
