@@ -901,9 +901,12 @@ export default function ArticleDetailPage() {
     const mark = target.closest('mark[data-annotation-id]') as HTMLElement | null;
     if (mark) {
       const annotationId = mark.getAttribute('data-annotation-id') || '';
+      const annotation = annotations.find((item) => item.id === annotationId);
+      if (!isAdmin && !annotation?.comment) {
+        return;
+      }
       setActiveAnnotationId(annotationId);
       if (contentRef.current) {
-        const annotation = annotations.find((item) => item.id === annotationId);
         if (annotation) {
           setActiveAnnotationText(
             getRangeSnippet(contentRef.current, annotation.start, annotation.end),
@@ -924,6 +927,8 @@ export default function ArticleDetailPage() {
     if (!mark) return;
     const annotationId = mark.getAttribute('data-annotation-id') || '';
     if (!annotationId) return;
+    const annotation = annotations.find((item) => item.id === annotationId);
+    if (!annotation?.comment) return;
     const rect = mark.getBoundingClientRect();
     setHoverAnnotationId(annotationId);
     setHoverTooltipPos({
@@ -1211,10 +1216,6 @@ export default function ArticleDetailPage() {
 
   const handleConfirmAnnotation = async () => {
     if (!pendingAnnotationRange) return;
-    if (!pendingAnnotationComment.trim()) {
-      showToast('请输入划线批注内容', 'info');
-      return;
-    }
     const existingId = activeAnnotationId;
     const next = existingId
       ? annotations.map((item) =>
