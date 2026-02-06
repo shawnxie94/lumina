@@ -84,6 +84,23 @@ class Article(Base):
 
     category = relationship("Category", back_populates="articles")
     ai_analysis = relationship("AIAnalysis", back_populates="article", uselist=False)
+    comments = relationship("ArticleComment", back_populates="article", cascade="all, delete-orphan")
+
+
+class ArticleComment(Base):
+    __tablename__ = "article_comments"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    article_id = Column(String, ForeignKey("articles.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(String, nullable=False)
+    user_name = Column(String, nullable=False)
+    user_avatar = Column(String, nullable=True)
+    provider = Column(String, nullable=True)
+    content = Column(Text, nullable=False)
+    created_at = Column(String, default=now_str)
+    updated_at = Column(String, default=now_str)
+
+    article = relationship("Article", back_populates="comments")
 
 
 class AIAnalysis(Base):
@@ -212,6 +229,12 @@ class AdminSettings(Base):
     id = Column(String, primary_key=True, default=generate_uuid)
     password_hash = Column(String, nullable=False)
     jwt_secret = Column(String, nullable=False)  # 用于签名 JWT token
+    comments_enabled = Column(Boolean, default=True)
+    github_client_id = Column(String, nullable=True)
+    github_client_secret = Column(String, nullable=True)
+    google_client_id = Column(String, nullable=True)
+    google_client_secret = Column(String, nullable=True)
+    nextauth_secret = Column(String, nullable=True)
     created_at = Column(String, default=now_str)
     updated_at = Column(String, default=now_str)
 
@@ -289,6 +312,18 @@ def init_db():
                 [
                     ("note_content", "TEXT"),
                     ("note_annotations", "TEXT"),
+                ],
+            )
+
+            ensure_columns(
+                "admin_settings",
+                [
+                    ("comments_enabled", "INTEGER"),
+                    ("github_client_id", "TEXT"),
+                    ("github_client_secret", "TEXT"),
+                    ("google_client_id", "TEXT"),
+                    ("google_client_secret", "TEXT"),
+                    ("nextauth_secret", "TEXT"),
                 ],
             )
 

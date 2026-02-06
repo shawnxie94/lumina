@@ -46,11 +46,13 @@ import {
 	aiUsageApi,
 	articleApi,
 	categoryApi,
+	commentSettingsApi,
+	type CommentSettings,
 	type ModelAPIConfig,
 	type PromptConfig,
 } from "@/lib/api";
 
-type SettingSection = "ai" | "categories" | "monitoring";
+type SettingSection = "ai" | "categories" | "monitoring" | "comments";
 type AISubSection = "model-api" | "prompt";
 type MonitoringSubSection = "tasks" | "ai-usage";
 type PromptType =
@@ -271,6 +273,21 @@ export default function SettingsPage() {
 	const [showCategoryModal, setShowCategoryModal] = useState(false);
 	const [showPromptPreview, setShowPromptPreview] =
 		useState<PromptConfig | null>(null);
+	const [commentSettings, setCommentSettings] = useState<CommentSettings>({
+		comments_enabled: true,
+		github_client_id: "",
+		github_client_secret: "",
+		google_client_id: "",
+		google_client_secret: "",
+		nextauth_secret: "",
+	});
+	const [commentSettingsLoading, setCommentSettingsLoading] = useState(false);
+	const [commentSettingsSaving, setCommentSettingsSaving] = useState(false);
+	const [commentValidationResult, setCommentValidationResult] = useState<{
+		ok: boolean;
+		messages: string[];
+		callbacks: string[];
+	} | null>(null);
 
 	const [editingModelAPIConfig, setEditingModelAPIConfig] =
 		useState<ModelAPIConfig | null>(null);
@@ -296,7 +313,8 @@ export default function SettingsPage() {
 		if (
 			storedSection === "ai" ||
 			storedSection === "categories" ||
-			storedSection === "monitoring"
+			storedSection === "monitoring" ||
+			storedSection === "comments"
 		) {
 			setActiveSection(storedSection);
 		}
@@ -520,6 +538,96 @@ export default function SettingsPage() {
 		}
 	};
 
+	const fetchCommentSettings = async () => {
+		setCommentSettingsLoading(true);
+		try {
+			const data = await commentSettingsApi.getSettings();
+			setCommentSettings(data);
+		} catch (error) {
+			console.error("Failed to fetch comment settings:", error);
+			showToast("评论配置加载失败", "error");
+		} finally {
+			setCommentSettingsLoading(false);
+		}
+	};
+
+	const handleSaveCommentSettings = async () => {
+		setCommentSettingsSaving(true);
+		try {
+			await commentSettingsApi.updateSettings(commentSettings);
+			showToast("评论配置已保存");
+		} catch (error) {
+			console.error("Failed to save comment settings:", error);
+			showToast("评论配置保存失败", "error");
+		} finally {
+			setCommentSettingsSaving(false);
+		}
+	};
+
+	const handleGenerateNextAuthSecret = () => {
+		if (typeof window === "undefined") return;
+		const bytes = new Uint8Array(32);
+		window.crypto.getRandomValues(bytes);
+		const secret = Array.from(bytes)
+			.map((b) => b.toString(16).padStart(2, "0"))
+			.join("");
+		setCommentSettings((prev) => ({ ...prev, nextauth_secret: secret }));
+	};
+
+	const handleValidateCommentSettings = () => {
+		const messages: string[] = [];
+		const callbacks: string[] = [];
+		const origin =
+			typeof window !== "undefined" ? window.location.origin : "";
+
+		if (!commentSettings.comments_enabled) {
+			messages.push("评论已关闭，当前不会对访客开放。");
+		}
+
+		const hasGithub =
+			Boolean(commentSettings.github_client_id) &&
+			Boolean(commentSettings.github_client_secret);
+		const hasGoogle =
+			Boolean(commentSettings.google_client_id) &&
+			Boolean(commentSettings.google_client_secret);
+
+		if (!commentSettings.nextauth_secret) {
+			messages.push("NextAuth Secret 未配置。");
+		}
+		if (!hasGithub && !hasGoogle) {
+			messages.push("至少需要配置 GitHub 或 Google 的 Client 信息。");
+		}
+		if (commentSettings.github_client_id && !commentSettings.github_client_secret) {
+			messages.push("GitHub Client Secret 未填写。");
+		}
+		if (commentSettings.github_client_secret && !commentSettings.github_client_id) {
+			messages.push("GitHub Client ID 未填写。");
+		}
+		if (commentSettings.google_client_id && !commentSettings.google_client_secret) {
+			messages.push("Google Client Secret 未填写。");
+		}
+		if (commentSettings.google_client_secret && !commentSettings.google_client_id) {
+			messages.push("Google Client ID 未填写。");
+		}
+
+		if (origin) {
+			if (hasGithub) {
+				callbacks.push(`${origin}/api/auth/callback/github`);
+			}
+			if (hasGoogle) {
+				callbacks.push(`${origin}/api/auth/callback/google`);
+			}
+		}
+
+		const ok = messages.length === 0;
+		setCommentValidationResult({
+			ok,
+			messages: ok ? ["配置检查通过"] : messages,
+			callbacks,
+		});
+		showToast(ok ? "OAuth 配置检查通过" : "OAuth 配置存在问题", ok ? "success" : "error");
+	};
+
 	const resetTaskFilters = () => {
 		setTaskStatusFilter("");
 		setTaskTypeFilter("");
@@ -557,6 +665,10 @@ export default function SettingsPage() {
 				fetchUsageSummary();
 				fetchUsageLogs();
 			}
+			return;
+		}
+		if (activeSection === "comments") {
+			fetchCommentSettings();
 		}
 	}, [activeSection, aiSubSection, monitoringSubSection]);
 
@@ -1318,11 +1430,11 @@ const formatPrice = (value: number | null | undefined) => {
 												<span>提示词配置</span>
 											</span>
 										</button>
-										<button
-											onClick={() => {
-												setActiveSection("monitoring");
-												setMonitoringSubSection("tasks");
-											}}
+									<button
+										onClick={() => {
+											setActiveSection("monitoring");
+											setMonitoringSubSection("tasks");
+										}}
 											className={`w-full text-left px-4 py-3 rounded-sm transition ${
 												activeSection === "monitoring"
 													? "bg-muted text-text-1"
@@ -1365,9 +1477,22 @@ const formatPrice = (value: number | null | undefined) => {
 										>
 											<span className="inline-flex items-center gap-2">
 												<IconMoney className="h-4 w-4" />
-												<span>模型记录/计量</span>
-											</span>
-										</button>
+											<span>模型记录/计量</span>
+										</span>
+									</button>
+									<button
+										onClick={() => setActiveSection("comments")}
+										className={`w-full text-left px-4 py-3 rounded-sm transition ${
+											activeSection === "comments"
+												? "bg-muted text-text-1"
+												: "text-text-2 hover:text-text-1 hover:bg-muted"
+										}`}
+									>
+										<span className="inline-flex items-center gap-2">
+											<IconNote className="h-4 w-4" />
+											<span>评论配置</span>
+										</span>
+									</button>
 								</div>
 							</div>
 						</aside>
@@ -2135,6 +2260,202 @@ const formatPrice = (value: number | null | undefined) => {
 												</div>
 											</SortableContext>
 										</DndContext>
+									)}
+								</div>
+							)}
+
+							{activeSection === "comments" && (
+								<div className="bg-surface rounded-sm shadow-sm border border-border p-6">
+									<div className="flex items-center justify-between mb-6">
+										<div>
+											<h2 className="text-lg font-semibold text-text-1">
+												评论配置
+											</h2>
+											<p className="text-sm text-text-3">
+												配置第三方登录并启用文章评论功能
+											</p>
+										</div>
+										<div className="flex items-center gap-2">
+											<button
+												onClick={handleValidateCommentSettings}
+												className="px-4 py-2 text-sm bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
+											>
+												验证配置
+											</button>
+											<button
+												onClick={handleSaveCommentSettings}
+												disabled={commentSettingsSaving}
+												className="px-4 py-2 text-sm bg-primary text-white rounded-sm hover:bg-primary-ink transition disabled:opacity-60"
+											>
+												{commentSettingsSaving ? "保存中..." : "保存配置"}
+											</button>
+										</div>
+									</div>
+
+									{commentSettingsLoading ? (
+										<div className="text-center py-12 text-text-3">
+											加载中...
+										</div>
+									) : (
+										<div className="space-y-6">
+											<div className="flex items-center justify-between border border-border rounded-sm p-4 bg-surface">
+												<div>
+													<div className="text-sm font-medium text-text-1">
+														开启评论
+													</div>
+													<div className="text-xs text-text-3 mt-1">
+														关闭后访客评论入口将隐藏
+													</div>
+												</div>
+												<label className="inline-flex items-center gap-2 text-sm text-text-2 cursor-pointer">
+													<input
+														type="checkbox"
+														checked={commentSettings.comments_enabled}
+														onChange={(e) =>
+															setCommentSettings((prev) => ({
+																...prev,
+																comments_enabled: e.target.checked,
+															}))
+														}
+														className="h-4 w-4"
+													/>
+													<span>
+														{commentSettings.comments_enabled ? "已开启" : "已关闭"}
+													</span>
+												</label>
+											</div>
+
+											<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+												<div>
+													<label className="block text-sm text-text-2 mb-1">
+														GitHub Client ID
+													</label>
+													<input
+														value={commentSettings.github_client_id}
+														onChange={(e) =>
+															setCommentSettings((prev) => ({
+																...prev,
+																github_client_id: e.target.value,
+															}))
+														}
+														placeholder="填写 GitHub OAuth Client ID"
+														className="w-full h-9 px-3 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
+													/>
+												</div>
+												<div>
+													<label className="block text-sm text-text-2 mb-1">
+														GitHub Client Secret
+													</label>
+													<input
+														type="password"
+														value={commentSettings.github_client_secret}
+														onChange={(e) =>
+															setCommentSettings((prev) => ({
+																...prev,
+																github_client_secret: e.target.value,
+															}))
+														}
+														placeholder="填写 GitHub OAuth Client Secret"
+														className="w-full h-9 px-3 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
+													/>
+												</div>
+												<div>
+													<label className="block text-sm text-text-2 mb-1">
+														Google Client ID
+													</label>
+													<input
+														value={commentSettings.google_client_id}
+														onChange={(e) =>
+															setCommentSettings((prev) => ({
+																...prev,
+																google_client_id: e.target.value,
+															}))
+														}
+														placeholder="填写 Google OAuth Client ID"
+														className="w-full h-9 px-3 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
+													/>
+												</div>
+												<div>
+													<label className="block text-sm text-text-2 mb-1">
+														Google Client Secret
+													</label>
+													<input
+														type="password"
+														value={commentSettings.google_client_secret}
+														onChange={(e) =>
+															setCommentSettings((prev) => ({
+																...prev,
+																google_client_secret: e.target.value,
+															}))
+														}
+														placeholder="填写 Google OAuth Client Secret"
+														className="w-full h-9 px-3 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
+													/>
+												</div>
+											</div>
+
+											<div>
+												<label className="block text-sm text-text-2 mb-1">
+													NextAuth Secret
+												</label>
+												<div className="flex gap-2">
+													<input
+														type="password"
+														value={commentSettings.nextauth_secret}
+														onChange={(e) =>
+															setCommentSettings((prev) => ({
+																...prev,
+																nextauth_secret: e.target.value,
+															}))
+														}
+														placeholder="用于签名会话的 Secret"
+														className="flex-1 h-9 px-3 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
+													/>
+													<button
+														type="button"
+														onClick={handleGenerateNextAuthSecret}
+														className="px-3 h-9 text-xs rounded-sm border border-border text-text-2 hover:text-text-1 hover:bg-muted transition"
+													>
+														自动生成
+													</button>
+												</div>
+											</div>
+
+											{commentValidationResult && (
+												<div
+													className={`rounded-sm border p-3 text-xs ${
+														commentValidationResult.ok
+															? "border-green-200 bg-green-50 text-green-700"
+															: "border-red-200 bg-red-50 text-red-700"
+													}`}
+												>
+													<div className="font-medium mb-1">
+														{commentValidationResult.ok ? "校验通过" : "校验提示"}
+													</div>
+													<div className="space-y-1">
+														{commentValidationResult.messages.map((item) => (
+															<div key={item}>{item}</div>
+														))}
+													</div>
+													{commentValidationResult.callbacks.length > 0 && (
+														<div className="mt-2 text-text-2">
+															<div className="font-medium mb-1">回调地址</div>
+															<div className="space-y-1">
+																{commentValidationResult.callbacks.map((item) => (
+																	<div key={item} className="break-all">
+																		{item}
+																	</div>
+																))}
+															</div>
+														</div>
+													)}
+												</div>
+											)}
+
+											<div className="text-xs text-text-3">
+												保存后立即生效，如登录异常请检查 OAuth 回调地址配置。
+											</div>
+										</div>
 									)}
 								</div>
 							)}

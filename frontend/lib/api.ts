@@ -150,6 +150,27 @@ export interface ArticleDetail extends Article {
 	next_article?: { id: string; title: string } | null;
 }
 
+export interface ArticleComment {
+	id: string;
+	article_id: string;
+	user_id: string;
+	user_name: string;
+	user_avatar: string | null;
+	provider: string | null;
+	content: string;
+	created_at: string;
+	updated_at: string;
+}
+
+export interface CommentSettings {
+	comments_enabled: boolean;
+	github_client_id: string;
+	github_client_secret: string;
+	google_client_id: string;
+	google_client_secret: string;
+	nextauth_secret: string;
+}
+
 export interface Category {
 	id: string;
 	name: string;
@@ -603,6 +624,73 @@ export const categoryApi = {
 
 	updateCategoriesSort: async (items: { id: string; sort_order: number }[]) => {
 		const response = await api.put("/api/categories/sort", { items });
+		return response.data;
+	},
+};
+
+export const commentApi = {
+	getArticleComments: async (articleId: string): Promise<ArticleComment[]> => {
+		const response = await fetch(`/api/comments/${articleId}`, {
+			credentials: "same-origin",
+		});
+		if (!response.ok) {
+			throw new Error("获取评论失败");
+		}
+		return response.json();
+	},
+	createArticleComment: async (articleId: string, content: string) => {
+		const response = await fetch(`/api/comments/${articleId}`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ content }),
+			credentials: "same-origin",
+		});
+		const data = await response.json();
+		if (!response.ok) {
+			throw new Error(data?.message || "发布评论失败");
+		}
+		return data as ArticleComment;
+	},
+	updateComment: async (commentId: string, content: string) => {
+		const response = await fetch(`/api/comments/item/${commentId}`, {
+			method: "PUT",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ content }),
+			credentials: "same-origin",
+		});
+		const data = await response.json();
+		if (!response.ok) {
+			throw new Error(data?.message || "更新评论失败");
+		}
+		return data as ArticleComment;
+	},
+	deleteComment: async (commentId: string) => {
+		const response = await fetch(`/api/comments/item/${commentId}`, {
+			method: "DELETE",
+			credentials: "same-origin",
+		});
+		const data = await response.json();
+		if (!response.ok) {
+			throw new Error(data?.message || "删除评论失败");
+		}
+		return data as { success: boolean };
+	},
+};
+
+export const commentSettingsApi = {
+	getSettings: async (): Promise<CommentSettings> => {
+		const response = await api.get("/api/settings/comments");
+		return response.data;
+	},
+	updateSettings: async (payload: Partial<CommentSettings>) => {
+		const response = await api.put("/api/settings/comments", payload);
+		return response.data;
+	},
+	getPublicSettings: async (): Promise<{
+		comments_enabled: boolean;
+		providers: { github: boolean; google: boolean };
+	}> => {
+		const response = await api.get("/api/settings/comments/public");
 		return response.data;
 	},
 };

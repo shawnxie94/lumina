@@ -5,7 +5,7 @@ import { useRouter } from 'next/router';
 import Link from 'next/link';
 import { marked } from 'marked';
 
-import { articleApi, type ArticleDetail, type ModelAPIConfig, type PromptConfig } from '@/lib/api';
+import { articleApi, commentApi, commentSettingsApi, type ArticleComment, type ArticleDetail, type ModelAPIConfig, type PromptConfig } from '@/lib/api';
 import AppFooter from '@/components/AppFooter';
 import AppHeader from '@/components/AppHeader';
 import { useToast } from '@/components/Toast';
@@ -13,6 +13,7 @@ import { BackToTop } from '@/components/BackToTop';
 import { IconBolt, IconBook, IconCopy, IconDoc, IconEdit, IconEye, IconEyeOff, IconList, IconNote, IconRefresh, IconRobot, IconTrash } from '@/components/icons';
 import { useAuth } from '@/contexts/AuthContext';
 import { Select } from 'antd';
+import { signIn, useSession } from 'next-auth/react';
 
 // 轮询间隔（毫秒）
 const POLLING_INTERVAL = 3000;
@@ -461,6 +462,7 @@ export default function ArticleDetailPage() {
   const router = useRouter();
   const { showToast } = useToast();
   const { isAdmin } = useAuth();
+  const { data: session } = useSession();
   const { id } = router.query;
   const [article, setArticle] = useState<ArticleDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -502,6 +504,13 @@ export default function ArticleDetailPage() {
   const [selectionToolbarPos, setSelectionToolbarPos] = useState<{ x: number; y: number } | null>(null);
   const [hoverAnnotationId, setHoverAnnotationId] = useState<string>('');
   const [hoverTooltipPos, setHoverTooltipPos] = useState<{ x: number; y: number } | null>(null);
+  const [comments, setComments] = useState<ArticleComment[]>([]);
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [commentDraft, setCommentDraft] = useState('');
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editingCommentDraft, setEditingCommentDraft] = useState('');
+  const [commentsEnabled, setCommentsEnabled] = useState(true);
+  const [commentProviders, setCommentProviders] = useState({ github: false, google: false });
 
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [tocItems, setTocItems] = useState<TocItem[]>([]);
@@ -554,6 +563,16 @@ export default function ArticleDetailPage() {
       }
     };
   }, [id]);
+
+  useEffect(() => {
+    if (id && commentsEnabled) {
+      fetchComments();
+    }
+  }, [id, commentsEnabled]);
+
+  useEffect(() => {
+    fetchCommentSettings();
+  }, []);
 
 
   useEffect(() => {
@@ -679,6 +698,32 @@ export default function ArticleDetailPage() {
       showToast('加载文章失败', 'error');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchComments = async () => {
+    if (!id) return;
+    setCommentsLoading(true);
+    try {
+      const data = await commentApi.getArticleComments(id as string);
+      setComments(data);
+    } catch (error) {
+      console.error('Failed to fetch comments:', error);
+    } finally {
+      setCommentsLoading(false);
+    }
+  };
+
+  const fetchCommentSettings = async () => {
+    try {
+      const data = await commentSettingsApi.getPublicSettings();
+      setCommentsEnabled(Boolean(data.comments_enabled));
+      setCommentProviders({
+        github: Boolean(data.providers?.github),
+        google: Boolean(data.providers?.google),
+      });
+    } catch (error) {
+      console.error('Failed to fetch comment settings:', error);
     }
   };
 
@@ -1010,7 +1055,7 @@ export default function ArticleDetailPage() {
   const handleConfirmAnnotation = async () => {
     if (!pendingAnnotationRange) return;
     if (!pendingAnnotationComment.trim()) {
-      showToast('请输入评论内容', 'info');
+      showToast('请输入划线批注内容', 'info');
       return;
     }
     const existingId = activeAnnotationId;
@@ -1034,7 +1079,7 @@ export default function ArticleDetailPage() {
     setPendingAnnotationRange(null);
     setActiveAnnotationId('');
     await saveNotes(noteContent, next);
-    showToast(existingId ? '已更新评论' : '已添加评论');
+    showToast(existingId ? '已更新划线批注' : '已添加划线批注');
   };
 
   const handleDeleteAnnotation = async (id: string) => {
@@ -1044,7 +1089,7 @@ export default function ArticleDetailPage() {
       setActiveAnnotationId('');
     }
     await saveNotes(noteContent, next);
-    showToast('已删除评论');
+    showToast('已删除划线批注');
   };
 
   const handleUpdateAnnotation = async () => {
@@ -1056,7 +1101,54 @@ export default function ArticleDetailPage() {
     );
     setAnnotations(next);
     await saveNotes(noteContent, next);
-    showToast('已更新评论');
+    showToast('已更新划线批注');
+  };
+
+  const handleSubmitComment = async () => {
+    if (!commentDraft.trim()) {
+      showToast('请输入评论内容', 'info');
+      return;
+    }
+    try {
+      const data = await commentApi.createArticleComment(id as string, commentDraft.trim());
+      setComments((prev) => [...prev, data]);
+      setCommentDraft('');
+      showToast('评论已发布');
+    } catch (error: any) {
+      showToast(error?.message || '发布评论失败', 'error');
+    }
+  };
+
+  const handleStartEditComment = (comment: ArticleComment) => {
+    setEditingCommentId(comment.id);
+    setEditingCommentDraft(comment.content);
+  };
+
+  const handleSaveEditComment = async () => {
+    if (!editingCommentId) return;
+    if (!editingCommentDraft.trim()) {
+      showToast('请输入评论内容', 'info');
+      return;
+    }
+    try {
+      const data = await commentApi.updateComment(editingCommentId, editingCommentDraft.trim());
+      setComments((prev) => prev.map((item) => (item.id === data.id ? data : item)));
+      setEditingCommentId(null);
+      setEditingCommentDraft('');
+      showToast('评论已更新');
+    } catch (error: any) {
+      showToast(error?.message || '更新评论失败', 'error');
+    }
+  };
+
+  const handleDeleteComment = async (commentId: string) => {
+    try {
+      await commentApi.deleteComment(commentId);
+      setComments((prev) => prev.filter((item) => item.id !== commentId));
+      showToast('评论已删除');
+    } catch (error: any) {
+      showToast(error?.message || '删除评论失败', 'error');
+    }
   };
 
   const openEditModal = (mode: 'original' | 'translation') => {
@@ -1360,6 +1452,150 @@ export default function ArticleDetailPage() {
                   )}
                 </button>
               </div>
+
+              {commentsEnabled && (
+                <section className="mt-10">
+                  <div className="bg-surface border border-border rounded-sm p-5">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-base font-semibold text-text-1">访客评论</h3>
+                      {session ? (
+                        <div className="flex items-center gap-2 text-xs text-text-3">
+                          {session.user.image && (
+                            <img
+                              src={session.user.image}
+                              alt={session.user.name || '访客'}
+                              className="h-6 w-6 rounded-full object-cover"
+                            />
+                          )}
+                          <span>{session.user.name || '访客'}</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          {commentProviders.github && (
+                            <button
+                              onClick={() => signIn('github')}
+                              className="px-3 py-1 text-xs rounded-full border border-border text-text-2 hover:text-text-1 hover:bg-muted transition"
+                            >
+                              GitHub 登录
+                            </button>
+                          )}
+                          {commentProviders.google && (
+                            <button
+                              onClick={() => signIn('google')}
+                              className="px-3 py-1 text-xs rounded-full border border-border text-text-2 hover:text-text-1 hover:bg-muted transition"
+                            >
+                              Google 登录
+                            </button>
+                          )}
+                          {!commentProviders.github && !commentProviders.google && (
+                            <span className="text-xs text-text-3">未配置登录方式</span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {session && (
+                      <div className="mb-5">
+                        <textarea
+                          value={commentDraft}
+                          onChange={(e) => setCommentDraft(e.target.value)}
+                          rows={4}
+                          className="w-full px-3 py-2 border border-border rounded-lg bg-surface text-text-1 focus:outline-none focus:ring-2 focus:ring-primary"
+                          placeholder="写下你的评论，支持 Markdown"
+                        />
+                        <div className="flex justify-end mt-2">
+                          <button
+                            onClick={handleSubmitComment}
+                            className="px-4 py-2 text-sm rounded-lg bg-primary text-white hover:opacity-90 transition"
+                          >
+                            发布评论
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {commentsLoading ? (
+                      <div className="text-sm text-text-3">评论加载中...</div>
+                    ) : comments.length === 0 ? (
+                      <div className="text-sm text-text-3">暂无评论</div>
+                    ) : (
+                      <div className="space-y-4">
+                        {comments.map((comment) => {
+                          const isOwner = session?.user?.id === comment.user_id;
+                          const isEditing = editingCommentId === comment.id;
+                          return (
+                            <div
+                              key={comment.id}
+                              className="border border-border rounded-lg p-4 bg-surface"
+                            >
+                              <div className="flex items-center gap-2 mb-2">
+                                {comment.user_avatar && (
+                                  <img
+                                    src={comment.user_avatar}
+                                    alt={comment.user_name}
+                                    className="h-6 w-6 rounded-full object-cover"
+                                  />
+                                )}
+                                <div className="text-sm text-text-1">{comment.user_name}</div>
+                                <div className="text-xs text-text-3">{new Date(comment.created_at).toLocaleString()}</div>
+                              </div>
+                              {isEditing ? (
+                                <div>
+                                  <textarea
+                                    value={editingCommentDraft}
+                                    onChange={(e) => setEditingCommentDraft(e.target.value)}
+                                    rows={4}
+                                    className="w-full px-3 py-2 border border-border rounded-lg bg-surface text-text-1 focus:outline-none focus:ring-2 focus:ring-primary"
+                                  />
+                                  <div className="flex justify-end gap-2 mt-2">
+                                    <button
+                                      onClick={() => {
+                                        setEditingCommentId(null);
+                                        setEditingCommentDraft('');
+                                      }}
+                                      className="px-3 py-1 text-xs rounded-full border border-border text-text-2 hover:text-text-1 hover:bg-muted transition"
+                                    >
+                                      取消
+                                    </button>
+                                    <button
+                                      onClick={handleSaveEditComment}
+                                      className="px-3 py-1 text-xs rounded-full bg-primary text-white hover:opacity-90 transition"
+                                    >
+                                      保存
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div
+                                  className="prose prose-sm max-w-none text-text-2"
+                                  style={{ wordBreak: 'break-word', overflowWrap: 'anywhere', whiteSpace: 'normal' }}
+                                  dangerouslySetInnerHTML={{ __html: renderMarkdown(comment.content) }}
+                                />
+                              )}
+                              {isOwner && !isEditing && (
+                                <div className="flex justify-end gap-2 mt-3">
+                                  <button
+                                    onClick={() => handleStartEditComment(comment)}
+                                    className="px-3 py-1 text-xs rounded-full border border-border text-text-2 hover:text-text-1 hover:bg-muted transition"
+                                  >
+                                    编辑
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteComment(comment.id)}
+                                    className="px-3 py-1 text-xs rounded-full border border-border text-red-600 hover:bg-red-50 transition"
+                                  >
+                                    删除
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </section>
+              )}
             </div>
 
             {!immersiveMode && (
@@ -1726,7 +1962,7 @@ export default function ArticleDetailPage() {
             onClick={(event) => event.stopPropagation()}
           >
             <div className="flex items-center justify-between p-4 border-b">
-              <h3 className="text-lg font-semibold text-gray-900">评论内容</h3>
+              <h3 className="text-lg font-semibold text-gray-900">划线批注内容</h3>
               <button
                 onClick={() => setShowAnnotationView(false)}
                 className="text-gray-500 hover:text-gray-700 text-2xl"
@@ -1839,7 +2075,7 @@ export default function ArticleDetailPage() {
             onClick={(event) => event.stopPropagation()}
           >
             <div className="flex items-center justify-between p-4 border-b">
-              <h3 className="text-lg font-semibold text-gray-900">添加划线评论</h3>
+              <h3 className="text-lg font-semibold text-gray-900">添加划线批注</h3>
               <button
                 onClick={() => setShowAnnotationModal(false)}
                 className="text-gray-500 hover:text-gray-700 text-2xl"
@@ -1854,14 +2090,14 @@ export default function ArticleDetailPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  评论内容
+                  划线批注内容
                 </label>
                 <textarea
                   value={pendingAnnotationComment}
                   onChange={(e) => setPendingAnnotationComment(e.target.value)}
                   rows={4}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="输入评论内容"
+                  placeholder="输入划线批注内容"
                 />
               </div>
             </div>

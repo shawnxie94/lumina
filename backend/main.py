@@ -3,6 +3,7 @@ import logging
 import os
 import time
 import uuid
+import ipaddress
 
 from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -18,6 +19,8 @@ from models import (
     AIUsageLog,
     ModelAPIConfig,
     PromptConfig,
+    ArticleComment,
+    AdminSettings,
 )
 from article_service import ArticleService
 from sqlalchemy import func
@@ -34,16 +37,65 @@ from auth import (
     update_admin_password,
     verify_password,
     create_token,
+    security,
 )
+from fastapi.security import HTTPAuthorizationCredentials
 
 logger = logging.getLogger("article_api")
 if not logger.handlers:
     logging.basicConfig(level=logging.INFO)
 
+INTERNAL_API_TOKEN = os.getenv("INTERNAL_API_TOKEN", "")
+
 
 def log_event(event: str, request_id: str, **fields) -> None:
     payload = {"event": event, "request_id": request_id, **fields}
     logger.info(json.dumps(payload, ensure_ascii=False))
+
+
+def is_internal_request(request: Request) -> bool:
+    if not INTERNAL_API_TOKEN:
+        return False
+    return request.headers.get("X-Internal-Token") == INTERNAL_API_TOKEN
+
+
+def is_private_request(request: Request) -> bool:
+    if not request.client:
+        return False
+    try:
+        ip = ipaddress.ip_address(request.client.host)
+        return ip.is_private or ip.is_loopback
+    except ValueError:
+        return False
+
+
+def comments_enabled(db: Session) -> bool:
+    admin = get_admin_settings(db)
+    if admin is None:
+        return True
+    return bool(admin.comments_enabled)
+
+
+def ensure_nextauth_secret(db: Session, admin: AdminSettings) -> str:
+    if admin.nextauth_secret:
+        return admin.nextauth_secret
+    admin.nextauth_secret = uuid.uuid4().hex + uuid.uuid4().hex
+    admin.updated_at = now_str()
+    db.commit()
+    db.refresh(admin)
+    return admin.nextauth_secret
+
+
+def get_admin_or_internal(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    db: Session = Depends(get_db),
+) -> bool:
+    if is_internal_request(request):
+        return True
+    if not INTERNAL_API_TOKEN and is_private_request(request):
+        return True
+    return get_current_admin(credentials=credentials, db=db)
 
 
 app = FastAPI(title="文章知识库API", version="1.0.0")
@@ -205,6 +257,27 @@ class PromptConfigBase(BaseModel):
     is_default: bool = False
 
 
+class CommentCreate(BaseModel):
+    content: str
+    user_id: str
+    user_name: str
+    user_avatar: Optional[str] = None
+    provider: Optional[str] = None
+
+
+class CommentUpdate(BaseModel):
+    content: str
+
+
+class CommentSettingsUpdate(BaseModel):
+    comments_enabled: Optional[bool] = None
+    github_client_id: Optional[str] = None
+    github_client_secret: Optional[str] = None
+    google_client_id: Optional[str] = None
+    google_client_secret: Optional[str] = None
+    nextauth_secret: Optional[str] = None
+
+
 @app.on_event("startup")
 async def startup_event():
     init_db()
@@ -251,6 +324,69 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
 
     token = create_token(admin.jwt_secret)
     return LoginResponse(token=token, message="登录成功")
+
+
+# ============ 评论配置 ============
+
+
+@app.get("/api/settings/comments")
+async def get_comment_settings(
+    _: bool = Depends(get_admin_or_internal),
+    db: Session = Depends(get_db),
+):
+    admin = get_admin_settings(db)
+    if admin is None:
+        raise HTTPException(status_code=404, detail="未初始化管理员设置")
+    secret = ensure_nextauth_secret(db, admin)
+    return {
+        "comments_enabled": bool(admin.comments_enabled),
+        "github_client_id": admin.github_client_id or "",
+        "github_client_secret": admin.github_client_secret or "",
+        "google_client_id": admin.google_client_id or "",
+        "google_client_secret": admin.google_client_secret or "",
+        "nextauth_secret": secret or "",
+    }
+
+
+@app.put("/api/settings/comments")
+async def update_comment_settings(
+    payload: CommentSettingsUpdate,
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
+    admin = get_admin_settings(db)
+    if admin is None:
+        raise HTTPException(status_code=404, detail="未初始化管理员设置")
+    if payload.comments_enabled is not None:
+        admin.comments_enabled = bool(payload.comments_enabled)
+    if payload.github_client_id is not None:
+        admin.github_client_id = payload.github_client_id or ""
+    if payload.github_client_secret is not None:
+        admin.github_client_secret = payload.github_client_secret or ""
+    if payload.google_client_id is not None:
+        admin.google_client_id = payload.google_client_id or ""
+    if payload.google_client_secret is not None:
+        admin.google_client_secret = payload.google_client_secret or ""
+    if payload.nextauth_secret is not None:
+        admin.nextauth_secret = payload.nextauth_secret or ""
+    if not admin.nextauth_secret:
+        admin.nextauth_secret = uuid.uuid4().hex + uuid.uuid4().hex
+    admin.updated_at = now_str()
+    db.commit()
+    db.refresh(admin)
+    return {"success": True}
+
+
+@app.get("/api/settings/comments/public")
+async def get_comment_settings_public(db: Session = Depends(get_db)):
+    admin = get_admin_settings(db)
+    return {
+        "comments_enabled": bool(admin.comments_enabled) if admin else True,
+        "providers": {
+            "github": bool(admin.github_client_id) if admin else False,
+            "google": bool(admin.google_client_id) if admin else False,
+        },
+    }
 
 
 @app.get("/api/auth/verify")
@@ -439,6 +575,140 @@ async def get_article(
         if next_article
         else None,
     }
+
+
+@app.get("/api/articles/{article_id}/comments")
+async def get_article_comments(article_id: str, db: Session = Depends(get_db)):
+    if not comments_enabled(db):
+        raise HTTPException(status_code=403, detail="评论已关闭")
+    article = db.query(Article).filter(Article.id == article_id).first()
+    if not article:
+        raise HTTPException(status_code=404, detail="文章不存在")
+    comments = (
+        db.query(ArticleComment)
+        .filter(ArticleComment.article_id == article_id)
+        .order_by(ArticleComment.created_at.asc())
+        .all()
+    )
+    return [
+        {
+            "id": c.id,
+            "article_id": c.article_id,
+            "user_id": c.user_id,
+            "user_name": c.user_name,
+            "user_avatar": c.user_avatar,
+            "provider": c.provider,
+            "content": c.content,
+            "created_at": c.created_at,
+            "updated_at": c.updated_at,
+        }
+        for c in comments
+    ]
+
+
+@app.post("/api/articles/{article_id}/comments")
+async def create_article_comment(
+    article_id: str,
+    payload: CommentCreate,
+    db: Session = Depends(get_db),
+):
+    if not comments_enabled(db):
+        raise HTTPException(status_code=403, detail="评论已关闭")
+    article = db.query(Article).filter(Article.id == article_id).first()
+    if not article:
+        raise HTTPException(status_code=404, detail="文章不存在")
+    content = payload.content.strip()
+    if not content:
+        raise HTTPException(status_code=400, detail="评论内容不能为空")
+    if len(content) > 1000:
+        raise HTTPException(status_code=400, detail="评论内容过长")
+    comment = ArticleComment(
+        article_id=article_id,
+        user_id=payload.user_id,
+        user_name=payload.user_name,
+        user_avatar=payload.user_avatar,
+        provider=payload.provider,
+        content=content,
+        created_at=now_str(),
+        updated_at=now_str(),
+    )
+    db.add(comment)
+    db.commit()
+    db.refresh(comment)
+    return {
+        "id": comment.id,
+        "article_id": comment.article_id,
+        "user_id": comment.user_id,
+        "user_name": comment.user_name,
+        "user_avatar": comment.user_avatar,
+        "provider": comment.provider,
+        "content": comment.content,
+        "created_at": comment.created_at,
+        "updated_at": comment.updated_at,
+    }
+
+
+@app.get("/api/comments/{comment_id}")
+async def get_comment(comment_id: str, db: Session = Depends(get_db)):
+    if not comments_enabled(db):
+        raise HTTPException(status_code=403, detail="评论已关闭")
+    comment = db.query(ArticleComment).filter(ArticleComment.id == comment_id).first()
+    if not comment:
+        raise HTTPException(status_code=404, detail="评论不存在")
+    return {
+        "id": comment.id,
+        "article_id": comment.article_id,
+        "user_id": comment.user_id,
+        "user_name": comment.user_name,
+        "user_avatar": comment.user_avatar,
+        "provider": comment.provider,
+        "content": comment.content,
+        "created_at": comment.created_at,
+        "updated_at": comment.updated_at,
+    }
+
+
+@app.put("/api/comments/{comment_id}")
+async def update_comment(
+    comment_id: str, payload: CommentUpdate, db: Session = Depends(get_db)
+):
+    if not comments_enabled(db):
+        raise HTTPException(status_code=403, detail="评论已关闭")
+    comment = db.query(ArticleComment).filter(ArticleComment.id == comment_id).first()
+    if not comment:
+        raise HTTPException(status_code=404, detail="评论不存在")
+    content = payload.content.strip()
+    if not content:
+        raise HTTPException(status_code=400, detail="评论内容不能为空")
+    if len(content) > 1000:
+        raise HTTPException(status_code=400, detail="评论内容过长")
+    comment.content = content
+    comment.updated_at = now_str()
+    db.commit()
+    db.refresh(comment)
+    return {
+        "id": comment.id,
+        "article_id": comment.article_id,
+        "user_id": comment.user_id,
+        "user_name": comment.user_name,
+        "user_avatar": comment.user_avatar,
+        "provider": comment.provider,
+        "content": comment.content,
+        "created_at": comment.created_at,
+        "updated_at": comment.updated_at,
+    }
+
+
+@app.delete("/api/comments/{comment_id}")
+async def delete_comment(comment_id: str, db: Session = Depends(get_db)):
+    if not comments_enabled(db):
+        raise HTTPException(status_code=403, detail="评论已关闭")
+    comment = db.query(ArticleComment).filter(ArticleComment.id == comment_id).first()
+    if not comment:
+        raise HTTPException(status_code=404, detail="评论不存在")
+    db.delete(comment)
+    db.commit()
+    return {"success": True}
 
 
 @app.put("/api/articles/{article_id}/notes")

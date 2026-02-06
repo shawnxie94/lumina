@@ -132,6 +132,8 @@ def create_admin_settings(db: Session, password: str) -> AdminSettings:
     admin = AdminSettings(
         password_hash=hash_password(password),
         jwt_secret=generate_jwt_secret(),
+        comments_enabled=True,
+        nextauth_secret=secrets.token_hex(32),
     )
     db.add(admin)
     db.commit()
