@@ -550,6 +550,8 @@ export default function ArticleDetailPage() {
   const [editingCommentPrefix, setEditingCommentPrefix] = useState('');
   const [commentsEnabled, setCommentsEnabled] = useState(true);
   const [commentProviders, setCommentProviders] = useState({ github: false, google: false });
+  const [showUserMenu, setShowUserMenu] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement | null>(null);
   const commentInputRef = useRef<HTMLTextAreaElement | null>(null);
   const [replyToId, setReplyToId] = useState<string | null>(null);
   const [replyToUser, setReplyToUser] = useState<string>('');
@@ -629,6 +631,21 @@ export default function ArticleDetailPage() {
       setCommentPage(totalCommentPages);
     }
   }, [commentPage, totalCommentPages]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
+        setShowUserMenu(false);
+      }
+    };
+    if (showUserMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showUserMenu]);
+
   useEffect(() => {
     if (id) {
       fetchArticle();
@@ -1659,22 +1676,33 @@ export default function ArticleDetailPage() {
                       {session ? (
                         <div className="flex items-center gap-2 text-xs text-text-3">
                           <span>{session.user.name || '访客'}</span>
-                          <div className="relative group">
+                          <div className="relative" ref={userMenuRef}>
                             {session.user.image && (
-                              <img
-                                src={session.user.image}
-                                alt={session.user.name || '访客'}
-                                className="h-6 w-6 rounded-full object-cover"
-                              />
-                            )}
-                            <div className="absolute right-0 mt-2 min-w-[120px] rounded-sm border border-border bg-surface shadow-sm text-xs text-text-2 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition">
                               <button
-                                onClick={() => signOut()}
-                                className="w-full text-left px-3 py-2 hover:bg-muted hover:text-text-1 transition"
+                                type="button"
+                                onClick={() => setShowUserMenu(!showUserMenu)}
+                                className="focus:outline-none"
                               >
-                                退出登录
+                                <img
+                                  src={session.user.image}
+                                  alt={session.user.name || '访客'}
+                                  className="h-6 w-6 rounded-full object-cover cursor-pointer"
+                                />
                               </button>
-                            </div>
+                            )}
+                            {showUserMenu && (
+                              <div className="absolute right-0 mt-2 min-w-[120px] rounded-sm border border-border bg-surface shadow-sm text-xs text-text-2 z-10">
+                                <button
+                                  onClick={() => {
+                                    signOut();
+                                    setShowUserMenu(false);
+                                  }}
+                                  className="w-full text-left px-3 py-2 hover:bg-muted hover:text-text-1 transition"
+                                >
+                                  退出登录
+                                </button>
+                              </div>
+                            )}
                           </div>
                         </div>
                       ) : (
@@ -1789,10 +1817,10 @@ export default function ArticleDetailPage() {
                                           setEditingCommentDraft('');
                                           setEditingCommentPrefix('');
                                         }}
-                                        variant="ghost"
+                                        variant="danger"
                                         size="sm"
                                         title="取消"
-                                        className="rounded-full border border-border"
+                                        className="rounded-full"
                                       >
                                         ×
                                       </IconButton>
@@ -1813,7 +1841,7 @@ export default function ArticleDetailPage() {
                                         variant="ghost"
                                         size="sm"
                                         title="回复"
-                                        className="rounded-full border border-border"
+                                        className="rounded-full"
                                       >
                                         <IconReply className="h-3.5 w-3.5" />
                                       </IconButton>
@@ -1823,7 +1851,7 @@ export default function ArticleDetailPage() {
                                               variant="ghost"
                                               size="sm"
                                               title={comment.is_hidden ? "显示" : "隐藏"}
-                                              className="rounded-full border border-border"
+                                              className="rounded-full"
                                             >
                                               {comment.is_hidden ? (
                                                 <IconEye className="h-3.5 w-3.5" />
@@ -1839,7 +1867,7 @@ export default function ArticleDetailPage() {
                                                 variant="ghost"
                                                 size="sm"
                                                 title="编辑"
-                                                className="rounded-full border border-border"
+                                                className="rounded-full"
                                               >
                                                 <IconEdit className="h-3.5 w-3.5" />
                                               </IconButton>
@@ -1848,7 +1876,7 @@ export default function ArticleDetailPage() {
                                                 variant="danger"
                                                 size="sm"
                                                 title="删除"
-                                                className="rounded-full border border-border"
+                                                className="rounded-full"
                                               >
                                                 <IconTrash className="h-3.5 w-3.5" />
                                               </IconButton>
@@ -1923,7 +1951,7 @@ export default function ArticleDetailPage() {
                                       variant="ghost"
                                       size="sm"
                                       title="取消"
-                                      className="rounded-full border border-border"
+                                      className="rounded-full"
                                     >
                                       ×
                                     </IconButton>
@@ -1996,7 +2024,7 @@ export default function ArticleDetailPage() {
                                                     variant="ghost"
                                                     size="sm"
                                                     title="取消"
-                                                    className="rounded-full border border-border"
+                                                    className="rounded-full"
                                                   >
                                                     ×
                                                   </IconButton>
@@ -2017,7 +2045,7 @@ export default function ArticleDetailPage() {
                                                     variant="ghost"
                                                     size="sm"
                                                     title="回复"
-                                                    className="rounded-full border border-border"
+                                                    className="rounded-full"
                                                   >
                                                     <IconReply className="h-3.5 w-3.5" />
                                                   </IconButton>
@@ -2027,7 +2055,7 @@ export default function ArticleDetailPage() {
                                                     variant="ghost"
                                                     size="sm"
                                                     title={reply.is_hidden ? "显示" : "隐藏"}
-                                                    className="rounded-full border border-border"
+                                                    className="rounded-full"
                                                   >
                                                     {reply.is_hidden ? (
                                                       <IconEye className="h-3.5 w-3.5" />
@@ -2043,7 +2071,7 @@ export default function ArticleDetailPage() {
                                                       variant="ghost"
                                                       size="sm"
                                                       title="编辑"
-                                                      className="rounded-full border border-border"
+                                                      className="rounded-full"
                                                     >
                                                       <IconEdit className="h-3.5 w-3.5" />
                                                     </IconButton>
@@ -2052,7 +2080,7 @@ export default function ArticleDetailPage() {
                                                       variant="danger"
                                                       size="sm"
                                                       title="删除"
-                                                      className="rounded-full border border-border"
+                                                      className="rounded-full"
                                                     >
                                                       <IconTrash className="h-3.5 w-3.5" />
                                                     </IconButton>
@@ -2127,7 +2155,7 @@ export default function ArticleDetailPage() {
                                                   variant="ghost"
                                                   size="sm"
                                                   title="取消"
-                                                  className="rounded-full border border-border"
+                                                  className="rounded-full"
                                                 >
                                                   ×
                                                 </IconButton>

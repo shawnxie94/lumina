@@ -1,6 +1,6 @@
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 
-type IconButtonVariant = "default" | "primary" | "danger" | "ghost";
+type IconButtonVariant = "default" | "primary" | "secondary" | "danger" | "ghost";
 type IconButtonSize = "sm" | "md";
 
 interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -12,13 +12,15 @@ interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 const variantStyles: Record<IconButtonVariant, string> = {
 	default:
-		"text-text-3 hover:text-text-1 hover:bg-muted focus:ring-2 focus:ring-accent/20",
+		"text-text-3 hover:text-text-1 hover:bg-muted focus:outline-none",
 	primary:
-		"text-text-3 hover:text-primary hover:bg-primary-soft focus:ring-2 focus:ring-primary/20",
+		"text-text-3 hover:text-primary hover:bg-primary-soft focus:outline-none",
+	secondary:
+		"text-text-2 bg-surface border border-border hover:bg-muted hover:text-text-1 focus:outline-none",
 	danger:
-		"text-text-3 hover:text-red-600 hover:bg-red-50 focus:ring-2 focus:ring-red-500/20",
+		"text-text-3 hover:text-red-600 hover:bg-red-50 focus:outline-none",
 	ghost:
-		"text-text-2 hover:text-text-1 hover:bg-muted/50 focus:ring-2 focus:ring-accent/20",
+		"text-text-2 hover:text-text-1 hover:bg-muted/50 focus:outline-none",
 };
 
 const sizeStyles: Record<IconButtonSize, string> = {
@@ -40,7 +42,7 @@ export default function IconButton({
 	...props
 }: IconButtonProps) {
 	const baseStyles =
-		"inline-flex items-center justify-center rounded-sm transition focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed";
+		"inline-flex items-center justify-center rounded-sm transition disabled:opacity-50 disabled:cursor-not-allowed";
 
 	return (
 		<button
