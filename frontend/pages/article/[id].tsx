@@ -649,21 +649,20 @@ export default function ArticleDetailPage() {
   }, []);
 
   useEffect(() => {
-    const handleHashCheck = () => {
+    const handleHashChange = () => {
       if (typeof window === 'undefined') return;
       const hash = window.location.hash || '';
       if (!hash.startsWith('#comment-')) return;
-      const targetId = hash.slice(1);
-      const target = document.getElementById(targetId);
-      if (!target) {
-        showToast('原评论不存在', 'info');
+      const commentId = hash.slice('#comment-'.length);
+      const commentExists = comments.some(c => c.id === commentId);
+      if (commentExists) {
+        setPendingScrollId(commentId);
       }
     };
 
-    handleHashCheck();
-    window.addEventListener('hashchange', handleHashCheck);
-    return () => window.removeEventListener('hashchange', handleHashCheck);
-  }, [showToast]);
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, [comments]);
 
   useEffect(() => {
     if (!replyTargetId) return;
@@ -684,10 +683,10 @@ export default function ArticleDetailPage() {
       const target = document.getElementById(`comment-${pendingScrollId}`);
       if (target) {
         target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        setPendingScrollId(null);
       }
-      setPendingScrollId(null);
     };
-    const timer = window.setTimeout(handleScroll, 0);
+    const timer = window.setTimeout(handleScroll, 100);
     return () => window.clearTimeout(timer);
   }, [pendingScrollId]);
 
@@ -824,6 +823,16 @@ export default function ArticleDetailPage() {
     try {
       const data = await commentApi.getArticleComments(id as string);
       setComments(data);
+      const hash = typeof window !== 'undefined' ? window.location.hash : '';
+      if (hash.startsWith('#comment-')) {
+        const commentId = hash.slice('#comment-'.length);
+        const commentExists = data.some((c: ArticleComment) => c.id === commentId);
+        if (!commentExists) {
+          showToast('原评论不存在', 'info');
+        } else {
+          setPendingScrollId(commentId);
+        }
+      }
     } catch (error) {
       console.error('Failed to fetch comments:', error);
     } finally {

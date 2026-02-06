@@ -25,6 +25,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import AppFooter from "@/components/AppFooter";
 import AppHeader from "@/components/AppHeader";
 import DateRangePicker from "@/components/DateRangePicker";
+import FilterInput from "@/components/FilterInput";
+import FilterSelect from "@/components/FilterSelect";
 import {
 	IconEdit,
 	IconEye,
@@ -47,6 +49,7 @@ import {
 	type AIUsageListResponse,
 	type AIUsageLogItem,
 	type AIUsageSummaryResponse,
+	type ArticleComment,
 	aiUsageApi,
 	articleApi,
 	categoryApi,
@@ -306,7 +309,7 @@ export default function SettingsPage() {
 	const [commentList, setCommentList] = useState<CommentListResponse["items"]>([]);
 	const [commentListLoading, setCommentListLoading] = useState(false);
 	const [commentListPage, setCommentListPage] = useState(1);
-	const [commentListPageSize, setCommentListPageSize] = useState(20);
+	const [commentListPageSize, setCommentListPageSize] = useState(10);
 	const [commentListTotal, setCommentListTotal] = useState(0);
 	const [commentQuery, setCommentQuery] = useState("");
 	const [commentArticleId, setCommentArticleId] = useState("");
@@ -315,6 +318,8 @@ export default function SettingsPage() {
 	const [commentEnd, setCommentEnd] = useState("");
 	const [commentVisibility, setCommentVisibility] = useState("");
 	const [commentReplyFilter, setCommentReplyFilter] = useState("");
+	const [hoverComment, setHoverComment] = useState<ArticleComment | null>(null);
+	const [hoverTooltipPos, setHoverTooltipPos] = useState<{ x: number; y: number } | null>(null);
 	const hasCommentFilters = Boolean(
 		commentQuery ||
 			commentArticleId ||
@@ -3058,107 +3063,80 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 										</div>
 
 										<div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-											<div>
-												<label className="block text-sm text-text-2 mb-1">
-													关键词
-												</label>
-												<input
-													value={commentQuery}
-													onChange={(event) => {
-														setCommentQuery(event.target.value);
-														setCommentListPage(1);
-													}}
-													placeholder="内容/作者"
-													className="w-full h-9 px-3 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
-												/>
-											</div>
-											<div>
-												<label className="block text-sm text-text-2 mb-1">
-													文章ID
-												</label>
-												<input
-													value={commentArticleId}
-													onChange={(event) => {
-														setCommentArticleId(event.target.value);
-														setCommentListPage(1);
-													}}
-													placeholder="输入文章ID"
-													className="w-full h-9 px-3 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
-												/>
-											</div>
-											<div>
-												<label className="block text-sm text-text-2 mb-1">
-													作者
-												</label>
-												<input
-													value={commentAuthor}
-													onChange={(event) => {
-														setCommentAuthor(event.target.value);
-														setCommentListPage(1);
-													}}
-													placeholder="作者昵称"
-													className="w-full h-9 px-3 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
-												/>
-											</div>
-											<div>
-												<label className="block text-sm text-text-2 mb-1">
-													可见性
-												</label>
-												<Select
-													value={commentVisibility}
-													onChange={(value) => {
-														setCommentVisibility(value);
-														setCommentListPage(1);
-													}}
-													className="select-modern-antd w-full"
-													popupClassName="select-modern-dropdown"
-													options={[
-														{ value: "", label: "全部" },
-														{ value: "visible", label: "可见" },
-														{ value: "hidden", label: "已隐藏" },
-													]}
-												/>
-											</div>
-											<div>
-												<label className="block text-sm text-text-2 mb-1">
-													类型
-												</label>
-												<Select
-													value={commentReplyFilter}
-													onChange={(value) => {
-														setCommentReplyFilter(value);
-														setCommentListPage(1);
-													}}
-													className="select-modern-antd w-full"
-													popupClassName="select-modern-dropdown"
-													options={[
-														{ value: "", label: "全部" },
-														{ value: "main", label: "主评论" },
-														{ value: "reply", label: "回复" },
-													]}
-												/>
-											</div>
-											<div>
-												<label className="block text-sm text-text-2 mb-1">
-													开始日期
-												</label>
-												<DateRangePicker
-													value={toDayjsRangeFromDateStrings(
-														commentStart,
-														commentEnd,
-													)}
-													onChange={(values) => {
-														const [start, end] = values || [];
-														setCommentStart(
-															start ? start.format("YYYY-MM-DD") : "",
-														);
-														setCommentEnd(end ? end.format("YYYY-MM-DD") : "");
-														setCommentListPage(1);
-													}}
-													className="w-full"
-												/>
-											</div>
+										<FilterInput
+											label="关键词"
+											value={commentQuery}
+											onChange={(value) => {
+												setCommentQuery(value);
+												setCommentListPage(1);
+											}}
+											placeholder="搜索评论内容"
+										/>
+										<FilterInput
+											label="文章ID"
+											value={commentArticleId}
+											onChange={(value) => {
+												setCommentArticleId(value);
+												setCommentListPage(1);
+											}}
+											placeholder="输入文章ID"
+										/>
+										<FilterInput
+											label="评论人"
+											value={commentAuthor}
+											onChange={(value) => {
+												setCommentAuthor(value);
+												setCommentListPage(1);
+											}}
+											placeholder="评论人昵称"
+										/>
+										<FilterSelect
+											label="可见性"
+											value={commentVisibility}
+											onChange={(value) => {
+												setCommentVisibility(value);
+												setCommentListPage(1);
+											}}
+											options={[
+												{ value: "", label: "全部" },
+												{ value: "visible", label: "可见" },
+												{ value: "hidden", label: "已隐藏" },
+											]}
+										/>
+										<FilterSelect
+											label="类型"
+											value={commentReplyFilter}
+											onChange={(value) => {
+												setCommentReplyFilter(value);
+												setCommentListPage(1);
+											}}
+											options={[
+												{ value: "", label: "全部" },
+												{ value: "main", label: "主评论" },
+												{ value: "reply", label: "回复" },
+											]}
+										/>
+										<div>
+											<label className="block text-sm text-text-2 mb-1.5">
+												日期范围
+											</label>
+											<DateRangePicker
+												value={toDayjsRangeFromDateStrings(
+													commentStart,
+													commentEnd,
+												)}
+												onChange={(values) => {
+													const [start, end] = values || [];
+													setCommentStart(
+														start ? start.format("YYYY-MM-DD") : "",
+													);
+													setCommentEnd(end ? end.format("YYYY-MM-DD") : "");
+													setCommentListPage(1);
+												}}
+												className="w-full"
+											/>
 										</div>
+									</div>
 
 										{commentListLoading ? (
 											<div className="text-center py-12 text-text-3">
@@ -3171,100 +3149,109 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 										) : (
 											<div className="overflow-x-auto">
 												<table className="min-w-full text-sm">
-													<thead className="bg-muted text-text-2">
-														<tr>
-															<th className="text-left px-4 py-3">内容</th>
-															<th className="text-left px-4 py-3">作者</th>
-															<th className="text-left px-4 py-3">文章</th>
-															<th className="text-left px-4 py-3">类型</th>
-															<th className="text-left px-4 py-3">状态</th>
-															<th className="text-left px-4 py-3">时间</th>
-															<th className="text-right px-4 py-3">操作</th>
+										<thead className="bg-muted text-text-2">
+												<tr>
+													<th className="text-left px-4 py-3">时间</th>
+													<th className="text-left px-4 py-3">内容</th>
+													<th className="text-left px-4 py-3">作者</th>
+													<th className="text-left px-4 py-3">文章</th>
+													<th className="text-left px-4 py-3">类型</th>
+													<th className="text-left px-4 py-3">状态</th>
+													<th className="text-right px-4 py-3">操作</th>
+												</tr>
+											</thead>
+										<tbody className="divide-y divide-border">
+											{commentList.map((comment) => {
+												return (
+													<tr key={comment.id} className="hover:bg-muted/40">
+														<td className="px-4 py-3 text-text-2 whitespace-nowrap">
+															{new Date(comment.created_at).toLocaleString("zh-CN")}
+														</td>
+												<td className="px-4 py-3">
+													<span
+														onMouseEnter={(event) => {
+															setHoverComment(comment);
+															const rect = event.currentTarget.getBoundingClientRect();
+															setHoverTooltipPos({
+																x: rect.left,
+																y: rect.bottom + 8,
+															});
+														}}
+														onMouseLeave={() => {
+															setHoverComment(null);
+															setHoverTooltipPos(null);
+														}}
+														className="inline-flex items-center gap-1 text-sm text-accent cursor-pointer"
+													>
+														<IconEye className="h-3 w-3" />
+														查看
+													</span>
+												</td>
+															<td className="px-4 py-3">
+																<div className="text-text-1">
+																	{comment.user_name || "匿名"}
+																</div>
+																<div className="text-xs text-text-3">
+																	{comment.provider || "-"}
+																</div>
+															</td>
+												<td className="px-4 py-3">
+													<Link
+														href={`/article/${comment.article_id}#comment-${comment.id}`}
+														className="inline-flex items-center gap-1 text-xs text-accent hover:underline"
+														target="_blank"
+													>
+														<IconLink className="h-3 w-3" />
+														查看
+													</Link>
+												</td>
+															<td className="px-4 py-3">
+																<span className="text-xs text-text-2 bg-muted px-2 py-1 rounded-sm">
+																	{comment.reply_to_id ? "回复" : "主评论"}
+																</span>
+															</td>
+															<td className="px-4 py-3">
+																<span
+																	className={`text-xs px-2 py-1 rounded-sm ${
+																		comment.is_hidden
+																			? "bg-red-50 text-red-600"
+																			: "bg-green-50 text-green-600"
+																	}`}
+																>
+																	{comment.is_hidden ? "已隐藏" : "可见"}
+																</span>
+															</td>
+															<td className="px-4 py-3 text-right">
+																<div className="flex items-center justify-end gap-2">
+																	<button
+																		onClick={() =>
+																			handleToggleCommentVisibility(
+																				comment.id,
+																				!comment.is_hidden,
+																			)
+																	}
+																		className="px-2 py-1 text-xs text-text-2 hover:text-text-1 hover:bg-muted rounded-sm"
+																		title={
+																			comment.is_hidden ? "设为可见" : "设为隐藏"
+																		}
+																	>
+																		<IconEye className="h-4 w-4" />
+																	</button>
+																	<button
+																		onClick={() =>
+																			handleDeleteCommentAdmin(comment.id)
+																		}
+																		className="px-2 py-1 text-xs text-text-2 hover:text-red-600 hover:bg-red-50 rounded-sm"
+																		title="删除"
+																	>
+																		<IconTrash className="h-4 w-4" />
+																	</button>
+																</div>
+															</td>
 														</tr>
-													</thead>
-													<tbody className="divide-y divide-border">
-														{commentList.map((comment) => {
-															const contentPreview = stripReplyPrefix(
-																comment.content,
-															);
-															return (
-																<tr key={comment.id} className="hover:bg-muted/40">
-																	<td className="px-4 py-3">
-																		<div className="text-text-1 line-clamp-2">
-																			{contentPreview || "-"}
-																		</div>
-																	</td>
-																	<td className="px-4 py-3">
-																		<div className="text-text-1">
-																			{comment.user_name || "匿名"}
-																		</div>
-																		<div className="text-xs text-text-3">
-																			{comment.provider || "-"}
-																		</div>
-																	</td>
-																	<td className="px-4 py-3">
-																		<div className="text-xs text-text-3 break-all">
-																			{comment.article_id}
-																		</div>
-																		<Link
-																			href={`/article/${comment.article_id}#comment-${comment.id}`}
-																			className="inline-flex items-center gap-1 text-xs text-accent hover:underline"
-																			target="_blank"
-																		>
-																			<IconLink className="h-3 w-3" />
-																			查看
-																		</Link>
-																	</td>
-																	<td className="px-4 py-3">
-																		<span className="text-xs text-text-2 bg-muted px-2 py-1 rounded-sm">
-																			{comment.reply_to_id ? "回复" : "主评论"}
-																		</span>
-																	</td>
-																	<td className="px-4 py-3">
-																		<span
-																			className={`text-xs px-2 py-1 rounded-sm ${
-																				comment.is_hidden
-																					? "bg-red-50 text-red-600"
-																					: "bg-green-50 text-green-600"
-																			}`}
-																		>
-																			{comment.is_hidden ? "已隐藏" : "可见"}
-																		</span>
-																	</td>
-																	<td className="px-4 py-3 text-text-2">
-																		{new Date(comment.created_at).toLocaleString("zh-CN")}
-																	</td>
-																	<td className="px-4 py-3 text-right">
-																		<div className="flex items-center justify-end gap-2">
-																			<button
-																				onClick={() =>
-																					handleToggleCommentVisibility(
-																						comment.id,
-																						!comment.is_hidden,
-																					)
-																				}
-																				className="px-2 py-1 text-xs text-text-2 hover:text-text-1 hover:bg-muted rounded-sm"
-																				title={
-																					comment.is_hidden ? "设为可见" : "设为隐藏"
-																				}
-																			>
-																				<IconEye className="h-4 w-4" />
-																			</button>
-																			<button
-																				onClick={() =>
-																					handleDeleteCommentAdmin(comment.id)
-																				}
-																				className="px-2 py-1 text-xs text-text-2 hover:text-red-600 hover:bg-red-50 rounded-sm"
-																				title="删除"
-																			>
-																				<IconTrash className="h-4 w-4" />
-																			</button>
-																		</div>
-																	</td>
-																</tr>
-															);
-														})}
-													</tbody>
+													);
+												})}
+											</tbody>
 												</table>
 											</div>
 										)}
@@ -3310,10 +3297,21 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 													下一页
 												</button>
 											</div>
-										</div>
 									</div>
-								)}
-						</main>
+								</div>
+							)}
+					</main>
+
+					{hoverComment && hoverTooltipPos && (
+						<div
+							className="fixed z-50 w-max max-w-md rounded-md text-sm px-4 py-3 shadow-lg backdrop-blur bg-surface border border-border"
+							style={{ left: hoverTooltipPos.x, top: hoverTooltipPos.y }}
+						>
+							<p className="text-text-1 whitespace-pre-wrap">
+								{stripReplyPrefix(hoverComment.content)}
+							</p>
+						</div>
+					)}
 					</div>
 				</div>
 
