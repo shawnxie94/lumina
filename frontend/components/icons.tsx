@@ -344,3 +344,19 @@ export function IconGithub(props: IconProps) {
     </IconBase>
   );
 }
+
+export function IconArrowDown(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M12 5v14M5 12l7 7 7-7" />
+    </IconBase>
+  );
+}
+
+export function IconArrowUp(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M12 19V5M5 12l7-7 7 7" />
+    </IconBase>
+  );
+}

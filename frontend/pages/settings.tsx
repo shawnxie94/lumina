@@ -32,6 +32,8 @@ import IconButton from "@/components/IconButton";
 import {
 	IconEdit,
 	IconEye,
+	IconArrowDown,
+	IconArrowUp,
 	IconGrip,
 	IconLink,
 	IconList,
@@ -40,6 +42,7 @@ import {
 	IconNote,
 	IconPlug,
 	IconRobot,
+	IconRefresh,
 	IconSearch,
 	IconTag,
 	IconTrash,
@@ -1969,37 +1972,41 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 															<td className="px-3 py-2 text-text-2">
 																{getUsageStatusLabel(log.status)}
 															</td>
-															<td className="px-3 py-2 text-text-2">
+														<td className="px-3 py-2 text-text-2">
 																{log.request_payload || log.response_payload ? (
 																	<div className="flex items-center gap-2">
-																		<button
+																		<IconButton
 																			type="button"
 																			onClick={() =>
-																			openUsagePayload(
-																				"请求输入",
-																				log.request_payload,
-																			)
-																		}
-																		className="px-2 py-1 text-xs bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
-																	>
-																		输入
-																	</button>
-																	<button
-																		type="button"
+																				openUsagePayload(
+																					"请求输入",
+																					log.request_payload,
+																				)
+																			}
+																			variant="ghost"
+																			size="sm"
+																			title="输入"
+																		>
+																			<IconArrowDown className="h-4 w-4" />
+																		</IconButton>
+																		<IconButton
+																			type="button"
 																			onClick={() =>
-																			openUsagePayload(
-																				"响应输出",
-																				log.response_payload,
-																			)
-																		}
-																		className="px-2 py-1 text-xs bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
-																	>
-																		输出
-																	</button>
-																</div>
-															) : (
+																				openUsagePayload(
+																					"响应输出",
+																					log.response_payload,
+																				)
+																			}
+																			variant="ghost"
+																			size="sm"
+																			title="输出"
+																		>
+																			<IconArrowUp className="h-4 w-4" />
+																		</IconButton>
+																	</div>
+																) : (
 																	"-"
-															)}
+																)}
 															</td>
 														</tr>
 																))}
@@ -2912,23 +2919,23 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 															</td>
 															<td className="px-4 py-3 text-right">
 																<div className="flex items-center justify-end gap-2">
-																	<button
+																	<IconButton
 																		onClick={() => handleRetryTask(task.id)}
-																		className="px-2 py-1 text-xs text-text-2 hover:text-text-1 hover:bg-muted rounded-sm"
+																		variant="ghost"
+																		size="sm"
+																		title="重试"
 																		disabled={task.status === "processing"}
 																	>
-																		重试
-																	</button>
-																	<button
+																		<IconRefresh className="h-4 w-4" />
+																	</IconButton>
+																	<IconButton
 																		onClick={() => handleCancelTask(task.id)}
-																		className="px-2 py-1 text-xs text-text-2 hover:text-red-600 hover:bg-red-50 rounded-sm"
-																		disabled={
-																			task.status === "completed" ||
-																			task.status === "cancelled"
-																		}
+																		variant="danger"
+																		size="sm"
+																		title="取消"
 																	>
-																		取消
-																	</button>
+																		<IconTrash className="h-4 w-4" />
+																	</IconButton>
 																</div>
 															</td>
 														</tr>
