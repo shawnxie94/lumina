@@ -1449,6 +1449,51 @@ const formatPrice = (value: number | null | undefined) => {
 											</span>
 										</button>
 									<button
+										onClick={() => setActiveSection("comments")}
+										className={`w-full text-left px-4 py-3 rounded-sm transition ${
+											activeSection === "comments"
+												? "bg-muted text-text-1"
+												: "text-text-2 hover:text-text-1 hover:bg-muted"
+										}`}
+									>
+										<span className="inline-flex items-center gap-2">
+											<IconNote className="h-4 w-4" />
+											<span>评论配置</span>
+										</span>
+									</button>
+									<button
+										onClick={() => {
+											setActiveSection("comments");
+											setCommentSubSection("keys");
+										}}
+										className={`w-full text-left px-6 py-2 text-sm rounded-sm transition ${
+											activeSection === "comments" && commentSubSection === "keys"
+												? "bg-muted text-text-1"
+												: "text-text-2 hover:text-text-1 hover:bg-muted"
+										}`}
+									>
+										<span className="inline-flex items-center gap-2">
+											<IconPlug className="h-4 w-4" />
+											<span>登录密钥</span>
+										</span>
+									</button>
+									<button
+										onClick={() => {
+											setActiveSection("comments");
+											setCommentSubSection("filters");
+										}}
+										className={`w-full text-left px-6 py-2 text-sm rounded-sm transition ${
+											activeSection === "comments" && commentSubSection === "filters"
+												? "bg-muted text-text-1"
+												: "text-text-2 hover:text-text-1 hover:bg-muted"
+										}`}
+									>
+										<span className="inline-flex items-center gap-2">
+											<IconFilter className="h-4 w-4" />
+											<span>过滤规则</span>
+										</span>
+									</button>
+									<button
 										onClick={() => {
 											setActiveSection("monitoring");
 											setMonitoringSubSection("tasks");
@@ -1496,51 +1541,6 @@ const formatPrice = (value: number | null | undefined) => {
 											<span className="inline-flex items-center gap-2">
 												<IconMoney className="h-4 w-4" />
 											<span>模型记录/计量</span>
-										</span>
-									</button>
-									<button
-										onClick={() => setActiveSection("comments")}
-										className={`w-full text-left px-4 py-3 rounded-sm transition ${
-											activeSection === "comments"
-												? "bg-muted text-text-1"
-												: "text-text-2 hover:text-text-1 hover:bg-muted"
-										}`}
-									>
-										<span className="inline-flex items-center gap-2">
-											<IconNote className="h-4 w-4" />
-											<span>评论配置</span>
-										</span>
-									</button>
-									<button
-										onClick={() => {
-											setActiveSection("comments");
-											setCommentSubSection("keys");
-										}}
-										className={`w-full text-left px-6 py-2 text-sm rounded-sm transition ${
-											activeSection === "comments" && commentSubSection === "keys"
-												? "bg-muted text-text-1"
-												: "text-text-2 hover:text-text-1 hover:bg-muted"
-										}`}
-									>
-										<span className="inline-flex items-center gap-2">
-											<IconPlug className="h-4 w-4" />
-											<span>登录密钥</span>
-										</span>
-									</button>
-									<button
-										onClick={() => {
-											setActiveSection("comments");
-											setCommentSubSection("filters");
-										}}
-										className={`w-full text-left px-6 py-2 text-sm rounded-sm transition ${
-											activeSection === "comments" && commentSubSection === "filters"
-												? "bg-muted text-text-1"
-												: "text-text-2 hover:text-text-1 hover:bg-muted"
-										}`}
-									>
-										<span className="inline-flex items-center gap-2">
-											<IconFilter className="h-4 w-4" />
-											<span>过滤规则</span>
 										</span>
 									</button>
 								</div>
