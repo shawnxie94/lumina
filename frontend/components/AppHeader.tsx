@@ -106,14 +106,6 @@ export default function AppHeader() {
               />
               <span className="text-2xl font-bold">Lumina</span>
             </Link>
-            <div className="flex items-center gap-2 text-base font-medium">
-              <Link
-                href="/"
-                className="px-3 py-1 rounded-sm transition text-text-1 hover:bg-muted"
-              >
-                信息流
-              </Link>
-            </div>
           </div>
           <div className="flex items-center gap-2">
             <a

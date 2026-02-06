@@ -599,8 +599,8 @@ export default function ArticleDetailPage() {
       : article.content_md
         ? renderMarkdown(article.content_md)
         : article.content_html;
-    return applyAnnotations(baseHtml, annotations);
-  }, [article, annotations, showTranslation]);
+    return immersiveMode ? baseHtml : applyAnnotations(baseHtml, annotations);
+  }, [article, annotations, showTranslation, immersiveMode]);
 
   const activeAnnotation = annotations.find(
     (item) => item.id === activeAnnotationId,
@@ -645,6 +645,18 @@ export default function ArticleDetailPage() {
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [showUserMenu]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && immersiveMode) {
+        setImmersiveMode(false);
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [immersiveMode]);
 
   useEffect(() => {
     if (id) {
@@ -1526,87 +1538,89 @@ export default function ArticleDetailPage() {
             )}
 
             <div className={`flex-1 bg-surface ${immersiveMode ? '' : 'rounded-sm shadow-sm border border-border p-6'}`}>
-              <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center gap-2">
-                  <h2 className="text-lg font-semibold text-text-1 inline-flex items-center gap-2">
-                    <IconDoc className="h-4 w-4" />
-                    <span>内容</span>
-                  </h2>
-                  {article.translation_status && (
-                    <>
-                      <span className={`px-2 py-0.5 rounded text-xs ${
-                        article.translation_status === 'completed' ? 'bg-green-100 text-green-700' :
-                        article.translation_status === 'processing' ? 'bg-blue-100 text-blue-700' :
-                        article.translation_status === 'pending' ? 'bg-gray-100 text-gray-600' :
-                        article.translation_status === 'failed' ? 'bg-red-100 text-red-700' : ''
-                      }`}>
-                        {article.translation_status === 'completed' ? '翻译完成' :
-                         article.translation_status === 'processing' ? '翻译中...' :
-                         article.translation_status === 'pending' ? '等待翻译' :
-                         article.translation_status === 'failed' ? '翻译失败' : ''}
-                      </span>
-                      {(article.translation_status === 'completed' || article.translation_status === 'failed') && isAdmin && (
+              {!immersiveMode && (
+                <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-lg font-semibold text-text-1 inline-flex items-center gap-2">
+                      <IconDoc className="h-4 w-4" />
+                      <span>内容</span>
+                    </h2>
+                    {isAdmin && article.translation_status && (
+                      <>
+                        <span className={`px-2 py-0.5 rounded text-xs ${
+                          article.translation_status === 'completed' ? 'bg-green-100 text-green-700' :
+                          article.translation_status === 'processing' ? 'bg-blue-100 text-blue-700' :
+                          article.translation_status === 'pending' ? 'bg-gray-100 text-gray-600' :
+                          article.translation_status === 'failed' ? 'bg-red-100 text-red-700' : ''
+                        }`}>
+                          {article.translation_status === 'completed' ? '翻译完成' :
+                           article.translation_status === 'processing' ? '翻译中...' :
+                           article.translation_status === 'pending' ? '等待翻译' :
+                           article.translation_status === 'failed' ? '翻译失败' : ''}
+                        </span>
+                        {(article.translation_status === 'completed' || article.translation_status === 'failed') && (
+                          <button
+                            onClick={handleRetryTranslation}
+                            className="text-gray-400 hover:text-blue-600 transition"
+                            title={article.translation_error || '重新翻译'}
+                          >
+                            <IconRefresh className="h-4 w-4" />
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {isAdmin && (
+                      <>
                         <button
-                          onClick={handleRetryTranslation}
-                          className="text-gray-400 hover:text-blue-600 transition"
-                          title={article.translation_error || '重新翻译'}
+                          onClick={() => {
+                            setNoteDraft(noteContent);
+                            setShowNoteModal(true);
+                          }}
+                          className="flex items-center justify-center w-8 h-8 rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition"
                         >
-                          <IconRefresh className="h-4 w-4" />
+                          <IconNote className="h-4 w-4" />
                         </button>
-                      )}
-                    </>
-                  )}
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  {isAdmin && (
-                    <>
+                        <button
+                          onClick={handleToggleVisibility}
+                          className="flex items-center justify-center w-8 h-8 rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition"
+                        >
+                          {article.is_visible ? <IconEye className="h-4 w-4" /> : <IconEyeOff className="h-4 w-4" />}
+                        </button>
+                        <button
+                          onClick={() => openEditModal(showTranslation && article.content_trans ? 'translation' : 'original')}
+                          className="flex items-center justify-center w-8 h-8 rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition"
+                        >
+                          <IconEdit className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => setShowDeleteModal(true)}
+                          className="flex items-center justify-center w-8 h-8 rounded-sm text-text-2 hover:text-red-600 hover:bg-red-50 transition"
+                        >
+                          <IconTrash className="h-4 w-4" />
+                        </button>
+                      </>
+                    )}
+                    {article.content_trans && (
                       <button
-                        onClick={() => {
-                          setNoteDraft(noteContent);
-                          setShowNoteModal(true);
-                        }}
-                        className="flex items-center justify-center w-8 h-8 rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition"
+                        onClick={() => setShowTranslation(!showTranslation)}
+                        className="flex items-center justify-center w-8 h-8 rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition text-base"
                       >
-                        <IconNote className="h-4 w-4" />
+                        {showTranslation ? '原文' : '译文'}
                       </button>
-                      <button
-                        onClick={handleToggleVisibility}
-                        className="flex items-center justify-center w-8 h-8 rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition"
-                      >
-                        {article.is_visible ? <IconEye className="h-4 w-4" /> : <IconEyeOff className="h-4 w-4" />}
-                      </button>
-                      <button
-                        onClick={() => openEditModal(showTranslation && article.content_trans ? 'translation' : 'original')}
-                        className="flex items-center justify-center w-8 h-8 rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition"
-                      >
-                        <IconEdit className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={() => setShowDeleteModal(true)}
-                        className="flex items-center justify-center w-8 h-8 rounded-sm text-text-2 hover:text-red-600 hover:bg-red-50 transition"
-                      >
-                        <IconTrash className="h-4 w-4" />
-                      </button>
-                    </>
-                  )}
-                  {article.content_trans && (
+                    )}
                     <button
-                      onClick={() => setShowTranslation(!showTranslation)}
-                      className="flex items-center justify-center w-8 h-8 rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition text-base"
+                      onClick={() => setImmersiveMode(!immersiveMode)}
+                      className="flex items-center justify-center w-8 h-8 rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition"
                     >
-                      {showTranslation ? '原文' : '译文'}
+                      <IconBook className="h-4 w-4" />
                     </button>
-                  )}
-                  <button
-                    onClick={() => setImmersiveMode(!immersiveMode)}
-                    className="flex items-center justify-center w-8 h-8 rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition"
-                  >
-                    <IconBook className="h-4 w-4" />
-                  </button>
+                  </div>
                 </div>
-              </div>
+              )}
 
-              {noteContent && (
+              {noteContent && !immersiveMode && (
                 <div className="note-panel mb-4 rounded-sm p-4 text-sm text-text-2">
                   <div className="note-panel-title text-sm mb-2">批注</div>
                   <div
@@ -2826,6 +2840,16 @@ export default function ArticleDetailPage() {
 
       <AppFooter />
       <BackToTop />
+
+      {immersiveMode && (
+        <button
+          onClick={() => setImmersiveMode(false)}
+          className="fixed right-6 top-1/2 -translate-y-1/2 flex items-center justify-center w-10 h-10 rounded-full bg-surface border border-border shadow-lg text-text-2 hover:text-text-1 hover:bg-muted transition z-50"
+          title="退出沉浸模式 (Esc)"
+        >
+          <IconBook className="h-5 w-5" />
+        </button>
+      )}
     </div>
   );
 }
