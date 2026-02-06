@@ -159,6 +159,7 @@ export interface ArticleComment {
 	provider: string | null;
 	content: string;
 	reply_to_id?: string | null;
+	is_hidden?: boolean;
 	created_at: string;
 	updated_at: string;
 }
@@ -170,6 +171,8 @@ export interface CommentSettings {
 	google_client_id: string;
 	google_client_secret: string;
 	nextauth_secret: string;
+	sensitive_filter_enabled: boolean;
+	sensitive_words: string;
 }
 
 export interface Category {
@@ -631,6 +634,13 @@ export const categoryApi = {
 
 export const commentApi = {
 	getArticleComments: async (articleId: string): Promise<ArticleComment[]> => {
+		const token = getToken();
+		if (token) {
+			const response = await api.get(`/api/articles/${articleId}/comments`, {
+				params: { include_hidden: true },
+			});
+			return response.data as ArticleComment[];
+		}
 		const response = await fetch(`/api/comments/${articleId}`, {
 			credentials: "same-origin",
 		});
@@ -679,6 +689,12 @@ export const commentApi = {
 			throw new Error(data?.message || "删除评论失败");
 		}
 		return data as { success: boolean };
+	},
+	toggleHidden: async (commentId: string, isHidden: boolean) => {
+		const response = await api.put(`/api/comments/${commentId}/visibility`, {
+			is_hidden: isHidden,
+		});
+		return response.data as { id: string; is_hidden: boolean; updated_at: string };
 	},
 };
 

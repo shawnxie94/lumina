@@ -98,6 +98,7 @@ class ArticleComment(Base):
     provider = Column(String, nullable=True)
     content = Column(Text, nullable=False)
     reply_to_id = Column(String, nullable=True)
+    is_hidden = Column(Boolean, default=False)
     created_at = Column(String, default=now_str)
     updated_at = Column(String, default=now_str)
 
@@ -236,6 +237,8 @@ class AdminSettings(Base):
     google_client_id = Column(String, nullable=True)
     google_client_secret = Column(String, nullable=True)
     nextauth_secret = Column(String, nullable=True)
+    sensitive_filter_enabled = Column(Boolean, default=True)
+    sensitive_words = Column(Text, nullable=True)
     created_at = Column(String, default=now_str)
     updated_at = Column(String, default=now_str)
 
@@ -325,6 +328,15 @@ def init_db():
                     ("google_client_id", "TEXT"),
                     ("google_client_secret", "TEXT"),
                     ("nextauth_secret", "TEXT"),
+                    ("sensitive_filter_enabled", "INTEGER"),
+                    ("sensitive_words", "TEXT"),
+                ],
+            )
+            ensure_columns(
+                "article_comments",
+                [
+                    ("reply_to_id", "TEXT"),
+                    ("is_hidden", "INTEGER"),
                 ],
             )
             ensure_columns(

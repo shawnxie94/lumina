@@ -91,6 +91,18 @@ function extractReplyPrefix(content: string): { prefix: string; body: string } {
   return { prefix: prefixLines.join('\n'), body: lines.slice(index).join('\n') };
 }
 
+function getReplyMeta(content: string): { user: string; link: string } | null {
+  if (!content) return null;
+  const { prefix } = extractReplyPrefix(content);
+  if (!prefix) return null;
+  const userMatch = prefix.match(/> 回复 @(.+)/);
+  const linkMatch = prefix.match(/\[原评论\]\((.+)\)/);
+  const user = userMatch ? userMatch[1].trim() : '';
+  const link = linkMatch ? linkMatch[1].trim() : '';
+  if (!user && !link) return null;
+  return { user, link };
+}
+
 function MindMapTree({ node, isRoot = false, compact = false, depth = 0 }: { node: MindMapNode; isRoot?: boolean; compact?: boolean; depth?: number }) {
   const hasTitle = node.title && node.title.trim().length > 0;
   const hasChildren = Boolean(node.children && node.children.length > 0);
@@ -1279,6 +1291,22 @@ export default function ArticleDetailPage() {
     }
   };
 
+  const handleToggleCommentHidden = async (comment: ArticleComment) => {
+    try {
+      const data = await commentApi.toggleHidden(comment.id, !comment.is_hidden);
+      setComments((prev) =>
+        prev.map((item) =>
+          item.id === comment.id
+            ? { ...item, is_hidden: data.is_hidden, updated_at: data.updated_at }
+            : item,
+        ),
+      );
+      showToast(data.is_hidden ? '评论已隐藏' : '评论已显示');
+    } catch (error: any) {
+      showToast(error?.message || '操作失败', 'error');
+    }
+  };
+
   const openDeleteCommentModal = (commentId: string) => {
     setPendingDeleteCommentId(commentId);
     setShowDeleteCommentModal(true);
@@ -1762,24 +1790,37 @@ export default function ArticleDetailPage() {
                                       >
                                         <IconReply className="h-3.5 w-3.5" />
                                       </button>
-                                      {isOwner && (
-                                        <>
-                                          <button
-                                            onClick={() => handleStartEditComment(comment)}
-                                            className="h-7 w-7 inline-flex items-center justify-center rounded-full border border-border text-text-2 hover:text-text-1 hover:bg-muted transition"
+                                          {isAdmin && (
+                                            <button
+                                              onClick={() => handleToggleCommentHidden(comment)}
+                                              className="h-7 w-7 inline-flex items-center justify-center rounded-full border border-border text-text-2 hover:text-text-1 hover:bg-muted transition"
+                                              title={comment.is_hidden ? "显示" : "隐藏"}
+                                            >
+                                              {comment.is_hidden ? (
+                                                <IconEye className="h-3.5 w-3.5" />
+                                              ) : (
+                                                <IconEyeOff className="h-3.5 w-3.5" />
+                                              )}
+                                            </button>
+                                          )}
+                                          {isOwner && (
+                                            <>
+                                              <button
+                                                onClick={() => handleStartEditComment(comment)}
+                                                className="h-7 w-7 inline-flex items-center justify-center rounded-full border border-border text-text-2 hover:text-text-1 hover:bg-muted transition"
                                             title="编辑"
                                           >
                                             <IconEdit className="h-3.5 w-3.5" />
                                           </button>
-                                          <button
-                                            onClick={() => openDeleteCommentModal(comment.id)}
-                                            className="h-7 w-7 inline-flex items-center justify-center rounded-full border border-border text-text-2 hover:text-red-600 hover:bg-red-50 transition"
-                                            title="删除"
-                                          >
-                                            <IconTrash className="h-3.5 w-3.5" />
-                                          </button>
-                                        </>
-                                      )}
+                                              <button
+                                                onClick={() => openDeleteCommentModal(comment.id)}
+                                                className="h-7 w-7 inline-flex items-center justify-center rounded-full border border-border text-text-2 hover:text-red-600 hover:bg-red-50 transition"
+                                                title="删除"
+                                              >
+                                                <IconTrash className="h-3.5 w-3.5" />
+                                              </button>
+                                            </>
+                                          )}
                                     </>
                                   )}
                                 </div>
@@ -1794,11 +1835,32 @@ export default function ArticleDetailPage() {
                                   />
                                 </div>
                               ) : (
-                                <div
-                                  className="prose prose-sm max-w-none text-text-2"
-                                  style={{ wordBreak: 'break-word', overflowWrap: 'anywhere', whiteSpace: 'normal' }}
-                                  dangerouslySetInnerHTML={{ __html: renderMarkdown(comment.content) }}
-                                />
+                                (() => {
+                                  const meta = getReplyMeta(comment.content);
+                                  const body = extractReplyPrefix(comment.content).body;
+                                  return (
+                                    <div>
+                                      {meta && (
+                                        <div className="text-xs text-text-3 mb-2">
+                                          <span>回复 @{meta.user}</span>
+                                          {meta.link && (
+                                            <a
+                                              href={meta.link}
+                                              className="ml-2 text-text-3 hover:text-text-1 transition underline"
+                                            >
+                                              原评论
+                                            </a>
+                                          )}
+                                        </div>
+                                      )}
+                                      <div
+                                        className="prose prose-sm max-w-none text-text-2"
+                                        style={{ wordBreak: 'break-word', overflowWrap: 'anywhere', whiteSpace: 'normal' }}
+                                        dangerouslySetInnerHTML={{ __html: renderMarkdown(body) }}
+                                      />
+                                    </div>
+                                  );
+                                })()
                               )}
 
                               {session && replyTargetId === comment.id && (
@@ -1916,24 +1978,37 @@ export default function ArticleDetailPage() {
                                                   >
                                                     <IconReply className="h-3.5 w-3.5" />
                                                   </button>
-                                                  {session?.user?.id === reply.user_id && (
-                                                    <>
-                                                      <button
-                                                        onClick={() => handleStartEditComment(reply)}
-                                                        className="h-7 w-7 inline-flex items-center justify-center rounded-full border border-border text-text-2 hover:text-text-1 hover:bg-muted transition"
+                                                {isAdmin && (
+                                                  <button
+                                                    onClick={() => handleToggleCommentHidden(reply)}
+                                                    className="h-7 w-7 inline-flex items-center justify-center rounded-full border border-border text-text-2 hover:text-text-1 hover:bg-muted transition"
+                                                    title={reply.is_hidden ? "显示" : "隐藏"}
+                                                  >
+                                                    {reply.is_hidden ? (
+                                                      <IconEye className="h-3.5 w-3.5" />
+                                                    ) : (
+                                                      <IconEyeOff className="h-3.5 w-3.5" />
+                                                    )}
+                                                  </button>
+                                                )}
+                                                {session?.user?.id === reply.user_id && (
+                                                  <>
+                                                    <button
+                                                      onClick={() => handleStartEditComment(reply)}
+                                                      className="h-7 w-7 inline-flex items-center justify-center rounded-full border border-border text-text-2 hover:text-text-1 hover:bg-muted transition"
                                                         title="编辑"
                                                       >
                                                         <IconEdit className="h-3.5 w-3.5" />
                                                       </button>
-                                                      <button
-                                                        onClick={() => openDeleteCommentModal(reply.id)}
-                                                        className="h-7 w-7 inline-flex items-center justify-center rounded-full border border-border text-text-2 hover:text-red-600 hover:bg-red-50 transition"
-                                                        title="删除"
-                                                      >
-                                                        <IconTrash className="h-3.5 w-3.5" />
-                                                      </button>
-                                                    </>
-                                                  )}
+                                                    <button
+                                                      onClick={() => openDeleteCommentModal(reply.id)}
+                                                      className="h-7 w-7 inline-flex items-center justify-center rounded-full border border-border text-text-2 hover:text-red-600 hover:bg-red-50 transition"
+                                                      title="删除"
+                                                    >
+                                                      <IconTrash className="h-3.5 w-3.5" />
+                                                    </button>
+                                                  </>
+                                                )}
                                                 </>
                                               )}
                                             </div>
@@ -1948,13 +2023,32 @@ export default function ArticleDetailPage() {
                                               />
                                             </div>
                                           ) : (
-                                            <>
-                                              <div
-                                                className="prose prose-sm max-w-none text-text-2"
-                                                style={{ wordBreak: 'break-word', overflowWrap: 'anywhere', whiteSpace: 'normal' }}
-                                                dangerouslySetInnerHTML={{ __html: renderMarkdown(reply.content) }}
-                                              />
-                                            </>
+                                            (() => {
+                                              const meta = getReplyMeta(reply.content);
+                                              const body = extractReplyPrefix(reply.content).body;
+                                              return (
+                                                <div>
+                                                  {meta && (
+                                                    <div className="text-xs text-text-3 mb-2">
+                                                      <span>回复 @{meta.user}</span>
+                                                      {meta.link && (
+                                                        <a
+                                                          href={meta.link}
+                                                          className="ml-2 text-text-3 hover:text-text-1 transition underline"
+                                                        >
+                                                          原评论
+                                                        </a>
+                                                      )}
+                                                    </div>
+                                                  )}
+                                                  <div
+                                                    className="prose prose-sm max-w-none text-text-2"
+                                                    style={{ wordBreak: 'break-word', overflowWrap: 'anywhere', whiteSpace: 'normal' }}
+                                                    dangerouslySetInnerHTML={{ __html: renderMarkdown(body) }}
+                                                  />
+                                                </div>
+                                              );
+                                            })()
                                           )}
 
                                           {session && replyTargetId === reply.id && (

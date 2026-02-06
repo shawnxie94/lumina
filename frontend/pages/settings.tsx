@@ -280,6 +280,8 @@ export default function SettingsPage() {
 		google_client_id: "",
 		google_client_secret: "",
 		nextauth_secret: "",
+		sensitive_filter_enabled: true,
+		sensitive_words: "",
 	});
 	const [commentSettingsLoading, setCommentSettingsLoading] = useState(false);
 	const [commentSettingsSaving, setCommentSettingsSaving] = useState(false);
@@ -2267,14 +2269,14 @@ const formatPrice = (value: number | null | undefined) => {
 							{activeSection === "comments" && (
 								<div className="bg-surface rounded-sm shadow-sm border border-border p-6">
 									<div className="flex items-center justify-between mb-6">
-										<div>
-											<h2 className="text-lg font-semibold text-text-1">
-												评论配置
-											</h2>
-											<p className="text-sm text-text-3">
-												配置第三方登录并启用文章评论功能
-											</p>
-										</div>
+									<div>
+										<h2 className="text-lg font-semibold text-text-1">
+											评论配置
+										</h2>
+										<p className="text-sm text-text-3">
+											配置第三方登录并启用文章评论功能
+										</p>
+									</div>
 										<div className="flex items-center gap-2">
 											<button
 												onClick={handleValidateCommentSettings}
@@ -2419,6 +2421,61 @@ const formatPrice = (value: number | null | undefined) => {
 														自动生成
 													</button>
 												</div>
+											</div>
+
+											<div className="flex items-center justify-between border border-border rounded-sm p-4 bg-surface">
+												<div>
+													<div className="text-sm font-medium text-text-1">
+														敏感词过滤
+													</div>
+													<div className="text-xs text-text-3 mt-1">
+														启用后将拦截包含敏感词的评论
+													</div>
+												</div>
+												<label className="inline-flex items-center gap-2 text-sm text-text-2 cursor-pointer">
+													<input
+														type="checkbox"
+														checked={commentSettings.sensitive_filter_enabled}
+														onChange={(e) =>
+															setCommentSettings((prev) => ({
+																...prev,
+																sensitive_filter_enabled: e.target.checked,
+															}))
+														}
+														className="h-4 w-4"
+													/>
+													<span>
+														{commentSettings.sensitive_filter_enabled ? "已开启" : "已关闭"}
+													</span>
+												</label>
+											</div>
+
+											<div>
+												<div className="flex items-center gap-2 mb-1">
+													<label className="block text-sm text-text-2">
+														敏感词列表
+													</label>
+													<div className="relative group">
+														<span className="h-5 w-5 rounded-full border border-border text-text-3 inline-flex items-center justify-center text-xs cursor-default">
+															?
+														</span>
+														<div className="pointer-events-none absolute left-1/2 top-full mt-2 -translate-x-1/2 whitespace-nowrap rounded-sm border border-border bg-surface px-2 py-1 text-xs text-text-2 shadow-sm opacity-0 group-hover:opacity-100 transition">
+															支持换行或逗号分隔
+														</div>
+													</div>
+												</div>
+												<textarea
+													value={commentSettings.sensitive_words}
+													onChange={(e) =>
+														setCommentSettings((prev) => ({
+															...prev,
+															sensitive_words: e.target.value,
+														}))
+													}
+													rows={4}
+													placeholder="每行一个敏感词，或使用逗号分隔"
+													className="w-full px-3 py-2 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
+												/>
 											</div>
 
 											{commentValidationResult && (

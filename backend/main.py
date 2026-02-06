@@ -76,6 +76,26 @@ def comments_enabled(db: Session) -> bool:
     return bool(admin.comments_enabled)
 
 
+def get_sensitive_words(db: Session) -> tuple[bool, list[str]]:
+    admin = get_admin_settings(db)
+    if admin is None:
+        return False, []
+    enabled = bool(admin.sensitive_filter_enabled)
+    words_raw = admin.sensitive_words or ""
+    words = [
+        w.strip()
+        for w in words_raw.replace(",", "\n").splitlines()
+        if w.strip()
+    ]
+    return enabled, words
+
+
+def contains_sensitive_word(content: str, words: list[str]) -> bool:
+    if not content:
+        return False
+    return any(word in content for word in words)
+
+
 def ensure_nextauth_secret(db: Session, admin: AdminSettings) -> str:
     if admin.nextauth_secret:
         return admin.nextauth_secret
@@ -278,6 +298,12 @@ class CommentSettingsUpdate(BaseModel):
     google_client_id: Optional[str] = None
     google_client_secret: Optional[str] = None
     nextauth_secret: Optional[str] = None
+    sensitive_filter_enabled: Optional[bool] = None
+    sensitive_words: Optional[str] = None
+
+
+class CommentVisibilityUpdate(BaseModel):
+    is_hidden: bool
 
 
 @app.on_event("startup")
@@ -347,6 +373,8 @@ async def get_comment_settings(
         "google_client_id": admin.google_client_id or "",
         "google_client_secret": admin.google_client_secret or "",
         "nextauth_secret": secret or "",
+        "sensitive_filter_enabled": bool(admin.sensitive_filter_enabled),
+        "sensitive_words": admin.sensitive_words or "",
     }
 
 
@@ -371,6 +399,10 @@ async def update_comment_settings(
         admin.google_client_secret = payload.google_client_secret or ""
     if payload.nextauth_secret is not None:
         admin.nextauth_secret = payload.nextauth_secret or ""
+    if payload.sensitive_filter_enabled is not None:
+        admin.sensitive_filter_enabled = bool(payload.sensitive_filter_enabled)
+    if payload.sensitive_words is not None:
+        admin.sensitive_words = payload.sensitive_words or ""
     if not admin.nextauth_secret:
         admin.nextauth_secret = uuid.uuid4().hex + uuid.uuid4().hex
     admin.updated_at = now_str()
@@ -580,18 +612,29 @@ async def get_article(
 
 
 @app.get("/api/articles/{article_id}/comments")
-async def get_article_comments(article_id: str, db: Session = Depends(get_db)):
+async def get_article_comments(
+    article_id: str,
+    include_hidden: bool = False,
+    db: Session = Depends(get_db),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+):
     if not comments_enabled(db):
         raise HTTPException(status_code=403, detail="评论已关闭")
     article = db.query(Article).filter(Article.id == article_id).first()
     if not article:
         raise HTTPException(status_code=404, detail="文章不存在")
-    comments = (
-        db.query(ArticleComment)
-        .filter(ArticleComment.article_id == article_id)
-        .order_by(ArticleComment.created_at.asc())
-        .all()
-    )
+    is_admin = False
+    if include_hidden and credentials is not None:
+        try:
+            is_admin = bool(get_current_admin(credentials=credentials, db=db))
+        except HTTPException:
+            is_admin = False
+    query = db.query(ArticleComment).filter(ArticleComment.article_id == article_id)
+    if not is_admin:
+        query = query.filter(
+            (ArticleComment.is_hidden == False) | (ArticleComment.is_hidden.is_(None))
+        )
+    comments = query.order_by(ArticleComment.created_at.asc()).all()
     return [
         {
             "id": c.id,
@@ -602,6 +645,7 @@ async def get_article_comments(article_id: str, db: Session = Depends(get_db)):
             "provider": c.provider,
             "content": c.content,
             "reply_to_id": c.reply_to_id,
+            "is_hidden": bool(c.is_hidden),
             "created_at": c.created_at,
             "updated_at": c.updated_at,
         }
@@ -625,6 +669,9 @@ async def create_article_comment(
         raise HTTPException(status_code=400, detail="评论内容不能为空")
     if len(content) > 1000:
         raise HTTPException(status_code=400, detail="评论内容过长")
+    filter_enabled, words = get_sensitive_words(db)
+    if filter_enabled and words and contains_sensitive_word(content, words):
+        raise HTTPException(status_code=400, detail="评论包含敏感词")
     comment = ArticleComment(
         article_id=article_id,
         user_id=payload.user_id,
@@ -648,6 +695,7 @@ async def create_article_comment(
         "provider": comment.provider,
         "content": comment.content,
         "reply_to_id": comment.reply_to_id,
+        "is_hidden": bool(comment.is_hidden),
         "created_at": comment.created_at,
         "updated_at": comment.updated_at,
     }
@@ -669,6 +717,7 @@ async def get_comment(comment_id: str, db: Session = Depends(get_db)):
         "provider": comment.provider,
         "content": comment.content,
         "reply_to_id": comment.reply_to_id,
+        "is_hidden": bool(comment.is_hidden),
         "created_at": comment.created_at,
         "updated_at": comment.updated_at,
     }
@@ -688,6 +737,9 @@ async def update_comment(
         raise HTTPException(status_code=400, detail="评论内容不能为空")
     if len(content) > 1000:
         raise HTTPException(status_code=400, detail="评论内容过长")
+    filter_enabled, words = get_sensitive_words(db)
+    if filter_enabled and words and contains_sensitive_word(content, words):
+        raise HTTPException(status_code=400, detail="评论包含敏感词")
     comment.content = content
     if payload.reply_to_id is not None:
         comment.reply_to_id = payload.reply_to_id or None
@@ -703,6 +755,7 @@ async def update_comment(
         "provider": comment.provider,
         "content": comment.content,
         "reply_to_id": comment.reply_to_id,
+        "is_hidden": bool(comment.is_hidden),
         "created_at": comment.created_at,
         "updated_at": comment.updated_at,
     }
@@ -718,6 +771,27 @@ async def delete_comment(comment_id: str, db: Session = Depends(get_db)):
     db.delete(comment)
     db.commit()
     return {"success": True}
+
+
+@app.put("/api/comments/{comment_id}/visibility")
+async def update_comment_visibility(
+    comment_id: str,
+    payload: CommentVisibilityUpdate,
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
+    comment = db.query(ArticleComment).filter(ArticleComment.id == comment_id).first()
+    if not comment:
+        raise HTTPException(status_code=404, detail="评论不存在")
+    comment.is_hidden = bool(payload.is_hidden)
+    comment.updated_at = now_str()
+    db.commit()
+    db.refresh(comment)
+    return {
+        "id": comment.id,
+        "is_hidden": bool(comment.is_hidden),
+        "updated_at": comment.updated_at,
+    }
 
 
 @app.put("/api/articles/{article_id}/notes")
