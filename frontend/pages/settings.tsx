@@ -1776,19 +1776,14 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 												</div>
 											</div>
 
-											<div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-												<div>
-													<label className="block text-sm text-text-2 mb-1">
-														模型
-													</label>
-													<Select
+												<div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+													<FilterSelect
+														label="模型"
 														value={usageModelId}
 														onChange={(value) => {
 															setUsageModelId(value);
 															setUsagePage(1);
 														}}
-														className="select-modern-antd w-full"
-														popupClassName="select-modern-dropdown"
 														options={[
 															{ value: "", label: "全部" },
 															...modelAPIConfigs.map((config) => ({
@@ -1797,19 +1792,13 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 															})),
 														]}
 													/>
-												</div>
-												<div>
-													<label className="block text-sm text-text-2 mb-1">
-														状态
-													</label>
-													<Select
+													<FilterSelect
+														label="状态"
 														value={usageStatus}
 														onChange={(value) => {
 															setUsageStatus(value);
 															setUsagePage(1);
 														}}
-														className="select-modern-antd w-full"
-														popupClassName="select-modern-dropdown"
 														options={[
 															{ value: "", label: "全部" },
 															{ value: "completed", label: "已完成" },
@@ -1818,19 +1807,13 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 															{ value: "pending", label: "待处理" },
 														]}
 													/>
-												</div>
-												<div>
-													<label className="block text-sm text-text-2 mb-1">
-														类型
-													</label>
-													<Select
+													<FilterSelect
+														label="类型"
 														value={usageContentType}
 														onChange={(value) => {
 															setUsageContentType(value);
 															setUsagePage(1);
 														}}
-														className="select-modern-antd w-full"
-														popupClassName="select-modern-dropdown"
 														options={[
 															{ value: "", label: "全部" },
 															{ value: "summary", label: "摘要" },
@@ -1840,36 +1823,21 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 															{ value: "translation", label: "翻译" },
 														]}
 													/>
+													<div className="md:col-span-2">
+														<label htmlFor="usage-date-range" className="block text-sm text-text-2 mb-1.5">日期范围</label>
+														<DateRangePicker
+															id="usage-date-range"
+															value={toDayjsRangeFromDateStrings(usageStart, usageEnd)}
+															onChange={(values) => {
+																const [start, end] = values || [];
+																setUsageStart(start ? start.format("YYYY-MM-DD") : "");
+																setUsageEnd(end ? end.format("YYYY-MM-DD") : "");
+																setUsagePage(1);
+															}}
+															className="w-full"
+														/>
+													</div>
 												</div>
-												<div>
-													<label className="block text-sm text-text-2 mb-1">
-														开始日期
-													</label>
-													<input
-														type="date"
-														value={usageStart}
-														onChange={(event) => {
-															setUsageStart(event.target.value);
-															setUsagePage(1);
-														}}
-														className="w-full h-9 px-3 border border-border rounded-sm bg-surface text-text-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
-													/>
-												</div>
-												<div>
-													<label className="block text-sm text-text-2 mb-1">
-														结束日期
-													</label>
-													<input
-														type="date"
-														value={usageEnd}
-														onChange={(event) => {
-															setUsageEnd(event.target.value);
-															setUsagePage(1);
-														}}
-														className="w-full h-9 px-3 border border-border rounded-sm bg-surface text-text-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
-													/>
-												</div>
-											</div>
 
 											<div className="bg-surface border border-border rounded-sm p-4">
 												<div className="text-sm font-semibold text-text-1 mb-3">
@@ -2780,80 +2748,48 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 									</div>
 
 									<div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-										<div>
-											<label className="block text-sm text-text-2 mb-1">
-												状态
-											</label>
-											<Select
-												value={taskStatusFilter}
-												onChange={(value) => {
-													setTaskStatusFilter(value);
-													setTaskPage(1);
-												}}
-												className="select-modern-antd w-full"
-												popupClassName="select-modern-dropdown"
-												options={[
-													{ value: "", label: "全部" },
-													{ value: "pending", label: "待处理" },
-													{ value: "processing", label: "处理中" },
-													{ value: "completed", label: "已完成" },
-													{ value: "failed", label: "失败" },
-													{ value: "cancelled", label: "已取消" },
-												]}
-											/>
-										</div>
-										<div>
-											<label className="block text-sm text-text-2 mb-1">
-												任务类型
-											</label>
-											<Select
-												value={taskTypeFilter}
-												onChange={(value) => {
-													setTaskTypeFilter(value);
-													setTaskPage(1);
-												}}
-												className="select-modern-antd w-full"
-												popupClassName="select-modern-dropdown"
-												options={[
-													{ value: "", label: "全部" },
-													{ value: "process_article_ai", label: "文章摘要" },
-													{
-														value: "process_article_translation",
-														label: "翻译生成",
-													},
-													{
-														value: "process_ai_content:summary",
-														label: "AI摘要",
-													},
-													{
-														value: "process_ai_content:outline",
-														label: "大纲生成",
-													},
-													{
-														value: "process_ai_content:quotes",
-														label: "金句生成",
-													},
-													{
-														value: "process_ai_content:key_points",
-														label: "总结生成",
-													},
-												]}
-											/>
-										</div>
-										<div>
-											<label className="block text-sm text-text-2 mb-1">
-												文章ID
-											</label>
-											<input
-												value={taskArticleIdFilter}
-												onChange={(e) => {
-													setTaskArticleIdFilter(e.target.value);
-													setTaskPage(1);
-												}}
-												placeholder="输入文章ID"
-												className="w-full h-9 px-3 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
-											/>
-										</div>
+										<FilterSelect
+											label="状态"
+											value={taskStatusFilter}
+											onChange={(value) => {
+												setTaskStatusFilter(value);
+												setTaskPage(1);
+											}}
+											options={[
+												{ value: "", label: "全部" },
+												{ value: "pending", label: "待处理" },
+												{ value: "processing", label: "处理中" },
+												{ value: "completed", label: "已完成" },
+												{ value: "failed", label: "失败" },
+												{ value: "cancelled", label: "已取消" },
+											]}
+										/>
+										<FilterSelect
+											label="任务类型"
+											value={taskTypeFilter}
+											onChange={(value) => {
+												setTaskTypeFilter(value);
+												setTaskPage(1);
+											}}
+											options={[
+												{ value: "", label: "全部" },
+												{ value: "process_article_ai", label: "文章摘要" },
+												{ value: "process_article_translation", label: "翻译生成" },
+												{ value: "process_ai_content:summary", label: "AI摘要" },
+												{ value: "process_ai_content:outline", label: "大纲生成" },
+												{ value: "process_ai_content:quotes", label: "金句生成" },
+												{ value: "process_ai_content:key_points", label: "总结生成" },
+											]}
+										/>
+										<FilterInput
+											label="文章ID"
+											value={taskArticleIdFilter}
+											onChange={(value) => {
+												setTaskArticleIdFilter(value);
+												setTaskPage(1);
+											}}
+											placeholder="输入文章ID"
+										/>
 									</div>
 
 									{taskLoading ? (

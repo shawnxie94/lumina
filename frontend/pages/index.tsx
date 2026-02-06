@@ -12,6 +12,7 @@ import AppHeader from '@/components/AppHeader';
 import DateRangePicker from '@/components/DateRangePicker';
 import FilterInput from '@/components/FilterInput';
 import FilterSelect from '@/components/FilterSelect';
+import FilterSelectInline from '@/components/FilterSelectInline';
 import { useToast } from '@/components/Toast';
 import { BackToTop } from '@/components/BackToTop';
 import { IconEye, IconEyeOff, IconGlobe, IconSearch, IconTag, IconTrash } from '@/components/icons';
@@ -516,9 +517,9 @@ export default function Home() {
                       </span>
                     </button>
                 </div>
-                <div className="flex flex-wrap items-end justify-end gap-4">
-                  <FilterSelect
-                    label="创建时间"
+                <div className="flex flex-wrap items-center justify-end gap-4">
+                  <FilterSelectInline
+                    label="创建时间："
                     value={quickDateFilter}
                     onChange={(value) => handleQuickDateChange(value as QuickDateOption)}
                     options={[
@@ -533,8 +534,8 @@ export default function Home() {
                     ]}
                   />
                   {isAdmin && (
-                    <FilterSelect
-                      label="可见性"
+                    <FilterSelectInline
+                      label="可见性："
                       value={visibilityFilter}
                       onChange={(value) => { setVisibilityFilter(value); setPage(1); }}
                       options={[
@@ -544,8 +545,8 @@ export default function Home() {
                       ]}
                     />
                   )}
-                  <FilterSelect
-                    label="排序"
+                  <FilterSelectInline
+                    label="排序："
                     value={sortBy}
                     onChange={(value) => { setSortBy(value); setPage(1); }}
                     options={[
