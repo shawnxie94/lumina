@@ -10,6 +10,8 @@ import { articleApi, categoryApi, Article, Category } from '@/lib/api';
 import AppFooter from '@/components/AppFooter';
 import AppHeader from '@/components/AppHeader';
 import DateRangePicker from '@/components/DateRangePicker';
+import FilterInput from '@/components/FilterInput';
+import FilterSelect from '@/components/FilterSelect';
 import { useToast } from '@/components/Toast';
 import { BackToTop } from '@/components/BackToTop';
 import { IconEye, IconEyeOff, IconGlobe, IconSearch, IconTag, IconTrash } from '@/components/icons';
@@ -514,96 +516,73 @@ export default function Home() {
                       </span>
                     </button>
                 </div>
-                <div className="flex flex-wrap items-center justify-end gap-4">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-text-2">创建时间：</span>
-                    <Select
-                      value={quickDateFilter}
-                      onChange={(value) => handleQuickDateChange(value as QuickDateOption)}
-                      className="select-modern-antd w-20"
-                      popupClassName="select-modern-dropdown"
+                <div className="flex flex-wrap items-end justify-end gap-4">
+                  <FilterSelect
+                    label="创建时间"
+                    value={quickDateFilter}
+                    onChange={(value) => handleQuickDateChange(value as QuickDateOption)}
+                    options={[
+                      { value: '', label: '全部' },
+                      { value: '1d', label: '1天内' },
+                      { value: '3d', label: '3天内' },
+                      { value: '1w', label: '1周内' },
+                      { value: '1m', label: '1个月' },
+                      { value: '3m', label: '3个月' },
+                      { value: '6m', label: '6个月' },
+                      { value: '1y', label: '1年内' },
+                    ]}
+                  />
+                  {isAdmin && (
+                    <FilterSelect
+                      label="可见性"
+                      value={visibilityFilter}
+                      onChange={(value) => { setVisibilityFilter(value); setPage(1); }}
                       options={[
                         { value: '', label: '全部' },
-                        { value: '1d', label: '1天内' },
-                        { value: '3d', label: '3天内' },
-                        { value: '1w', label: '1周内' },
-                        { value: '1m', label: '1个月' },
-                        { value: '3m', label: '3个月' },
-                        { value: '6m', label: '6个月' },
-                        { value: '1y', label: '1年内' },
+                        { value: 'visible', label: '可见' },
+                        { value: 'hidden', label: '隐藏' },
                       ]}
                     />
-                </div>
-                  {isAdmin && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm text-text-2">可见：</span>
-                      <Select
-                        value={visibilityFilter}
-                        onChange={(value) => { setVisibilityFilter(value); setPage(1); }}
-                        className="select-modern-antd"
-                        popupClassName="select-modern-dropdown"
-                        options={[
-                          { value: '', label: '全部' },
-                          { value: 'visible', label: '可见' },
-                          { value: 'hidden', label: '隐藏' },
-                        ]}
-                      />
-                    </div>
                   )}
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-text-2">排序：</span>
-                    <Select
-                      value={sortBy}
-                      onChange={(value) => { setSortBy(value); setPage(1); }}
-                      className="select-modern-antd"
-                      popupClassName="select-modern-dropdown"
-                      options={[
-                        { value: 'published_at_desc', label: '发表时间倒序' },
-                        { value: 'created_at_desc', label: '创建时间倒序' },
-                      ]}
-                    />
-                  </div>
+                  <FilterSelect
+                    label="排序"
+                    value={sortBy}
+                    onChange={(value) => { setSortBy(value); setPage(1); }}
+                    options={[
+                      { value: 'published_at_desc', label: '发表时间倒序' },
+                      { value: 'created_at_desc', label: '创建时间倒序' },
+                    ]}
+                  />
                 </div>
               </div>
 
               {showFilters && (
                 <div className="mt-4 pt-4 border-t border-border">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                    <div>
-                      <label className="block text-sm text-text-2 mb-1">文章标题</label>
-                      <input
-                        type="text"
-                        placeholder="模糊匹配标题..."
-                        value={searchTerm}
-                        onChange={(e) => { setSearchTerm(e.target.value); setPage(1); }}
-                        className="w-full px-3 py-2 text-sm border border-border-strong rounded-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm text-text-2 mb-1">来源</label>
-                      <Select
-                        value={sourceDomain}
-                        onChange={(value) => { setSourceDomain(value); setPage(1); }}
-                        className="select-modern-antd w-full"
-                        popupClassName="select-modern-dropdown"
-                        options={[{ value: '', label: '全部来源' }, ...sources.map((s) => ({ value: s, label: s }))]}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm text-text-2 mb-1">作者</label>
-                      <Select
-                        value={author}
-                        onChange={(value) => { setAuthor(value); setPage(1); }}
-                        className="select-modern-antd w-full"
-                        popupClassName="select-modern-dropdown"
-                        options={[{ value: '', label: '全部作者' }, ...authors.map((a) => ({ value: a, label: a }))]}
-                      />
-                    </div>
+                    <FilterInput
+                      label="文章标题"
+                      value={searchTerm}
+                      onChange={(value) => { setSearchTerm(value); setPage(1); }}
+                      placeholder="模糊匹配标题"
+                    />
+                    <FilterSelect
+                      label="来源"
+                      value={sourceDomain}
+                      onChange={(value) => { setSourceDomain(value); setPage(1); }}
+                      options={[{ value: '', label: '全部来源' }, ...sources.map((s) => ({ value: s, label: s }))]}
+                    />
+                    <FilterSelect
+                      label="作者"
+                      value={author}
+                      onChange={(value) => { setAuthor(value); setPage(1); }}
+                      options={[{ value: '', label: '全部作者' }, ...authors.map((a) => ({ value: a, label: a }))]}
+                    />
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-2">
                     <div>
-                      <label className="block text-sm text-text-2 mb-1">发表时间</label>
+                      <label htmlFor="published-date-range" className="block text-sm text-text-2 mb-1.5">发表时间</label>
                       <DateRangePicker
+                        id="published-date-range"
                         value={toDayjsRange(publishedDateRange)}
                         onChange={(values) => {
                           const [start, end] = values || [];
@@ -614,8 +593,9 @@ export default function Home() {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm text-text-2 mb-1">创建时间</label>
+                      <label htmlFor="created-date-range" className="block text-sm text-text-2 mb-1.5">创建时间</label>
                       <DateRangePicker
+                        id="created-date-range"
                         value={toDayjsRange(createdDateRange)}
                         onChange={(values) => {
                           const [start, end] = values || [];

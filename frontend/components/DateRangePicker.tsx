@@ -10,6 +10,7 @@ interface DateRangePickerProps {
   placeholder?: [string, string];
   className?: string;
   style?: CSSProperties;
+  id?: string;
 }
 
 export default function DateRangePicker({
@@ -18,6 +19,7 @@ export default function DateRangePicker({
   placeholder = ["开始日期", "结束日期"],
   className,
   style,
+  id,
 }: DateRangePickerProps) {
   return (
     <ConfigProvider
@@ -31,6 +33,7 @@ export default function DateRangePicker({
       }}
     >
       <DatePicker.RangePicker
+        id={id}
         value={value}
         onChange={onChange}
         className={className}
