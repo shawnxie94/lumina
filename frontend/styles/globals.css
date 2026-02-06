@@ -298,8 +298,8 @@ html[data-theme="dark"] .note-panel {
 }
 
 .immersive-content img {
-  width: 70% !important;
-  max-width: 70% !important;
+  width: 60% !important;
+  max-width: 60% !important;
   height: auto !important;
 }
 

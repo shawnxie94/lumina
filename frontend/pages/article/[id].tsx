@@ -330,7 +330,7 @@ function TableOfContents({ items, activeId, onSelect }: { items: TocItem[]; acti
   if (items.length === 0) return null;
 
   return (
-    <nav className="space-y-1">
+    <nav className="border-l-2 border-gray-200 pl-2 space-y-1">
       {items.map((item) => (
         <a
           key={item.id}
@@ -341,7 +341,7 @@ function TableOfContents({ items, activeId, onSelect }: { items: TocItem[]; acti
               ? 'text-blue-700 font-semibold bg-blue-50'
               : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
           }`}
-          style={{ paddingLeft: `${(item.level - 1) * 8}px` }}
+          style={{ paddingLeft: `${(item.level - 1) * 8 + 8}px` }}
         >
           {item.text}
         </a>
@@ -763,22 +763,29 @@ export default function ArticleDetailPage() {
   useEffect(() => {
     if (!contentRef.current) return;
 
-    const headings = contentRef.current.querySelectorAll('h1, h2, h3, h4, h5, h6');
-    const items: TocItem[] = [];
-    
-    headings.forEach((heading, index) => {
-      const id = `heading-${index}`;
-      heading.id = id;
-      items.push({
-        id,
-        text: heading.textContent || '',
-        level: parseInt(heading.tagName[1]),
+    // 使用 requestAnimationFrame 确保 DOM 已更新
+    const rafId = requestAnimationFrame(() => {
+      if (!contentRef.current) return;
+      
+      const headings = contentRef.current.querySelectorAll('h1, h2, h3, h4, h5, h6');
+      const items: TocItem[] = [];
+      
+      headings.forEach((heading, index) => {
+        const id = `heading-${index}`;
+        heading.id = id;
+        items.push({
+          id,
+          text: heading.textContent || '',
+          level: parseInt(heading.tagName[1]),
+        });
       });
+      
+      setTocItems(items);
+      setActiveTocId(items[0]?.id || '');
     });
-    
-    setTocItems(items);
-    setActiveTocId(items[0]?.id || '');
-  }, [article, showTranslation]);
+
+    return () => cancelAnimationFrame(rafId);
+  }, [renderedHtml]);
 
   useEffect(() => {
     if (tocItems.length === 0) return;
@@ -1509,35 +1516,6 @@ export default function ArticleDetailPage() {
 				} flex-1`}
 			>
           <div className="flex gap-4">
-            {!immersiveMode && tocItems.length > 0 && (
-              <aside className={`hidden xl:block flex-shrink-0 transition-all duration-300 ${tocCollapsed ? 'w-12' : 'w-48'}`}>
-                <div className="sticky top-4 bg-surface rounded-sm shadow-sm border border-border p-4 max-h-[calc(100vh-2rem)] overflow-y-auto">
-                  <div className="flex items-center justify-between mb-3">
-                    {!tocCollapsed && (
-                      <h3 className="text-lg font-semibold text-text-1 inline-flex items-center gap-2">
-                        <IconList className="h-4 w-4" />
-                        <span>目录</span>
-                      </h3>
-                    )}
-                    <button
-                      onClick={() => setTocCollapsed(!tocCollapsed)}
-                      className="text-text-3 hover:text-text-2 transition"
-                      title={tocCollapsed ? '展开' : '收起'}
-                    >
-                      {tocCollapsed ? '»' : '«'}
-                    </button>
-                  </div>
-                  {!tocCollapsed && (
-                    <TableOfContents
-                      items={tocItems}
-                      activeId={activeTocId}
-                      onSelect={setActiveTocId}
-                    />
-                  )}
-                </div>
-              </aside>
-            )}
-
             <div className={`flex-1 bg-surface ${immersiveMode ? '' : 'rounded-sm shadow-sm border border-border p-6'}`}>
               {!immersiveMode && (
                 <div className="flex items-center justify-between mb-6">
@@ -1608,7 +1586,7 @@ export default function ArticleDetailPage() {
                         onClick={() => setShowTranslation(!showTranslation)}
                         className="flex items-center justify-center w-8 h-8 rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition text-base"
                       >
-                        {showTranslation ? '原文' : '译文'}
+                        {showTranslation ? '原' : '译'}
                       </button>
                     )}
                     <button
@@ -2233,43 +2211,61 @@ export default function ArticleDetailPage() {
             </div>
 
             {!immersiveMode && (
-              <aside className={`flex-shrink-0 transition-all duration-300 ${analysisCollapsed ? 'w-12' : 'w-96'}`}>
-              <div className="bg-white rounded-lg shadow-sm p-4 sticky top-4 max-h-[calc(100vh-2rem)] overflow-y-auto">
+              <aside className="flex-shrink-0 w-[420px]">
+              <div className="sticky top-4 max-h-[calc(100vh-2rem)] overflow-y-auto">
+                <div className="bg-white rounded-lg shadow-sm p-4">
                 <div className="flex items-center justify-between mb-4">
-                  {!analysisCollapsed && (
-                    <div>
-                  <h2 className="text-lg font-semibold text-gray-900 inline-flex items-center gap-2">
-                    <IconRobot className="h-4 w-4" />
-                    <span>AI解读</span>
-                  </h2>
-                      {aiUpdatedAt && (
-                        <div className="text-xs text-gray-500 mt-1">更新时间：{aiUpdatedAt}</div>
-                      )}
-                    </div>
+                  {tocItems.length > 0 && (
+                    <>
+                      <h2 className="text-lg font-semibold text-gray-900 inline-flex items-center gap-2">
+                        <IconList className="h-4 w-4" />
+                        <span>目录</span>
+                      </h2>
+                      <button
+                        onClick={() => setTocCollapsed(!tocCollapsed)}
+                        className="text-text-3 hover:text-primary transition"
+                        title={tocCollapsed ? '展开目录' : '收起目录'}
+                      >
+                        <IconChevronDown className={`h-4 w-4 transition-transform duration-200 ${tocCollapsed ? '' : 'rotate-180'}`} />
+                      </button>
+                    </>
                   )}
-                  <button
-                    onClick={() => setAnalysisCollapsed(!analysisCollapsed)}
-                    className="text-gray-500 hover:text-gray-700 transition"
-                    title={analysisCollapsed ? '展开' : '收起'}
-                  >
-                    {analysisCollapsed ? '«' : '»'}
-                  </button>
                 </div>
 
-                {!analysisCollapsed && (
-                  <div className="space-y-6">
-                    {showSummarySection && (
-                      <AIContentSection
-                  title="摘要"
-                        content={article.ai_analysis?.summary}
-                        status={article.ai_analysis?.summary_status || (article.status === 'completed' ? 'completed' : article.status)}
-                        onGenerate={() => handleGenerateContent('summary')}
-                        onCopy={() => handleCopyContent(article.ai_analysis?.summary, '摘要')}
-                        canEdit={isAdmin}
-                        showStatus={isAdmin}
-                        statusLink={`/settings?section=tasks&article_id=${article.id}`}
-                      />
-                    )}
+                <div className="space-y-6">
+                  {tocItems.length > 0 && !tocCollapsed && (
+                    <TableOfContents
+                      items={tocItems}
+                      activeId={activeTocId}
+                      onSelect={setActiveTocId}
+                    />
+                  )}
+
+                  <div>
+                    <div className="w-full h-px bg-gray-200 mb-4" />
+                    <div className="flex items-center justify-between mb-2">
+                      <h2 className="text-lg font-semibold text-gray-900 inline-flex items-center gap-2">
+                        <IconRobot className="h-4 w-4" />
+                        <span>AI解读</span>
+                      </h2>
+                      {aiUpdatedAt && (
+                        <span className="text-xs text-gray-500">{aiUpdatedAt}</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {showSummarySection && (
+                    <AIContentSection
+                title="摘要"
+                      content={article.ai_analysis?.summary}
+                      status={article.ai_analysis?.summary_status || (article.status === 'completed' ? 'completed' : article.status)}
+                      onGenerate={() => handleGenerateContent('summary')}
+                      onCopy={() => handleCopyContent(article.ai_analysis?.summary, '摘要')}
+                      canEdit={isAdmin}
+                      showStatus={isAdmin}
+                      statusLink={`/settings?section=tasks&article_id=${article.id}`}
+                    />
+                  )}
 
                     {(showKeyPointsSection || showOutlineSection || showQuotesSection) && (
                       <div className="space-y-4">
@@ -2349,7 +2345,7 @@ export default function ArticleDetailPage() {
                       </div>
                     )}
                   </div>
-                )}
+                </div>
               </div>
             </aside>
             )}
