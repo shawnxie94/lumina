@@ -309,6 +309,14 @@ export function IconChevronUp(props: IconProps) {
   );
 }
 
+export function IconChevronRight(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="m9 6 6 6-6 6" />
+    </IconBase>
+  );
+}
+
 export function IconTrash(props: IconProps) {
   return (
     <IconBase {...props}>
@@ -357,6 +365,26 @@ export function IconArrowUp(props: IconProps) {
   return (
     <IconBase {...props}>
       <path d="M12 19V5M5 12l7-7 7 7" />
+    </IconBase>
+  );
+}
+
+export function IconClock(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 6v6l4 2" />
+    </IconBase>
+  );
+}
+
+export function IconBroom(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M12 2v8" />
+      <path d="M4.93 10.93 2 18l6-2" />
+      <path d="M19.07 10.93 22 18l-6-2" />
+      <path d="M12 10a4 4 0 0 0-4 4v6h8v-6a4 4 0 0 0-4-4Z" />
     </IconBase>
   );
 }

@@ -1,0 +1,115 @@
+import { useRouter } from 'next/router';
+import { useEffect, useRef } from 'react';
+import Link from 'next/link';
+import { useReading } from '@/contexts/ReadingContext';
+import { IconClock, IconChevronRight, IconTrash, IconBroom } from '@/components/icons';
+
+export function ContinueReadingBanner() {
+  const router = useRouter();
+  const { recentArticles, removeArticle, clearArticles, isCollapsed, setIsCollapsed, isHidden } = useReading();
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  const isArticlePage = router.pathname === '/article/[id]';
+
+  useEffect(() => {
+    if (isCollapsed) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (panelRef.current && !panelRef.current.contains(event.target as Node)) {
+        setIsCollapsed(true);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isCollapsed, setIsCollapsed]);
+
+  if (recentArticles.length === 0 || isHidden) return null;
+
+  if (isCollapsed) {
+    return (
+      <div className="fixed top-24 right-4 z-40">
+        <button
+          type="button"
+          onClick={() => setIsCollapsed(false)}
+          className="flex items-center justify-center w-10 h-10 rounded-full bg-surface border border-border shadow-lg text-text-2 hover:text-text-1 hover:bg-muted transition"
+          title="最近阅读"
+        >
+          <IconClock className="h-5 w-5" />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed top-24 right-4 z-40 animate-slide-in" ref={panelRef}>
+      <div className="bg-surface rounded-lg shadow-lg border border-border w-72">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+          <h3 className="font-semibold text-text-1 flex items-center gap-2">
+            <IconClock className="h-4 w-4" />
+            最近阅读
+          </h3>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={clearArticles}
+              className="text-text-3 hover:text-red-500 transition"
+              title="清空全部"
+            >
+              <IconBroom className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsCollapsed(true)}
+              className="text-text-3 hover:text-text-1 transition"
+              title="收起"
+            >
+              <IconChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+        <div className="py-2">
+          {recentArticles.map((article) => {
+            const isCurrentArticle = isArticlePage && router.query.id === article.id;
+            const truncatedTitle = article.title.length > 20
+              ? `${article.title.slice(0, 20)}...`
+              : article.title;
+
+            return (
+              <div
+                key={article.id}
+                className={`flex items-center justify-between px-4 py-2 group ${
+                  isCurrentArticle ? 'bg-primary-soft' : 'hover:bg-muted'
+                }`}
+              >
+                <Link
+                  href={`/article/${article.id}`}
+                  className={`text-sm transition flex-1 truncate ${
+                    isCurrentArticle
+                      ? 'text-primary-ink'
+                      : 'text-text-2 hover:text-text-1'
+                  }`}
+                  title={article.title}
+                >
+                  {truncatedTitle}
+                </Link>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    removeArticle(article.id);
+                  }}
+                  className="text-text-3 hover:text-red-500 transition ml-2 flex-shrink-0"
+                  title="删除"
+                >
+                  <IconTrash className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}

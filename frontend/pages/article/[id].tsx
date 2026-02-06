@@ -14,6 +14,7 @@ import { useToast } from '@/components/Toast';
 import { BackToTop } from '@/components/BackToTop';
 import { IconBolt, IconBook, IconCopy, IconDoc, IconEdit, IconEye, IconEyeOff, IconList, IconNote, IconRefresh, IconRobot, IconTrash, IconCheck, IconReply, IconChevronDown, IconChevronUp } from '@/components/icons';
 import { useAuth } from '@/contexts/AuthContext';
+import { useReading } from '@/contexts/ReadingContext';
 import { Select } from 'antd';
 import { signIn, signOut, useSession } from 'next-auth/react';
 
@@ -500,6 +501,7 @@ export default function ArticleDetailPage() {
   const router = useRouter();
   const { showToast } = useToast();
   const { isAdmin } = useAuth();
+  const { addArticle, setIsHidden } = useReading();
   const { data: session } = useSession();
   const { id } = router.query;
   const [article, setArticle] = useState<ArticleDetail | null>(null);
@@ -659,6 +661,10 @@ export default function ArticleDetailPage() {
   }, [immersiveMode]);
 
   useEffect(() => {
+    setIsHidden(immersiveMode);
+  }, [immersiveMode, setIsHidden]);
+
+  useEffect(() => {
     if (id) {
       fetchArticle();
     }
@@ -759,6 +765,12 @@ export default function ArticleDetailPage() {
       setAnnotations([]);
     }
   }, [article?.id]);
+
+  useEffect(() => {
+    if (article?.id && article?.title) {
+      addArticle({ id: article.id, title: article.title });
+    }
+  }, [article?.id, article?.title, addArticle]);
 
   useEffect(() => {
     if (!contentRef.current) return;

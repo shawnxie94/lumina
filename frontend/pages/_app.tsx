@@ -4,7 +4,9 @@ import Head from 'next/head';
 import { SessionProvider } from 'next-auth/react';
 
 import { ToastProvider } from '@/components/Toast';
+import { ContinueReadingBanner } from '@/components/ContinueReadingBanner';
 import { AuthProvider } from '@/contexts/AuthContext';
+import { ReadingProvider } from '@/contexts/ReadingContext';
 
 export default function App({ Component, pageProps }: AppProps) {
   return (
@@ -15,9 +17,12 @@ export default function App({ Component, pageProps }: AppProps) {
       </Head>
       <SessionProvider session={(pageProps as { session?: any }).session}>
         <AuthProvider>
-          <ToastProvider>
-            <Component {...pageProps} />
-          </ToastProvider>
+          <ReadingProvider>
+            <ToastProvider>
+              <Component {...pageProps} />
+              <ContinueReadingBanner />
+            </ToastProvider>
+          </ReadingProvider>
         </AuthProvider>
       </SessionProvider>
     </>
