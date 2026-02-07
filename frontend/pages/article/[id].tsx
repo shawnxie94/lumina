@@ -5,7 +5,7 @@ import { useRouter } from 'next/router';
 import Link from 'next/link';
 import { marked } from 'marked';
 
-import { articleApi, commentApi, commentSettingsApi, type ArticleComment, type ArticleDetail, type ModelAPIConfig, type PromptConfig } from '@/lib/api';
+import { articleApi, categoryApi, commentApi, commentSettingsApi, type ArticleComment, type ArticleDetail, type Category, type ModelAPIConfig, type PromptConfig } from '@/lib/api';
 import AppFooter from '@/components/AppFooter';
 import AppHeader from '@/components/AppHeader';
 import Button from '@/components/Button';
@@ -477,11 +477,14 @@ export default function ArticleDetailPage() {
   const [promptConfigs, setPromptConfigs] = useState<PromptConfig[]>([]);
   const [selectedModelConfigId, setSelectedModelConfigId] = useState<string>('');
   const [selectedPromptConfigId, setSelectedPromptConfigId] = useState<string>('');
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(false);
 
   const [showEditModal, setShowEditModal] = useState(false);
   const [editMode, setEditMode] = useState<'original' | 'translation'>('original');
   const [editTitle, setEditTitle] = useState('');
   const [editAuthor, setEditAuthor] = useState('');
+  const [editCategoryId, setEditCategoryId] = useState('');
   const [editTopImage, setEditTopImage] = useState('');
   const [editContent, setEditContent] = useState('');
   const [saving, setSaving] = useState(false);
@@ -645,6 +648,22 @@ export default function ArticleDetailPage() {
   useEffect(() => {
     fetchCommentSettings();
   }, []);
+
+  useEffect(() => {
+    if (!showEditModal || categories.length > 0 || categoriesLoading) return;
+    const fetchCategories = async () => {
+      setCategoriesLoading(true);
+      try {
+        const data = await categoryApi.getCategories();
+        setCategories(data);
+      } catch (error) {
+        console.error('Failed to fetch categories:', error);
+      } finally {
+        setCategoriesLoading(false);
+      }
+    };
+    fetchCategories();
+  }, [showEditModal, categories.length, categoriesLoading]);
 
   useEffect(() => {
     const handleHashChange = () => {
@@ -1363,6 +1382,7 @@ export default function ArticleDetailPage() {
     setEditMode(mode);
     setEditTitle(article.title || '');
     setEditAuthor(article.author || '');
+    setEditCategoryId(article.category?.id || '');
     setEditTopImage(article.top_image || '');
     setEditContent(mode === 'translation' ? (article.content_trans || '') : (article.content_md || ''));
     setShowEditModal(true);
@@ -1376,12 +1396,14 @@ export default function ArticleDetailPage() {
       const updateData: {
         title?: string;
         author?: string;
+        category_id?: string | null;
         top_image?: string;
         content_md?: string;
         content_trans?: string;
       } = {
         title: editTitle,
         author: editAuthor,
+        category_id: editCategoryId || null,
         top_image: editTopImage,
       };
 
@@ -2439,16 +2461,37 @@ export default function ArticleDetailPage() {
                 />
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  作者
-                </label>
-                <input
-                  type="text"
-                  value={editAuthor}
-                  onChange={(e) => setEditAuthor(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    作者
+                  </label>
+                  <input
+                    type="text"
+                    value={editAuthor}
+                    onChange={(e) => setEditAuthor(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    分类
+                  </label>
+                  <Select
+                    value={editCategoryId}
+                    onChange={(value) => setEditCategoryId(value)}
+                    className="select-modern-antd w-full"
+                    popupClassName="select-modern-dropdown"
+                    loading={categoriesLoading}
+                    options={[
+                      { value: '', label: '未分类' },
+                      ...categories.map((category) => ({
+                        value: category.id,
+                        label: category.name,
+                      })),
+                    ]}
+                  />
+                </div>
               </div>
 
               <div>

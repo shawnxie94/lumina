@@ -222,6 +222,7 @@ class ArticleUpdate(BaseModel):
     content_md: Optional[str] = None
     content_trans: Optional[str] = None
     is_visible: Optional[bool] = None
+    category_id: Optional[str] = None
 
 
 class ArticleBatchVisibility(BaseModel):
@@ -1002,6 +1003,8 @@ async def update_article(
             article.content_trans = article_data.content_trans
         if article_data.is_visible is not None:
             article.is_visible = article_data.is_visible
+        if "category_id" in article_data.__fields_set__:
+            article.category_id = article_data.category_id
 
         from models import now_str
 
