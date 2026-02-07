@@ -7,6 +7,8 @@ from datetime import datetime
 from urllib.parse import urlparse
 
 import httpx
+from PIL import Image
+from io import BytesIO
 from fastapi import HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
@@ -18,6 +20,10 @@ BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 MEDIA_ROOT = os.getenv("MEDIA_ROOT", os.path.join(BASE_DIR, "data", "media"))
 MEDIA_BASE_URL = os.getenv("MEDIA_BASE_URL", "/media").rstrip("/")
 MAX_MEDIA_SIZE = int(os.getenv("MAX_MEDIA_SIZE", str(8 * 1024 * 1024)))
+DEFAULT_COMPRESS_THRESHOLD = 1536 * 1024
+DEFAULT_MAX_DIM = 2000
+DEFAULT_JPEG_QUALITY = 82
+DEFAULT_WEBP_QUALITY = 80
 
 
 def ensure_media_root() -> None:
@@ -105,11 +111,92 @@ def _validate_size(size: int) -> None:
         raise HTTPException(status_code=400, detail="图片过大，超出限制")
 
 
+def _get_media_settings(db: Session) -> dict:
+    admin = db.query(AdminSettings).first()
+    return {
+        "compress_threshold": (
+            admin.media_compress_threshold
+            if admin and admin.media_compress_threshold is not None
+            else DEFAULT_COMPRESS_THRESHOLD
+        ),
+        "max_dim": (
+            admin.media_max_dim if admin and admin.media_max_dim is not None else DEFAULT_MAX_DIM
+        ),
+        "jpeg_quality": (
+            admin.media_jpeg_quality
+            if admin and admin.media_jpeg_quality is not None
+            else DEFAULT_JPEG_QUALITY
+        ),
+        "webp_quality": (
+            admin.media_webp_quality
+            if admin and admin.media_webp_quality is not None
+            else DEFAULT_WEBP_QUALITY
+        ),
+    }
+
+
+def _maybe_compress_image(
+    data: bytes,
+    content_type: str | None,
+    compress_threshold: int,
+    max_dim: int,
+    jpeg_quality: int,
+    webp_quality: int,
+) -> bytes:
+    if not data:
+        return data
+    if len(data) <= compress_threshold:
+        return data
+    if not content_type or not content_type.startswith("image/"):
+        return data
+
+    try:
+        with Image.open(BytesIO(data)) as img:
+            original_format = img.format or "PNG"
+            if max(img.size) > max_dim:
+                img.thumbnail((max_dim, max_dim))
+
+            buffer = BytesIO()
+            if original_format.upper() in ["JPEG", "JPG"]:
+                img = img.convert("RGB")
+                img.save(
+                    buffer,
+                    format="JPEG",
+                    quality=jpeg_quality,
+                    optimize=True,
+                    progressive=True,
+                )
+            elif original_format.upper() == "PNG":
+                img.save(buffer, format="PNG", optimize=True, compress_level=9)
+            elif original_format.upper() == "WEBP":
+                img.save(
+                    buffer,
+                    format="WEBP",
+                    quality=webp_quality,
+                    method=6,
+                )
+            else:
+                img.save(buffer, format=original_format)
+            return buffer.getvalue()
+    except Exception as exc:
+        logger.warning("image_compress_failed: %s", str(exc))
+        return data
+
+
 async def save_upload_image(
     db: Session, article_id: str, file: UploadFile
 ) -> tuple[MediaAsset, str]:
     content_type = _validate_image_content_type(file.content_type)
+    settings = _get_media_settings(db)
     data = await file.read()
+    data = _maybe_compress_image(
+        data,
+        content_type,
+        settings["compress_threshold"],
+        settings["max_dim"],
+        settings["jpeg_quality"],
+        settings["webp_quality"],
+    )
     size = len(data)
     _validate_size(size)
     ext = _guess_extension(content_type, file.filename)
@@ -140,7 +227,16 @@ async def ingest_external_image(
         raise HTTPException(status_code=400, detail="图片下载失败")
 
     content_type = _validate_image_content_type(response.headers.get("content-type"))
+    settings = _get_media_settings(db)
     data = response.content or b""
+    data = _maybe_compress_image(
+        data,
+        content_type,
+        settings["compress_threshold"],
+        settings["max_dim"],
+        settings["jpeg_quality"],
+        settings["webp_quality"],
+    )
     _validate_size(len(data))
 
     ext = _guess_extension(content_type, url)

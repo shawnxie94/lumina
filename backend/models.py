@@ -266,6 +266,10 @@ class AdminSettings(Base):
     sensitive_filter_enabled = Column(Boolean, default=True)
     sensitive_words = Column(Text, nullable=True)
     media_storage_enabled = Column(Boolean, default=False)
+    media_compress_threshold = Column(Integer, default=1536 * 1024)
+    media_max_dim = Column(Integer, default=2000)
+    media_jpeg_quality = Column(Integer, default=82)
+    media_webp_quality = Column(Integer, default=80)
     created_at = Column(String, default=now_str)
     updated_at = Column(String, default=now_str)
 
@@ -367,6 +371,10 @@ def init_db():
                     ("sensitive_filter_enabled", "INTEGER"),
                     ("sensitive_words", "TEXT"),
                     ("media_storage_enabled", "INTEGER"),
+                    ("media_compress_threshold", "INTEGER"),
+                    ("media_max_dim", "INTEGER"),
+                    ("media_jpeg_quality", "INTEGER"),
+                    ("media_webp_quality", "INTEGER"),
                 ],
             )
             ensure_columns(

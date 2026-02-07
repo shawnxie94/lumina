@@ -319,6 +319,10 @@ export default function AdminPage() {
 	});
 	const [storageSettings, setStorageSettings] = useState<StorageSettings>({
 		media_storage_enabled: false,
+		media_compress_threshold: 1536 * 1024,
+		media_max_dim: 2000,
+		media_jpeg_quality: 82,
+		media_webp_quality: 80,
 	});
 	const [commentSettingsLoading, setCommentSettingsLoading] = useState(false);
 	const [commentSettingsSaving, setCommentSettingsSaving] = useState(false);
@@ -2893,13 +2897,13 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 										</button>
 									</div>
 
-									{storageSettingsLoading ? (
-										<div className="text-center py-12 text-text-3">
-											加载中...
-										</div>
-									) : (
-										<div className="space-y-4">
-											<div className="flex items-center justify-between border border-border rounded-sm p-4 bg-surface">
+								{storageSettingsLoading ? (
+									<div className="text-center py-12 text-text-3">
+										加载中...
+									</div>
+								) : (
+									<div className="space-y-4">
+										<div className="flex items-center justify-between border border-border rounded-sm p-4 bg-surface">
 												<div>
 													<div className="text-sm font-medium text-text-1">
 														开启本地图片存储
@@ -2923,12 +2927,100 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 													<span>
 														{storageSettings.media_storage_enabled ? "已开启" : "已关闭"}
 													</span>
+											</label>
+										</div>
+										<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+											<div>
+												<label className="block text-sm text-text-2 mb-1">
+													压缩阈值 (KB)
 												</label>
+												<input
+													type="number"
+													min={256}
+													value={Math.round(storageSettings.media_compress_threshold / 1024)}
+													onChange={(e) =>
+														setStorageSettings((prev) => ({
+															...prev,
+															media_compress_threshold: Math.max(
+																256,
+																Number(e.target.value || 0),
+															) * 1024,
+														}))
+													}
+													className="w-full h-9 px-3 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
+													placeholder="超过该大小触发压缩"
+												/>
+											</div>
+											<div>
+												<label className="block text-sm text-text-2 mb-1">
+													最长边 (px)
+												</label>
+												<input
+													type="number"
+													min={600}
+													value={storageSettings.media_max_dim}
+													onChange={(e) =>
+														setStorageSettings((prev) => ({
+															...prev,
+															media_max_dim: Math.max(
+																600,
+																Number(e.target.value || 0),
+															),
+														}))
+													}
+													className="w-full h-9 px-3 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
+													placeholder="限制图片最长边"
+												/>
+											</div>
+											<div>
+												<label className="block text-sm text-text-2 mb-1">
+													JPEG 质量 (30-95)
+												</label>
+												<input
+													type="number"
+													min={30}
+													max={95}
+													value={storageSettings.media_jpeg_quality}
+													onChange={(e) =>
+														setStorageSettings((prev) => ({
+															...prev,
+															media_jpeg_quality: Math.min(
+																95,
+																Math.max(30, Number(e.target.value || 0)),
+															),
+														}))
+													}
+													className="w-full h-9 px-3 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
+													placeholder="JPEG 压缩质量"
+												/>
+											</div>
+											<div>
+												<label className="block text-sm text-text-2 mb-1">
+													WEBP 质量 (30-95)
+												</label>
+												<input
+													type="number"
+													min={30}
+													max={95}
+													value={storageSettings.media_webp_quality}
+													onChange={(e) =>
+														setStorageSettings((prev) => ({
+															...prev,
+															media_webp_quality: Math.min(
+																95,
+																Math.max(30, Number(e.target.value || 0)),
+															),
+														}))
+													}
+													className="w-full h-9 px-3 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
+													placeholder="WEBP 压缩质量"
+												/>
 											</div>
 										</div>
-									)}
-								</div>
-							)}
+									</div>
+								)}
+							</div>
+						)}
 
 							{activeSection === "monitoring" && monitoringSubSection === "tasks" && (
 								<div className="bg-white rounded-lg shadow-sm p-6">

@@ -137,6 +137,10 @@ def create_admin_settings(db: Session, password: str) -> AdminSettings:
         sensitive_filter_enabled=True,
         sensitive_words="",
         media_storage_enabled=False,
+        media_compress_threshold=1536 * 1024,
+        media_max_dim=2000,
+        media_jpeg_quality=82,
+        media_webp_quality=80,
     )
     db.add(admin)
     db.commit()

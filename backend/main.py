@@ -341,6 +341,10 @@ class CommentSettingsUpdate(BaseModel):
 
 class StorageSettingsUpdate(BaseModel):
     media_storage_enabled: Optional[bool] = None
+    media_compress_threshold: Optional[int] = None
+    media_max_dim: Optional[int] = None
+    media_jpeg_quality: Optional[int] = None
+    media_webp_quality: Optional[int] = None
 
 
 class MediaIngestRequest(BaseModel):
@@ -481,7 +485,19 @@ async def get_storage_settings(
     admin = get_admin_settings(db)
     if admin is None:
         raise HTTPException(status_code=404, detail="未初始化管理员设置")
-    return {"media_storage_enabled": bool(admin.media_storage_enabled)}
+    return {
+        "media_storage_enabled": bool(admin.media_storage_enabled),
+        "media_compress_threshold": admin.media_compress_threshold
+        if admin.media_compress_threshold is not None
+        else 1536 * 1024,
+        "media_max_dim": admin.media_max_dim if admin.media_max_dim is not None else 2000,
+        "media_jpeg_quality": admin.media_jpeg_quality
+        if admin.media_jpeg_quality is not None
+        else 82,
+        "media_webp_quality": admin.media_webp_quality
+        if admin.media_webp_quality is not None
+        else 80,
+    }
 
 
 @app.put("/api/settings/storage")
@@ -495,6 +511,14 @@ async def update_storage_settings(
         raise HTTPException(status_code=404, detail="未初始化管理员设置")
     if payload.media_storage_enabled is not None:
         admin.media_storage_enabled = bool(payload.media_storage_enabled)
+    if payload.media_compress_threshold is not None:
+        admin.media_compress_threshold = max(256 * 1024, payload.media_compress_threshold)
+    if payload.media_max_dim is not None:
+        admin.media_max_dim = max(600, payload.media_max_dim)
+    if payload.media_jpeg_quality is not None:
+        admin.media_jpeg_quality = min(95, max(30, payload.media_jpeg_quality))
+    if payload.media_webp_quality is not None:
+        admin.media_webp_quality = min(95, max(30, payload.media_webp_quality))
     admin.updated_at = now_str()
     db.commit()
     db.refresh(admin)

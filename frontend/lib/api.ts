@@ -179,6 +179,10 @@ export interface CommentSettings {
 
 export interface StorageSettings {
 	media_storage_enabled: boolean;
+	media_compress_threshold: number;
+	media_max_dim: number;
+	media_jpeg_quality: number;
+	media_webp_quality: number;
 }
 
 export interface CommentListResponse {
