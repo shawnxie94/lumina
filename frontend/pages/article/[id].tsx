@@ -5,7 +5,7 @@ import { useRouter } from 'next/router';
 import Link from 'next/link';
 import { marked } from 'marked';
 
-import { articleApi, categoryApi, commentApi, commentSettingsApi, type ArticleComment, type ArticleDetail, type Category, type ModelAPIConfig, type PromptConfig } from '@/lib/api';
+import { articleApi, categoryApi, commentApi, commentSettingsApi, mediaApi, storageSettingsApi, type ArticleComment, type ArticleDetail, type Category, type ModelAPIConfig, type PromptConfig } from '@/lib/api';
 import AppFooter from '@/components/AppFooter';
 import AppHeader from '@/components/AppHeader';
 import Button from '@/components/Button';
@@ -106,6 +106,75 @@ function getReplyMeta(content: string): { user: string; link: string } | null {
   if (!user && !link) return null;
   return { user, link };
 }
+
+function extractImageUrlFromHtml(html: string): string | null {
+  if (!html) return null;
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const img = doc.querySelector('img');
+  const src = img?.getAttribute('src');
+  return src || null;
+}
+
+function extractImageUrlFromText(text: string): string | null {
+  if (!text) return null;
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  if (trimmed.includes('![](')) return null;
+  const urlMatch = trimmed.match(/https?:\/\/[^\s)]+/);
+  const url = urlMatch ? urlMatch[0] : '';
+  if (!url) return null;
+  if (/\.(png|jpe?g|gif|webp|svg|bmp|avif)(\?.*)?$/i.test(url)) {
+    return url;
+  }
+  return null;
+}
+
+function insertTextAtCursor(
+  target: HTMLTextAreaElement,
+  text: string,
+  onChange: (value: string) => void,
+) {
+  const start = target.selectionStart ?? target.value.length;
+  const end = target.selectionEnd ?? target.value.length;
+  const nextValue = `${target.value.slice(0, start)}${text}${target.value.slice(end)}`;
+  onChange(nextValue);
+  requestAnimationFrame(() => {
+    const cursor = start + text.length;
+    target.setSelectionRange(cursor, cursor);
+    target.focus();
+  });
+}
+
+function extractMarkdownImageUrls(markdown: string): string[] {
+  if (!markdown) return [];
+  const pattern = /!\[[^\]]*\]\((\S+?)(?:\s+"[^"]*")?\)/g;
+  const urls: string[] = [];
+  let match: RegExpExecArray | null = null;
+  while ((match = pattern.exec(markdown)) !== null) {
+    const url = match[1];
+    if (url && url.startsWith('http')) {
+      urls.push(url);
+    }
+  }
+  return Array.from(new Set(urls));
+}
+
+function replaceMarkdownImageUrl(
+  markdown: string,
+  originalUrl: string,
+  nextUrl: string,
+): string {
+  const escaped = originalUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = new RegExp(
+    `!\\[([^\\]]*)\\]\\(${escaped}(\\s+\\"[^\\"]*\\")?\\)`,
+    'g',
+  );
+  return markdown.replace(pattern, (_match, alt, titlePart) => {
+    const title = titlePart || '';
+    return `![${alt}](${nextUrl}${title})`;
+  });
+}
+
 
 function MindMapTree({ node, isRoot = false, compact = false, depth = 0 }: { node: MindMapNode; isRoot?: boolean; compact?: boolean; depth?: number }) {
   const hasTitle = node.title && node.title.trim().length > 0;
@@ -488,6 +557,9 @@ export default function ArticleDetailPage() {
   const [editTopImage, setEditTopImage] = useState('');
   const [editContent, setEditContent] = useState('');
   const [saving, setSaving] = useState(false);
+  const [mediaStorageEnabled, setMediaStorageEnabled] = useState(false);
+  const [mediaStorageLoading, setMediaStorageLoading] = useState(false);
+  const [mediaUploading, setMediaUploading] = useState(false);
 
   const [noteContent, setNoteContent] = useState('');
   const [noteDraft, setNoteDraft] = useState('');
@@ -664,6 +736,11 @@ export default function ArticleDetailPage() {
     };
     fetchCategories();
   }, [showEditModal, categories.length, categoriesLoading]);
+
+  useEffect(() => {
+    if (!showEditModal || !isAdmin) return;
+    fetchStorageSettings();
+  }, [showEditModal, isAdmin]);
 
   useEffect(() => {
     const handleHashChange = () => {
@@ -1387,6 +1464,138 @@ export default function ArticleDetailPage() {
     setReplyTargetId(comment.id);
     setReplyPrefix(`> 回复 @${comment.user_name}\n${link ? `> [原评论](${link})\n` : ''}`);
     focusCommentInput();
+  };
+
+  const fetchStorageSettings = async () => {
+    if (!isAdmin) return;
+    setMediaStorageLoading(true);
+    try {
+      const data = await storageSettingsApi.getSettings();
+      setMediaStorageEnabled(Boolean(data.media_storage_enabled));
+    } catch (error) {
+      console.error('Failed to fetch storage settings:', error);
+      showToast('存储配置加载失败', 'error');
+    } finally {
+      setMediaStorageLoading(false);
+    }
+  };
+
+  const handleEditPaste = async (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const clipboard = event.clipboardData;
+    if (!clipboard || !article?.id) return;
+    const target = event.currentTarget;
+
+    const files = Array.from(clipboard.files || []);
+    const imageFile = files.find((file) => file.type.startsWith('image/'));
+    if (imageFile) {
+      if (!mediaStorageEnabled) {
+        showToast('未开启本地图片存储，无法上传图片', 'info');
+        return;
+      }
+      event.preventDefault();
+      setMediaUploading(true);
+      try {
+        const result = await mediaApi.upload(article.id, imageFile);
+        if (target) {
+          insertTextAtCursor(target, `![](${result.url})`, setEditContent);
+        }
+        showToast('图片已上传');
+      } catch (error: any) {
+        console.error('Failed to upload image:', error);
+        showToast(error?.response?.data?.detail || '图片上传失败', 'error');
+      } finally {
+        setMediaUploading(false);
+      }
+      return;
+    }
+
+    const html = clipboard.getData('text/html');
+    const text = clipboard.getData('text/plain');
+    const imageUrl = extractImageUrlFromHtml(html) || extractImageUrlFromText(text);
+    if (!imageUrl) return;
+
+    event.preventDefault();
+    if (!mediaStorageEnabled) {
+      if (target) {
+        insertTextAtCursor(target, `![](${imageUrl})`, setEditContent);
+      }
+      return;
+    }
+
+    setMediaUploading(true);
+    try {
+      const result = await mediaApi.ingest(article.id, imageUrl);
+      if (target) {
+        insertTextAtCursor(target, `![](${result.url})`, setEditContent);
+      }
+      showToast('图片已转存');
+    } catch (error: any) {
+      console.error('Failed to ingest image:', error);
+      showToast(error?.response?.data?.detail || '图片转存失败', 'error');
+    } finally {
+      setMediaUploading(false);
+    }
+  };
+
+  const handleConvertTopImage = async () => {
+    if (!article?.id) return;
+    if (!editTopImage.trim()) {
+      showToast('请先填写头图 URL', 'info');
+      return;
+    }
+    if (!mediaStorageEnabled) {
+      showToast('未开启本地图片存储', 'info');
+      return;
+    }
+    setMediaUploading(true);
+    try {
+      const result = await mediaApi.ingest(article.id, editTopImage.trim());
+      setEditTopImage(result.url);
+      showToast('头图已转存');
+    } catch (error: any) {
+      console.error('Failed to ingest top image:', error);
+      showToast(error?.response?.data?.detail || '头图转存失败', 'error');
+    } finally {
+      setMediaUploading(false);
+    }
+  };
+
+  const handleBatchConvertMarkdownImages = async () => {
+    if (!article?.id) return;
+    if (!editContent.trim()) {
+      showToast('内容为空，无法扫描', 'info');
+      return;
+    }
+    if (!mediaStorageEnabled) {
+      showToast('未开启本地图片存储', 'info');
+      return;
+    }
+    if (mediaUploading) return;
+
+    const urls = extractMarkdownImageUrls(editContent).filter(
+      (url) => !url.includes('/media/'),
+    );
+    if (urls.length === 0) {
+      showToast('未发现外链图片', 'info');
+      return;
+    }
+
+    setMediaUploading(true);
+    let nextContent = editContent;
+    try {
+      for (const url of urls) {
+        try {
+          const result = await mediaApi.ingest(article.id, url);
+          nextContent = replaceMarkdownImageUrl(nextContent, url, result.url);
+        } catch (error: any) {
+          console.error('Failed to ingest image:', error);
+        }
+      }
+      setEditContent(nextContent);
+      showToast('图片转存完成');
+    } finally {
+      setMediaUploading(false);
+    }
   };
 
 
@@ -2515,7 +2724,25 @@ export default function ArticleDetailPage() {
                     className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     placeholder="输入图片 URL"
                   />
+                  <button
+                    type="button"
+                    onClick={handleConvertTopImage}
+                    disabled={mediaStorageLoading || mediaUploading || !mediaStorageEnabled}
+                    className="px-3 py-2 text-xs rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition disabled:opacity-50"
+                    title={
+                      mediaStorageEnabled
+                        ? "转存为本地文件"
+                        : "未开启本地图片存储"
+                    }
+                  >
+                    转存为内部
+                  </button>
                 </div>
+                {!mediaStorageEnabled && (
+                  <div className="text-xs text-gray-500 mt-1">
+                    未开启本地存储，头图将保持外链
+                  </div>
+                )}
                 {editTopImage && (
                   <div className="mt-2">
                     <img
@@ -2534,9 +2761,30 @@ export default function ArticleDetailPage() {
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   内容（Markdown）
                 </label>
+                <div className="flex items-center gap-2 mb-2">
+                  <button
+                    type="button"
+                    onClick={handleBatchConvertMarkdownImages}
+                    disabled={mediaUploading || !mediaStorageEnabled}
+                    className="px-3 py-1.5 text-xs rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition disabled:opacity-50"
+                    title={
+                      mediaStorageEnabled
+                        ? '扫描并转存外链图片'
+                        : '未开启本地图片存储'
+                    }
+                  >
+                    批量转存外链图片
+                  </button>
+                  {!mediaStorageEnabled && (
+                    <span className="text-xs text-gray-500">
+                      未开启本地存储，外链将保持不变
+                    </span>
+                  )}
+                </div>
                 <textarea
                   value={editContent}
                   onChange={(e) => setEditContent(e.target.value)}
+                  onPaste={handleEditPaste}
                   rows={15}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
                 />

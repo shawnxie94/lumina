@@ -89,6 +89,9 @@ class Article(Base):
     comments = relationship(
         "ArticleComment", back_populates="article", cascade="all, delete-orphan"
     )
+    media_assets = relationship(
+        "MediaAsset", back_populates="article", cascade="all, delete-orphan"
+    )
 
 
 class ArticleComment(Base):
@@ -109,6 +112,22 @@ class ArticleComment(Base):
     updated_at = Column(String, default=now_str)
 
     article = relationship("Article", back_populates="comments")
+
+
+class MediaAsset(Base):
+    __tablename__ = "media_assets"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    article_id = Column(
+        String, ForeignKey("articles.id", ondelete="CASCADE"), nullable=False
+    )
+    original_url = Column(Text, nullable=True)
+    storage_path = Column(Text, nullable=False)
+    content_type = Column(String, nullable=True)
+    size = Column(Integer, nullable=True)
+    created_at = Column(String, default=now_str)
+
+    article = relationship("Article", back_populates="media_assets")
 
 
 class AIAnalysis(Base):
@@ -246,6 +265,7 @@ class AdminSettings(Base):
     nextauth_secret = Column(String, nullable=True)
     sensitive_filter_enabled = Column(Boolean, default=True)
     sensitive_words = Column(Text, nullable=True)
+    media_storage_enabled = Column(Boolean, default=False)
     created_at = Column(String, default=now_str)
     updated_at = Column(String, default=now_str)
 
@@ -346,6 +366,7 @@ def init_db():
                     ("nextauth_secret", "TEXT"),
                     ("sensitive_filter_enabled", "INTEGER"),
                     ("sensitive_words", "TEXT"),
+                    ("media_storage_enabled", "INTEGER"),
                 ],
             )
             ensure_columns(

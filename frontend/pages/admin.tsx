@@ -63,13 +63,15 @@ import {
 	commentAdminApi,
 	commentApi,
 	commentSettingsApi,
+	storageSettingsApi,
 	type CommentListResponse,
 	type CommentSettings,
+	type StorageSettings,
 	type ModelAPIConfig,
 	type PromptConfig,
 } from "@/lib/api";
 
-type SettingSection = "ai" | "categories" | "monitoring" | "comments";
+type SettingSection = "ai" | "categories" | "monitoring" | "comments" | "storage";
 type AISubSection = "model-api" | "prompt";
 type MonitoringSubSection = "tasks" | "ai-usage" | "comments";
 type CommentSubSection = "keys" | "filters";
@@ -315,8 +317,13 @@ export default function AdminPage() {
 		sensitive_filter_enabled: true,
 		sensitive_words: "",
 	});
+	const [storageSettings, setStorageSettings] = useState<StorageSettings>({
+		media_storage_enabled: false,
+	});
 	const [commentSettingsLoading, setCommentSettingsLoading] = useState(false);
 	const [commentSettingsSaving, setCommentSettingsSaving] = useState(false);
+	const [storageSettingsLoading, setStorageSettingsLoading] = useState(false);
+	const [storageSettingsSaving, setStorageSettingsSaving] = useState(false);
 	const [commentValidationResult, setCommentValidationResult] = useState<{
 		ok: boolean;
 		messages: string[];
@@ -682,6 +689,32 @@ const { section, article_title: articleTitleParam } = router.query;
 		}
 	};
 
+	const fetchStorageSettings = async () => {
+		setStorageSettingsLoading(true);
+		try {
+			const data = await storageSettingsApi.getSettings();
+			setStorageSettings(data);
+		} catch (error) {
+			console.error("Failed to fetch storage settings:", error);
+			showToast("存储配置加载失败", "error");
+		} finally {
+			setStorageSettingsLoading(false);
+		}
+	};
+
+	const handleSaveStorageSettings = async () => {
+		setStorageSettingsSaving(true);
+		try {
+			await storageSettingsApi.updateSettings(storageSettings);
+			showToast("存储配置已保存");
+		} catch (error) {
+			console.error("Failed to save storage settings:", error);
+			showToast("存储配置保存失败", "error");
+		} finally {
+			setStorageSettingsSaving(false);
+		}
+	};
+
 	const handleGenerateNextAuthSecret = () => {
 		if (typeof window === "undefined") return;
 		const bytes = new Uint8Array(32);
@@ -834,6 +867,10 @@ const { section, article_title: articleTitleParam } = router.query;
 		}
 		if (activeSection === "comments") {
 			fetchCommentSettings();
+			return;
+		}
+		if (activeSection === "storage") {
+			fetchStorageSettings();
 			return;
 		}
 	}, [activeSection, aiSubSection, monitoringSubSection, commentSubSection]);
@@ -1800,6 +1837,19 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 												<span className="inline-flex items-center gap-2">
 													<IconFilter className="h-4 w-4" />
 													<span>过滤规则</span>
+												</span>
+											</button>
+											<button
+												onClick={() => setActiveSection("storage")}
+												className={`w-full text-left px-4 py-3 rounded-sm transition ${
+													activeSection === "storage"
+														? "bg-muted text-text-1"
+														: "text-text-2 hover:text-text-1 hover:bg-muted"
+												}`}
+											>
+												<span className="inline-flex items-center gap-2">
+													<IconLink className="h-4 w-4" />
+													<span>文件存储</span>
 												</span>
 											</button>
 										</>
@@ -2818,6 +2868,63 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 												</div>
 											)}
 
+										</div>
+									)}
+								</div>
+							)}
+
+							{activeSection === "storage" && (
+								<div className="bg-surface rounded-sm shadow-sm border border-border p-6">
+									<div className="flex items-center justify-between mb-6">
+										<div>
+											<h2 className="text-lg font-semibold text-text-1">
+												文件存储
+											</h2>
+											<p className="text-sm text-text-3">
+												控制图片是否转存为本地文件
+											</p>
+										</div>
+										<button
+											onClick={handleSaveStorageSettings}
+											disabled={storageSettingsSaving}
+											className="px-4 py-2 text-sm bg-primary text-white rounded-sm hover:bg-primary-ink transition disabled:opacity-60"
+										>
+											{storageSettingsSaving ? "保存中..." : "保存配置"}
+										</button>
+									</div>
+
+									{storageSettingsLoading ? (
+										<div className="text-center py-12 text-text-3">
+											加载中...
+										</div>
+									) : (
+										<div className="space-y-4">
+											<div className="flex items-center justify-between border border-border rounded-sm p-4 bg-surface">
+												<div>
+													<div className="text-sm font-medium text-text-1">
+														开启本地图片存储
+													</div>
+													<div className="text-xs text-text-3 mt-1">
+														启用后会将外链图片转存为本地文件
+													</div>
+												</div>
+												<label className="inline-flex items-center gap-2 text-sm text-text-2 cursor-pointer">
+													<input
+														type="checkbox"
+														checked={storageSettings.media_storage_enabled}
+														onChange={(e) =>
+															setStorageSettings((prev) => ({
+																...prev,
+																media_storage_enabled: e.target.checked,
+															}))
+														}
+														className="h-4 w-4"
+													/>
+													<span>
+														{storageSettings.media_storage_enabled ? "已开启" : "已关闭"}
+													</span>
+												</label>
+											</div>
 										</div>
 									)}
 								</div>

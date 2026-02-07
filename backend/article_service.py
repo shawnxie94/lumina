@@ -1,5 +1,6 @@
 from ai_client import ConfigurableAIClient, is_english_content
 import json
+import logging
 
 from models import (
     Article,
@@ -15,6 +16,9 @@ from models import (
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from slug_utils import generate_article_slug
+from media_service import maybe_ingest_top_image, maybe_ingest_article_images
+
+logger = logging.getLogger("article_service")
 
 
 def build_parameters(model) -> dict:
@@ -264,6 +268,11 @@ class ArticleService:
                     raise ValueError("该文章已存在，请勿重复提交")
             raise ValueError(f"数据完整性错误: {str(e)}")
 
+        try:
+            await maybe_ingest_top_image(db, article)
+        except Exception as exc:
+            logger.warning("top_image_ingest_error: %s", str(exc))
+
         self.enqueue_task(
             db,
             task_type="process_article_cleaning",
@@ -489,6 +498,11 @@ class ArticleService:
             ai_analysis.error_message = None
             ai_analysis.updated_at = now_str()
             db.commit()
+
+            try:
+                await maybe_ingest_article_images(db, article)
+            except Exception as exc:
+                logger.warning("content_image_ingest_error: %s", str(exc))
 
             async def run_summary_task(content: str, cat_id: str | None) -> None:
                 task_db = SessionLocal()

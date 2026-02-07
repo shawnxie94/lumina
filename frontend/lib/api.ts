@@ -177,6 +177,10 @@ export interface CommentSettings {
 	sensitive_words: string;
 }
 
+export interface StorageSettings {
+	media_storage_enabled: boolean;
+}
+
 export interface CommentListResponse {
 	items: ArticleComment[];
 	pagination: {
@@ -731,6 +735,48 @@ export const commentSettingsApi = {
 	}> => {
 		const response = await api.get("/api/settings/comments/public");
 		return response.data;
+	},
+};
+
+export const storageSettingsApi = {
+	getSettings: async (): Promise<StorageSettings> => {
+		const response = await api.get("/api/settings/storage");
+		return response.data;
+	},
+	updateSettings: async (payload: Partial<StorageSettings>) => {
+		const response = await api.put("/api/settings/storage", payload);
+		return response.data;
+	},
+};
+
+export const mediaApi = {
+	upload: async (articleId: string, file: File) => {
+		const form = new FormData();
+		form.append("file", file);
+		form.append("article_id", articleId);
+		const response = await api.post("/api/media/upload", form, {
+			headers: { "Content-Type": "multipart/form-data" },
+		});
+		return response.data as {
+			asset_id: string;
+			url: string;
+			filename: string;
+			size: number;
+			content_type: string;
+		};
+	},
+	ingest: async (articleId: string, url: string) => {
+		const response = await api.post("/api/media/ingest", {
+			article_id: articleId,
+			url,
+		});
+		return response.data as {
+			asset_id: string;
+			url: string;
+			filename: string;
+			size: number;
+			content_type: string;
+		};
 	},
 };
 

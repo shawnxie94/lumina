@@ -5,7 +5,8 @@ import time
 import uuid
 import ipaddress
 
-from fastapi import FastAPI, HTTPException, Depends, Request
+from fastapi import FastAPI, HTTPException, Depends, Request, UploadFile, File, Form
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List
@@ -41,6 +42,15 @@ from auth import (
     security,
 )
 from fastapi.security import HTTPAuthorizationCredentials
+from media_service import (
+    ensure_media_root,
+    ingest_external_image,
+    save_upload_image,
+    is_media_enabled,
+    cleanup_media_assets,
+    MEDIA_ROOT,
+    MEDIA_BASE_URL,
+)
 
 logger = logging.getLogger("article_api")
 if not logger.handlers:
@@ -140,6 +150,10 @@ def get_admin_or_internal(
 
 
 app = FastAPI(title="文章知识库API", version="1.0.0")
+
+app.mount(
+    MEDIA_BASE_URL, StaticFiles(directory=MEDIA_ROOT, check_dir=False), name="media"
+)
 
 
 @app.middleware("http")
@@ -325,6 +339,15 @@ class CommentSettingsUpdate(BaseModel):
     sensitive_words: Optional[str] = None
 
 
+class StorageSettingsUpdate(BaseModel):
+    media_storage_enabled: Optional[bool] = None
+
+
+class MediaIngestRequest(BaseModel):
+    url: str
+    article_id: str
+
+
 class CommentVisibilityUpdate(BaseModel):
     is_hidden: bool
 
@@ -332,6 +355,7 @@ class CommentVisibilityUpdate(BaseModel):
 @app.on_event("startup")
 async def startup_event():
     init_db()
+    ensure_media_root()
 
 
 # ============ 认证路由 ============
@@ -443,6 +467,85 @@ async def get_comment_settings_public(db: Session = Depends(get_db)):
             "github": bool(admin.github_client_id) if admin else False,
             "google": bool(admin.google_client_id) if admin else False,
         },
+    }
+
+
+# ============ 存储配置 ============
+
+
+@app.get("/api/settings/storage")
+async def get_storage_settings(
+    _: bool = Depends(get_admin_or_internal),
+    db: Session = Depends(get_db),
+):
+    admin = get_admin_settings(db)
+    if admin is None:
+        raise HTTPException(status_code=404, detail="未初始化管理员设置")
+    return {"media_storage_enabled": bool(admin.media_storage_enabled)}
+
+
+@app.put("/api/settings/storage")
+async def update_storage_settings(
+    payload: StorageSettingsUpdate,
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
+    admin = get_admin_settings(db)
+    if admin is None:
+        raise HTTPException(status_code=404, detail="未初始化管理员设置")
+    if payload.media_storage_enabled is not None:
+        admin.media_storage_enabled = bool(payload.media_storage_enabled)
+    admin.updated_at = now_str()
+    db.commit()
+    db.refresh(admin)
+    return {"success": True}
+
+
+# ============ 媒体存储 ============
+
+
+@app.post("/api/media/upload")
+async def upload_media(
+    file: UploadFile = File(...),
+    article_id: str = Form(...),
+    request: Request = None,
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
+    if not is_media_enabled(db):
+        raise HTTPException(status_code=403, detail="未开启本地存储")
+    asset, url = await save_upload_image(db, article_id, file)
+    if request is not None:
+        base_url = str(request.base_url).rstrip("/")
+        url = f"{base_url}{url}"
+    return {
+        "asset_id": asset.id,
+        "url": url,
+        "filename": os.path.basename(asset.storage_path),
+        "size": asset.size,
+        "content_type": asset.content_type,
+    }
+
+
+@app.post("/api/media/ingest")
+async def ingest_media(
+    payload: MediaIngestRequest,
+    request: Request = None,
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
+    if not is_media_enabled(db):
+        raise HTTPException(status_code=403, detail="未开启本地存储")
+    asset, url = await ingest_external_image(db, payload.article_id, payload.url)
+    if request is not None:
+        base_url = str(request.base_url).rstrip("/")
+        url = f"{base_url}{url}"
+    return {
+        "asset_id": asset.id,
+        "url": url,
+        "filename": os.path.basename(asset.storage_path),
+        "size": asset.size,
+        "content_type": asset.content_type,
     }
 
 
@@ -975,6 +1078,7 @@ async def delete_article(
     if not article:
         raise HTTPException(status_code=404, detail="文章不存在")
 
+    cleanup_media_assets(db, [article.id])
     if article.ai_analysis:
         db.delete(article.ai_analysis)
     db.delete(article)
@@ -1077,6 +1181,13 @@ async def batch_delete_articles(
 ):
     if not request.article_slugs:
         raise HTTPException(status_code=400, detail="请选择文章")
+    article_ids = [
+        row[0]
+        for row in db.query(Article.id)
+        .filter(Article.slug.in_(request.article_slugs))
+        .all()
+    ]
+    cleanup_media_assets(db, article_ids)
     deleted = (
         db.query(Article)
         .filter(Article.slug.in_(request.article_slugs))

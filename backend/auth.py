@@ -136,6 +136,7 @@ def create_admin_settings(db: Session, password: str) -> AdminSettings:
         nextauth_secret=secrets.token_hex(32),
         sensitive_filter_enabled=True,
         sensitive_words="",
+        media_storage_enabled=False,
     )
     db.add(admin)
     db.commit()
