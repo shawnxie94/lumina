@@ -202,8 +202,26 @@ class EditorController {
 				const publishedAt = this.normalizeDate(this.#articleData.published_at);
 				if (publishedAt) {
 					publishedAtInput.value = publishedAt;
+				} else {
+					publishedAtInput.value = this.getTodayDate();
 				}
+			} else {
+				publishedAtInput.value = this.getTodayDate();
 			}
+		}
+	}
+
+	getTodayDate() {
+		try {
+			const now = new Date();
+			const year = now.getFullYear();
+			const month = String(now.getMonth() + 1).padStart(2, "0");
+			const day = String(now.getDate()).padStart(2, "0");
+			return `${year}-${month}-${day}`;
+		} catch (error) {
+			console.error("Failed to get today date:", error);
+			logError("editor", error, { action: "getTodayDate" });
+			return "";
 		}
 	}
 
@@ -240,11 +258,12 @@ class EditorController {
 		}
 
 		const imgRegex = /!\[.*?\]\((.*?)\)/g;
-		let match;
-		while ((match = imgRegex.exec(mdContent)) !== null) {
+		let match = imgRegex.exec(mdContent);
+		while (match !== null) {
 			if (match[1]) {
 				uniqueImages.add(match[1]);
 			}
+			match = imgRegex.exec(mdContent);
 		}
 
 		const imageArray = Array.from(uniqueImages);

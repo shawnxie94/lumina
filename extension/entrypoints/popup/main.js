@@ -664,6 +664,7 @@ class PopupController {
 
 			this.#articleData = {
 				...extractedData,
+				published_at: extractedData.published_at || this.getTodayDate(),
 				content_md: contentMd,
 			};
 
@@ -927,7 +928,9 @@ class PopupController {
 					".share",
 					".related",
 				].forEach((sel) => {
-					clone.querySelectorAll(sel).forEach((el) => el.remove());
+					clone.querySelectorAll(sel).forEach((el) => {
+						el.remove();
+					});
 				});
 
 				return {
@@ -1105,13 +1108,33 @@ class PopupController {
 			});
 
 			const editorUrl = `${chrome.runtime.getURL("editor.html")}?id=${articleId}`;
+			const tabIndex =
+				typeof this.#currentTab?.index === "number"
+					? this.#currentTab.index + 1
+					: undefined;
 
-			chrome.tabs.create({ url: editorUrl });
+			chrome.tabs.create({
+				url: editorUrl,
+				...(typeof tabIndex === "number" ? { index: tabIndex } : {}),
+			});
 			window.close();
 		} catch (error) {
 			console.error("Failed to open editor:", error);
 			logError("popup", error, { action: "openEditorPage" });
 			this.updateStatus("error", "打开编辑页面失败");
+		}
+	}
+
+	getTodayDate() {
+		try {
+			const now = new Date();
+			const year = now.getFullYear();
+			const month = String(now.getMonth() + 1).padStart(2, "0");
+			const day = String(now.getDate()).padStart(2, "0");
+			return `${year}-${month}-${day}`;
+		} catch (error) {
+			logError("popup", error, { action: "getTodayDate" });
+			return "";
 		}
 	}
 
