@@ -977,7 +977,9 @@ export default function ArticleDetailPage() {
 
   const activeTabConfig = aiTabConfigs.find((tab) => tab.key === activeAiTab)
     ?? aiTabConfigs.find((tab) => tab.enabled);
-  const aiStatusLink = article ? `/settings?section=tasks&article_id=${article.id}` : '';
+  const aiStatusLink = article?.title
+    ? `/settings?section=monitoring&article_title=${encodeURIComponent(article.title)}`
+    : '';
   const activeStatusBadge = isAdmin ? getAiTabStatusBadge(activeTabConfig?.status) : null;
   const showActiveGenerateButton = isAdmin
     && (!activeTabConfig?.status || activeTabConfig.status === 'completed' || activeTabConfig.status === 'failed');
@@ -2214,18 +2216,24 @@ export default function ArticleDetailPage() {
                     />
                   )}
 
-                  <div>
-                    <div className="w-full h-px bg-gray-200 mb-4" />
-                    <div className="flex items-center justify-between mb-2">
-                      <h2 className="text-lg font-semibold text-gray-900 inline-flex items-center gap-2">
-                        <IconRobot className="h-4 w-4" />
-                        <span>AI解读</span>
-                      </h2>
-                      {aiUpdatedAt && (
-                        <span className="text-xs text-gray-500">{aiUpdatedAt}</span>
-                      )}
+                    <div>
+                      <div className="w-full h-px bg-gray-200 mb-4" />
+                      <div className="flex items-center justify-between mb-2">
+                        <h2 className="text-lg font-semibold text-gray-900 inline-flex items-center gap-2">
+                          <IconRobot className="h-4 w-4" />
+                          <span>AI解读</span>
+                        </h2>
+                        {aiUpdatedAt && (
+                          <span className="text-xs text-gray-500">{aiUpdatedAt}</span>
+                        )}
+                      </div>
                     </div>
-                  </div>
+
+                  {isAdmin && article.ai_analysis?.error_message && (
+                    <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                      <p className="text-red-700 text-sm">{article.ai_analysis.error_message}</p>
+                    </div>
+                  )}
 
                   {showSummarySection && (
                     <AIContentSection
@@ -2236,7 +2244,7 @@ export default function ArticleDetailPage() {
                       onCopy={() => handleCopyContent(article.ai_analysis?.summary, '摘要')}
                       canEdit={isAdmin}
                       showStatus={isAdmin}
-                      statusLink={`/settings?section=tasks&article_id=${article.id}`}
+                      statusLink={aiStatusLink}
                     />
                   )}
 
@@ -2312,11 +2320,6 @@ export default function ArticleDetailPage() {
                       </div>
                     )}
 
-                    {isAdmin && article.ai_analysis?.error_message && (
-                      <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-                        <p className="text-red-700 text-sm">{article.ai_analysis.error_message}</p>
-                      </div>
-                    )}
                   </div>
                 </div>
               </div>

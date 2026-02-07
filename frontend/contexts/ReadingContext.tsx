@@ -66,7 +66,8 @@ export function ReadingProvider({ children }: { children: ReactNode }) {
 
   const clearArticles = useCallback(() => {
     setRecentArticles([]);
-  }, []);
+    setIsCollapsed(true);
+  }, [setIsCollapsed]);
 
   return (
     <ReadingContext.Provider value={{ recentArticles, addArticle, removeArticle, clearArticles, isCollapsed, setIsCollapsed, isHidden, setIsHidden }}>
