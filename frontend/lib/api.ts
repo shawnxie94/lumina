@@ -181,7 +181,6 @@ export interface StorageSettings {
 	media_storage_enabled: boolean;
 	media_compress_threshold: number;
 	media_max_dim: number;
-	media_jpeg_quality: number;
 	media_webp_quality: number;
 }
 
@@ -780,6 +779,15 @@ export const mediaApi = {
 			filename: string;
 			size: number;
 			content_type: string;
+		};
+	},
+	cleanup: async () => {
+		const response = await api.post("/api/media/cleanup");
+		return response.data as {
+			success: boolean;
+			removed_records: number;
+			removed_files: number;
+			kept: number;
 		};
 	},
 };

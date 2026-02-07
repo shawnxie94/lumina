@@ -12,7 +12,7 @@ from io import BytesIO
 from fastapi import HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
-from models import AdminSettings, MediaAsset, now_str
+from models import AdminSettings, MediaAsset, Article, now_str
 
 logger = logging.getLogger("media_service")
 
@@ -22,7 +22,6 @@ MEDIA_BASE_URL = os.getenv("MEDIA_BASE_URL", "/media").rstrip("/")
 MAX_MEDIA_SIZE = int(os.getenv("MAX_MEDIA_SIZE", str(8 * 1024 * 1024)))
 DEFAULT_COMPRESS_THRESHOLD = 1536 * 1024
 DEFAULT_MAX_DIM = 2000
-DEFAULT_JPEG_QUALITY = 82
 DEFAULT_WEBP_QUALITY = 80
 
 
@@ -95,8 +94,12 @@ def _create_asset(
 
 
 def _build_media_url(storage_path: str) -> str:
+    public_base = os.getenv("MEDIA_PUBLIC_BASE_URL", "").rstrip("/")
     normalized = storage_path.replace("\\", "/")
-    return f"{MEDIA_BASE_URL}/{normalized.lstrip('/')}"
+    relative = f"{MEDIA_BASE_URL}/{normalized.lstrip('/')}"
+    if public_base:
+        return f"{public_base}{relative}"
+    return relative
 
 
 def _validate_image_content_type(content_type: str | None) -> str:
@@ -122,11 +125,6 @@ def _get_media_settings(db: Session) -> dict:
         "max_dim": (
             admin.media_max_dim if admin and admin.media_max_dim is not None else DEFAULT_MAX_DIM
         ),
-        "jpeg_quality": (
-            admin.media_jpeg_quality
-            if admin and admin.media_jpeg_quality is not None
-            else DEFAULT_JPEG_QUALITY
-        ),
         "webp_quality": (
             admin.media_webp_quality
             if admin and admin.media_webp_quality is not None
@@ -140,33 +138,36 @@ def _maybe_compress_image(
     content_type: str | None,
     compress_threshold: int,
     max_dim: int,
-    jpeg_quality: int,
     webp_quality: int,
-) -> bytes:
+) -> tuple[bytes, str | None, str | None]:
     if not data:
-        return data
+        return data, content_type, None
     if len(data) <= compress_threshold:
-        return data
+        return data, content_type, None
     if not content_type or not content_type.startswith("image/"):
-        return data
+        return data, content_type, None
 
     try:
         with Image.open(BytesIO(data)) as img:
             original_format = img.format or "PNG"
+            is_animated = bool(getattr(img, "is_animated", False))
             if max(img.size) > max_dim:
                 img.thumbnail((max_dim, max_dim))
 
             buffer = BytesIO()
-            if original_format.upper() in ["JPEG", "JPG"]:
-                img = img.convert("RGB")
+            if not is_animated and original_format.upper() != "GIF":
+                if img.mode in ["RGBA", "LA", "P"]:
+                    img = img.convert("RGBA")
+                else:
+                    img = img.convert("RGB")
                 img.save(
                     buffer,
-                    format="JPEG",
-                    quality=jpeg_quality,
-                    optimize=True,
-                    progressive=True,
+                    format="WEBP",
+                    quality=webp_quality,
+                    method=6,
                 )
-            elif original_format.upper() == "PNG":
+                return buffer.getvalue(), "image/webp", ".webp"
+            if original_format.upper() == "PNG":
                 img.save(buffer, format="PNG", optimize=True, compress_level=9)
             elif original_format.upper() == "WEBP":
                 img.save(
@@ -177,10 +178,10 @@ def _maybe_compress_image(
                 )
             else:
                 img.save(buffer, format=original_format)
-            return buffer.getvalue()
+            return buffer.getvalue(), content_type, None
     except Exception as exc:
         logger.warning("image_compress_failed: %s", str(exc))
-        return data
+        return data, content_type, None
 
 
 async def save_upload_image(
@@ -189,17 +190,16 @@ async def save_upload_image(
     content_type = _validate_image_content_type(file.content_type)
     settings = _get_media_settings(db)
     data = await file.read()
-    data = _maybe_compress_image(
+    data, content_type, ext_override = _maybe_compress_image(
         data,
         content_type,
         settings["compress_threshold"],
         settings["max_dim"],
-        settings["jpeg_quality"],
         settings["webp_quality"],
     )
     size = len(data)
     _validate_size(size)
-    ext = _guess_extension(content_type, file.filename)
+    ext = ext_override or _guess_extension(content_type, file.filename)
     storage_path = _build_storage_path(ext)
     _write_bytes(storage_path, data)
     asset = _create_asset(
@@ -229,17 +229,16 @@ async def ingest_external_image(
     content_type = _validate_image_content_type(response.headers.get("content-type"))
     settings = _get_media_settings(db)
     data = response.content or b""
-    data = _maybe_compress_image(
+    data, content_type, ext_override = _maybe_compress_image(
         data,
         content_type,
         settings["compress_threshold"],
         settings["max_dim"],
-        settings["jpeg_quality"],
         settings["webp_quality"],
     )
     _validate_size(len(data))
 
-    ext = _guess_extension(content_type, url)
+    ext = ext_override or _guess_extension(content_type, url)
     storage_path = _build_storage_path(ext)
     _write_bytes(storage_path, data)
     asset = _create_asset(
@@ -398,3 +397,78 @@ def cleanup_media_assets(db: Session, article_ids: list[str]) -> int:
         count += 1
     db.commit()
     return count
+
+
+def _extract_media_paths_from_markdown(content: str) -> set[str]:
+    if not content:
+        return set()
+    paths: set[str] = set()
+    pattern = re.compile(r"!\[[^\]]*\]\((\S+?)(?:\s+\"[^\"]*\")?\)")
+    for match in pattern.finditer(content):
+        url = match.group(1)
+        if not url:
+            continue
+        if MEDIA_BASE_URL in url:
+            idx = url.find(MEDIA_BASE_URL)
+            rel = url[idx + len(MEDIA_BASE_URL) :].lstrip("/")
+            if rel:
+                paths.add(rel)
+        elif url.startswith("/media/"):
+            rel = url[len("/media/") :]
+            if rel:
+                paths.add(rel)
+    return paths
+
+
+def cleanup_orphan_media(db: Session) -> dict:
+    ensure_media_root()
+    articles = db.query(Article.id, Article.content_md).all()
+    referenced_paths: set[str] = set()
+    for article_id, content_md in articles:
+        referenced_paths |= _extract_media_paths_from_markdown(content_md or "")
+
+    assets = db.query(MediaAsset).all()
+    removed_records = 0
+    removed_files = 0
+    keep_paths: set[str] = set()
+
+    for asset in assets:
+        storage_path = (asset.storage_path or "").replace("\\", "/")
+        if not storage_path:
+            db.delete(asset)
+            removed_records += 1
+            continue
+        if storage_path not in referenced_paths:
+            full_path = os.path.join(MEDIA_ROOT, storage_path)
+            try:
+                os.remove(full_path)
+                removed_files += 1
+            except FileNotFoundError:
+                pass
+            except Exception as exc:
+                logger.warning("media_delete_failed: %s", str(exc))
+            db.delete(asset)
+            removed_records += 1
+        else:
+            keep_paths.add(storage_path)
+
+    db.commit()
+
+    for root, _dirs, files in os.walk(MEDIA_ROOT):
+        for filename in files:
+            full_path = os.path.join(root, filename)
+            rel_path = os.path.relpath(full_path, MEDIA_ROOT).replace("\\", "/")
+            if rel_path not in keep_paths:
+                try:
+                    os.remove(full_path)
+                    removed_files += 1
+                except FileNotFoundError:
+                    pass
+                except Exception as exc:
+                    logger.warning("media_delete_failed: %s", str(exc))
+
+    return {
+        "removed_records": removed_records,
+        "removed_files": removed_files,
+        "kept": len(keep_paths),
+    }

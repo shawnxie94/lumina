@@ -63,6 +63,7 @@ import {
 	commentAdminApi,
 	commentApi,
 	commentSettingsApi,
+	mediaApi,
 	storageSettingsApi,
 	type CommentListResponse,
 	type CommentSettings,
@@ -321,13 +322,13 @@ export default function AdminPage() {
 		media_storage_enabled: false,
 		media_compress_threshold: 1536 * 1024,
 		media_max_dim: 2000,
-		media_jpeg_quality: 82,
 		media_webp_quality: 80,
 	});
 	const [commentSettingsLoading, setCommentSettingsLoading] = useState(false);
 	const [commentSettingsSaving, setCommentSettingsSaving] = useState(false);
 	const [storageSettingsLoading, setStorageSettingsLoading] = useState(false);
 	const [storageSettingsSaving, setStorageSettingsSaving] = useState(false);
+	const [storageCleanupLoading, setStorageCleanupLoading] = useState(false);
 	const [commentValidationResult, setCommentValidationResult] = useState<{
 		ok: boolean;
 		messages: string[];
@@ -716,6 +717,21 @@ const { section, article_title: articleTitleParam } = router.query;
 			showToast("存储配置保存失败", "error");
 		} finally {
 			setStorageSettingsSaving(false);
+		}
+	};
+
+	const handleCleanupMedia = async () => {
+		setStorageCleanupLoading(true);
+		try {
+			const result = await mediaApi.cleanup();
+			showToast(
+				`清理完成：记录 ${result.removed_records}，文件 ${result.removed_files}`,
+			);
+		} catch (error) {
+			console.error("Failed to cleanup media:", error);
+			showToast("清理失败", "error");
+		} finally {
+			setStorageCleanupLoading(false);
 		}
 	};
 
@@ -2880,14 +2896,22 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 							{activeSection === "storage" && (
 								<div className="bg-surface rounded-sm shadow-sm border border-border p-6">
 									<div className="flex items-center justify-between mb-6">
-										<div>
-											<h2 className="text-lg font-semibold text-text-1">
-												文件存储
-											</h2>
-											<p className="text-sm text-text-3">
-												控制图片是否转存为本地文件
-											</p>
-										</div>
+									<div>
+										<h2 className="text-lg font-semibold text-text-1">
+											文件存储
+										</h2>
+										<p className="text-sm text-text-3">
+											控制图片是否转存为本地文件
+										</p>
+									</div>
+									<div className="flex items-center gap-2">
+										<button
+											onClick={handleCleanupMedia}
+											disabled={storageCleanupLoading}
+											className="px-4 py-2 text-sm bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition disabled:opacity-60"
+										>
+											{storageCleanupLoading ? "清理中..." : "深度清理"}
+										</button>
 										<button
 											onClick={handleSaveStorageSettings}
 											disabled={storageSettingsSaving}
@@ -2896,6 +2920,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 											{storageSettingsSaving ? "保存中..." : "保存配置"}
 										</button>
 									</div>
+								</div>
 
 								{storageSettingsLoading ? (
 									<div className="text-center py-12 text-text-3">
@@ -2929,7 +2954,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 													</span>
 											</label>
 										</div>
-										<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+										<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 											<div>
 												<label className="block text-sm text-text-2 mb-1">
 													压缩阈值 (KB)
@@ -2970,28 +2995,6 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 													}
 													className="w-full h-9 px-3 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
 													placeholder="限制图片最长边"
-												/>
-											</div>
-											<div>
-												<label className="block text-sm text-text-2 mb-1">
-													JPEG 质量 (30-95)
-												</label>
-												<input
-													type="number"
-													min={30}
-													max={95}
-													value={storageSettings.media_jpeg_quality}
-													onChange={(e) =>
-														setStorageSettings((prev) => ({
-															...prev,
-															media_jpeg_quality: Math.min(
-																95,
-																Math.max(30, Number(e.target.value || 0)),
-															),
-														}))
-													}
-													className="w-full h-9 px-3 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
-													placeholder="JPEG 压缩质量"
 												/>
 											</div>
 											<div>

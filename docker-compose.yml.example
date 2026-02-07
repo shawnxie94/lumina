@@ -17,6 +17,7 @@ services:
     environment:
       - DATABASE_URL=sqlite:///./data/articles.db
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+      - MEDIA_PUBLIC_BASE_URL=${MEDIA_PUBLIC_BASE_URL:-https://your-domain.com}
     volumes:
       - ./data:/app/data
     networks:

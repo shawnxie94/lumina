@@ -48,6 +48,7 @@ from media_service import (
     save_upload_image,
     is_media_enabled,
     cleanup_media_assets,
+    cleanup_orphan_media,
     MEDIA_ROOT,
     MEDIA_BASE_URL,
 )
@@ -343,7 +344,6 @@ class StorageSettingsUpdate(BaseModel):
     media_storage_enabled: Optional[bool] = None
     media_compress_threshold: Optional[int] = None
     media_max_dim: Optional[int] = None
-    media_jpeg_quality: Optional[int] = None
     media_webp_quality: Optional[int] = None
 
 
@@ -491,9 +491,6 @@ async def get_storage_settings(
         if admin.media_compress_threshold is not None
         else 1536 * 1024,
         "media_max_dim": admin.media_max_dim if admin.media_max_dim is not None else 2000,
-        "media_jpeg_quality": admin.media_jpeg_quality
-        if admin.media_jpeg_quality is not None
-        else 82,
         "media_webp_quality": admin.media_webp_quality
         if admin.media_webp_quality is not None
         else 80,
@@ -515,8 +512,6 @@ async def update_storage_settings(
         admin.media_compress_threshold = max(256 * 1024, payload.media_compress_threshold)
     if payload.media_max_dim is not None:
         admin.media_max_dim = max(600, payload.media_max_dim)
-    if payload.media_jpeg_quality is not None:
-        admin.media_jpeg_quality = min(95, max(30, payload.media_jpeg_quality))
     if payload.media_webp_quality is not None:
         admin.media_webp_quality = min(95, max(30, payload.media_webp_quality))
     admin.updated_at = now_str()
@@ -539,7 +534,7 @@ async def upload_media(
     if not is_media_enabled(db):
         raise HTTPException(status_code=403, detail="未开启本地存储")
     asset, url = await save_upload_image(db, article_id, file)
-    if request is not None:
+    if request is not None and url.startswith("/"):
         base_url = str(request.base_url).rstrip("/")
         url = f"{base_url}{url}"
     return {
@@ -561,7 +556,7 @@ async def ingest_media(
     if not is_media_enabled(db):
         raise HTTPException(status_code=403, detail="未开启本地存储")
     asset, url = await ingest_external_image(db, payload.article_id, payload.url)
-    if request is not None:
+    if request is not None and url.startswith("/"):
         base_url = str(request.base_url).rstrip("/")
         url = f"{base_url}{url}"
     return {
@@ -571,6 +566,15 @@ async def ingest_media(
         "size": asset.size,
         "content_type": asset.content_type,
     }
+
+
+@app.post("/api/media/cleanup")
+async def cleanup_media(
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
+    result = cleanup_orphan_media(db)
+    return {"success": True, **result}
 
 
 @app.get("/api/auth/verify")

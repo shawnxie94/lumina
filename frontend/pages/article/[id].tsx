@@ -175,6 +175,24 @@ function replaceMarkdownImageUrl(
   });
 }
 
+async function runWithConcurrency<T>(
+  items: T[],
+  limit: number,
+  worker: (item: T) => Promise<void>,
+) {
+  const queue = [...items];
+  const workers = Array.from({ length: Math.min(limit, queue.length) }).map(
+    async () => {
+      while (queue.length > 0) {
+        const item = queue.shift();
+        if (!item) return;
+        await worker(item);
+      }
+    },
+  );
+  await Promise.all(workers);
+}
+
 
 function MindMapTree({ node, isRoot = false, compact = false, depth = 0 }: { node: MindMapNode; isRoot?: boolean; compact?: boolean; depth?: number }) {
   const hasTitle = node.title && node.title.trim().length > 0;
@@ -1583,14 +1601,14 @@ export default function ArticleDetailPage() {
     setMediaUploading(true);
     let nextContent = editContent;
     try {
-      for (const url of urls) {
+      await runWithConcurrency(urls, 4, async (url) => {
         try {
           const result = await mediaApi.ingest(article.id, url);
           nextContent = replaceMarkdownImageUrl(nextContent, url, result.url);
         } catch (error: any) {
           console.error('Failed to ingest image:', error);
         }
-      }
+      });
       setEditContent(nextContent);
       showToast('图片转存完成');
     } finally {
