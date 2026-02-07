@@ -120,6 +120,7 @@ interface ExtractedArticle {
 	excerpt: string;
 	isSelection?: boolean;
 	quality?: ContentQuality;
+	content_structured?: StructuredContent;
 }
 
 interface ContentQuality {
@@ -128,6 +129,31 @@ interface ContentQuality {
 	hasImages: boolean;
 	hasCode: boolean;
 	warnings: string[];
+}
+
+interface StructuredContent {
+	schema: "lumina.dom.v1";
+	blocks: StructuredBlock[];
+}
+
+interface StructuredBlock {
+	type:
+		| "heading"
+		| "paragraph"
+		| "list"
+		| "image"
+		| "code"
+		| "quote"
+		| "table"
+		| "divider";
+	text?: string;
+	level?: number;
+	items?: string[];
+	src?: string;
+	alt?: string;
+	html?: string;
+	code?: string;
+	language?: string;
 }
 
 interface JsonLdArticle {
@@ -175,6 +201,7 @@ function extractSelection(): ExtractedArticle | null {
 	const meta = extractMetadata();
 
 	const topImage = extractFirstImage(contentHtml) || meta.topImage;
+	const contentStructured = buildStructuredContentFromHtml(contentHtml);
 
 	return {
 		title: meta.title || document.title,
@@ -186,6 +213,7 @@ function extractSelection(): ExtractedArticle | null {
 		source_domain: new URL(baseUrl).hostname,
 		excerpt: selectedText.slice(0, 200),
 		isSelection: true,
+		content_structured: contentStructured,
 	};
 }
 
@@ -350,6 +378,7 @@ async function extractArticle(forceRefresh = false): Promise<ExtractedArticle> {
 			published_at: parseDate(rawDate) || getTodayDate(),
 			source_domain: new URL(baseUrl).hostname,
 			excerpt: mergedMeta.description,
+			content_structured: buildStructuredContentFromHtml(contentHtml),
 		};
 	} else {
 		const doc = document.cloneNode(true) as Document;
@@ -379,6 +408,7 @@ async function extractArticle(forceRefresh = false): Promise<ExtractedArticle> {
 				published_at: parseDate(rawDate) || getTodayDate(),
 				source_domain: new URL(baseUrl).hostname,
 				excerpt: article.excerpt || mergedMeta.description,
+				content_structured: buildStructuredContentFromHtml(contentHtml),
 			};
 		} else {
 			const fallbackContent = extractFallbackContent();
@@ -393,6 +423,7 @@ async function extractArticle(forceRefresh = false): Promise<ExtractedArticle> {
 				published_at: parseDate(mergedMeta.publishedAt) || getTodayDate(),
 				source_domain: new URL(baseUrl).hostname,
 				excerpt: mergedMeta.description,
+				content_structured: buildStructuredContentFromHtml(contentHtml),
 			};
 		}
 	}
@@ -400,6 +431,136 @@ async function extractArticle(forceRefresh = false): Promise<ExtractedArticle> {
 	result.quality = assessContentQuality(result.content_html);
 	cachedResult = { url: currentUrl, data: result };
 	return result;
+}
+
+function buildStructuredContentFromHtml(html: string): StructuredContent {
+	const parser = new DOMParser();
+	const doc = parser.parseFromString(html, "text/html");
+	return buildStructuredContentFromElement(doc.body);
+}
+
+function buildStructuredContentFromElement(element: HTMLElement): StructuredContent {
+	const blocks: StructuredBlock[] = [];
+	const pushParagraph = (text: string, html?: string) => {
+		const normalized = normalizeText(text);
+		if (!normalized) return;
+		blocks.push({ type: "paragraph", text: normalized, html });
+	};
+
+	const visitNode = (node: Node) => {
+		if (node.nodeType === Node.TEXT_NODE) {
+			const text = node.textContent || "";
+			if (normalizeText(text)) {
+				pushParagraph(text);
+			}
+			return;
+		}
+
+		if (node.nodeType !== Node.ELEMENT_NODE) return;
+		const el = node as HTMLElement;
+		const tag = el.tagName.toLowerCase();
+
+		if (/^h[1-6]$/.test(tag)) {
+			const level = Number.parseInt(tag.replace("h", ""), 10);
+			const text = normalizeText(el.textContent || "");
+			if (text) blocks.push({ type: "heading", level, text });
+			return;
+		}
+
+		if (tag === "p") {
+			pushParagraph(el.textContent || "", el.innerHTML);
+			return;
+		}
+
+		if (tag === "ul" || tag === "ol") {
+			const items = Array.from(el.querySelectorAll("li"))
+				.map((li) => normalizeText(li.textContent || ""))
+				.filter(Boolean);
+			if (items.length > 0) {
+				blocks.push({ type: "list", items });
+			}
+			return;
+		}
+
+		if (tag === "img") {
+			const src = el.getAttribute("src") || "";
+			if (src) {
+				blocks.push({
+					type: "image",
+					src,
+					alt: el.getAttribute("alt") || "",
+				});
+			}
+			return;
+		}
+
+		if (tag === "figure") {
+			const img = el.querySelector("img");
+			if (img?.getAttribute("src")) {
+				const caption = el.querySelector("figcaption")?.textContent || "";
+				blocks.push({
+					type: "image",
+					src: img.getAttribute("src") || "",
+					alt: img.getAttribute("alt") || caption,
+					text: normalizeText(caption),
+				});
+				return;
+			}
+		}
+
+		if (tag === "pre" || tag === "code") {
+			const codeNode = tag === "pre" ? el.querySelector("code") : el;
+			const code = codeNode?.textContent || el.textContent || "";
+			const className = codeNode?.getAttribute("class") || "";
+			const langMatch = className.match(/(?:language-|lang-)(\w+)/);
+			const language = langMatch ? langMatch[1] : "";
+			if (normalizeText(code)) {
+				blocks.push({
+					type: "code",
+					code: code.replace(/\n$/, ""),
+					language,
+				});
+				return;
+			}
+		}
+
+		if (tag === "blockquote") {
+			const text = normalizeText(el.textContent || "");
+			if (text) blocks.push({ type: "quote", text });
+			return;
+		}
+
+		if (tag === "table") {
+			const html = el.outerHTML;
+			if (html) blocks.push({ type: "table", html });
+			return;
+		}
+
+		if (tag === "hr") {
+			blocks.push({ type: "divider" });
+			return;
+		}
+
+		if (
+			["div", "section", "article", "main", "aside"].includes(tag) &&
+			el.childNodes.length > 0
+		) {
+			el.childNodes.forEach((child) => visitNode(child));
+			return;
+		}
+
+		const text = normalizeText(el.textContent || "");
+		if (text) {
+			pushParagraph(text, el.innerHTML);
+		}
+	};
+
+	Array.from(element.childNodes).forEach((child) => visitNode(child));
+	return { schema: "lumina.dom.v1", blocks };
+}
+
+function normalizeText(text: string): string {
+	return text.replace(/\s+/g, " ").trim();
 }
 
 function assessContentQuality(html: string): ContentQuality {

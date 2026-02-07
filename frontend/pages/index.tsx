@@ -14,6 +14,7 @@ import DateRangePicker from '@/components/DateRangePicker';
 import FilterInput from '@/components/FilterInput';
 import FilterSelect from '@/components/FilterSelect';
 import FilterSelectInline from '@/components/FilterSelectInline';
+import ConfirmModal from '@/components/ConfirmModal';
 import IconButton from '@/components/IconButton';
 import { useToast } from '@/components/Toast';
 import { BackToTop } from '@/components/BackToTop';
@@ -93,12 +94,27 @@ export default function Home() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [initialized, setInitialized] = useState(false);
-  const [selectedArticleIds, setSelectedArticleIds] = useState<Set<string>>(new Set());
+  const [selectedArticleSlugs, setSelectedArticleSlugs] = useState<Set<string>>(new Set());
   const [showFilters, setShowFilters] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [jumpToPage, setJumpToPage] = useState('');
   const [batchCategoryId, setBatchCategoryId] = useState('');
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [confirmState, setConfirmState] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmText?: string;
+    cancelText?: string;
+    onConfirm: () => void | Promise<void>;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    confirmText: '确定',
+    cancelText: '取消',
+    onConfirm: () => {},
+  });
 
   const [publishedStartDate, publishedEndDate] = publishedDateRange;
   const [createdStartDate, createdEndDate] = createdDateRange;
@@ -250,11 +266,11 @@ export default function Home() {
   };
 
   const handleBatchVisibility = async (isVisible: boolean) => {
-    if (selectedArticleIds.size === 0) return;
+    if (selectedArticleSlugs.size === 0) return;
     try {
-      await articleApi.batchUpdateVisibility(Array.from(selectedArticleIds), isVisible);
+      await articleApi.batchUpdateVisibility(Array.from(selectedArticleSlugs), isVisible);
       showToast(isVisible ? '已批量设为可见' : '已批量设为隐藏');
-      setSelectedArticleIds(new Set());
+      setSelectedArticleSlugs(new Set());
       fetchArticles();
       fetchCategoryStats();
     } catch (error) {
@@ -264,17 +280,17 @@ export default function Home() {
   };
 
   const handleBatchCategory = async () => {
-    if (selectedArticleIds.size === 0) return;
+    if (selectedArticleSlugs.size === 0) return;
     if (!batchCategoryId) {
       showToast('请选择分类', 'info');
       return;
     }
     const targetCategoryId = batchCategoryId === '__clear__' ? null : batchCategoryId;
     try {
-      await articleApi.batchUpdateCategory(Array.from(selectedArticleIds), targetCategoryId);
+      await articleApi.batchUpdateCategory(Array.from(selectedArticleSlugs), targetCategoryId);
       showToast('分类已更新');
       setBatchCategoryId('');
-      setSelectedArticleIds(new Set());
+      setSelectedArticleSlugs(new Set());
       fetchArticles();
       fetchCategoryStats();
     } catch (error) {
@@ -283,19 +299,28 @@ export default function Home() {
     }
   };
 
-  const handleBatchDelete = async () => {
-    if (selectedArticleIds.size === 0) return;
-    if (!confirm('确定要删除选中的文章吗？此操作不可恢复')) return;
-    try {
-      await articleApi.batchDeleteArticles(Array.from(selectedArticleIds));
-      showToast('删除成功');
-      setSelectedArticleIds(new Set());
-      fetchArticles();
-      fetchCategoryStats();
-    } catch (error) {
-      console.error('Failed to batch delete articles:', error);
-      showToast('删除失败', 'error');
-    }
+  const handleBatchDelete = () => {
+    if (selectedArticleSlugs.size === 0) return;
+    const slugs = Array.from(selectedArticleSlugs);
+    setConfirmState({
+      isOpen: true,
+      title: '批量删除文章',
+      message: '确定要删除选中的文章吗？此操作不可撤销。',
+      confirmText: '删除',
+      cancelText: '取消',
+      onConfirm: async () => {
+        try {
+          await articleApi.batchDeleteArticles(slugs);
+          showToast('删除成功');
+          setSelectedArticleSlugs(new Set());
+          fetchArticles();
+          fetchCategoryStats();
+        } catch (error) {
+          console.error('Failed to batch delete articles:', error);
+          showToast('删除失败', 'error');
+        }
+      },
+    });
   };
 
   const activeFilters = useMemo(() => {
@@ -333,24 +358,31 @@ export default function Home() {
     visibilityFilter,
   ]);
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('确定要删除这篇文章吗？')) return;
-
-    try {
-      await articleApi.deleteArticle(id);
-      showToast('删除成功');
-      fetchArticles();
-    } catch (error) {
-      console.error('Failed to delete article:', error);
-      showToast('删除失败', 'error');
-    }
+  const handleDelete = (slug: string) => {
+    setConfirmState({
+      isOpen: true,
+      title: '删除文章',
+      message: '确定要删除这篇文章吗？此操作不可撤销。',
+      confirmText: '删除',
+      cancelText: '取消',
+      onConfirm: async () => {
+        try {
+          await articleApi.deleteArticle(slug);
+          showToast('删除成功');
+          fetchArticles();
+        } catch (error) {
+          console.error('Failed to delete article:', error);
+          showToast('删除失败', 'error');
+        }
+      },
+    });
   };
 
-  const handleToggleVisibility = async (id: string, currentVisibility: boolean) => {
+  const handleToggleVisibility = async (slug: string, currentVisibility: boolean) => {
     try {
-      await articleApi.updateArticleVisibility(id, !currentVisibility);
+      await articleApi.updateArticleVisibility(slug, !currentVisibility);
       setArticles((prev) =>
-        prev.map((a) => (a.id === id ? { ...a, is_visible: !currentVisibility } : a))
+        prev.map((a) => (a.slug === slug ? { ...a, is_visible: !currentVisibility } : a))
       );
       showToast(currentVisibility ? '已设为不可见' : '已设为可见');
     } catch (error) {
@@ -359,13 +391,13 @@ export default function Home() {
     }
   };
 
-  const handleToggleSelect = (id: string) => {
-    setSelectedArticleIds((prev) => {
+  const handleToggleSelect = (slug: string) => {
+    setSelectedArticleSlugs((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
+      if (next.has(slug)) {
+        next.delete(slug);
       } else {
-        next.add(id);
+        next.add(slug);
       }
       return next;
     });
@@ -388,10 +420,10 @@ export default function Home() {
   };
 
   const handleSelectAll = () => {
-    if (selectedArticleIds.size === articles.length) {
-      setSelectedArticleIds(new Set());
+    if (selectedArticleSlugs.size === articles.length) {
+      setSelectedArticleSlugs(new Set());
     } else {
-      setSelectedArticleIds(new Set(articles.map((a) => a.id)));
+      setSelectedArticleSlugs(new Set(articles.map((a) => a.slug)));
     }
   };
 
@@ -401,13 +433,13 @@ export default function Home() {
       return;
     }
 
-    if (selectedArticleIds.size === 0) {
+    if (selectedArticleSlugs.size === 0) {
       showToast('请先选择要导出的文章', 'info');
       return;
     }
 
     try {
-      const data = await articleApi.exportArticles(Array.from(selectedArticleIds));
+      const data = await articleApi.exportArticles(Array.from(selectedArticleSlugs));
       const blob = new Blob([data.content], { type: 'text/markdown' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -416,7 +448,7 @@ export default function Home() {
       const now = new Date();
       const timestamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
       
-      const selectedArticles = articles.filter(a => selectedArticleIds.has(a.id));
+      const selectedArticles = articles.filter(a => selectedArticleSlugs.has(a.slug));
       const categoryCount: Record<string, number> = {};
       selectedArticles.forEach(article => {
         const catName = article.category?.name || '未分类';
@@ -433,7 +465,7 @@ export default function Home() {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      setSelectedArticleIds(new Set());
+      setSelectedArticleSlugs(new Set());
       showToast('导出成功');
     } catch (error) {
       console.error('Failed to export articles:', error);
@@ -643,16 +675,16 @@ export default function Home() {
                   </div>
                 </div>
               </div>
-              {isAdmin && selectedArticleIds.size > 0 && (
+              {isAdmin && selectedArticleSlugs.size > 0 && (
                 <div className="mt-4 pt-4 border-t border-gray-200">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="flex flex-wrap items-center gap-3">
-                      <span className="text-sm text-gray-600">已选 {selectedArticleIds.size} 篇</span>
+                      <span className="text-sm text-gray-600">已选 {selectedArticleSlugs.size} 篇</span>
                       <button
                         onClick={handleExport}
                         className="px-3 py-1 text-sm rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition"
                       >
-                        导出选中 ({selectedArticleIds.size})
+                        导出选中 ({selectedArticleSlugs.size})
                       </button>
                     </div>
                     {isAdmin && (
@@ -716,25 +748,25 @@ export default function Home() {
                       <div className="flex items-center gap-2">
                         <input
                           type="checkbox"
-                          checked={selectedArticleIds.size === articles.length}
+                          checked={selectedArticleSlugs.size === articles.length}
                           onChange={handleSelectAll}
                           className="w-4 h-4 text-blue-600 rounded"
                         />
-                        <span className="text-sm text-gray-600">全选 ({selectedArticleIds.size}/{articles.length})</span>
+                        <span className="text-sm text-gray-600">全选 ({selectedArticleSlugs.size}/{articles.length})</span>
                       </div>
                     </div>
                   )}
                   <div className="space-y-4">
                     {articles.map((article) => (
                       <div
-                        key={article.id}
+                        key={article.slug}
                         onClick={(event) => handleOpenArticle(event, article)}
                         className={`bg-white rounded-lg shadow-sm p-6 hover:shadow-md transition relative cursor-pointer ${!article.is_visible && isAdmin ? 'opacity-60' : ''}`}
                       >
                          {isAdmin && (
                            <div className="absolute top-3 right-3 flex items-center gap-1">
                             <IconButton
-                              onClick={() => handleToggleVisibility(article.id, article.is_visible)}
+                              onClick={() => handleToggleVisibility(article.slug, article.is_visible)}
                               variant="default"
                               size="sm"
                               title={article.is_visible ? '点击隐藏' : '点击显示'}
@@ -746,7 +778,7 @@ export default function Home() {
                               )}
                             </IconButton>
                             <IconButton
-                              onClick={() => handleDelete(article.id)}
+                              onClick={() => handleDelete(article.slug)}
                               variant="danger"
                               size="sm"
                               title="删除"
@@ -759,8 +791,8 @@ export default function Home() {
                            {isAdmin && (
                              <input
                                type="checkbox"
-                               checked={selectedArticleIds.has(article.id)}
-                               onChange={() => handleToggleSelect(article.id)}
+                               checked={selectedArticleSlugs.has(article.slug)}
+                               onChange={() => handleToggleSelect(article.slug)}
                                className="w-4 h-4 text-blue-600 rounded mt-1"
                              />
                            )}
@@ -878,6 +910,19 @@ export default function Home() {
         </div>
       </div>
       </div>
+      <ConfirmModal
+        isOpen={confirmState.isOpen}
+        title={confirmState.title}
+        message={confirmState.message}
+        confirmText={confirmState.confirmText}
+        cancelText={confirmState.cancelText}
+        onConfirm={async () => {
+          const action = confirmState.onConfirm;
+          setConfirmState((prev) => ({ ...prev, isOpen: false }));
+          await action();
+        }}
+        onCancel={() => setConfirmState((prev) => ({ ...prev, isOpen: false }))}
+      />
       <AppFooter />
       <BackToTop />
     </div>

@@ -205,6 +205,7 @@ article_service = ArticleService()
 class ArticleCreate(BaseModel):
     title: str
     content_html: Optional[str] = None
+    content_structured: Optional[dict] = None
     content_md: str
     source_url: str
     top_image: Optional[str] = None
@@ -224,17 +225,17 @@ class ArticleUpdate(BaseModel):
 
 
 class ArticleBatchVisibility(BaseModel):
-    article_ids: List[str]
+    article_slugs: List[str]
     is_visible: bool
 
 
 class ArticleBatchCategory(BaseModel):
-    article_ids: List[str]
+    article_slugs: List[str]
     category_id: Optional[str] = None
 
 
 class ArticleBatchDelete(BaseModel):
-    article_ids: List[str]
+    article_slugs: List[str]
 
 
 class AITaskRetryRequest(BaseModel):
@@ -268,7 +269,7 @@ class ModelAPIModelsRequest(BaseModel):
 
 
 class ExportRequest(BaseModel):
-    article_ids: List[str]
+    article_slugs: List[str]
 
 
 class ModelAPIConfigBase(BaseModel):
@@ -940,7 +941,7 @@ async def update_comment_visibility(
     }
 
 
-@app.put("/api/articles/{article_id}/notes")
+@app.put("/api/articles/{article_slug}/notes")
 async def update_article_notes(
     article_slug: str,
     payload: ArticleNotesUpdate,
@@ -1030,11 +1031,11 @@ async def batch_update_visibility(
     db: Session = Depends(get_db),
     _: bool = Depends(get_current_admin),
 ):
-    if not request.article_ids:
+    if not request.article_slugs:
         raise HTTPException(status_code=400, detail="请选择文章")
     updated = (
         db.query(Article)
-        .filter(Article.id.in_(request.article_ids))
+        .filter(Article.slug.in_(request.article_slugs))
         .update({"is_visible": request.is_visible}, synchronize_session=False)
     )
     db.commit()
@@ -1047,7 +1048,7 @@ async def batch_update_category(
     db: Session = Depends(get_db),
     _: bool = Depends(get_current_admin),
 ):
-    if not request.article_ids:
+    if not request.article_slugs:
         raise HTTPException(status_code=400, detail="请选择文章")
     if request.category_id:
         category = db.query(Category).filter(Category.id == request.category_id).first()
@@ -1055,7 +1056,7 @@ async def batch_update_category(
             raise HTTPException(status_code=404, detail="分类不存在")
     updated = (
         db.query(Article)
-        .filter(Article.id.in_(request.article_ids))
+        .filter(Article.slug.in_(request.article_slugs))
         .update({"category_id": request.category_id}, synchronize_session=False)
     )
     db.commit()
@@ -1068,11 +1069,11 @@ async def batch_delete_articles(
     db: Session = Depends(get_db),
     _: bool = Depends(get_current_admin),
 ):
-    if not request.article_ids:
+    if not request.article_slugs:
         raise HTTPException(status_code=400, detail="请选择文章")
     deleted = (
         db.query(Article)
-        .filter(Article.id.in_(request.article_ids))
+        .filter(Article.slug.in_(request.article_slugs))
         .delete(synchronize_session=False)
     )
     db.commit()
@@ -1488,7 +1489,6 @@ async def retry_article_translation(
     _: bool = Depends(get_current_admin),
 ):
     try:
-        # 通过 slug 查找文章
         article = article_service.get_article_by_slug(db, article_id)
         if not article:
             raise HTTPException(status_code=404, detail="文章不存在")
@@ -1740,7 +1740,7 @@ async def export_articles(
     _: bool = Depends(get_current_admin),
 ):
     try:
-        markdown_content = article_service.export_articles(db, request.article_ids)
+        markdown_content = article_service.export_articles(db, request.article_slugs)
         return {"content": markdown_content, "filename": "articles_export.md"}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

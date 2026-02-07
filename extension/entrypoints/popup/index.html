@@ -7,10 +7,10 @@
 </head>
 <body>
   <div class="header">
-    <h1>
+    <a href="#" id="homeLink" class="brand-link" aria-label="打开 Lumina 首页">
       <img src="icon/48.png" alt="Lumina" style="width: 20px; height: 20px; vertical-align: -3px; margin-right: 6px;" />
-      Lumina 采集器
-    </h1>
+      Lumina
+    </a>
     <div class="header-right">
         <span class="login-status logged-out" id="loginStatus">
           Lumina 未授权
@@ -31,14 +31,11 @@
       <span class="connection-status" id="connectionStatus" title="检测中...">
         <span class="status-dot checking"></span>
       </span>
-      <button id="configBtn" class="config-btn">
-        <span class="icon" aria-hidden="true">
-          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="3" />
-            <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.04.04a2 2 0 0 1-1.42 3.42h-.1a1.7 1.7 0 0 0-1.66 1.18l-.02.07a2 2 0 0 1-3.83 0l-.02-.07a1.7 1.7 0 0 0-1.66-1.18h-.1a2 2 0 0 1-1.42-3.42l.04-.04A1.7 1.7 0 0 0 4.6 15a2 2 0 0 1 0-6 1.7 1.7 0 0 0-.34-1.87l-.04-.04A2 2 0 0 1 5.64 3.67h.1a1.7 1.7 0 0 0 1.66-1.18l.02-.07a2 2 0 0 1 3.83 0l.02.07a1.7 1.7 0 0 0 1.66 1.18h.1a2 2 0 0 1 1.42 3.42l-.04.04A1.7 1.7 0 0 0 19.4 9a2 2 0 0 1 0 6Z" />
-          </svg>
-        </span>
-        <span>设置</span>
+      <button id="configBtn" class="icon-btn" title="设置" aria-label="设置">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="3" />
+          <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.04.04a2 2 0 0 1-1.42 3.42h-.1a1.7 1.7 0 0 0-1.66 1.18l-.02.07a2 2 0 0 1-3.83 0l-.02-.07a1.7 1.7 0 0 0-1.66-1.18h-.1a2 2 0 0 1-1.42-3.42l.04-.04A1.7 1.7 0 0 0 4.6 15a2 2 0 0 1 0-6 1.7 1.7 0 0 0-.34-1.87l-.04-.04A2 2 0 0 1 5.64 3.67h.1a1.7 1.7 0 0 0 1.66-1.18l.02-.07a2 2 0 0 1 3.83 0l.02.07a1.7 1.7 0 0 0 1.66 1.18h.1a2 2 0 0 1 1.42 3.42l-.04.04A1.7 1.7 0 0 0 19.4 9a2 2 0 0 1 0 6Z" />
+        </svg>
       </button>
       <button id="closeBtn" class="close-btn" title="关闭">×</button>
     </div>
@@ -61,52 +58,31 @@
   </div>
 
   <div id="mainContent">
-    <div class="preview">
-      <img class="preview-thumbnail hidden" id="previewThumbnail" alt="" />
-      <div class="preview-info">
-        <div class="preview-title" id="previewTitle">正在加载...</div>
-        <div class="preview-meta" id="previewMeta"></div>
-      </div>
+    <div class="section">
+      <div class="section-title">采集范围</div>
+      <div class="section-hint" id="selectionHint">正在检测选区...</div>
     </div>
 
-    <div class="form-group">
-      <label for="categorySelect">分类</label>
-      <select id="categorySelect">
-        <option value="">选择分类...</option>
-      </select>
-    </div>
-
-    <div class="status idle" id="status">
-      准备就绪
-    </div>
-    <div class="quality-warnings hidden" id="qualityWarnings"></div>
-    <button class="retry-btn hidden" id="retryBtn">
-      <span class="icon" aria-hidden="true">
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M21 12a9 9 0 0 1-9 9 9 9 0 0 1-7.5-4" />
-          <path d="M3 12a9 9 0 0 1 9-9 9 9 0 0 1 7.5 4" />
-          <path d="M3 5v4h4" />
-          <path d="M21 19v-4h-4" />
-        </svg>
-      </span>
-      重试
-    </button>
+    <div class="status hidden" id="status"></div>
+    <div class="error-box hidden" id="errorBox"></div>
 
     <div class="buttons">
-      <button class="btn btn-secondary" id="cancelBtn">取消</button>
-      <button class="btn btn-secondary" id="editAndCollectBtn">编辑后采集</button>
       <button class="btn btn-primary" id="collectBtn">采集</button>
     </div>
 
-    <div class="history-section" id="historySection">
+    <div class="history-section hidden" id="historySection">
       <div class="history-header">
         <span>最近采集</span>
-        <div class="history-actions">
-          <button id="viewAllHistoryBtn" class="view-all-btn">查看全部</button>
-          <button id="clearHistoryBtn" class="clear-history-btn">清空</button>
-        </div>
+        <button id="clearHistoryBtn" class="clear-history-btn">清空</button>
       </div>
       <div class="history-list" id="historyList"></div>
+    </div>
+    <div class="error-log hidden" id="errorLog">
+      <div class="error-log-header">
+        <span>错误记录</span>
+        <button id="clearErrorLogBtn" class="clear-history-btn">清空</button>
+      </div>
+      <div class="error-log-list" id="errorLogList"></div>
     </div>
   </div>
 
@@ -130,12 +106,13 @@
       </div>
 
       <div class="modal-buttons">
-        <button id="openSettingsBtn" class="btn btn-secondary">更多</button>
         <button id="saveConfigBtn" class="btn btn-primary">保存</button>
         <button id="cancelConfigBtn" class="btn btn-secondary">取消</button>
       </div>
     </div>
   </div>
+
+  <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
 
   <script type="module" src="./main.js"></script>
 </body>

@@ -221,10 +221,15 @@ class ArticleService:
             .first()
         )
 
+        content_structured = article_data.get("content_structured")
+        if isinstance(content_structured, (dict, list)):
+            content_structured = json.dumps(content_structured, ensure_ascii=False)
+
         # 先创建文章对象以获取ID
         article = Article(
             title=article_data.get("title"),
             content_html=article_data.get("content_html"),
+            content_structured=content_structured,
             content_md=article_data.get("content_md"),
             source_url=article_data.get("source_url"),
             top_image=article_data.get("top_image"),
@@ -578,8 +583,8 @@ class ArticleService:
         articles = query.all()
         return articles, total
 
-    def export_articles(self, db: Session, article_ids: list):
-        articles = db.query(Article).filter(Article.id.in_(article_ids)).all()
+    def export_articles(self, db: Session, article_slugs: list):
+        articles = db.query(Article).filter(Article.slug.in_(article_slugs)).all()
 
         categories_dict = {}
         uncategorized = []

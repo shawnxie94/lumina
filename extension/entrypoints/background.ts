@@ -1,5 +1,8 @@
 import { ApiClient } from "../utils/api";
 import { logError } from "../utils/errorLogger";
+import { addToHistory } from "../utils/history";
+import { htmlToMarkdown } from "../utils/markdownConverter";
+import { ensureContentScriptLoaded } from "../utils/contentScript";
 
 export default defineBackground(() => {
 	chrome.runtime.onInstalled.addListener(() => {
@@ -48,34 +51,24 @@ export default defineBackground(() => {
 		},
 	);
 
-	async function ensureContentScriptLoaded(tabId: number): Promise<boolean> {
-		try {
-			await chrome.tabs.sendMessage(tabId, { type: "PING" });
-			return true;
-		} catch {
-			try {
-				await chrome.scripting.executeScript({
-					target: { tabId },
-					files: ["content-scripts/content.js"],
-				});
-				return true;
-			} catch (err) {
-				console.error("Failed to inject content script:", err);
-				logError(
-					"background",
-					err instanceof Error ? err : new Error(String(err)),
-					{ action: "injectContentScript", tabId },
-				);
-				return false;
-			}
-		}
-	}
-
 	chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 		if (info.menuItemId !== "collect-article" || !tab?.id) return;
 
 		try {
-			const scriptLoaded = await ensureContentScriptLoaded(tab.id);
+			const apiHost = await ApiClient.loadApiHost();
+			const token = await ApiClient.loadToken();
+			const apiClient = new ApiClient(apiHost);
+			if (token) {
+				apiClient.setToken(token);
+			}
+
+			const scriptLoaded = await ensureContentScriptLoaded(tab.id, {
+				onError: (error) =>
+					logError("background", error, {
+						action: "injectContentScript",
+						tabId: tab.id,
+					}),
+			});
 			if (!scriptLoaded) {
 				chrome.notifications.create({
 					type: "basic",
@@ -119,18 +112,51 @@ export default defineBackground(() => {
 				return;
 			}
 
-			const articleId = `editor_${Date.now()}`;
-			await chrome.storage.local.set({ [articleId]: extractedData });
-
-			const editorUrl = chrome.runtime.getURL(`editor.html?id=${articleId}`);
-			const tabIndex =
-				typeof tab.index === "number" ? tab.index + 1 : undefined;
-			chrome.tabs.create({
-				url: editorUrl,
-				...(typeof tabIndex === "number" ? { index: tabIndex } : {}),
+			const contentMd = htmlToMarkdown(extractedData.content_html || "", {
+				source: "background",
+				logError,
 			});
+			const sourceDomain =
+				extractedData.source_domain ||
+				(tab.url ? new URL(tab.url).hostname : "");
+
+			const result = await apiClient.createArticle({
+				title: extractedData.title || tab.title || "未命名",
+				content_html: extractedData.content_html,
+				content_md: contentMd,
+				source_url: extractedData.source_url || tab.url || "",
+				top_image: extractedData.top_image || null,
+				author: extractedData.author || "",
+				published_at: extractedData.published_at || "",
+				source_domain: sourceDomain,
+				content_structured: extractedData.content_structured || null,
+			});
+
+			const articleSlug = result?.slug || result?.id;
+			await addToHistory({
+				articleId: result?.id ? String(result.id) : String(articleSlug || ""),
+				slug: articleSlug ? String(articleSlug) : undefined,
+				title: extractedData.title || tab.title || "未命名",
+				url: extractedData.source_url || tab.url || "",
+				domain: sourceDomain,
+				topImage: extractedData.top_image || undefined,
+			});
+
+			if (articleSlug) {
+				const articleUrl = `${apiClient.frontendUrl}/article/${articleSlug}`;
+				chrome.tabs.create({ url: articleUrl });
+			}
 		} catch (error) {
 			console.error("Context menu extraction failed:", error);
+			if (error instanceof Error && error.message === "UNAUTHORIZED") {
+				chrome.notifications.create({
+					type: "basic",
+					iconUrl: "icon/128.png",
+					title: "采集失败",
+					message: "登录已过期，请重新登录",
+				});
+				return;
+			}
 			logError(
 				"background",
 				error instanceof Error ? error : new Error(String(error)),

@@ -6,7 +6,6 @@ export interface HistoryItem {
 	url: string;
 	domain: string;
 	collectedAt: string;
-	categoryName?: string;
 	topImage?: string;
 }
 

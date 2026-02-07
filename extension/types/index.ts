@@ -2,6 +2,7 @@ export interface ArticleData {
 	title: string;
 	content_html: string;
 	content_md: string;
+	content_structured?: StructuredContent | null;
 	source_url: string;
 	top_image: string | null;
 	author: string;
@@ -9,14 +10,7 @@ export interface ArticleData {
 	source_domain: string;
 }
 
-export interface Category {
-	id: string;
-	name: string;
-}
-
-export interface CreateArticleRequest extends ArticleData {
-	category_id: string;
-}
+export interface CreateArticleRequest extends ArticleData {}
 
 export interface CreateArticleResponse {
 	id: string | number;
@@ -39,9 +33,35 @@ export interface ExtractedContent {
 	title: string;
 	content_html: string;
 	content_md: string;
+	content_structured?: StructuredContent | null;
 	source_url: string;
 	top_image: string | null;
 	author: string;
 	published_at: string;
 	source_domain: string;
+}
+
+export interface StructuredContent {
+	schema: "lumina.dom.v1";
+	blocks: StructuredBlock[];
+}
+
+export interface StructuredBlock {
+	type:
+		| "heading"
+		| "paragraph"
+		| "list"
+		| "image"
+		| "code"
+		| "quote"
+		| "table"
+		| "divider";
+	text?: string;
+	level?: number;
+	items?: string[];
+	src?: string;
+	alt?: string;
+	html?: string;
+	code?: string;
+	language?: string;
 }

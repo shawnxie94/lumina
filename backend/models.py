@@ -64,6 +64,7 @@ class Article(Base):
     title = Column(String, nullable=False)
     slug = Column(String, nullable=True, index=True)  # SEO友好的URL slug
     content_html = Column(Text, nullable=True)
+    content_structured = Column(Text, nullable=True)
     content_md = Column(Text)
     content_trans = Column(Text)
     translation_status = Column(
@@ -322,6 +323,7 @@ def init_db():
                     ("note_content", "TEXT"),
                     ("note_annotations", "TEXT"),
                     ("slug", "TEXT"),
+                    ("content_structured", "TEXT"),
                 ],
             )
 

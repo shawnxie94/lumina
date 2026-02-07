@@ -345,7 +345,7 @@ export const articleApi = {
 
 	batchUpdateVisibility: async (articleIds: string[], isVisible: boolean) => {
 		const response = await api.post("/api/articles/batch/visibility", {
-			article_ids: articleIds,
+			article_slugs: articleIds,
 			is_visible: isVisible,
 		});
 		return response.data;
@@ -356,7 +356,7 @@ export const articleApi = {
 		categoryId: string | null,
 	) => {
 		const response = await api.post("/api/articles/batch/category", {
-			article_ids: articleIds,
+			article_slugs: articleIds,
 			category_id: categoryId,
 		});
 		return response.data;
@@ -364,13 +364,13 @@ export const articleApi = {
 
 	batchDeleteArticles: async (articleIds: string[]) => {
 		const response = await api.post("/api/articles/batch/delete", {
-			article_ids: articleIds,
+			article_slugs: articleIds,
 		});
 		return response.data;
 	},
 
 	exportArticles: async (articleIds: string[]) => {
-		const response = await api.post("/api/export", { article_ids: articleIds });
+		const response = await api.post("/api/export", { article_slugs: articleIds });
 		return response.data;
 	},
 

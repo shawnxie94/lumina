@@ -11,6 +11,7 @@ import AppHeader from '@/components/AppHeader';
 import Button from '@/components/Button';
 import IconButton from '@/components/IconButton';
 import { useToast } from '@/components/Toast';
+import ConfirmModal from '@/components/ConfirmModal';
 import { BackToTop } from '@/components/BackToTop';
 import { IconBolt, IconBook, IconCopy, IconDoc, IconEdit, IconEye, IconEyeOff, IconList, IconNote, IconRefresh, IconRobot, IconTrash, IconCheck, IconReply, IconChevronDown, IconChevronUp } from '@/components/icons';
 import { useAuth } from '@/contexts/AuthContext';
@@ -276,47 +277,6 @@ function AIContentSection({
           {status === 'processing' ? '正在生成...' : '未生成'}
         </p>
       ) : null}
-    </div>
-  );
-}
-
-interface ConfirmModalProps {
-  isOpen: boolean;
-  title: string;
-  message: string;
-  confirmText?: string;
-  cancelText?: string;
-  onConfirm: () => void;
-  onCancel: () => void;
-}
-
-function ConfirmModal({ isOpen, title, message, confirmText = '确定', cancelText = '取消', onConfirm, onCancel }: ConfirmModalProps) {
-  if (!isOpen) return null;
-  
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-sm w-full">
-        <div className="p-4 border-b">
-          <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
-        </div>
-        <div className="p-4">
-          <p className="text-gray-600">{message}</p>
-        </div>
-        <div className="flex justify-end gap-2 p-4 border-t bg-gray-50 rounded-b-lg">
-          <button
-            onClick={onCancel}
-            className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
-          >
-            {cancelText}
-          </button>
-          <button
-            onClick={onConfirm}
-            className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition"
-          >
-            {confirmText}
-          </button>
-        </div>
-      </div>
     </div>
   );
 }
@@ -1188,7 +1148,7 @@ export default function ArticleDetailPage() {
   const saveNotes = async (nextNotes: string, nextAnnotations: ArticleAnnotation[]) => {
     if (!article) return;
     try {
-      await articleApi.updateArticleNotes(article.id, {
+      await articleApi.updateArticleNotes(article.slug, {
         note_content: nextNotes,
         annotations: nextAnnotations,
       });

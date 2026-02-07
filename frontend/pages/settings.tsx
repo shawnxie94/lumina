@@ -50,6 +50,7 @@ import {
 	IconFilter,
 } from "@/components/icons";
 import { useToast } from "@/components/Toast";
+import ConfirmModal from "@/components/ConfirmModal";
 import { useAuth } from "@/contexts/AuthContext";
 import {
 	type AIUsageListResponse,
@@ -314,6 +315,21 @@ export default function SettingsPage() {
 		messages: string[];
 		callbacks: string[];
 	} | null>(null);
+	const [confirmState, setConfirmState] = useState<{
+		isOpen: boolean;
+		title: string;
+		message: string;
+		confirmText?: string;
+		cancelText?: string;
+		onConfirm: () => void | Promise<void>;
+	}>({
+		isOpen: false,
+		title: "",
+		message: "",
+		confirmText: "确定",
+		cancelText: "取消",
+		onConfirm: () => {},
+	});
 
 	const [commentList, setCommentList] = useState<CommentListResponse["items"]>([]);
 	const [commentListLoading, setCommentListLoading] = useState(false);
@@ -735,15 +751,23 @@ const { section, article_title: articleTitleParam } = router.query;
 	};
 
 	const handleDeleteCommentAdmin = async (commentId: string) => {
-		if (!confirm("确定要删除这条评论吗？")) return;
-		try {
-			await commentAdminApi.delete(commentId);
-			showToast("删除成功");
-			fetchCommentList();
-		} catch (error) {
-			console.error("Failed to delete comment:", error);
-			showToast("删除失败", "error");
-		}
+		setConfirmState({
+			isOpen: true,
+			title: "删除评论",
+			message: "确定要删除这条评论吗？此操作不可撤销。",
+			confirmText: "删除",
+			cancelText: "取消",
+			onConfirm: async () => {
+				try {
+					await commentAdminApi.delete(commentId);
+					showToast("删除成功");
+					fetchCommentList();
+				} catch (error) {
+					console.error("Failed to delete comment:", error);
+					showToast("删除失败", "error");
+				}
+			},
+		});
 	};
 
 	const resetTaskFilters = () => {
@@ -973,16 +997,23 @@ const { section, article_title: articleTitleParam } = router.query;
 	};
 
 	const handleDeleteModelAPI = async (id: string) => {
-		if (!confirm("确定要删除这个模型API配置吗？")) return;
-
-		try {
-			await articleApi.deleteModelAPIConfig(id);
-			showToast("删除成功");
-			fetchModelAPIConfigs();
-		} catch (error) {
-			console.error("Failed to delete model API config:", error);
-			showToast("删除失败", "error");
-		}
+		setConfirmState({
+			isOpen: true,
+			title: "删除模型配置",
+			message: "确定要删除这个模型API配置吗？此操作不可撤销。",
+			confirmText: "删除",
+			cancelText: "取消",
+			onConfirm: async () => {
+				try {
+					await articleApi.deleteModelAPIConfig(id);
+					showToast("删除成功");
+					fetchModelAPIConfigs();
+				} catch (error) {
+					console.error("Failed to delete model API config:", error);
+					showToast("删除失败", "error");
+				}
+			},
+		});
 	};
 
 	const handleTestModelAPI = (config: ModelAPIConfig) => {
@@ -1163,16 +1194,23 @@ const { section, article_title: articleTitleParam } = router.query;
 	};
 
 	const handleCancelTask = async (taskId: string) => {
-		if (!confirm("确定取消该任务吗？")) return;
-
-		try {
-			await articleApi.cancelAITasks([taskId]);
-			showToast("任务已取消");
-			fetchTasks();
-		} catch (error) {
-			console.error("Failed to cancel task:", error);
-			showToast("取消失败", "error");
-		}
+		setConfirmState({
+			isOpen: true,
+			title: "取消任务",
+			message: "确定取消该任务吗？",
+			confirmText: "确定",
+			cancelText: "取消",
+			onConfirm: async () => {
+				try {
+					await articleApi.cancelAITasks([taskId]);
+					showToast("任务已取消");
+					fetchTasks();
+				} catch (error) {
+					console.error("Failed to cancel task:", error);
+					showToast("取消失败", "error");
+				}
+			},
+		});
 	};
 
 	const getTaskTypeLabel = (task: AITaskItem) => {
@@ -1327,16 +1365,23 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 	}, [usageByModel]);
 
 	const handleDeletePrompt = async (id: string) => {
-		if (!confirm("确定要删除这个提示词配置吗？")) return;
-
-		try {
-			await articleApi.deletePromptConfig(id);
-			showToast("删除成功");
-			fetchPromptConfigs();
-		} catch (error) {
-			console.error("Failed to delete prompt config:", error);
-			showToast("删除失败", "error");
-		}
+		setConfirmState({
+			isOpen: true,
+			title: "删除提示词配置",
+			message: "确定要删除这个提示词配置吗？此操作不可撤销。",
+			confirmText: "删除",
+			cancelText: "取消",
+			onConfirm: async () => {
+				try {
+					await articleApi.deletePromptConfig(id);
+					showToast("删除成功");
+					fetchPromptConfigs();
+				} catch (error) {
+					console.error("Failed to delete prompt config:", error);
+					showToast("删除失败", "error");
+				}
+			},
+		});
 	};
 
 	const handleExportPromptConfigs = (scope: "current" | "all") => {
@@ -1491,16 +1536,23 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 	};
 
 	const handleDeleteCategory = async (id: string) => {
-		if (!confirm("确定要删除这个分类吗？")) return;
-
-		try {
-			await categoryApi.deleteCategory(id);
-			showToast("删除成功");
-			fetchCategories();
-		} catch (error) {
-			console.error("Failed to delete category:", error);
-			showToast("删除失败", "error");
-		}
+		setConfirmState({
+			isOpen: true,
+			title: "删除分类",
+			message: "确定要删除这个分类吗？此操作不可撤销。",
+			confirmText: "删除",
+			cancelText: "取消",
+			onConfirm: async () => {
+				try {
+					await categoryApi.deleteCategory(id);
+					showToast("删除成功");
+					fetchCategories();
+				} catch (error) {
+					console.error("Failed to delete category:", error);
+					showToast("删除失败", "error");
+				}
+			},
+		});
 	};
 
 	if (authLoading) {
@@ -4183,6 +4235,21 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 					</div>
 				)}
 			</div>
+			<ConfirmModal
+				isOpen={confirmState.isOpen}
+				title={confirmState.title}
+				message={confirmState.message}
+				confirmText={confirmState.confirmText}
+				cancelText={confirmState.cancelText}
+				onConfirm={async () => {
+					const action = confirmState.onConfirm;
+					setConfirmState((prev) => ({ ...prev, isOpen: false }));
+					await action();
+				}}
+				onCancel={() =>
+					setConfirmState((prev) => ({ ...prev, isOpen: false }))
+				}
+			/>
 			<AppFooter />
 		</div>
 	);

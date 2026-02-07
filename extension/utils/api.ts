@@ -1,4 +1,4 @@
-import type { Category, CreateArticleRequest, CreateArticleResponse, StorageData } from '../types';
+import type { CreateArticleRequest, CreateArticleResponse, StorageData } from '../types';
 import { logError } from './errorLogger';
 
 const DEFAULT_API_HOST = 'localhost:8000';
@@ -106,19 +106,6 @@ export class ApiClient {
     }
   }
 
-  async getCategories(): Promise<Category[]> {
-    try {
-      const response = await fetch(`${this.baseUrl}/api/categories`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch categories');
-      }
-      return await response.json();
-    } catch (error) {
-      console.error('Failed to load categories:', error);
-      logError('api', error instanceof Error ? error : new Error(String(error)), { action: 'getCategories', apiHost: this.apiHost });
-      throw error;
-    }
-  }
 
   async createArticle(data: CreateArticleRequest): Promise<CreateArticleResponse> {
     try {
@@ -165,8 +152,3 @@ export class ApiClient {
     }
   }
 }
-
-export const DEFAULT_CATEGORIES: Category[] = [
-  { id: 'default-1', name: '业界资讯' },
-  { id: 'default-2', name: '技术博客' },
-];
