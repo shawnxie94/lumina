@@ -374,13 +374,18 @@ export const articleApi = {
 		return response.data;
 	},
 
+	searchArticles: async (query: string): Promise<{id: string; title: string; slug: string}[]> => {
+		const response = await api.get("/api/articles/search", { params: { query } });
+		return response.data;
+	},
+
 	getAITasks: async (params?: {
 		page?: number;
 		size?: number;
 		status?: string;
 		task_type?: string;
 		content_type?: string;
-		article_id?: string;
+		article_title?: string;
 	}) => {
 		const response = await api.get("/api/ai-tasks", { params });
 		return response.data;
@@ -732,7 +737,7 @@ export const commentSettingsApi = {
 export const commentAdminApi = {
 	list: async (params: {
 		query?: string;
-		article_id?: string;
+		article_title?: string;
 		author?: string;
 		created_start?: string;
 		created_end?: string;

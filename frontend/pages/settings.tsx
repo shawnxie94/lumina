@@ -29,6 +29,7 @@ import DateRangePicker from "@/components/DateRangePicker";
 import FilterInput from "@/components/FilterInput";
 import FilterSelect from "@/components/FilterSelect";
 import IconButton from "@/components/IconButton";
+import { ArticleSearchSelect } from "@/components/ArticleSearchSelect";
 import {
 	IconEdit,
 	IconEye,
@@ -256,9 +257,9 @@ export default function SettingsPage() {
 	const [taskTotal, setTaskTotal] = useState(0);
 	const [taskStatusFilter, setTaskStatusFilter] = useState("");
 	const [taskTypeFilter, setTaskTypeFilter] = useState("");
-	const [taskArticleIdFilter, setTaskArticleIdFilter] = useState("");
+	const [taskArticleTitleFilter, setTaskArticleTitleFilter] = useState("");
 	const hasTaskFilters = Boolean(
-		taskStatusFilter || taskTypeFilter || taskArticleIdFilter,
+		taskStatusFilter || taskTypeFilter || taskArticleTitleFilter,
 	);
 
 	const [usageLogs, setUsageLogs] = useState<AIUsageLogItem[]>([]);
@@ -320,7 +321,7 @@ export default function SettingsPage() {
 	const [commentListPageSize, setCommentListPageSize] = useState(10);
 	const [commentListTotal, setCommentListTotal] = useState(0);
 	const [commentQuery, setCommentQuery] = useState("");
-	const [commentArticleId, setCommentArticleId] = useState("");
+	const [commentArticleTitle, setCommentArticleTitle] = useState("");
 	const [commentAuthor, setCommentAuthor] = useState("");
 	const [commentStart, setCommentStart] = useState("");
 	const [commentEnd, setCommentEnd] = useState("");
@@ -330,7 +331,7 @@ export default function SettingsPage() {
 	const [hoverTooltipPos, setHoverTooltipPos] = useState<{ x: number; y: number } | null>(null);
 	const hasCommentFilters = Boolean(
 		commentQuery ||
-			commentArticleId ||
+			commentArticleTitle ||
 			commentAuthor ||
 			commentStart ||
 			commentEnd ||
@@ -390,15 +391,14 @@ export default function SettingsPage() {
 
 	useEffect(() => {
 		if (!router.isReady) return;
-		const { section, article_id: articleIdParam } = router.query;
-		if (section === "tasks") {
-			setActiveSection("monitoring");
-			setMonitoringSubSection("tasks");
+const { section, article_title: articleTitleParam } = router.query;
+		if (section && typeof section === "string") {
+			setActiveSection(section as SettingSection);
 		}
-		if (articleIdParam && typeof articleIdParam === "string") {
+		if (articleTitleParam && typeof articleTitleParam === "string") {
 			setActiveSection("monitoring");
 			setMonitoringSubSection("tasks");
-			setTaskArticleIdFilter(articleIdParam);
+			setTaskArticleTitleFilter(articleTitleParam);
 			setTaskPage(1);
 		}
 	}, [router.isReady, router.query]);
@@ -544,7 +544,7 @@ export default function SettingsPage() {
 				status: taskStatusFilter || undefined,
 				task_type: taskTypeValue || undefined,
 				content_type: contentTypeValue || undefined,
-				article_id: taskArticleIdFilter || undefined,
+				article_title: taskArticleTitleFilter || undefined,
 			});
 			setTaskItems(response.data || []);
 			setTaskTotal(response.pagination?.total || 0);
@@ -600,7 +600,7 @@ export default function SettingsPage() {
 		try {
 			const params: {
 				query?: string;
-				article_id?: string;
+				article_title?: string;
 				author?: string;
 				created_start?: string;
 				created_end?: string;
@@ -613,7 +613,7 @@ export default function SettingsPage() {
 				size: commentListPageSize,
 			};
 			if (commentQuery) params.query = commentQuery;
-			if (commentArticleId) params.article_id = commentArticleId;
+			if (commentArticleTitle) params.article_title = commentArticleTitle;
 			if (commentAuthor) params.author = commentAuthor;
 			if (commentStart) params.created_start = `${commentStart}T00:00:00+00:00`;
 			if (commentEnd) params.created_end = `${commentEnd}T23:59:59+00:00`;
@@ -749,7 +749,7 @@ export default function SettingsPage() {
 	const resetTaskFilters = () => {
 		setTaskStatusFilter("");
 		setTaskTypeFilter("");
-		setTaskArticleIdFilter("");
+		setTaskArticleTitleFilter("");
 		setTaskPage(1);
 	};
 
@@ -764,7 +764,7 @@ export default function SettingsPage() {
 
 	const resetCommentFilters = () => {
 		setCommentQuery("");
-		setCommentArticleId("");
+		setCommentArticleTitle("");
 		setCommentAuthor("");
 		setCommentStart("");
 		setCommentEnd("");
@@ -855,7 +855,7 @@ export default function SettingsPage() {
 		taskPageSize,
 		taskStatusFilter,
 		taskTypeFilter,
-		taskArticleIdFilter,
+		taskArticleTitleFilter,
 		activeSection,
 		monitoringSubSection,
 	]);
@@ -889,7 +889,7 @@ export default function SettingsPage() {
 		commentListPage,
 		commentListPageSize,
 		commentQuery,
-		commentArticleId,
+		commentArticleTitle,
 		commentAuthor,
 		commentStart,
 		commentEnd,
@@ -1236,12 +1236,7 @@ export default function SettingsPage() {
 
 const formatPrice = (value: number | null | undefined) => {
 	if (value == null) return "-";
-	const raw = String(value);
-	if (!raw.includes("e") && !raw.includes("E")) {
-		return raw;
-	}
-	const fixed = value.toFixed(10);
-	return fixed.replace(/\.?0+$/, "");
+	return value.toFixed(4);
 };
 
 const stripReplyPrefix = (content: string) => {
@@ -1322,7 +1317,8 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 		const totals = new Map<string, number>();
 		usageByModel.forEach((item) => {
 			if (item.cost_total == null) return;
-			const currency = item.currency || "未设置";
+			if (!item.currency) return;
+			const currency = item.currency;
 			totals.set(currency, (totals.get(currency) ?? 0) + item.cost_total);
 		});
 		return Array.from(totals.entries()).sort((a, b) =>
@@ -2750,7 +2746,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 												onClick={() => {
 													setTaskStatusFilter("");
 													setTaskTypeFilter("");
-													setTaskArticleIdFilter("");
+													setTaskArticleTitleFilter("");
 													setTaskPage(1);
 												}}
 												className="px-4 py-2 text-sm bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
@@ -2801,15 +2797,15 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 												{ value: "process_ai_content:key_points", label: "总结生成" },
 											]}
 										/>
-										<FilterInput
-											label="文章ID"
-											value={taskArticleIdFilter}
-											onChange={(value) => {
-												setTaskArticleIdFilter(value);
-												setTaskPage(1);
-											}}
-											placeholder="输入文章ID"
-										/>
+<ArticleSearchSelect
+													label="文章名称"
+													value={taskArticleTitleFilter}
+													onChange={(value) => {
+														setTaskArticleTitleFilter(value);
+														setTaskPage(1);
+													}}
+													placeholder="输入文章名称搜索..."
+												/>
 									</div>
 
 									{taskLoading ? (
@@ -3030,15 +3026,15 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 											}}
 											placeholder="搜索评论内容"
 										/>
-										<FilterInput
-											label="文章ID"
-											value={commentArticleId}
-											onChange={(value) => {
-												setCommentArticleId(value);
-												setCommentListPage(1);
-											}}
-											placeholder="输入文章ID"
-										/>
+<ArticleSearchSelect
+													label="文章名称"
+													value={commentArticleTitle}
+													onChange={(value) => {
+														setCommentArticleTitle(value);
+														setCommentListPage(1);
+													}}
+													placeholder="输入文章名称搜索..."
+												/>
 										<FilterInput
 											label="评论人"
 											value={commentAuthor}

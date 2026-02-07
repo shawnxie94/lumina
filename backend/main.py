@@ -556,14 +556,35 @@ async def get_articles(
     }
 
 
-@app.get("/api/articles/{article_id}")
+@app.get("/api/articles/search")
+async def search_articles(
+    query: str = "",
+    limit: int = 20,
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
+    """搜索文章，用于下拉选择框"""
+    if not query or len(query) < 1:
+        return []
+
+    articles = (
+        db.query(Article.id, Article.title, Article.slug)
+        .filter(Article.title.contains(query))
+        .order_by(Article.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+
+    return [{"id": a.id, "title": a.title, "slug": a.slug} for a in articles]
+
+
+@app.get("/api/articles/{article_slug}")
 async def get_article(
-    article_id: str,
+    article_slug: str,
     db: Session = Depends(get_db),
     is_admin: bool = Depends(check_is_admin),
 ):
-    # 支持通过slug或id查询文章（完全兼容旧版）
-    article = article_service.get_article_by_slug(db, article_id)
+    article = article_service.get_article_by_slug(db, article_slug)
     if not article:
         raise HTTPException(status_code=404, detail="文章不存在")
 
@@ -640,16 +661,16 @@ async def get_article(
     }
 
 
-@app.get("/api/articles/{article_id}/comments")
+@app.get("/api/articles/{article_slug}/comments")
 async def get_article_comments(
-    article_id: str,
+    article_slug: str,
     include_hidden: bool = False,
     db: Session = Depends(get_db),
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
 ):
     if not comments_enabled(db):
         raise HTTPException(status_code=403, detail="评论已关闭")
-    article = article_service.get_article_by_slug(db, article_id)
+    article = article_service.get_article_by_slug(db, article_slug)
     if not article:
         raise HTTPException(status_code=404, detail="文章不存在")
     is_admin = False
@@ -683,15 +704,15 @@ async def get_article_comments(
     ]
 
 
-@app.post("/api/articles/{article_id}/comments")
+@app.post("/api/articles/{article_slug}/comments")
 async def create_article_comment(
-    article_id: str,
+    article_slug: str,
     payload: CommentCreate,
     db: Session = Depends(get_db),
 ):
     if not comments_enabled(db):
         raise HTTPException(status_code=403, detail="评论已关闭")
-    article = article_service.get_article_by_slug(db, article_id)
+    article = article_service.get_article_by_slug(db, article_slug)
     if not article:
         raise HTTPException(status_code=404, detail="文章不存在")
     # 使用实际的 article.id (UUID) 来存储评论
@@ -758,7 +779,7 @@ async def get_comment(comment_id: str, db: Session = Depends(get_db)):
 @app.get("/api/comments")
 async def list_comments(
     query: Optional[str] = None,
-    article_id: Optional[str] = None,
+    article_title: Optional[str] = None,
     author: Optional[str] = None,
     created_start: Optional[str] = None,
     created_end: Optional[str] = None,
@@ -773,8 +794,17 @@ async def list_comments(
     size = min(max(size, 1), 100)
     query_stmt = db.query(ArticleComment)
 
-    if article_id:
-        query_stmt = query_stmt.filter(ArticleComment.article_id == article_id)
+    if article_title:
+        # 通过文章标题模糊匹配找到文章ID列表
+        matching_articles = (
+            db.query(Article.id).filter(Article.title.contains(article_title)).all()
+        )
+        article_ids = [a.id for a in matching_articles]
+        if article_ids:
+            query_stmt = query_stmt.filter(ArticleComment.article_id.in_(article_ids))
+        else:
+            # 如果没有匹配的文章，返回空结果
+            query_stmt = query_stmt.filter(False)
     if author:
         query_stmt = query_stmt.filter(ArticleComment.user_name.contains(author))
     if query:
@@ -912,12 +942,12 @@ async def update_comment_visibility(
 
 @app.put("/api/articles/{article_id}/notes")
 async def update_article_notes(
-    article_id: str,
+    article_slug: str,
     payload: ArticleNotesUpdate,
     db: Session = Depends(get_db),
     _: bool = Depends(get_current_admin),
 ):
-    article = article_service.get_article_by_slug(db, article_id)
+    article = article_service.get_article_by_slug(db, article_slug)
     if not article:
         raise HTTPException(status_code=404, detail="文章不存在")
     if payload.note_content is not None:
@@ -930,13 +960,13 @@ async def update_article_notes(
     return {"success": True}
 
 
-@app.delete("/api/articles/{article_id}")
+@app.delete("/api/articles/{article_slug}")
 async def delete_article(
-    article_id: str,
+    article_slug: str,
     db: Session = Depends(get_db),
     _: bool = Depends(get_current_admin),
 ):
-    article = db.query(Article).filter(Article.id == article_id).first()
+    article = article_service.get_article_by_slug(db, article_slug)
     if not article:
         raise HTTPException(status_code=404, detail="文章不存在")
 
@@ -947,14 +977,14 @@ async def delete_article(
     return {"message": "删除成功"}
 
 
-@app.put("/api/articles/{article_id}")
+@app.put("/api/articles/{article_slug}")
 async def update_article(
-    article_id: str,
+    article_slug: str,
     article_data: ArticleUpdate,
     db: Session = Depends(get_db),
     _: bool = Depends(get_current_admin),
 ):
-    article = db.query(Article).filter(Article.id == article_id).first()
+    article = article_service.get_article_by_slug(db, article_slug)
     if not article:
         raise HTTPException(status_code=404, detail="文章不存在")
 
@@ -1056,7 +1086,7 @@ async def list_ai_tasks(
     status: Optional[str] = None,
     task_type: Optional[str] = None,
     content_type: Optional[str] = None,
-    article_id: Optional[str] = None,
+    article_title: Optional[str] = None,
     db: Session = Depends(get_db),
     _: bool = Depends(get_current_admin),
 ):
@@ -1068,8 +1098,17 @@ async def list_ai_tasks(
         query = query.filter(AITask.task_type == task_type)
     if content_type:
         query = query.filter(AITask.content_type == content_type)
-    if article_id:
-        query = query.filter(AITask.article_id == article_id)
+    if article_title:
+        # 通过文章标题模糊匹配找到文章ID列表
+        matching_articles = (
+            db.query(Article.id).filter(Article.title.contains(article_title)).all()
+        )
+        article_ids = [a.id for a in matching_articles]
+        if article_ids:
+            query = query.filter(AITask.article_id.in_(article_ids))
+        else:
+            # 如果没有匹配的文章，返回空结果
+            query = query.filter(False)
 
     total = query.count()
     tasks = (
@@ -1404,14 +1443,14 @@ class VisibilityUpdate(BaseModel):
     is_visible: bool
 
 
-@app.put("/api/articles/{article_id}/visibility")
+@app.put("/api/articles/{article_slug}/visibility")
 async def update_article_visibility(
-    article_id: str,
+    article_slug: str,
     data: VisibilityUpdate,
     db: Session = Depends(get_db),
     _: bool = Depends(get_current_admin),
 ):
-    article = db.query(Article).filter(Article.id == article_id).first()
+    article = article_service.get_article_by_slug(db, article_slug)
     if not article:
         raise HTTPException(status_code=404, detail="文章不存在")
 
@@ -1424,15 +1463,18 @@ async def update_article_visibility(
     return {"id": article.id, "is_visible": article.is_visible}
 
 
-@app.post("/api/articles/{article_id}/retry")
+@app.post("/api/articles/{article_slug}/retry")
 async def retry_article_ai(
-    article_id: str,
+    article_slug: str,
     db: Session = Depends(get_db),
     _: bool = Depends(get_current_admin),
 ):
     try:
-        article_id = await article_service.retry_article_ai(db, article_id)
-        return {"id": article_id, "status": "processing"}
+        article = article_service.get_article_by_slug(db, article_slug)
+        if not article:
+            raise HTTPException(status_code=404, detail="文章不存在")
+        actual_article_id = await article_service.retry_article_ai(db, article.id)
+        return {"id": actual_article_id, "status": "processing"}
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
@@ -1446,8 +1488,14 @@ async def retry_article_translation(
     _: bool = Depends(get_current_admin),
 ):
     try:
-        article_id = await article_service.retry_article_translation(db, article_id)
-        return {"id": article_id, "translation_status": "processing"}
+        # 通过 slug 查找文章
+        article = article_service.get_article_by_slug(db, article_id)
+        if not article:
+            raise HTTPException(status_code=404, detail="文章不存在")
+        actual_article_id = await article_service.retry_article_translation(
+            db, article.id
+        )
+        return {"id": actual_article_id, "translation_status": "processing"}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -1470,14 +1518,18 @@ async def generate_ai_content(
         )
 
     try:
+        # 通过 slug 查找文章
+        article = article_service.get_article_by_slug(db, article_id)
+        if not article:
+            raise HTTPException(status_code=404, detail="文章不存在")
         await article_service.generate_ai_content(
             db,
-            article_id,
+            article.id,
             content_type,
             model_config_id=model_config_id,
             prompt_config_id=prompt_config_id,
         )
-        return {"id": article_id, "content_type": content_type, "status": "processing"}
+        return {"id": article.id, "content_type": content_type, "status": "processing"}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
