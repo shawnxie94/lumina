@@ -487,7 +487,7 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-app flex flex-col">
       <Head>
-        <title>Lumina - 信息知识库</title>
+        <title>Lumina - 信息灯塔</title>
       </Head>
       <AppHeader />
 

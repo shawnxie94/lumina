@@ -123,6 +123,25 @@ async def run_task_async(task: AITask) -> None:
         await service.process_article_ai(article_id, category_id)
         return
 
+    if task.task_type == "process_article_cleaning":
+        if not article_id:
+            raise ValueError("缺少文章ID")
+        await service.process_article_cleaning(article_id, category_id)
+        return
+
+    if task.task_type == "process_article_validation":
+        if not article_id:
+            raise ValueError("缺少文章ID")
+        cleaned_md = payload.get("cleaned_md") or ""
+        await service.process_article_validation(article_id, category_id, cleaned_md)
+        return
+
+    if task.task_type == "process_article_classification":
+        if not article_id:
+            raise ValueError("缺少文章ID")
+        await service.process_article_classification(article_id, category_id)
+        return
+
     if task.task_type == "process_article_translation":
         if not article_id:
             raise ValueError("缺少文章ID")

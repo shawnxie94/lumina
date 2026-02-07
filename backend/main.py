@@ -206,7 +206,7 @@ class ArticleCreate(BaseModel):
     title: str
     content_html: Optional[str] = None
     content_structured: Optional[dict] = None
-    content_md: str
+    content_md: Optional[str] = None
     source_url: str
     top_image: Optional[str] = None
     author: Optional[str] = None
@@ -635,6 +635,9 @@ async def get_article(
             else None,
             "quotes": article.ai_analysis.quotes if article.ai_analysis else None,
             "quotes_status": article.ai_analysis.quotes_status
+            if article.ai_analysis
+            else None,
+            "classification_status": article.ai_analysis.classification_status
             if article.ai_analysis
             else None,
             "error_message": article.ai_analysis.error_message

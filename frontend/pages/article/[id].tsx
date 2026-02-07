@@ -997,7 +997,7 @@ export default function ArticleDetailPage() {
   const activeTabConfig = aiTabConfigs.find((tab) => tab.key === activeAiTab)
     ?? aiTabConfigs.find((tab) => tab.enabled);
   const aiStatusLink = article?.title
-    ? `/settings?section=monitoring&article_title=${encodeURIComponent(article.title)}`
+    ? `/admin?section=monitoring&article_title=${encodeURIComponent(article.title)}`
     : '';
   const activeStatusBadge = isAdmin ? getAiTabStatusBadge(activeTabConfig?.status) : null;
   const showActiveGenerateButton = isAdmin
@@ -1121,6 +1121,19 @@ export default function ArticleDetailPage() {
     } catch (error: any) {
       console.error('Failed to retry translation:', error);
       showToast(error.response?.data?.detail || '重试翻译失败', 'error');
+    }
+  };
+
+  const handleRetryCleaning = async () => {
+    if (!id || !article) return;
+
+    try {
+      await articleApi.retryArticle(id as string);
+      setArticle({ ...article, status: 'pending' });
+      showToast('已重新提交清洗任务');
+    } catch (error: any) {
+      console.error('Failed to retry cleaning:', error);
+      showToast(error.response?.data?.detail || '重试清洗失败', 'error');
     }
   };
 
@@ -1521,29 +1534,25 @@ export default function ArticleDetailPage() {
                       <IconDoc className="h-4 w-4" />
                       <span>内容</span>
                     </h2>
-                    {isAdmin && article.translation_status && (
-                      <>
-                        <span className={`px-2 py-0.5 rounded text-xs ${
-                          article.translation_status === 'completed' ? 'bg-green-100 text-green-700' :
-                          article.translation_status === 'processing' ? 'bg-blue-100 text-blue-700' :
-                          article.translation_status === 'pending' ? 'bg-gray-100 text-gray-600' :
-                          article.translation_status === 'failed' ? 'bg-red-100 text-red-700' : ''
-                        }`}>
-                          {article.translation_status === 'completed' ? '翻译完成' :
-                           article.translation_status === 'processing' ? '翻译中...' :
-                           article.translation_status === 'pending' ? '等待翻译' :
-                           article.translation_status === 'failed' ? '翻译失败' : ''}
-                        </span>
-                        {(article.translation_status === 'completed' || article.translation_status === 'failed') && (
-                          <button
-                            onClick={handleRetryTranslation}
-                            className="text-gray-400 hover:text-blue-600 transition"
-                            title={article.translation_error || '重新翻译'}
-                          >
-                            <IconRefresh className="h-4 w-4" />
-                          </button>
-                        )}
-                      </>
+                    {isAdmin && article.status === 'failed' && (
+                      <button
+                        onClick={handleRetryCleaning}
+                        className="flex items-center gap-1 px-2 py-0.5 rounded text-xs text-red-700 bg-red-100 hover:bg-red-200 transition"
+                        title={article.ai_analysis?.error_message || '重新清洗'}
+                      >
+                        <IconRefresh className="h-3.5 w-3.5" />
+                        重试清洗
+                      </button>
+                    )}
+                    {isAdmin && article.translation_status === 'failed' && (
+                      <button
+                        onClick={handleRetryTranslation}
+                        className="flex items-center gap-1 px-2 py-0.5 rounded text-xs text-orange-700 bg-orange-100 hover:bg-orange-200 transition"
+                        title={article.translation_error || '重新翻译'}
+                      >
+                        <IconRefresh className="h-3.5 w-3.5" />
+                        翻译失败
+                      </button>
                     )}
                   </div>
                   <div className="flex flex-wrap items-center gap-2">

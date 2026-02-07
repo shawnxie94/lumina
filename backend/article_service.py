@@ -215,6 +215,8 @@ class ArticleService:
         return db.query(Article).filter(Article.slug == slug).first()
 
     async def create_article(self, article_data: dict, db: Session) -> str:
+        if not article_data.get("content_html") and not article_data.get("content_md"):
+            raise ValueError("文章内容不能为空")
         category = (
             db.query(Category)
             .filter(Category.id == article_data.get("category_id"))
@@ -264,8 +266,9 @@ class ArticleService:
 
         self.enqueue_task(
             db,
-            task_type="process_article_ai",
+            task_type="process_article_cleaning",
             article_id=article.id,
+            content_type="content_cleaning",
             payload={"category_id": article_data.get("category_id")},
         )
 
@@ -284,214 +287,607 @@ class ArticleService:
             article.status = "processing"
             db.commit()
 
-            ai_config = self.get_ai_config(db, category_id)
-            if not ai_config:
-                article.status = "failed"
-                existing_analysis = (
-                    db.query(AIAnalysis)
-                    .filter(AIAnalysis.article_id == article_id)
-                    .first()
-                )
-                if existing_analysis:
-                    existing_analysis.error_message = (
-                        "未配置AI服务，请先在配置页面设置AI参数"
-                    )
-                    existing_analysis.updated_at = now_str()
-                else:
-                    ai_analysis = AIAnalysis(
-                        article_id=article.id,
-                        error_message="未配置AI服务，请先在配置页面设置AI参数",
-                        updated_at=now_str(),
-                    )
-                    db.add(ai_analysis)
-                db.commit()
-                return
-
-            ai_client = self.create_ai_client(ai_config)
-            parameters = ai_config.get("parameters") or {}
-            prompt = ai_config.get("prompt_template")
-            pricing = {
-                "model_api_config_id": ai_config.get("model_api_config_id"),
-                "price_input_per_1k": ai_config.get("price_input_per_1k"),
-                "price_output_per_1k": ai_config.get("price_output_per_1k"),
-                "currency": ai_config.get("currency"),
-            }
-
-            try:
-                summary_result = await asyncio.wait_for(
-                    ai_client.generate_summary(
-                        article.content_md, prompt=prompt, parameters=parameters
-                    ),
-                    timeout=300.0,
-                )
-                summary = summary_result.get("content")
-                self._log_ai_usage(
-                    db,
-                    model_config_id=pricing.get("model_api_config_id"),
-                    article_id=article_id,
-                    task_type="process_article_ai",
-                    content_type="summary",
-                    usage=summary_result.get("usage"),
-                    latency_ms=summary_result.get("latency_ms"),
-                    status="completed",
+            ai_analysis = (
+                db.query(AIAnalysis).filter(AIAnalysis.article_id == article_id).first()
+            )
+            if not ai_analysis:
+                ai_analysis = AIAnalysis(
+                    article_id=article.id,
                     error_message=None,
-                    price_input_per_1k=pricing.get("price_input_per_1k"),
-                    price_output_per_1k=pricing.get("price_output_per_1k"),
-                    currency=pricing.get("currency"),
-                    request_payload=summary_result.get("request_payload"),
-                    response_payload=summary_result.get("response_payload"),
+                    updated_at=now_str(),
                 )
-            except asyncio.TimeoutError:
-                self._log_ai_usage(
-                    db,
-                    model_config_id=pricing.get("model_api_config_id"),
-                    article_id=article_id,
-                    task_type="process_article_ai",
-                    content_type="summary",
-                    usage=None,
-                    latency_ms=None,
-                    status="failed",
-                    error_message="AI生成超时，请稍后重试",
-                    price_input_per_1k=pricing.get("price_input_per_1k"),
-                    price_output_per_1k=pricing.get("price_output_per_1k"),
-                    currency=pricing.get("currency"),
-                )
-                raise Exception("AI生成超时，请稍后重试")
-            except Exception as e:
-                self._log_ai_usage(
-                    db,
-                    model_config_id=pricing.get("model_api_config_id"),
-                    article_id=article_id,
-                    task_type="process_article_ai",
-                    content_type="summary",
-                    usage=None,
-                    latency_ms=None,
-                    status="failed",
-                    error_message=str(e),
-                    price_input_per_1k=pricing.get("price_input_per_1k"),
-                    price_output_per_1k=pricing.get("price_output_per_1k"),
-                    currency=pricing.get("currency"),
-                )
-                raise
+                db.add(ai_analysis)
+                db.commit()
 
-            # Auto-translate English articles to Chinese
-            content_trans = None
-            if article.content_md and is_english_content(article.content_md):
+            source_content = article.content_html or article.content_md
+            if not source_content:
+                article.status = "failed"
+                ai_analysis.error_message = "文章内容为空，无法处理"
+                ai_analysis.updated_at = now_str()
+                db.commit()
+                raise ValueError("文章内容为空，无法处理")
+
+            async def run_cleaning(content: str) -> str:
+                cleaning_config = self.get_ai_config(
+                    db, category_id, prompt_type="content_cleaning"
+                )
+                if not cleaning_config:
+                    raise Exception("未配置AI服务，请先在配置页面设置AI参数")
+                cleaning_client = self.create_ai_client(cleaning_config)
+                parameters = cleaning_config.get("parameters") or {}
+                prompt = cleaning_config.get("prompt_template")
+                pricing = {
+                    "model_api_config_id": cleaning_config.get("model_api_config_id"),
+                    "price_input_per_1k": cleaning_config.get("price_input_per_1k"),
+                    "price_output_per_1k": cleaning_config.get("price_output_per_1k"),
+                    "currency": cleaning_config.get("currency"),
+                }
                 try:
-                    print(f"检测到英文文章，开始翻译: {article.title}")
-                    article.translation_status = "processing"
-                    article.translation_error = None
-                    db.commit()
-
-                    # 获取翻译类型的提示词配置
-                    trans_config = self.get_ai_config(
-                        db, category_id, prompt_type="translation"
-                    )
-                    trans_prompt = None
-                    trans_parameters = {}
-                    trans_pricing = ai_config
-
-                    # 如果有翻译专用配置，使用翻译配置的AI客户端
-                    if trans_config:
-                        trans_prompt = trans_config.get("prompt_template")
-                        trans_parameters = trans_config.get("parameters") or {}
-                        trans_pricing = trans_config
-                        # 如果翻译配置有独立的模型配置，使用它
-                        if trans_config.get("base_url") and trans_config.get("api_key"):
-                            trans_client = self.create_ai_client(trans_config)
-                        else:
-                            trans_client = ai_client
-                    else:
-                        trans_client = ai_client
-                    content_trans = await asyncio.wait_for(
-                        trans_client.translate_to_chinese(
-                            article.content_md,
-                            prompt=trans_prompt,
-                            parameters=trans_parameters,
+                    result = await asyncio.wait_for(
+                        cleaning_client.generate_summary(
+                            content, prompt=prompt, parameters=parameters
                         ),
                         timeout=300.0,
                     )
-                    if isinstance(content_trans, dict):
+                    if isinstance(result, dict):
                         self._log_ai_usage(
                             db,
-                            model_config_id=trans_pricing.get("model_api_config_id"),
+                            model_config_id=pricing.get("model_api_config_id"),
                             article_id=article_id,
                             task_type="process_article_ai",
-                            content_type="translation",
-                            usage=content_trans.get("usage"),
-                            latency_ms=content_trans.get("latency_ms"),
+                            content_type="content_cleaning",
+                            usage=result.get("usage"),
+                            latency_ms=result.get("latency_ms"),
                             status="completed",
                             error_message=None,
-                            price_input_per_1k=trans_pricing.get("price_input_per_1k"),
-                            price_output_per_1k=trans_pricing.get(
-                                "price_output_per_1k"
-                            ),
-                            currency=trans_pricing.get("currency"),
-                            request_payload=content_trans.get("request_payload"),
-                            response_payload=content_trans.get("response_payload"),
+                            price_input_per_1k=pricing.get("price_input_per_1k"),
+                            price_output_per_1k=pricing.get("price_output_per_1k"),
+                            currency=pricing.get("currency"),
+                            request_payload=result.get("request_payload"),
+                            response_payload=result.get("response_payload"),
                         )
-                        content_trans = content_trans.get("content")
-                    print(f"翻译完成: {article.title}")
-                    article.translation_status = "completed"
-                    article.translation_error = None
+                        result = result.get("content")
+                    return result or ""
                 except asyncio.TimeoutError:
                     self._log_ai_usage(
                         db,
-                        model_config_id=trans_pricing.get("model_api_config_id"),
+                        model_config_id=pricing.get("model_api_config_id"),
                         article_id=article_id,
                         task_type="process_article_ai",
-                        content_type="translation",
+                        content_type="content_cleaning",
                         usage=None,
                         latency_ms=None,
                         status="failed",
-                        error_message="翻译超时，请稍后重试",
-                        price_input_per_1k=trans_pricing.get("price_input_per_1k"),
-                        price_output_per_1k=trans_pricing.get("price_output_per_1k"),
-                        currency=trans_pricing.get("currency"),
+                        error_message="AI生成超时，请稍后重试",
+                        price_input_per_1k=pricing.get("price_input_per_1k"),
+                        price_output_per_1k=pricing.get("price_output_per_1k"),
+                        currency=pricing.get("currency"),
                     )
-                    print(f"翻译超时: {article.title}")
-                    article.translation_status = "failed"
-                    article.translation_error = "翻译超时，请稍后重试"
+                    raise Exception("内容清洗超时，请稍后重试")
                 except Exception as e:
                     self._log_ai_usage(
                         db,
-                        model_config_id=trans_pricing.get("model_api_config_id"),
+                        model_config_id=pricing.get("model_api_config_id"),
                         article_id=article_id,
                         task_type="process_article_ai",
-                        content_type="translation",
+                        content_type="content_cleaning",
                         usage=None,
                         latency_ms=None,
                         status="failed",
                         error_message=str(e),
-                        price_input_per_1k=trans_pricing.get("price_input_per_1k"),
-                        price_output_per_1k=trans_pricing.get("price_output_per_1k"),
-                        currency=trans_pricing.get("currency"),
+                        price_input_per_1k=pricing.get("price_input_per_1k"),
+                        price_output_per_1k=pricing.get("price_output_per_1k"),
+                        currency=pricing.get("currency"),
                     )
-                    print(f"翻译失败: {article.title}, 错误: {e}")
-                    article.translation_status = "failed"
-                    article.translation_error = str(e)
+                    raise
 
-            # Update article with translation if available
-            if content_trans:
-                article.content_trans = content_trans
-
-            existing_analysis = (
-                db.query(AIAnalysis).filter(AIAnalysis.article_id == article_id).first()
-            )
-            if existing_analysis:
-                existing_analysis.summary = summary
-                existing_analysis.error_message = None
-                existing_analysis.updated_at = now_str()
-            else:
-                ai_analysis = AIAnalysis(
-                    article_id=article.id,
-                    summary=summary,
-                    updated_at=now_str(),
+            async def run_validation(content: str) -> dict:
+                validation_config = self.get_ai_config(
+                    db, category_id, prompt_type="content_validation"
                 )
-                db.add(ai_analysis)
+                if not validation_config:
+                    raise Exception("未配置AI服务，请先在配置页面设置AI参数")
+                validation_client = self.create_ai_client(validation_config)
+                parameters = validation_config.get("parameters") or {}
+                prompt = validation_config.get("prompt_template")
+                pricing = {
+                    "model_api_config_id": validation_config.get("model_api_config_id"),
+                    "price_input_per_1k": validation_config.get("price_input_per_1k"),
+                    "price_output_per_1k": validation_config.get("price_output_per_1k"),
+                    "currency": validation_config.get("currency"),
+                }
+                try:
+                    result = await asyncio.wait_for(
+                        validation_client.generate_summary(
+                            content, prompt=prompt, parameters=parameters
+                        ),
+                        timeout=300.0,
+                    )
+                    if isinstance(result, dict):
+                        self._log_ai_usage(
+                            db,
+                            model_config_id=pricing.get("model_api_config_id"),
+                            article_id=article_id,
+                            task_type="process_article_ai",
+                            content_type="content_validation",
+                            usage=result.get("usage"),
+                            latency_ms=result.get("latency_ms"),
+                            status="completed",
+                            error_message=None,
+                            price_input_per_1k=pricing.get("price_input_per_1k"),
+                            price_output_per_1k=pricing.get("price_output_per_1k"),
+                            currency=pricing.get("currency"),
+                            request_payload=result.get("request_payload"),
+                            response_payload=result.get("response_payload"),
+                        )
+                        result = result.get("content")
+                    raw = (result or "").strip()
+                    if not raw:
+                        return {"is_valid": False, "error": "内容校验输出为空"}
+                    try:
+                        parsed = json.loads(raw)
+                    except json.JSONDecodeError:
+                        return {"is_valid": False, "error": "内容校验输出解析失败"}
+                    if not isinstance(parsed, dict):
+                        return {"is_valid": False, "error": "内容校验输出格式错误"}
+                    return parsed
+                except asyncio.TimeoutError:
+                    self._log_ai_usage(
+                        db,
+                        model_config_id=pricing.get("model_api_config_id"),
+                        article_id=article_id,
+                        task_type="process_article_ai",
+                        content_type="content_validation",
+                        usage=None,
+                        latency_ms=None,
+                        status="failed",
+                        error_message="AI生成超时，请稍后重试",
+                        price_input_per_1k=pricing.get("price_input_per_1k"),
+                        price_output_per_1k=pricing.get("price_output_per_1k"),
+                        currency=pricing.get("currency"),
+                    )
+                    raise Exception("内容校验超时，请稍后重试")
+                except Exception as e:
+                    self._log_ai_usage(
+                        db,
+                        model_config_id=pricing.get("model_api_config_id"),
+                        article_id=article_id,
+                        task_type="process_article_ai",
+                        content_type="content_validation",
+                        usage=None,
+                        latency_ms=None,
+                        status="failed",
+                        error_message=str(e),
+                        price_input_per_1k=pricing.get("price_input_per_1k"),
+                        price_output_per_1k=pricing.get("price_output_per_1k"),
+                        currency=pricing.get("currency"),
+                    )
+                    raise
 
-            article.status = "completed"
+            cleaned_md = await run_cleaning(source_content)
+            validation_result = await run_validation(cleaned_md)
+            is_valid = bool(validation_result.get("is_valid"))
+            if not is_valid:
+                article.status = "failed"
+                ai_analysis.error_message = (
+                    validation_result.get("error") or "内容校验未通过"
+                )
+                ai_analysis.updated_at = now_str()
+                db.commit()
+                return
+
+            final_md = cleaned_md
+            if not final_md:
+                article.status = "failed"
+                ai_analysis.error_message = "内容校验未通过：内容为空"
+                ai_analysis.updated_at = now_str()
+                db.commit()
+                return
+
+            article.content_md = final_md
+            article.updated_at = now_str()
+            ai_analysis.error_message = None
+            ai_analysis.updated_at = now_str()
             db.commit()
+
+            async def run_summary_task(content: str, cat_id: str | None) -> None:
+                task_db = SessionLocal()
+                try:
+                    task_article = (
+                        task_db.query(Article).filter(Article.id == article_id).first()
+                    )
+                    if not task_article:
+                        return
+                    analysis = (
+                        task_db.query(AIAnalysis)
+                        .filter(AIAnalysis.article_id == article_id)
+                        .first()
+                    )
+                    if not analysis:
+                        analysis = AIAnalysis(
+                            article_id=article_id,
+                            updated_at=now_str(),
+                        )
+                        task_db.add(analysis)
+                        task_db.commit()
+
+                    analysis.summary_status = "processing"
+                    analysis.updated_at = now_str()
+                    task_db.commit()
+
+                    summary_config = self.get_ai_config(
+                        task_db, cat_id, prompt_type="summary"
+                    )
+                    if not summary_config:
+                        analysis.summary_status = "failed"
+                        if not analysis.error_message:
+                            analysis.error_message = "未配置AI服务，请先在配置页面设置AI参数"
+                        analysis.updated_at = now_str()
+                        task_db.commit()
+                        return
+
+                    summary_client = self.create_ai_client(summary_config)
+                    parameters = summary_config.get("parameters") or {}
+                    prompt = summary_config.get("prompt_template")
+                    pricing = {
+                        "model_api_config_id": summary_config.get("model_api_config_id"),
+                        "price_input_per_1k": summary_config.get("price_input_per_1k"),
+                        "price_output_per_1k": summary_config.get(
+                            "price_output_per_1k"
+                        ),
+                        "currency": summary_config.get("currency"),
+                    }
+
+                    try:
+                        summary_result = await asyncio.wait_for(
+                            summary_client.generate_summary(
+                                content, prompt=prompt, parameters=parameters
+                            ),
+                            timeout=300.0,
+                        )
+                        if isinstance(summary_result, dict):
+                            self._log_ai_usage(
+                                task_db,
+                                model_config_id=pricing.get("model_api_config_id"),
+                                article_id=article_id,
+                                task_type="process_article_ai",
+                                content_type="summary",
+                                usage=summary_result.get("usage"),
+                                latency_ms=summary_result.get("latency_ms"),
+                                status="completed",
+                                error_message=None,
+                                price_input_per_1k=pricing.get("price_input_per_1k"),
+                                price_output_per_1k=pricing.get("price_output_per_1k"),
+                                currency=pricing.get("currency"),
+                                request_payload=summary_result.get("request_payload"),
+                                response_payload=summary_result.get("response_payload"),
+                            )
+                            summary_result = summary_result.get("content")
+                        analysis.summary = summary_result
+                        analysis.summary_status = "completed"
+                        analysis.error_message = None
+                        analysis.updated_at = now_str()
+                    except asyncio.TimeoutError:
+                        self._log_ai_usage(
+                            task_db,
+                            model_config_id=pricing.get("model_api_config_id"),
+                            article_id=article_id,
+                            task_type="process_article_ai",
+                            content_type="summary",
+                            usage=None,
+                            latency_ms=None,
+                            status="failed",
+                            error_message="AI生成超时，请稍后重试",
+                            price_input_per_1k=pricing.get("price_input_per_1k"),
+                            price_output_per_1k=pricing.get("price_output_per_1k"),
+                            currency=pricing.get("currency"),
+                        )
+                        analysis.summary_status = "failed"
+                        if not analysis.error_message:
+                            analysis.error_message = "AI生成超时，请稍后重试"
+                        analysis.updated_at = now_str()
+                    except Exception as e:
+                        self._log_ai_usage(
+                            task_db,
+                            model_config_id=pricing.get("model_api_config_id"),
+                            article_id=article_id,
+                            task_type="process_article_ai",
+                            content_type="summary",
+                            usage=None,
+                            latency_ms=None,
+                            status="failed",
+                            error_message=str(e),
+                            price_input_per_1k=pricing.get("price_input_per_1k"),
+                            price_output_per_1k=pricing.get("price_output_per_1k"),
+                            currency=pricing.get("currency"),
+                        )
+                        analysis.summary_status = "failed"
+                        if not analysis.error_message:
+                            analysis.error_message = str(e)
+                        analysis.updated_at = now_str()
+                    task_db.commit()
+                finally:
+                    task_db.close()
+
+            async def run_translation_task(content: str, cat_id: str | None) -> None:
+                if not is_english_content(content):
+                    return
+                task_db = SessionLocal()
+                try:
+                    task_article = (
+                        task_db.query(Article).filter(Article.id == article_id).first()
+                    )
+                    if not task_article:
+                        return
+
+                    task_article.translation_status = "processing"
+                    task_article.translation_error = None
+                    task_db.commit()
+
+                    ai_config = self.get_ai_config(
+                        task_db, cat_id, prompt_type="translation"
+                    )
+                    if not ai_config:
+                        task_article.translation_status = "failed"
+                        task_article.translation_error = (
+                            "未配置AI服务，请先在配置页面设置AI参数"
+                        )
+                        task_db.commit()
+                        return
+
+                    trans_client = self.create_ai_client(ai_config)
+                    trans_prompt = ai_config.get("prompt_template")
+                    trans_parameters = ai_config.get("parameters") or {}
+                    pricing = {
+                        "model_api_config_id": ai_config.get("model_api_config_id"),
+                        "price_input_per_1k": ai_config.get("price_input_per_1k"),
+                        "price_output_per_1k": ai_config.get("price_output_per_1k"),
+                        "currency": ai_config.get("currency"),
+                    }
+
+                    try:
+                        content_trans = await asyncio.wait_for(
+                            trans_client.translate_to_chinese(
+                                content,
+                                prompt=trans_prompt,
+                                parameters=trans_parameters,
+                            ),
+                            timeout=300.0,
+                        )
+                        if isinstance(content_trans, dict):
+                            self._log_ai_usage(
+                                task_db,
+                                model_config_id=pricing.get("model_api_config_id"),
+                                article_id=article_id,
+                                task_type="process_article_ai",
+                                content_type="translation",
+                                usage=content_trans.get("usage"),
+                                latency_ms=content_trans.get("latency_ms"),
+                                status="completed",
+                                error_message=None,
+                                price_input_per_1k=pricing.get("price_input_per_1k"),
+                                price_output_per_1k=pricing.get("price_output_per_1k"),
+                                currency=pricing.get("currency"),
+                                request_payload=content_trans.get("request_payload"),
+                                response_payload=content_trans.get("response_payload"),
+                            )
+                            content_trans = content_trans.get("content")
+                        task_article.content_trans = content_trans
+                        task_article.translation_status = "completed"
+                        task_article.translation_error = None
+                    except asyncio.TimeoutError:
+                        self._log_ai_usage(
+                            task_db,
+                            model_config_id=pricing.get("model_api_config_id"),
+                            article_id=article_id,
+                            task_type="process_article_ai",
+                            content_type="translation",
+                            usage=None,
+                            latency_ms=None,
+                            status="failed",
+                            error_message="翻译超时，请稍后重试",
+                            price_input_per_1k=pricing.get("price_input_per_1k"),
+                            price_output_per_1k=pricing.get("price_output_per_1k"),
+                            currency=pricing.get("currency"),
+                        )
+                        task_article.translation_status = "failed"
+                        task_article.translation_error = "翻译超时，请稍后重试"
+                    except Exception as e:
+                        self._log_ai_usage(
+                            task_db,
+                            model_config_id=pricing.get("model_api_config_id"),
+                            article_id=article_id,
+                            task_type="process_article_ai",
+                            content_type="translation",
+                            usage=None,
+                            latency_ms=None,
+                            status="failed",
+                            error_message=str(e),
+                            price_input_per_1k=pricing.get("price_input_per_1k"),
+                            price_output_per_1k=pricing.get("price_output_per_1k"),
+                            currency=pricing.get("currency"),
+                        )
+                        task_article.translation_status = "failed"
+                        task_article.translation_error = str(e)
+                    task_db.commit()
+                finally:
+                    task_db.close()
+
+            async def run_classification_task(content: str) -> None:
+                task_db = SessionLocal()
+                try:
+                    task_article = (
+                        task_db.query(Article).filter(Article.id == article_id).first()
+                    )
+                    if not task_article:
+                        return
+                    analysis = (
+                        task_db.query(AIAnalysis)
+                        .filter(AIAnalysis.article_id == article_id)
+                        .first()
+                    )
+                    if not analysis:
+                        analysis = AIAnalysis(
+                            article_id=article_id,
+                            updated_at=now_str(),
+                        )
+                        task_db.add(analysis)
+                        task_db.commit()
+
+                    analysis.classification_status = "processing"
+                    analysis.updated_at = now_str()
+                    task_db.commit()
+
+                    classification_config = self.get_ai_config(
+                        task_db, category_id, prompt_type="classification"
+                    )
+                    if not classification_config:
+                        analysis.classification_status = "failed"
+                        if not analysis.error_message:
+                            analysis.error_message = (
+                                "未配置AI服务，请先在配置页面设置AI参数"
+                            )
+                        analysis.updated_at = now_str()
+                        task_db.commit()
+                        return
+
+                    categories = (
+                        task_db.query(Category).order_by(Category.sort_order).all()
+                    )
+                    categories_payload = "\n".join(
+                        [
+                            f"- {c.id} | {c.name} | {c.description or ''}".strip()
+                            for c in categories
+                        ]
+                    )
+                    prompt = classification_config.get("prompt_template")
+                    if prompt:
+                        if "{categories}" in prompt:
+                            prompt = prompt.replace("{categories}", categories_payload)
+                        else:
+                            prompt = f"{prompt}\n\n分类列表：\n{categories_payload}"
+                    parameters = classification_config.get("parameters") or {}
+                    pricing = {
+                        "model_api_config_id": classification_config.get(
+                            "model_api_config_id"
+                        ),
+                        "price_input_per_1k": classification_config.get(
+                            "price_input_per_1k"
+                        ),
+                        "price_output_per_1k": classification_config.get(
+                            "price_output_per_1k"
+                        ),
+                        "currency": classification_config.get("currency"),
+                    }
+
+                    try:
+                        result = await asyncio.wait_for(
+                            self.create_ai_client(
+                                classification_config
+                            ).generate_summary(content, prompt=prompt, parameters=parameters),
+                            timeout=300.0,
+                        )
+                        if isinstance(result, dict):
+                            self._log_ai_usage(
+                                task_db,
+                                model_config_id=pricing.get("model_api_config_id"),
+                                article_id=article_id,
+                                task_type="process_article_ai",
+                                content_type="classification",
+                                usage=result.get("usage"),
+                                latency_ms=result.get("latency_ms"),
+                                status="completed",
+                                error_message=None,
+                                price_input_per_1k=pricing.get("price_input_per_1k"),
+                                price_output_per_1k=pricing.get("price_output_per_1k"),
+                                currency=pricing.get("currency"),
+                                request_payload=result.get("request_payload"),
+                                response_payload=result.get("response_payload"),
+                            )
+                            result = result.get("content")
+                        category_output = (result or "").strip().strip('"').strip("'")
+                        if not category_output:
+                            analysis.classification_status = "failed"
+                            analysis.updated_at = now_str()
+                            task_db.commit()
+                            return
+                        category = (
+                            task_db.query(Category)
+                            .filter(Category.id == category_output)
+                            .first()
+                        )
+                        if not category:
+                            analysis.classification_status = "failed"
+                            analysis.updated_at = now_str()
+                            task_db.commit()
+                            return
+                        task_article.category_id = category.id
+                        task_article.updated_at = now_str()
+                        analysis.classification_status = "completed"
+                        analysis.error_message = None
+                        analysis.updated_at = now_str()
+                        task_db.commit()
+                    except asyncio.TimeoutError:
+                        self._log_ai_usage(
+                            task_db,
+                            model_config_id=pricing.get("model_api_config_id"),
+                            article_id=article_id,
+                            task_type="process_article_ai",
+                            content_type="classification",
+                            usage=None,
+                            latency_ms=None,
+                            status="failed",
+                            error_message="AI生成超时，请稍后重试",
+                            price_input_per_1k=pricing.get("price_input_per_1k"),
+                            price_output_per_1k=pricing.get("price_output_per_1k"),
+                            currency=pricing.get("currency"),
+                        )
+                        analysis.classification_status = "failed"
+                        if not analysis.error_message:
+                            analysis.error_message = "AI生成超时，请稍后重试"
+                        analysis.updated_at = now_str()
+                        task_db.commit()
+                    except Exception as e:
+                        self._log_ai_usage(
+                            task_db,
+                            model_config_id=pricing.get("model_api_config_id"),
+                            article_id=article_id,
+                            task_type="process_article_ai",
+                            content_type="classification",
+                            usage=None,
+                            latency_ms=None,
+                            status="failed",
+                            error_message=str(e),
+                            price_input_per_1k=pricing.get("price_input_per_1k"),
+                            price_output_per_1k=pricing.get("price_output_per_1k"),
+                            currency=pricing.get("currency"),
+                        )
+                        analysis.classification_status = "failed"
+                        if not analysis.error_message:
+                            analysis.error_message = str(e)
+                        analysis.updated_at = now_str()
+                        task_db.commit()
+                finally:
+                    task_db.close()
+
+            await run_classification_task(final_md)
+
+            updated_article = db.query(Article).filter(Article.id == article_id).first()
+            effective_category_id = (
+                updated_article.category_id if updated_article else category_id
+            )
+
+            await asyncio.gather(
+                run_summary_task(final_md, effective_category_id),
+                run_translation_task(final_md, effective_category_id),
+                return_exceptions=True,
+            )
+
+            article = db.query(Article).filter(Article.id == article_id).first()
+            if article:
+                article.status = "completed"
+                article.updated_at = now_str()
+                db.commit()
         except Exception as e:
             print(f"AI生成失败: {e}")
             error_message = str(e)
@@ -513,6 +909,507 @@ class ArticleService:
                         updated_at=now_str(),
                     )
                     db.add(ai_analysis)
+                db.commit()
+        finally:
+            db.close()
+
+    async def process_article_cleaning(self, article_id: str, category_id: str):
+        from models import SessionLocal
+        import asyncio
+
+        db = SessionLocal()
+        try:
+            article = db.query(Article).filter(Article.id == article_id).first()
+            if not article:
+                return
+
+            article.status = "processing"
+            db.commit()
+
+            ai_analysis = (
+                db.query(AIAnalysis).filter(AIAnalysis.article_id == article_id).first()
+            )
+            if not ai_analysis:
+                ai_analysis = AIAnalysis(
+                    article_id=article.id,
+                    error_message=None,
+                    updated_at=now_str(),
+                )
+                db.add(ai_analysis)
+                db.commit()
+
+            source_content = article.content_html or article.content_md
+            if not source_content:
+                article.status = "failed"
+                ai_analysis.error_message = "文章内容为空，无法处理"
+                ai_analysis.updated_at = now_str()
+                db.commit()
+                return
+
+            cleaning_config = self.get_ai_config(
+                db, category_id, prompt_type="content_cleaning"
+            )
+            if not cleaning_config:
+                article.status = "failed"
+                ai_analysis.error_message = "未配置AI服务，请先在配置页面设置AI参数"
+                ai_analysis.updated_at = now_str()
+                db.commit()
+                raise ValueError("未配置AI服务，请先在配置页面设置AI参数")
+
+            cleaning_client = self.create_ai_client(cleaning_config)
+            parameters = cleaning_config.get("parameters") or {}
+            prompt = cleaning_config.get("prompt_template")
+            pricing = {
+                "model_api_config_id": cleaning_config.get("model_api_config_id"),
+                "price_input_per_1k": cleaning_config.get("price_input_per_1k"),
+                "price_output_per_1k": cleaning_config.get("price_output_per_1k"),
+                "currency": cleaning_config.get("currency"),
+            }
+
+            try:
+                result = await asyncio.wait_for(
+                    cleaning_client.generate_summary(
+                        source_content, prompt=prompt, parameters=parameters
+                    ),
+                    timeout=300.0,
+                )
+                if isinstance(result, dict):
+                    self._log_ai_usage(
+                        db,
+                        model_config_id=pricing.get("model_api_config_id"),
+                        article_id=article_id,
+                        task_type="process_article_cleaning",
+                        content_type="content_cleaning",
+                        usage=result.get("usage"),
+                        latency_ms=result.get("latency_ms"),
+                        status="completed",
+                        error_message=None,
+                        price_input_per_1k=pricing.get("price_input_per_1k"),
+                        price_output_per_1k=pricing.get("price_output_per_1k"),
+                        currency=pricing.get("currency"),
+                        request_payload=result.get("request_payload"),
+                        response_payload=result.get("response_payload"),
+                    )
+                    result = result.get("content")
+                cleaned_md = (result or "").strip()
+                if not cleaned_md:
+                    raise Exception("内容清洗失败：输出为空")
+            except asyncio.TimeoutError:
+                self._log_ai_usage(
+                    db,
+                    model_config_id=pricing.get("model_api_config_id"),
+                    article_id=article_id,
+                    task_type="process_article_cleaning",
+                    content_type="content_cleaning",
+                    usage=None,
+                    latency_ms=None,
+                    status="failed",
+                    error_message="AI生成超时，请稍后重试",
+                    price_input_per_1k=pricing.get("price_input_per_1k"),
+                    price_output_per_1k=pricing.get("price_output_per_1k"),
+                    currency=pricing.get("currency"),
+                )
+                raise Exception("内容清洗超时，请稍后重试")
+            except Exception as e:
+                self._log_ai_usage(
+                    db,
+                    model_config_id=pricing.get("model_api_config_id"),
+                    article_id=article_id,
+                    task_type="process_article_cleaning",
+                    content_type="content_cleaning",
+                    usage=None,
+                    latency_ms=None,
+                    status="failed",
+                    error_message=str(e),
+                    price_input_per_1k=pricing.get("price_input_per_1k"),
+                    price_output_per_1k=pricing.get("price_output_per_1k"),
+                    currency=pricing.get("currency"),
+                )
+                raise
+
+            self.enqueue_task(
+                db,
+                task_type="process_article_validation",
+                article_id=article_id,
+                content_type="content_validation",
+                payload={
+                    "category_id": category_id,
+                    "cleaned_md": cleaned_md,
+                },
+            )
+        except Exception as e:
+            error_message = str(e)
+            article = db.query(Article).filter(Article.id == article_id).first()
+            if article:
+                article.status = "failed"
+                ai_analysis = (
+                    db.query(AIAnalysis)
+                    .filter(AIAnalysis.article_id == article_id)
+                    .first()
+                )
+                if ai_analysis:
+                    ai_analysis.error_message = error_message
+                    ai_analysis.updated_at = now_str()
+                else:
+                    ai_analysis = AIAnalysis(
+                        article_id=article_id,
+                        error_message=error_message,
+                        updated_at=now_str(),
+                    )
+                    db.add(ai_analysis)
+                db.commit()
+            raise
+        finally:
+            db.close()
+
+    async def process_article_validation(
+        self,
+        article_id: str,
+        category_id: str,
+        cleaned_md: str,
+    ):
+        from models import SessionLocal
+        import asyncio
+
+        db = SessionLocal()
+        try:
+            article = db.query(Article).filter(Article.id == article_id).first()
+            if not article:
+                return
+
+            ai_analysis = (
+                db.query(AIAnalysis).filter(AIAnalysis.article_id == article_id).first()
+            )
+            if not ai_analysis:
+                ai_analysis = AIAnalysis(
+                    article_id=article.id,
+                    error_message=None,
+                    updated_at=now_str(),
+                )
+                db.add(ai_analysis)
+                db.commit()
+
+            validation_config = self.get_ai_config(
+                db, category_id, prompt_type="content_validation"
+            )
+            if not validation_config:
+                article.status = "failed"
+                ai_analysis.error_message = "未配置AI服务，请先在配置页面设置AI参数"
+                ai_analysis.updated_at = now_str()
+                db.commit()
+                raise ValueError("未配置AI服务，请先在配置页面设置AI参数")
+
+            validation_client = self.create_ai_client(validation_config)
+            parameters = validation_config.get("parameters") or {}
+            prompt = validation_config.get("prompt_template")
+            pricing = {
+                "model_api_config_id": validation_config.get("model_api_config_id"),
+                "price_input_per_1k": validation_config.get("price_input_per_1k"),
+                "price_output_per_1k": validation_config.get("price_output_per_1k"),
+                "currency": validation_config.get("currency"),
+            }
+
+            try:
+                result = await asyncio.wait_for(
+                    validation_client.generate_summary(
+                        cleaned_md, prompt=prompt, parameters=parameters
+                    ),
+                    timeout=300.0,
+                )
+                if isinstance(result, dict):
+                    self._log_ai_usage(
+                        db,
+                        model_config_id=pricing.get("model_api_config_id"),
+                        article_id=article_id,
+                        task_type="process_article_validation",
+                        content_type="content_validation",
+                        usage=result.get("usage"),
+                        latency_ms=result.get("latency_ms"),
+                        status="completed",
+                        error_message=None,
+                        price_input_per_1k=pricing.get("price_input_per_1k"),
+                        price_output_per_1k=pricing.get("price_output_per_1k"),
+                        currency=pricing.get("currency"),
+                        request_payload=result.get("request_payload"),
+                        response_payload=result.get("response_payload"),
+                    )
+                    result = result.get("content")
+                raw = (result or "").strip()
+                if not raw:
+                    validation_result = {
+                        "is_valid": False,
+                        "error": "格式异常：校验输出为空",
+                    }
+                else:
+                    try:
+                        validation_result = json.loads(raw)
+                    except json.JSONDecodeError:
+                        validation_result = {
+                            "is_valid": False,
+                            "error": "格式异常：校验输出解析失败",
+                        }
+                if not isinstance(validation_result, dict):
+                    validation_result = {
+                        "is_valid": False,
+                        "error": "格式异常：校验输出格式错误",
+                    }
+            except asyncio.TimeoutError:
+                self._log_ai_usage(
+                    db,
+                    model_config_id=pricing.get("model_api_config_id"),
+                    article_id=article_id,
+                    task_type="process_article_validation",
+                    content_type="content_validation",
+                    usage=None,
+                    latency_ms=None,
+                    status="failed",
+                    error_message="AI生成超时，请稍后重试",
+                    price_input_per_1k=pricing.get("price_input_per_1k"),
+                    price_output_per_1k=pricing.get("price_output_per_1k"),
+                    currency=pricing.get("currency"),
+                )
+                raise Exception("内容校验超时，请稍后重试")
+            except Exception as e:
+                self._log_ai_usage(
+                    db,
+                    model_config_id=pricing.get("model_api_config_id"),
+                    article_id=article_id,
+                    task_type="process_article_validation",
+                    content_type="content_validation",
+                    usage=None,
+                    latency_ms=None,
+                    status="failed",
+                    error_message=str(e),
+                    price_input_per_1k=pricing.get("price_input_per_1k"),
+                    price_output_per_1k=pricing.get("price_output_per_1k"),
+                    currency=pricing.get("currency"),
+                )
+                raise
+
+            is_valid = bool(validation_result.get("is_valid"))
+            if not is_valid:
+                article.status = "failed"
+                ai_analysis.error_message = (
+                    validation_result.get("error") or "内容校验未通过"
+                )
+                ai_analysis.updated_at = now_str()
+                db.commit()
+                raise ValueError(ai_analysis.error_message or "内容校验未通过")
+
+            final_md = cleaned_md.strip()
+            if not final_md:
+                article.status = "failed"
+                ai_analysis.error_message = "内容校验未通过：内容为空"
+                ai_analysis.updated_at = now_str()
+                db.commit()
+                raise ValueError("内容校验未通过：内容为空")
+
+            article.content_md = final_md
+            article.updated_at = now_str()
+            ai_analysis.error_message = None
+            ai_analysis.updated_at = now_str()
+            db.commit()
+
+            self.enqueue_task(
+                db,
+                task_type="process_article_classification",
+                article_id=article_id,
+                content_type="classification",
+                payload={"category_id": category_id},
+            )
+        except Exception as e:
+            error_message = str(e)
+            article = db.query(Article).filter(Article.id == article_id).first()
+            if article:
+                article.status = "failed"
+                ai_analysis = (
+                    db.query(AIAnalysis)
+                    .filter(AIAnalysis.article_id == article_id)
+                    .first()
+                )
+                if ai_analysis:
+                    ai_analysis.error_message = error_message
+                    ai_analysis.updated_at = now_str()
+                else:
+                    ai_analysis = AIAnalysis(
+                        article_id=article_id,
+                        error_message=error_message,
+                        updated_at=now_str(),
+                    )
+                    db.add(ai_analysis)
+                db.commit()
+            raise
+        finally:
+            db.close()
+
+    async def process_article_classification(self, article_id: str, category_id: str):
+        from models import SessionLocal
+        import asyncio
+
+        db = SessionLocal()
+        try:
+            article = db.query(Article).filter(Article.id == article_id).first()
+            if not article:
+                return
+
+            analysis = (
+                db.query(AIAnalysis).filter(AIAnalysis.article_id == article_id).first()
+            )
+            if not analysis:
+                analysis = AIAnalysis(
+                    article_id=article_id,
+                    updated_at=now_str(),
+                )
+                db.add(analysis)
+                db.commit()
+
+            analysis.classification_status = "processing"
+            analysis.updated_at = now_str()
+            db.commit()
+
+            classification_config = self.get_ai_config(
+                db, category_id, prompt_type="classification"
+            )
+            if not classification_config:
+                analysis.classification_status = "failed"
+                if not analysis.error_message:
+                    analysis.error_message = "未配置AI服务，请先在配置页面设置AI参数"
+                analysis.updated_at = now_str()
+                db.commit()
+                raise ValueError("未配置AI服务，请先在配置页面设置AI参数")
+
+            categories = db.query(Category).order_by(Category.sort_order).all()
+            categories_payload = "\n".join(
+                [
+                    f"- {c.id} | {c.name} | {c.description or ''}".strip()
+                    for c in categories
+                ]
+            )
+            prompt = classification_config.get("prompt_template")
+            if prompt:
+                if "{categories}" in prompt:
+                    prompt = prompt.replace("{categories}", categories_payload)
+                else:
+                    prompt = f"{prompt}\n\n分类列表：\n{categories_payload}"
+            parameters = classification_config.get("parameters") or {}
+            pricing = {
+                "model_api_config_id": classification_config.get("model_api_config_id"),
+                "price_input_per_1k": classification_config.get("price_input_per_1k"),
+                "price_output_per_1k": classification_config.get(
+                    "price_output_per_1k"
+                ),
+                "currency": classification_config.get("currency"),
+            }
+
+            try:
+                result = await asyncio.wait_for(
+                    self.create_ai_client(classification_config).generate_summary(
+                        article.content_md, prompt=prompt, parameters=parameters
+                    ),
+                    timeout=300.0,
+                )
+                if isinstance(result, dict):
+                    self._log_ai_usage(
+                        db,
+                        model_config_id=pricing.get("model_api_config_id"),
+                        article_id=article_id,
+                        task_type="process_article_classification",
+                        content_type="classification",
+                        usage=result.get("usage"),
+                        latency_ms=result.get("latency_ms"),
+                        status="completed",
+                        error_message=None,
+                        price_input_per_1k=pricing.get("price_input_per_1k"),
+                        price_output_per_1k=pricing.get("price_output_per_1k"),
+                        currency=pricing.get("currency"),
+                        request_payload=result.get("request_payload"),
+                        response_payload=result.get("response_payload"),
+                    )
+                    result = result.get("content")
+                category_output = (result or "").strip().strip('"').strip("'")
+                if category_output:
+                    category = (
+                        db.query(Category)
+                        .filter(Category.id == category_output)
+                        .first()
+                    )
+                    if category:
+                        article.category_id = category.id
+                        article.updated_at = now_str()
+                        db.commit()
+                    else:
+                        raise ValueError("分类未命中：返回ID不存在")
+                else:
+                    raise ValueError("分类未命中：未返回分类ID")
+                analysis.classification_status = "completed"
+                analysis.error_message = None
+                analysis.updated_at = now_str()
+                db.commit()
+            except asyncio.TimeoutError:
+                self._log_ai_usage(
+                    db,
+                    model_config_id=pricing.get("model_api_config_id"),
+                    article_id=article_id,
+                    task_type="process_article_classification",
+                    content_type="classification",
+                    usage=None,
+                    latency_ms=None,
+                    status="failed",
+                    error_message="AI生成超时，请稍后重试",
+                    price_input_per_1k=pricing.get("price_input_per_1k"),
+                    price_output_per_1k=pricing.get("price_output_per_1k"),
+                    currency=pricing.get("currency"),
+                )
+                analysis.classification_status = "failed"
+                if not analysis.error_message:
+                    analysis.error_message = "AI生成超时，请稍后重试"
+                analysis.updated_at = now_str()
+                db.commit()
+                raise Exception("分类任务超时")
+            except Exception as e:
+                self._log_ai_usage(
+                    db,
+                    model_config_id=pricing.get("model_api_config_id"),
+                    article_id=article_id,
+                    task_type="process_article_classification",
+                    content_type="classification",
+                    usage=None,
+                    latency_ms=None,
+                    status="failed",
+                    error_message=str(e),
+                    price_input_per_1k=pricing.get("price_input_per_1k"),
+                    price_output_per_1k=pricing.get("price_output_per_1k"),
+                    currency=pricing.get("currency"),
+                )
+                analysis.classification_status = "failed"
+                if not analysis.error_message:
+                    analysis.error_message = str(e)
+                analysis.updated_at = now_str()
+                db.commit()
+                raise
+
+            effective_category_id = article.category_id or category_id
+            self.enqueue_task(
+                db,
+                task_type="process_ai_content",
+                article_id=article_id,
+                content_type="summary",
+                payload={
+                    "category_id": effective_category_id,
+                },
+            )
+
+            if article.content_md and is_english_content(article.content_md):
+                self.enqueue_task(
+                    db,
+                    task_type="process_article_translation",
+                    article_id=article_id,
+                    content_type="translation",
+                    payload={"category_id": effective_category_id},
+                )
+            else:
+                article.translation_status = "skipped"
+                article.translation_error = None
                 db.commit()
         finally:
             db.close()
@@ -645,8 +1542,9 @@ class ArticleService:
 
         self.enqueue_task(
             db,
-            task_type="process_article_ai",
+            task_type="process_article_cleaning",
             article_id=article_id,
+            content_type="content_cleaning",
             payload={"category_id": article.category_id},
         )
 
@@ -809,7 +1707,26 @@ class ArticleService:
                 article.translation_error = str(e)
                 db.commit()
         finally:
-            db.close()
+            try:
+                article = db.query(Article).filter(Article.id == article_id).first()
+                if article:
+                    analysis = (
+                        db.query(AIAnalysis)
+                        .filter(AIAnalysis.article_id == article_id)
+                        .first()
+                    )
+                    summary_status = (
+                        analysis.summary_status if analysis else None
+                    )
+                    translation_status = article.translation_status
+                    if summary_status in ["completed", "failed"] and (
+                        translation_status in ["completed", "failed", "skipped", None]
+                    ):
+                        article.status = "completed"
+                        article.updated_at = now_str()
+                        db.commit()
+            finally:
+                db.close()
 
     async def generate_ai_content(
         self,
@@ -1017,6 +1934,25 @@ class ArticleService:
                 print(f"{content_type} 生成失败: {article.title}, 错误: {e}")
 
             db.commit()
+
+            if content_type == "summary":
+                article = db.query(Article).filter(Article.id == article_id).first()
+                if article:
+                    analysis = (
+                        db.query(AIAnalysis)
+                        .filter(AIAnalysis.article_id == article_id)
+                        .first()
+                    )
+                    summary_status = (
+                        analysis.summary_status if analysis else None
+                    )
+                    translation_status = article.translation_status
+                    if summary_status in ["completed", "failed"] and (
+                        translation_status in ["completed", "failed", "skipped", None]
+                    ):
+                        article.status = "completed"
+                        article.updated_at = now_str()
+                        db.commit()
         except Exception as e:
             print(f"{content_type} 处理失败: {e}")
             article = db.query(Article).filter(Article.id == article_id).first()

@@ -130,6 +130,7 @@ class AIAnalysis(Base):
     quotes = Column(Text)
     quotes_status = Column(String, default=None)
     mindmap = Column(Text)
+    classification_status = Column(String, default=None)
     error_message = Column(Text, nullable=True)
     updated_at = Column(String, default=today_str)
 
@@ -328,6 +329,13 @@ def init_db():
             )
 
             ensure_columns(
+                "ai_analyses",
+                [
+                    ("classification_status", "TEXT"),
+                ],
+            )
+
+            ensure_columns(
                 "admin_settings",
                 [
                     ("comments_enabled", "INTEGER"),
@@ -393,20 +401,14 @@ def init_db():
                 rows = conn.execute(text("SELECT * FROM ai_configs")).mappings().all()
 
                 default_prompts = {
-                    "summary": "请为以下文章生成一个简洁的摘要（100-200字）：\n\n{content}",
-                    "outline": "请根据以下文章生成详细的结构化大纲（使用层级列表）：\n\n{content}",
-                    "key_points": "请根据以下文章提取关键要点（条目列表）：\n\n{content}",
-                    "quotes": "请从以下文章中提取金句（条目列表）：\n\n{content}",
-                    "translation": """请将以下英文文章翻译成中文。要求：
-1. 保持原文的markdown格式（标题、列表、代码块、链接等）
-2. 翻译要准确、流畅、符合中文表达习惯
-3. 专业术语可以保留英文原文，并在首次出现时用括号标注中文翻译
-4. 代码块内的代码不要翻译，只翻译代码注释
-5. 直接输出翻译结果，不要添加任何解释或前言
-
-原文：
-
-{content}""",
+                    "summary": "为提供的文本创作一份“快读摘要”，旨在让读者在30秒内掌握核心情报。\n\n要求：\n1) 极简主义：剔除背景铺垫、案例细节、营销话术及修饰性词汇，直奔主题。\n2) 内容密度：必须包含核心主体、关键动作/事件、最终影响/结论。\n3) 篇幅：严格控制在50-150字之间。\n\n待摘要内容：\n{content}",
+                    "outline": '请阅读提供的文本，并按指定 JSON 结构提取文章大纲（思维导图友好版）。\n\n要求：\n1) 根节点 title 简洁概括主题，可附领域/对象（如“增长策略｜SaaS”）。\n2) 核心观点：2-3 个主要立论。\n3) 关键概念：用“概念：极简释义”格式。\n4) 结论与启示：输出结论与启示；如有明确行动建议，可额外增加“行动：...”节点。\n5) 叶子节点不要使用“观点A/概念1”等前缀，直接给内容。\n6) 叶子节点建议不超过 30 字，便于缩略图展示。\n\n输出结构（只替换内容）：\n{\n  "title": "文章标题",\n  "children": [\n    {\n      "title": "核心观点",\n      "children": [\n        { "title": "核心观点内容" },\n        { "title": "核心观点内容" }\n      ]\n    },\n    {\n      "title": "关键概念",\n      "children": [\n        { "title": "概念：极简释义" },\n        { "title": "概念：极简释义" }\n      ]\n    },\n    {\n      "title": "结论与启示",\n      "children": [\n        { "title": "结论：..." },\n        { "title": "启示：..." },\n        { "title": "行动：..." }\n      ]\n    }\n  ]\n}\n\n待解析内容：\n{content}',
+                    "key_points": "请阅读提供的文本内容，生成一份干练、客观的中文总结。\n\n要求：\n1) 彻底去噪：剔除营销推广、招聘信息、课程宣传、免责声明、社交媒体引导语等无关内容。\n2) 聚焦核心：只保留核心观点、关键事实与重要结论。\n3) 逻辑重构：不要摘抄原句，重组语言，信息密度高、行文连贯。\n4) 段落衔接：段落内自然衔接（可用\"此外/另一方面/综上所述\"等连接词）。\n5) 格式强化：善用 Markdown 格式突出关键信息，具体规则如下：\n - **加粗**：用于核心概念、关键术语、重要人名/机构名、关键数据（如\"**GDP 增长 5.2%**\"、\"**OpenAI**\"）。\n- *斜体*：用于需要特别区分或存在争议/不确定性的表述（如\"*据未经证实的消息*\"、\"*该观点尚存分歧*\"），也可用于对比场景中标注对立面。\n - **加粗 + 斜体结合**（***文字***）：仅用于全文最核心的结论或转折性判断，不超过 1–2 处。\n\n字数：300–500 字。\n\n待总结内容：\n{content}",
+                    "quotes": "请阅读提供的文本内容，从中筛选并提炼出最具有传播力、深度或启发性的金句。\n\n要求：\n1) 标准：深刻性、共鸣感、精炼性。\n2) 拒绝平庸：不要事实陈述句，选择观点句/结论句/修辞优美的句子。\n3) 允许润色：可在不改变原意下微调，使其更像独立名言。\n4) 多样化：覆盖不同维度（趋势判断/价值坚守/行动号召等）。\n\n输出格式：\n- 使用无序列表（-），每句单独一行\n- 数量 3-5 条\n- 仅输出金句列表，不要解释\n\n待提炼内容：\n{content}",
+                    "translation": "将输入的英文文章翻译成中文。\n\n要求：\n1) 严格保留原始 Markdown 格式（标题、列表、链接、代码块、换行等）。\n2) 专业术语使用业界通用中文表达，必要时可在中文后保留英文原词。\n3) 语言风格地道、通顺，避免翻译腔。\n4) 只输出译文，不要前后缀。\n\n请直接开始翻译：\n{content}",
+                    "content_cleaning": "请将以下 HTML 内容清洗为结构化的 GFM Markdown。\n\n硬性要求：\n1) 仅输出 Markdown 正文，禁止任何解释/前后缀。\n2) 必须保留：标题层级、列表、引用、表格、链接、图片、代码块、段落换行。\n3) 必须去除：导航、广告、版权声明、推荐阅读、分享按钮、评论区、相关链接、页脚。\n4) 不要改写内容，只做结构化与去噪。\n5) 链接使用标准 Markdown 形式，图片使用 ![]()。\n\nHTML：\n{content}",
+                    "content_validation": '你是内容质检员，只输出 JSON。\n\n硬性要求：\n1) 仅输出 JSON，不要解释/Markdown 代码块。\n2) JSON 结构：{"is_valid": true/false, "error": "错误原因"}。\n3) 若合规：is_valid=true，error 为空字符串。\n4) 若不合规：is_valid=false，error 使用“错误类型：说明”格式，错误类型仅限以下之一：空内容、广告/导航、结构混乱、格式异常、语言混杂、其他。\n5) 合规标准：必须包含正文内容；标题/段落格式合理；无明显广告/导航；无空输出。\n\n待校验内容：\n{content}',
+                    "classification": "请根据以下文章内容与分类列表选择最匹配的分类。\n\n硬性要求：\n1) 仅输出分类 ID（UUID），不要输出任何解释或多余字符。\n2) 若无合适分类输出空字符串。\n3) 只允许输出分类列表中出现的 ID。\n\n分类列表：\n{categories}\n\n文章内容：\n{content}",
                 }
 
                 model_cache = {}
@@ -615,6 +617,36 @@ def init_db():
                         "temperature": 0.2,
                         "max_tokens": 14000,
                         "top_p": 1.0,
+                    },
+                    {
+                        "type": "content_cleaning",
+                        "name": "默认-内容清洗",
+                        "system_prompt": "你是严谨的内容清洗专家，专注输出稳定、结构化的 GFM Markdown。",
+                        "prompt": "请将以下 HTML 内容清洗为结构化的 GFM Markdown。\n\n硬性要求：\n1) 仅输出 Markdown 正文，禁止任何解释/前后缀。\n2) 必须保留：标题层级、列表、引用、表格、链接、图片、代码块、段落换行。\n3) 必须去除：导航、广告、版权声明、推荐阅读、分享按钮、评论区、相关链接、页脚。\n4) 不要改写内容，只做结构化与去噪。\n5) 链接使用标准 Markdown 形式，图片使用 ![]()。\n\nHTML：\n{content}",
+                        "response_format": "text",
+                        "temperature": 0.1,
+                        "max_tokens": 12000,
+                        "top_p": 1.0,
+                    },
+                    {
+                        "type": "content_validation",
+                        "name": "默认-内容校验",
+                        "system_prompt": "你是内容质检员，只输出 JSON。",
+                        "prompt": '你是内容质检员，只输出 JSON。\n\n硬性要求：\n1) 仅输出 JSON，不要解释/Markdown 代码块。\n2) JSON 结构：{"is_valid": true/false, "error": "错误原因"}。\n3) 若合规：is_valid=true，error 为空字符串。\n4) 若不合规：is_valid=false，error 使用“错误类型：说明”格式，错误类型仅限以下之一：空内容、广告/导航、结构混乱、格式异常、语言混杂、其他。\n5) 合规标准：必须包含正文内容；标题/段落格式合理；无明显广告/导航；无空输出。\n\n待校验内容：\n{content}',
+                        "response_format": "json_object",
+                        "temperature": 0.0,
+                        "max_tokens": 800,
+                        "top_p": 1.0,
+                    },
+                    {
+                        "type": "classification",
+                        "name": "默认-分类",
+                        "system_prompt": "你是内容分类助手，只输出分类 ID。",
+                        "prompt": "请根据以下文章内容与分类列表选择最匹配的分类。\n\n硬性要求：\n1) 仅输出分类 ID（UUID），不要输出任何解释或多余字符。\n2) 若无合适分类输出空字符串。\n3) 只允许输出分类列表中出现的 ID。\n\n分类列表：\n{categories}\n\n文章内容：\n{content}",
+                        "response_format": "text",
+                        "temperature": 0.1,
+                        "max_tokens": 200,
+                        "top_p": 0.9,
                     },
                 ]
 

@@ -78,9 +78,15 @@ type PromptType =
 	| "translation"
 	| "key_points"
 	| "outline"
-	| "quotes";
+	| "quotes"
+	| "content_cleaning"
+	| "content_validation"
+	| "classification";
 
 const PROMPT_TYPES = [
+	{ value: "content_cleaning" as PromptType, label: "内容清洗" },
+	{ value: "content_validation" as PromptType, label: "内容校验" },
+	{ value: "classification" as PromptType, label: "分类" },
 	{ value: "summary" as PromptType, label: "摘要" },
 	{ value: "translation" as PromptType, label: "翻译" },
 	{ value: "key_points" as PromptType, label: "总结" },
@@ -1215,6 +1221,9 @@ const { section, article_title: articleTitleParam } = router.query;
 	};
 
 	const getTaskTypeLabel = (task: AITaskItem) => {
+		if (task.task_type === "process_article_cleaning") return "内容清洗";
+		if (task.task_type === "process_article_validation") return "内容校验";
+		if (task.task_type === "process_article_classification") return "分类";
 		if (task.task_type === "process_article_translation") return "翻译";
 		if (task.task_type === "process_ai_content") {
 			if (task.content_type === "summary") return "摘要";
@@ -1223,7 +1232,8 @@ const { section, article_title: articleTitleParam } = router.query;
 			if (task.content_type === "quotes") return "金句";
 			return "AI内容";
 		}
-		return "摘要";
+		if (task.task_type === "process_article_ai") return "旧流程";
+		return "其他";
 	};
 
 	const getUsageStatusLabel = (status: string) => {
@@ -1241,6 +1251,9 @@ const { section, article_title: articleTitleParam } = router.query;
 		if (contentType === "outline") return "大纲";
 		if (contentType === "quotes") return "金句";
 		if (contentType === "translation") return "翻译";
+		if (contentType === "content_cleaning") return "内容清洗";
+		if (contentType === "content_validation") return "内容校验";
+		if (contentType === "classification") return "分类";
 		return contentType;
 	};
 
@@ -1893,15 +1906,18 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 															setUsageContentType(value);
 															setUsagePage(1);
 														}}
-														options={[
-															{ value: "", label: "全部" },
-															{ value: "summary", label: "摘要" },
-															{ value: "key_points", label: "总结" },
-															{ value: "outline", label: "大纲" },
-															{ value: "quotes", label: "金句" },
-															{ value: "translation", label: "翻译" },
-														]}
-													/>
+													options={[
+														{ value: "", label: "全部" },
+														{ value: "summary", label: "摘要" },
+														{ value: "key_points", label: "总结" },
+														{ value: "outline", label: "大纲" },
+														{ value: "quotes", label: "金句" },
+														{ value: "translation", label: "翻译" },
+														{ value: "content_cleaning", label: "内容清洗" },
+														{ value: "content_validation", label: "内容校验" },
+														{ value: "classification", label: "分类" },
+													]}
+												/>
 													<div className="md:col-span-2">
 														<label htmlFor="usage-date-range" className="block text-sm text-text-2 mb-1.5">日期范围</label>
 														<DateRangePicker
@@ -2866,12 +2882,15 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 											}}
 											options={[
 												{ value: "", label: "全部" },
-												{ value: "process_article_ai", label: "文章摘要" },
+												{ value: "process_article_cleaning", label: "内容清洗" },
+												{ value: "process_article_validation", label: "内容校验" },
+												{ value: "process_article_classification", label: "分类" },
 												{ value: "process_article_translation", label: "翻译生成" },
 												{ value: "process_ai_content:summary", label: "AI摘要" },
 												{ value: "process_ai_content:outline", label: "大纲生成" },
 												{ value: "process_ai_content:quotes", label: "金句生成" },
 												{ value: "process_ai_content:key_points", label: "总结生成" },
+												{ value: "process_article_ai", label: "旧流程" },
 											]}
 										/>
 <ArticleSearchSelect
