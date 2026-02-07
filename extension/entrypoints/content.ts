@@ -1,5 +1,6 @@
 import { Readability } from "@mozilla/readability";
 import { parseDate } from "../utils/dateParser";
+import { logError } from "../utils/errorLogger";
 import { extractWithAdapter, getSiteAdapter } from "../utils/siteAdapters";
 
 let cachedResult: { url: string; data: ExtractedArticle } | null = null;
@@ -33,8 +34,28 @@ export default defineContentScript({
 			}
 			if (message.type === "EXTRACT_ARTICLE") {
 				const forceRefresh = message.forceRefresh === true;
-				const result = extractArticle(forceRefresh);
-				sendResponse(result);
+				extractArticle(forceRefresh)
+					.then((result) => sendResponse(result))
+					.catch((error) => {
+						logError(
+							"content",
+							error instanceof Error ? error : new Error(String(error)),
+							{
+								action: "extractArticle",
+								url: window.location.href,
+							},
+						);
+						sendResponse({
+							title: "",
+							content_html: "",
+							source_url: window.location.href,
+							top_image: null,
+							author: "",
+							published_at: getTodayDate(),
+							source_domain: new URL(window.location.href).hostname,
+							excerpt: "",
+						});
+					});
 			}
 			if (message.type === "CHECK_SELECTION") {
 				const selection = window.getSelection();
@@ -117,6 +138,10 @@ interface JsonLdArticle {
 	datePublished?: string;
 	image?: { url?: string } | string;
 	description?: string;
+}
+
+function countImgTags(html: string): number {
+	return html.match(/<img\b[^>]*>/gi)?.length || 0;
 }
 
 function getTodayDate(): string {
@@ -283,7 +308,7 @@ function findArticleInJsonLd(
 	return null;
 }
 
-function extractArticle(forceRefresh = false): ExtractedArticle {
+async function extractArticle(forceRefresh = false): Promise<ExtractedArticle> {
 	const currentUrl = window.location.href;
 
 	if (!forceRefresh && cachedResult && cachedResult.url === currentUrl) {
@@ -307,7 +332,13 @@ function extractArticle(forceRefresh = false): ExtractedArticle {
 	const adapter = getSiteAdapter(baseUrl);
 	if (adapter) {
 		const adapterResult = extractWithAdapter(adapter);
-		const contentHtml = resolveRelativeUrls(adapterResult.contentHtml, baseUrl);
+		let contentHtml = resolveRelativeUrls(adapterResult.contentHtml, baseUrl);
+		if (countImgTags(contentHtml) === 0) {
+			const fallbackContent = extractFallbackContent();
+			if (countImgTags(fallbackContent) > 0) {
+				contentHtml = resolveRelativeUrls(fallbackContent, baseUrl);
+			}
+		}
 		const rawDate = adapterResult.publishedAt || mergedMeta.publishedAt;
 
 		result = {
@@ -329,7 +360,13 @@ function extractArticle(forceRefresh = false): ExtractedArticle {
 		const article = reader.parse();
 
 		if (article) {
-			const contentHtml = resolveRelativeUrls(article.content, baseUrl);
+			let contentHtml = resolveRelativeUrls(article.content, baseUrl);
+			if (countImgTags(contentHtml) === 0) {
+				const fallbackContent = extractFallbackContent();
+				if (countImgTags(fallbackContent) > 0) {
+					contentHtml = resolveRelativeUrls(fallbackContent, baseUrl);
+				}
+			}
 			const topImage = mergedMeta.topImage || extractFirstImage(contentHtml);
 			const rawDate = article.publishedTime || mergedMeta.publishedAt;
 

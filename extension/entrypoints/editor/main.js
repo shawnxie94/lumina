@@ -39,6 +39,15 @@ class EditorController {
 			filter: "img",
 			replacement: (_content, node) => {
 				let src = node.getAttribute("src") || "";
+				const pickBestUrlFromSrcset = (srcset) => {
+					if (!srcset) return "";
+					const candidates = srcset
+						.split(",")
+						.map((part) => part.trim())
+						.map((part) => part.split(/\s+/)[0])
+						.filter(Boolean);
+					return candidates[candidates.length - 1] || "";
+				};
 				if (
 					!src ||
 					src.startsWith("data:image/svg+xml") ||
@@ -47,13 +56,18 @@ class EditorController {
 					src =
 						node.getAttribute("data-src") ||
 						node.getAttribute("data-original") ||
+						node.getAttribute("data-lazy-src") ||
+						node.getAttribute("data-croporisrc") ||
 						"";
+				}
+				if (!src) {
+					src = pickBestUrlFromSrcset(node.getAttribute("srcset") || "");
 				}
 				if (!src) return "";
 
 				let alt = node.getAttribute("alt") || node.getAttribute("title") || "";
-				alt = alt.replace(/"/g, "&quot;");
-				return `<img src="${src}" alt="${alt}" style="max-width: 600px;" />`;
+				alt = alt.replace(/[\[\]]/g, "").replace(/\n/g, " ").replace(/\r/g, " ").trim();
+				return `![${alt}](${src})`;
 			},
 		});
 	}

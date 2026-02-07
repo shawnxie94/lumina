@@ -219,6 +219,16 @@ class PopupController {
 			replacement: (_content, node) => {
 				let src = node.getAttribute("src") || "";
 
+				const pickBestUrlFromSrcset = (srcset) => {
+					if (!srcset) return "";
+					const candidates = srcset
+						.split(",")
+						.map((part) => part.trim())
+						.map((part) => part.split(/\s+/)[0])
+						.filter(Boolean);
+					return candidates[candidates.length - 1] || "";
+				};
+
 				const isPlaceholder = (s) => {
 					if (!s) return true;
 					if (s.startsWith("data:image/svg+xml")) return true;
@@ -240,6 +250,10 @@ class PopupController {
 						node.getAttribute("data-lazy-src") ||
 						node.getAttribute("data-croporisrc") ||
 						"";
+				}
+
+				if (!src) {
+					src = pickBestUrlFromSrcset(node.getAttribute("srcset") || "");
 				}
 
 				if (!src || isPlaceholder(src)) return "";
@@ -286,8 +300,8 @@ class PopupController {
 
 				alt = alt.replace(/[[\]]/g, "").trim();
 
-				const escapedAlt = alt.replace(/"/g, "&quot;");
-				return `<img src="${src}" alt="${escapedAlt}" style="max-width: 600px;" />`;
+				const escapedAlt = alt.replace(/\n/g, " ").replace(/\r/g, " ");
+				return `![${escapedAlt}](${src})`;
 			},
 		});
 
@@ -661,6 +675,28 @@ class PopupController {
 			this.updateStatus("loading", "正在转换为 Markdown...");
 
 			const contentMd = this.#turndown.turndown(extractedData.content_html);
+			try {
+				const htmlImgCount =
+					extractedData.content_html?.match(/<img\b[^>]*>/gi)?.length || 0;
+				const mdMarkdownImgCount =
+					contentMd?.match(/!\[[^\]]*\]\([^\)]*\)/g)?.length || 0;
+				const mdHtmlImgCount = contentMd?.match(/<img\b[^>]*>/gi)?.length || 0;
+
+				if (htmlImgCount > 0 && mdMarkdownImgCount === 0) {
+					logError("popup", new Error("Markdown image conversion empty"), {
+						action: "markdownImageConversion",
+						url: this.#currentTab?.url,
+						htmlImgCount,
+						mdMarkdownImgCount,
+						mdHtmlImgCount,
+					});
+				}
+			} catch (error) {
+				logError("popup", error, {
+					action: "markdownImageConversion.diagnostics",
+					url: this.#currentTab?.url,
+				});
+			}
 
 			this.#articleData = {
 				...extractedData,
