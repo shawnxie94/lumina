@@ -165,12 +165,12 @@ export default function AppHeader() {
             </div>
             {isAdmin && (
               <Link
-                href="/settings"
+                href="/admin"
                 className="flex items-center gap-1 px-3 py-1 rounded-sm text-sm text-text-3 hover:text-text-1 hover:bg-muted transition"
-                title="设置"
+                title="管理"
               >
                 <IconSettings className="h-4 w-4" />
-                <span>设置</span>
+                <span>管理</span>
               </Link>
             )}
             {isAdmin ? (
