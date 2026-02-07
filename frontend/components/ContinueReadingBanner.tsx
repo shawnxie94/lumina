@@ -70,7 +70,7 @@ export function ContinueReadingBanner() {
         </div>
         <div className="py-2">
           {recentArticles.map((article) => {
-            const isCurrentArticle = isArticlePage && router.query.id === article.id;
+            const isCurrentArticle = isArticlePage && router.query.id === article.slug;
             const truncatedTitle = article.title.length > 20
               ? `${article.title.slice(0, 20)}...`
               : article.title;
