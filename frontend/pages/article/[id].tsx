@@ -13,7 +13,7 @@ import IconButton from '@/components/IconButton';
 import { useToast } from '@/components/Toast';
 import ConfirmModal from '@/components/ConfirmModal';
 import { BackToTop } from '@/components/BackToTop';
-import { IconBolt, IconBook, IconCopy, IconDoc, IconEdit, IconEye, IconEyeOff, IconList, IconNote, IconRefresh, IconRobot, IconTrash, IconCheck, IconReply, IconChevronDown, IconChevronUp } from '@/components/icons';
+import { IconBolt, IconBook, IconCopy, IconDoc, IconEdit, IconEye, IconEyeOff, IconLink, IconList, IconNote, IconRefresh, IconRobot, IconTrash, IconCheck, IconReply, IconChevronDown, IconChevronUp } from '@/components/icons';
 import { useAuth } from '@/contexts/AuthContext';
 import { useReading } from '@/contexts/ReadingContext';
 import { Select } from 'antd';
@@ -2742,19 +2742,16 @@ export default function ArticleDetailPage() {
                     className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     placeholder="输入图片 URL"
                   />
-                  <button
-                    type="button"
+                  <IconButton
                     onClick={handleConvertTopImage}
                     disabled={mediaStorageLoading || mediaUploading || !mediaStorageEnabled}
-                    className="px-3 py-2 text-xs rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition disabled:opacity-50"
-                    title={
-                      mediaStorageEnabled
-                        ? "转存为本地文件"
-                        : "未开启本地图片存储"
-                    }
+                    title={mediaStorageEnabled ? "转存为本地文件" : "未开启本地图片存储"}
+                    variant="ghost"
+                    size="md"
+                    className="hover:bg-muted"
                   >
-                    转存为内部
-                  </button>
+                    <IconLink className="h-4 w-4" />
+                  </IconButton>
                 </div>
                 {!mediaStorageEnabled && (
                   <div className="text-xs text-gray-500 mt-1">
@@ -2776,29 +2773,32 @@ export default function ArticleDetailPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  内容（Markdown）
-                </label>
-                <div className="flex items-center gap-2 mb-2">
-                  <button
-                    type="button"
-                    onClick={handleBatchConvertMarkdownImages}
-                    disabled={mediaUploading || !mediaStorageEnabled}
-                    className="px-3 py-1.5 text-xs rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition disabled:opacity-50"
-                    title={
-                      mediaStorageEnabled
-                        ? '扫描并转存外链图片'
-                        : '未开启本地图片存储'
-                    }
-                  >
-                    批量转存外链图片
-                  </button>
-                  {!mediaStorageEnabled && (
-                    <span className="text-xs text-gray-500">
-                      未开启本地存储，外链将保持不变
-                    </span>
-                  )}
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-sm font-medium text-gray-700">
+                    内容（Markdown）
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <IconButton
+                      onClick={handleBatchConvertMarkdownImages}
+                      disabled={mediaUploading || !mediaStorageEnabled}
+                      title={
+                        mediaStorageEnabled
+                          ? '扫描并转存外链图片'
+                          : '未开启本地图片存储'
+                      }
+                      variant="ghost"
+                      size="md"
+                      className="hover:bg-muted"
+                    >
+                      <IconLink className="h-4 w-4" />
+                    </IconButton>
+                  </div>
                 </div>
+                {!mediaStorageEnabled && (
+                  <div className="text-xs text-gray-500 mb-2">
+                    未开启本地存储，外链将保持不变
+                  </div>
+                )}
                 <textarea
                   value={editContent}
                   onChange={(e) => setEditContent(e.target.value)}

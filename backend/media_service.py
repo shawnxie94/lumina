@@ -422,10 +422,20 @@ def _extract_media_paths_from_markdown(content: str) -> set[str]:
 
 def cleanup_orphan_media(db: Session) -> dict:
     ensure_media_root()
-    articles = db.query(Article.id, Article.content_md).all()
+    articles = db.query(Article.id, Article.content_md, Article.top_image).all()
     referenced_paths: set[str] = set()
-    for article_id, content_md in articles:
+    for article_id, content_md, top_image in articles:
         referenced_paths |= _extract_media_paths_from_markdown(content_md or "")
+        if top_image and (MEDIA_BASE_URL in top_image or top_image.startswith("/media/")):
+            if MEDIA_BASE_URL in top_image:
+                idx = top_image.find(MEDIA_BASE_URL)
+                rel = top_image[idx + len(MEDIA_BASE_URL) :].lstrip("/")
+                if rel:
+                    referenced_paths.add(rel)
+            elif top_image.startswith("/media/"):
+                rel = top_image[len("/media/") :]
+                if rel:
+                    referenced_paths.add(rel)
 
     assets = db.query(MediaAsset).all()
     removed_records = 0
