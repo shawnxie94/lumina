@@ -87,7 +87,12 @@ function extractReplyPrefix(content: string): { prefix: string; body: string } {
   let index = 0;
   while (index < lines.length) {
     const line = lines[index];
-    if (line.startsWith('> 回复 @') || line.startsWith('> [原评论链接](')) {
+    if (
+      line.startsWith('> 回复 @') ||
+      line.startsWith('> Reply @') ||
+      line.startsWith('> [原评论链接](') ||
+      line.startsWith('> [Original Comment Link](')
+    ) {
       prefixLines.push(line);
       index += 1;
       continue;
@@ -108,10 +113,10 @@ function getReplyMeta(content: string): { user: string; link: string } | null {
   if (!content) return null;
   const { prefix } = extractReplyPrefix(content);
   if (!prefix) return null;
-  const userMatch = prefix.match(/> 回复 @(.+)/);
-  const linkMatch = prefix.match(/\[原评论\]\((.+)\)/);
-  const user = userMatch ? userMatch[1].trim() : '';
-  const link = linkMatch ? linkMatch[1].trim() : '';
+  const userMatch = prefix.match(/> (回复|Reply) @(.+)/);
+  const linkMatch = prefix.match(/\[(原评论|Original Comment)\]\((.+)\)/);
+  const user = userMatch ? userMatch[2].trim() : '';
+  const link = linkMatch ? linkMatch[2].trim() : '';
   if (!user && !link) return null;
   return { user, link };
 }
@@ -271,13 +276,14 @@ function AIContentSection({
   statusLink,
   showHeader = true,
 }: AIContentSectionProps) {
+  const { t, language } = useI18n();
   const getStatusBadge = () => {
     if (!status) return null;
     const statusConfig: Record<string, { bg: string; text: string; label: string }> = {
-      pending: { bg: 'bg-gray-100', text: 'text-gray-600', label: '等待处理' },
-      processing: { bg: 'bg-blue-100', text: 'text-blue-700', label: '生成中...' },
-      completed: { bg: 'bg-green-100', text: 'text-green-700', label: '已完成' },
-      failed: { bg: 'bg-red-100', text: 'text-red-700', label: '失败' },
+      pending: { bg: 'bg-gray-100', text: 'text-gray-600', label: t('等待处理') },
+      processing: { bg: 'bg-blue-100', text: 'text-blue-700', label: t('生成中...') },
+      completed: { bg: 'bg-green-100', text: 'text-green-700', label: t('已完成') },
+      failed: { bg: 'bg-red-100', text: 'text-red-700', label: t('失败') },
     };
     const config = statusConfig[status];
     if (!config) return null;
@@ -310,7 +316,7 @@ function AIContentSection({
               <button
                 onClick={onGenerate}
                 className="text-text-3 hover:text-primary transition"
-                title={content ? '重新生成' : '生成'}
+                title={content ? t("重新生成") : t("生成")}
                 type="button"
               >
               {content ? <IconRefresh className="h-4 w-4" /> : <IconBolt className="h-4 w-4" />}
@@ -320,7 +326,7 @@ function AIContentSection({
               <button
                 onClick={onCopy}
                 className="text-text-3 hover:text-primary transition"
-                title="复制内容"
+                title={t("复制内容")}
                 type="button"
               >
                 <IconCopy className="h-4 w-4" />
@@ -351,7 +357,7 @@ function AIContentSection({
                       <MindMapTree node={tree} isRoot compact />
                     </div>
                     <div className="absolute top-1 right-1 text-xs text-gray-400 bg-white/80 px-2 py-0.5 rounded">
-                      点击放大
+                      {t("点击放大")}
                     </div>
                   </div>
                 </div>
@@ -370,7 +376,7 @@ function AIContentSection({
         )
       ) : showStatus ? (
         <p className="text-gray-400 text-sm">
-          {status === 'processing' ? '正在生成...' : '未生成'}
+          {status === 'processing' ? t('正在生成...') : t('未生成')}
         </p>
       ) : null}
     </div>
@@ -558,7 +564,7 @@ export default function ArticleDetailPage() {
   const router = useRouter();
   const { showToast } = useToast();
   const { isAdmin } = useAuth();
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const { basicSettings } = useBasicSettings();
   const { addArticle, setIsHidden } = useReading();
   const { data: session } = useSession();
@@ -1013,7 +1019,7 @@ export default function ArticleDetailPage() {
       fetchSimilarArticles(data);
     } catch (error) {
       console.error('Failed to fetch article:', error);
-      showToast('加载文章失败', 'error');
+      showToast(t('加载文章失败'), 'error');
     } finally {
       setLoading(false);
     }
@@ -1056,7 +1062,7 @@ export default function ArticleDetailPage() {
       await articleApi.generateArticleEmbedding(article.slug);
       similarCache.delete(article.slug);
       setSimilarStatus('pending');
-      showToast('已提交向量化任务');
+      showToast(t('已提交向量化任务'));
     } catch (error: any) {
       console.error('Failed to refresh embedding:', error);
       showToast(error?.response?.data?.detail || '提交向量化失败', 'error');
@@ -1076,7 +1082,7 @@ export default function ArticleDetailPage() {
         const commentId = hash.slice('#comment-'.length);
         const commentExists = data.some((c: ArticleComment) => c.id === commentId);
         if (!commentExists) {
-          showToast('原评论不存在', 'info');
+          showToast(t('原评论不存在'), 'info');
         } else {
           setPendingScrollId(commentId);
         }
@@ -1170,13 +1176,15 @@ export default function ArticleDetailPage() {
   const showOutlineSection = isAdmin || Boolean(article?.ai_analysis?.outline);
   const showQuotesSection = isAdmin || Boolean(article?.ai_analysis?.quotes);
   const aiUpdatedAt = isAdmin && article?.ai_analysis?.updated_at
-    ? new Date(article.ai_analysis.updated_at).toLocaleString('zh-CN')
+    ? new Date(article.ai_analysis.updated_at).toLocaleString(
+        language === 'en' ? 'en-US' : 'zh-CN',
+      )
     : '';
 
   const aiTabConfigs = [
     {
       key: 'key_points' as const,
-      label: '总结',
+      label: t('总结'),
       enabled: showKeyPointsSection,
       content: article?.ai_analysis?.key_points,
       status: article?.ai_analysis?.key_points_status,
@@ -1184,11 +1192,11 @@ export default function ArticleDetailPage() {
       renderMindMap: false,
       onMindMapOpen: undefined,
       onGenerate: () => handleGenerateContent('key_points'),
-      onCopy: () => handleCopyContent(article?.ai_analysis?.key_points, '总结'),
+      onCopy: () => handleCopyContent(article?.ai_analysis?.key_points, t('总结')),
     },
     {
       key: 'outline' as const,
-      label: '大纲',
+      label: t('大纲'),
       enabled: showOutlineSection,
       content: article?.ai_analysis?.outline,
       status: article?.ai_analysis?.outline_status,
@@ -1196,11 +1204,11 @@ export default function ArticleDetailPage() {
       renderMindMap: true,
       onMindMapOpen: openMindMap,
       onGenerate: () => handleGenerateContent('outline'),
-      onCopy: () => handleCopyContent(article?.ai_analysis?.outline, '大纲'),
+      onCopy: () => handleCopyContent(article?.ai_analysis?.outline, t('大纲')),
     },
     {
       key: 'quotes' as const,
-      label: '金句',
+      label: t('金句'),
       enabled: showQuotesSection,
       content: article?.ai_analysis?.quotes,
       status: article?.ai_analysis?.quotes_status,
@@ -1208,7 +1216,7 @@ export default function ArticleDetailPage() {
       renderMindMap: false,
       onMindMapOpen: undefined,
       onGenerate: () => handleGenerateContent('quotes'),
-      onCopy: () => handleCopyContent(article?.ai_analysis?.quotes, '金句'),
+      onCopy: () => handleCopyContent(article?.ai_analysis?.quotes, t('金句')),
     },
   ];
 
@@ -1256,10 +1264,10 @@ export default function ArticleDetailPage() {
   function getAiTabStatusBadge(status?: string | null) {
     if (!status) return null;
     const statusConfig: Record<string, { bg: string; text: string; label: string }> = {
-      pending: { bg: 'bg-gray-100', text: 'text-gray-600', label: '等待处理' },
-      processing: { bg: 'bg-blue-100', text: 'text-blue-700', label: '生成中...' },
-      completed: { bg: 'bg-green-100', text: 'text-green-700', label: '已完成' },
-      failed: { bg: 'bg-red-100', text: 'text-red-700', label: '失败' },
+      pending: { bg: 'bg-gray-100', text: 'text-gray-600', label: t('等待处理') },
+      processing: { bg: 'bg-blue-100', text: 'text-blue-700', label: t('生成中...') },
+      completed: { bg: 'bg-green-100', text: 'text-green-700', label: t('已完成') },
+      failed: { bg: 'bg-red-100', text: 'text-red-700', label: t('失败') },
     };
     const config = statusConfig[status];
     if (!config) return null;
@@ -1322,7 +1330,7 @@ export default function ArticleDetailPage() {
           }
         });
       }
-      showToast('已提交生成请求');
+      showToast(t('已提交生成请求'));
     } catch (error: any) {
       console.error('Failed to generate:', error);
       showToast(error.response?.data?.detail || '生成失败', 'error');
@@ -1335,7 +1343,7 @@ export default function ArticleDetailPage() {
     try {
       await articleApi.retryTranslation(id as string);
       setArticle({ ...article, translation_status: 'pending' });
-      showToast('已重新提交翻译请求');
+      showToast(t('已重新提交翻译请求'));
     } catch (error: any) {
       console.error('Failed to retry translation:', error);
       showToast(error.response?.data?.detail || '重试翻译失败', 'error');
@@ -1348,7 +1356,7 @@ export default function ArticleDetailPage() {
     try {
       await articleApi.retryArticle(id as string);
       setArticle({ ...article, status: 'pending' });
-      showToast('已重新提交清洗任务');
+      showToast(t('已重新提交清洗任务'));
     } catch (error: any) {
       console.error('Failed to retry cleaning:', error);
       showToast(error.response?.data?.detail || '重试清洗失败', 'error');
@@ -1365,11 +1373,11 @@ export default function ArticleDetailPage() {
 
     try {
       await articleApi.deleteArticle(id as string);
-      showToast('删除成功');
+      showToast(t('删除成功'));
       router.push('/');
     } catch (error) {
       console.error('Failed to delete article:', error);
-      showToast('删除失败', 'error');
+      showToast(t('删除失败'), 'error');
     }
   };
 
@@ -1382,7 +1390,7 @@ export default function ArticleDetailPage() {
       showToast(article.is_visible ? '已设为不可见' : '已设为可见');
     } catch (error) {
       console.error('Failed to toggle visibility:', error);
-      showToast('操作失败', 'error');
+      showToast(t('操作失败'), 'error');
     }
   };
 
@@ -1393,7 +1401,7 @@ export default function ArticleDetailPage() {
       showToast(`${label}已复制`);
     } catch (error) {
       console.error('Failed to copy:', error);
-      showToast('复制失败', 'error');
+      showToast(t('复制失败'), 'error');
     }
   };
 
@@ -1406,7 +1414,7 @@ export default function ArticleDetailPage() {
       });
     } catch (error) {
       console.error('Failed to save notes:', error);
-      showToast('保存失败', 'error');
+      showToast(t('保存失败'), 'error');
     }
   };
 
@@ -1414,28 +1422,28 @@ export default function ArticleDetailPage() {
     setNoteContent(noteDraft);
     setShowNoteModal(false);
     await saveNotes(noteDraft, annotations);
-    showToast('已保存批注');
+    showToast(t('已保存批注'));
   };
 
   const handleStartAnnotation = () => {
     if (!contentRef.current) return;
     const selection = window.getSelection();
     if (!selection || selection.rangeCount === 0) {
-      showToast('请先选择需要划线的文字', 'info');
+      showToast(t('请先选择需要划线的文字'), 'info');
       return;
     }
     const range = selection.getRangeAt(0);
     if (range.collapsed) {
-      showToast('请先选择需要划线的文字', 'info');
+      showToast(t('请先选择需要划线的文字'), 'info');
       return;
     }
     if (!contentRef.current.contains(range.commonAncestorContainer)) {
-      showToast('请选择正文中的文字', 'info');
+      showToast(t('请选择正文中的文字'), 'info');
       return;
     }
     const { start, end } = getRangeOffsets(contentRef.current, range);
     if (start === end) {
-      showToast('请选择正文中的文字', 'info');
+      showToast(t('请选择正文中的文字'), 'info');
       return;
     }
     setPendingAnnotationRange({ start, end });
@@ -1479,7 +1487,7 @@ export default function ArticleDetailPage() {
       setActiveAnnotationId('');
     }
     await saveNotes(noteContent, next);
-    showToast('已删除划线批注');
+    showToast(t('已删除划线批注'));
   };
 
   const handleUpdateAnnotation = async () => {
@@ -1491,13 +1499,13 @@ export default function ArticleDetailPage() {
     );
     setAnnotations(next);
     await saveNotes(noteContent, next);
-    showToast('已更新划线批注');
+    showToast(t('已更新划线批注'));
   };
 
   const handleSubmitComment = async () => {
     const content = replyPrefix ? `${replyPrefix}\n${commentDraft}` : commentDraft;
     if (!content.trim()) {
-      showToast('请输入评论内容', 'info');
+      showToast(t('请输入评论内容'), 'info');
       return;
     }
     try {
@@ -1514,9 +1522,9 @@ export default function ArticleDetailPage() {
       setReplyTargetId(null);
       setReplyPrefix('');
       setPendingScrollId(data.id);
-      showToast('评论已发布');
+      showToast(t('评论已发布'));
     } catch (error: any) {
-      showToast(error?.message || '发布评论失败', 'error');
+      showToast(error?.message || t('发布评论失败'), 'error');
     }
   };
 
@@ -1530,7 +1538,7 @@ export default function ArticleDetailPage() {
   const handleSaveEditComment = async () => {
     if (!editingCommentId) return;
     if (!editingCommentDraft.trim()) {
-      showToast('请输入评论内容', 'info');
+      showToast(t('请输入评论内容'), 'info');
       return;
     }
     try {
@@ -1548,9 +1556,9 @@ export default function ArticleDetailPage() {
       setEditingCommentId(null);
       setEditingCommentDraft('');
       setEditingCommentPrefix('');
-      showToast('评论已更新');
+      showToast(t('评论已更新'));
     } catch (error: any) {
-      showToast(error?.message || '更新评论失败', 'error');
+      showToast(error?.message || t('更新评论失败'), 'error');
     }
   };
 
@@ -1558,9 +1566,9 @@ export default function ArticleDetailPage() {
     try {
       await commentApi.deleteComment(commentId);
       setComments((prev) => prev.filter((item) => item.id !== commentId));
-      showToast('评论已删除');
+      showToast(t('评论已删除'));
     } catch (error: any) {
-      showToast(error?.message || '删除评论失败', 'error');
+      showToast(error?.message || t('删除评论失败'), 'error');
     }
   };
 
@@ -1574,7 +1582,7 @@ export default function ArticleDetailPage() {
             : item,
         ),
       );
-      showToast(data.is_hidden ? '评论已隐藏' : '评论已显示');
+      showToast(data.is_hidden ? t('评论已隐藏') : t('评论已显示'));
     } catch (error: any) {
       showToast(error?.message || '操作失败', 'error');
     }
@@ -1593,7 +1601,7 @@ export default function ArticleDetailPage() {
 
   const handleReplyTo = (comment: ArticleComment, rootId?: string) => {
     if (!session) {
-      showToast('请先登录后再回复', 'info');
+      showToast(t('请先登录后再回复'), 'info');
       return;
     }
     const link =
@@ -1603,7 +1611,11 @@ export default function ArticleDetailPage() {
     setReplyToId(rootId || comment.id);
     setReplyToUser(comment.user_name);
     setReplyTargetId(comment.id);
-    setReplyPrefix(`> 回复 @${comment.user_name}\n${link ? `> [原评论](${link})\n` : ''}`);
+    setReplyPrefix(
+      `> ${t('回复')} @${comment.user_name}\n${
+        link ? `> [${t('原评论')}](${link})\n` : ''
+      }`,
+    );
     focusCommentInput();
   };
 
@@ -1615,7 +1627,7 @@ export default function ArticleDetailPage() {
       setMediaStorageEnabled(Boolean(data.media_storage_enabled));
     } catch (error) {
       console.error('Failed to fetch storage settings:', error);
-      showToast('存储配置加载失败', 'error');
+      showToast(t('存储配置加载失败'), 'error');
     } finally {
       setMediaStorageLoading(false);
     }
@@ -1630,7 +1642,7 @@ export default function ArticleDetailPage() {
     const imageFile = files.find((file) => file.type.startsWith('image/'));
     if (imageFile) {
       if (!mediaStorageEnabled) {
-        showToast('未开启本地图片存储，无法上传图片', 'info');
+        showToast(t('未开启本地图片存储，无法上传图片'), 'info');
         return;
       }
       event.preventDefault();
@@ -1640,7 +1652,7 @@ export default function ArticleDetailPage() {
         if (target) {
           insertTextAtCursor(target, `![](${result.url})`, setEditContent);
         }
-        showToast('图片已上传');
+        showToast(t('图片已上传'));
       } catch (error: any) {
         console.error('Failed to upload image:', error);
         showToast(error?.response?.data?.detail || '图片上传失败', 'error');
@@ -1669,7 +1681,7 @@ export default function ArticleDetailPage() {
       if (target) {
         insertTextAtCursor(target, `![](${result.url})`, setEditContent);
       }
-      showToast('图片已转存');
+      showToast(t('图片已转存'));
     } catch (error: any) {
       console.error('Failed to ingest image:', error);
       showToast(error?.response?.data?.detail || '图片转存失败', 'error');
@@ -1681,18 +1693,18 @@ export default function ArticleDetailPage() {
   const handleConvertTopImage = async () => {
     if (!article?.id) return;
     if (!editTopImage.trim()) {
-      showToast('请先填写头图 URL', 'info');
+      showToast(t('请先填写头图 URL'), 'info');
       return;
     }
     if (!mediaStorageEnabled) {
-      showToast('未开启本地图片存储', 'info');
+      showToast(t('未开启本地图片存储'), 'info');
       return;
     }
     setMediaUploading(true);
     try {
       const result = await mediaApi.ingest(article.id, editTopImage.trim());
       setEditTopImage(result.url);
-      showToast('头图已转存');
+      showToast(t('头图已转存'));
     } catch (error: any) {
       console.error('Failed to ingest top image:', error);
       showToast(error?.response?.data?.detail || '头图转存失败', 'error');
@@ -1720,22 +1732,22 @@ export default function ArticleDetailPage() {
       setNoteDraft('');
       setNoteContent('');
       await saveNotes('', annotations);
-      showToast('批注已删除');
+      showToast(t('批注已删除'));
       setShowNoteModal(false);
     } catch (error) {
       console.error('Failed to delete notes:', error);
-      showToast('删除失败', 'error');
+      showToast(t('删除失败'), 'error');
     }
   };
 
   const handleBatchConvertMarkdownImages = async () => {
     if (!article?.id) return;
     if (!editContent.trim()) {
-      showToast('内容为空，无法扫描', 'info');
+      showToast(t('内容为空，无法扫描'), 'info');
       return;
     }
     if (!mediaStorageEnabled) {
-      showToast('未开启本地图片存储', 'info');
+      showToast(t('未开启本地图片存储'), 'info');
       return;
     }
     if (mediaUploading) return;
@@ -1744,7 +1756,7 @@ export default function ArticleDetailPage() {
       (url) => !url.includes('/media/'),
     );
     if (urls.length === 0) {
-      showToast('未发现外链图片', 'info');
+      showToast(t('未发现外链图片'), 'info');
       return;
     }
 
@@ -1760,7 +1772,7 @@ export default function ArticleDetailPage() {
         }
       });
       setEditContent(nextContent);
-      showToast('图片转存完成');
+      showToast(t('图片转存完成'));
     } finally {
       setMediaUploading(false);
     }
@@ -1804,12 +1816,12 @@ export default function ArticleDetailPage() {
       }
 
       await articleApi.updateArticle(id as string, updateData);
-      showToast('保存成功');
+      showToast(t('保存成功'));
       setShowEditModal(false);
       fetchArticle();
     } catch (error: any) {
       console.error('Failed to save article:', error);
-      showToast(error.response?.data?.detail || '保存失败', 'error');
+      showToast(error.response?.data?.detail || t('保存失败'), 'error');
     } finally {
       setSaving(false);
     }
@@ -1820,7 +1832,7 @@ export default function ArticleDetailPage() {
       <div className="min-h-screen bg-app flex flex-col">
         <AppHeader />
         <div className="flex-1 flex items-center justify-center">
-          <div className="text-text-3">加载中...</div>
+          <div className="text-text-3">{t('加载中...')}</div>
         </div>
         <AppFooter />
       </div>
@@ -1832,7 +1844,7 @@ export default function ArticleDetailPage() {
       <div className="min-h-screen bg-app flex flex-col">
         <AppHeader />
         <div className="flex-1 flex items-center justify-center">
-          <div className="text-text-3">文章不存在</div>
+          <div className="text-text-3">{t('文章不存在')}</div>
         </div>
         <AppFooter />
       </div>
@@ -1858,7 +1870,7 @@ export default function ArticleDetailPage() {
           <div className={`flex flex-wrap gap-4 text-sm text-text-2 justify-center ${immersiveMode ? '' : 'border-b border-border pb-3'}`}>
             {article.category && (
               <div>
-                <span className="font-medium text-text-2">分类：</span>
+                <span className="font-medium text-text-2">{t('分类')}：</span>
                 <Link
                   href={`/?category_id=${article.category.id}`}
                   className="inline-flex items-center gap-1"
@@ -1869,7 +1881,7 @@ export default function ArticleDetailPage() {
             )}
             {article.author && (
               <div>
-                <span className="font-medium text-text-2">作者：</span>
+                <span className="font-medium text-text-2">{t('作者')}：</span>
                 <Link
                   href={`/?author=${encodeURIComponent(article.author)}`}
                   className="text-primary hover:underline"
@@ -1879,21 +1891,25 @@ export default function ArticleDetailPage() {
               </div>
             )}
             <div>
-              <span className="font-medium text-text-2">发表时间：</span>
+              <span className="font-medium text-text-2">{t('发表时间')}：</span>
               {article.published_at
-                ? new Date(article.published_at).toLocaleDateString('zh-CN')
-                : new Date(article.created_at).toLocaleDateString('zh-CN')}
+                ? new Date(article.published_at).toLocaleDateString(
+                    language === 'en' ? 'en-US' : 'zh-CN',
+                  )
+                : new Date(article.created_at).toLocaleDateString(
+                    language === 'en' ? 'en-US' : 'zh-CN',
+                  )}
             </div>
             {article.source_url && (
               <div>
-                <span className="font-medium text-text-2">来源：</span>
+                <span className="font-medium text-text-2">{t('来源')}：</span>
                 <a
                   href={article.source_url}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-primary hover:underline"
                 >
-                  跳转
+                  {t('跳转')}
                 </a>
               </div>
             )}
@@ -1913,26 +1929,26 @@ export default function ArticleDetailPage() {
                   <div className="flex items-center gap-2">
                     <h2 className="text-lg font-semibold text-text-1 inline-flex items-center gap-2">
                       <IconDoc className="h-4 w-4" />
-                      <span>内容</span>
+                      <span>{t('内容')}</span>
                     </h2>
                     {isAdmin && article.status === 'failed' && (
                       <button
                         onClick={handleRetryCleaning}
                         className="flex items-center gap-1 px-2 py-0.5 rounded text-xs text-red-700 bg-red-100 hover:bg-red-200 transition"
-                        title={article.ai_analysis?.error_message || '重新清洗'}
+                        title={article.ai_analysis?.error_message || t('重新清洗')}
                       >
                         <IconRefresh className="h-3.5 w-3.5" />
-                        重试清洗
+                        {t('重试清洗')}
                       </button>
                     )}
                     {isAdmin && article.translation_status === 'failed' && (
                       <button
                         onClick={handleRetryTranslation}
                         className="flex items-center gap-1 px-2 py-0.5 rounded text-xs text-orange-700 bg-orange-100 hover:bg-orange-200 transition"
-                        title={article.translation_error || '重新翻译'}
+                        title={article.translation_error || t('重新翻译')}
                       >
                         <IconRefresh className="h-3.5 w-3.5" />
-                        翻译失败
+                        {t('翻译失败')}
                       </button>
                     )}
                   </div>
@@ -1973,7 +1989,7 @@ export default function ArticleDetailPage() {
                         onClick={() => setShowTranslation(!showTranslation)}
                         className="flex items-center justify-center w-8 h-8 rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition text-base"
                       >
-                        {showTranslation ? '原' : '译'}
+                        {showTranslation ? t('原') : t('译')}
                       </button>
                     )}
                     <button
@@ -1989,13 +2005,13 @@ export default function ArticleDetailPage() {
               {noteContent && !immersiveMode && (
                 <div className="note-panel mb-4 rounded-sm p-4 text-sm text-text-2">
                   <div className="flex items-center justify-between mb-2">
-                    <div className="note-panel-title text-sm">批注</div>
+                    <div className="note-panel-title text-sm">{t('批注')}</div>
                     {isAdmin && (
                       <IconButton
                         onClick={handleDeleteNoteContent}
                         variant="ghost"
                         size="sm"
-                        title="删除批注"
+                        title={t('删除批注')}
                         className="rounded-full"
                       >
                         <IconTrash className="h-3.5 w-3.5" />
@@ -2030,9 +2046,9 @@ export default function ArticleDetailPage() {
                       ? 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                       : 'bg-gray-50 text-gray-400 cursor-not-allowed'
                   }`}
-                  title={prevArticle ? prevArticle.title : '无上一篇'}
+                  title={prevArticle ? prevArticle.title : t('无上一篇')}
                 >
-                  <span className="block">← 上一篇</span>
+                  <span className="block">← {t('上一篇')}</span>
                   {prevArticle && (
                     <span className="block text-xs text-gray-500">
                       {prevArticle.title.length > 20 ? `${prevArticle.title.slice(0, 20)}...` : prevArticle.title}
@@ -2047,9 +2063,9 @@ export default function ArticleDetailPage() {
                       ? 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                       : 'bg-gray-50 text-gray-400 cursor-not-allowed'
                   }`}
-                  title={nextArticle ? nextArticle.title : '无下一篇'}
+                  title={nextArticle ? nextArticle.title : t('无下一篇')}
                 >
-                  <span className="block">下一篇 →</span>
+                  <span className="block">{t('下一篇')} →</span>
                   {nextArticle && (
                     <span className="block text-xs text-gray-500">
                       {nextArticle.title.length > 20 ? `${nextArticle.title.slice(0, 20)}...` : nextArticle.title}
@@ -2063,12 +2079,12 @@ export default function ArticleDetailPage() {
                   <div className="bg-surface border border-border rounded-sm p-5">
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center gap-2">
-                        <h3 className="text-base font-semibold text-text-1">评论</h3>
+                        <h3 className="text-base font-semibold text-text-1">{t('评论')}</h3>
                         <span className="text-xs text-text-3">({totalTopComments})</span>
                       </div>
                       {session ? (
                         <div className="flex items-center gap-2 text-xs text-text-3">
-                          <span>{session.user.name || '访客'}</span>
+                          <span>{session.user.name || t('访客')}</span>
                           <div className="relative" ref={userMenuRef}>
                             {session.user.image && (
                               <button
@@ -2078,7 +2094,7 @@ export default function ArticleDetailPage() {
                               >
                                 <img
                                   src={session.user.image}
-                                  alt={session.user.name || '访客'}
+                                  alt={session.user.name || t('访客')}
                                   className="h-6 w-6 rounded-full object-cover cursor-pointer"
                                 />
                               </button>
@@ -2092,7 +2108,7 @@ export default function ArticleDetailPage() {
                                   }}
                                   className="w-full text-left px-3 py-2 hover:bg-muted hover:text-text-1 transition"
                                 >
-                                  退出登录
+                                  {t('退出登录')}
                                 </button>
                               </div>
                             )}
@@ -2105,7 +2121,7 @@ export default function ArticleDetailPage() {
                               onClick={() => signIn('github')}
                               className="px-3 py-1 text-xs rounded-full border border-border text-text-2 hover:text-text-1 hover:bg-muted transition"
                             >
-                              GitHub 登录
+                              {t('GitHub 登录')}
                             </button>
                           )}
                           {commentProviders.google && (
@@ -2113,11 +2129,11 @@ export default function ArticleDetailPage() {
                               onClick={() => signIn('google')}
                               className="px-3 py-1 text-xs rounded-full border border-border text-text-2 hover:text-text-1 hover:bg-muted transition"
                             >
-                              Google 登录
+                              {t('Google 登录')}
                             </button>
                           )}
                           {!commentProviders.github && !commentProviders.google && (
-                            <span className="text-xs text-text-3">未配置登录方式</span>
+                            <span className="text-xs text-text-3">{t('未配置登录方式')}</span>
                           )}
                         </div>
                       )}
@@ -2128,7 +2144,7 @@ export default function ArticleDetailPage() {
                         {replyToId && (
                           <div className="mb-2 flex items-center justify-between rounded-sm border border-border bg-muted px-3 py-2 text-xs text-text-2">
                             <span>
-                              回复 {replyToUser ? `@${replyToUser}` : ''}
+                              {t("回复")} {replyToUser ? `@${replyToUser}` : ''}
                             </span>
                             <button
                               onClick={() => {
@@ -2138,7 +2154,7 @@ export default function ArticleDetailPage() {
                               }}
                               className="text-text-3 hover:text-text-1 transition"
                             >
-                              取消回复
+                              {t("取消回复")}
                             </button>
                           </div>
                         )}
@@ -2148,23 +2164,23 @@ export default function ArticleDetailPage() {
                           onChange={(e) => setCommentDraft(e.target.value)}
                           rows={4}
                           className="w-full px-3 py-2 border border-border rounded-lg bg-surface text-text-1 focus:outline-none focus:ring-2 focus:ring-primary"
-                          placeholder="写下你的评论，支持 Markdown"
+                          placeholder={t('写下你的评论，支持 Markdown')}
                         />
                         <div className="flex justify-end mt-2">
                           <button
                             onClick={handleSubmitComment}
                             className="px-4 py-2 text-sm rounded-lg bg-primary text-white hover:opacity-90 transition"
                           >
-                            发布评论
+                            {t('发布评论')}
                           </button>
                         </div>
                       </div>
                     )}
 
                     {commentsLoading ? (
-                      <div className="text-sm text-text-3">评论加载中...</div>
+                      <div className="text-sm text-text-3">{t('评论加载中...')}</div>
                     ) : totalTopComments === 0 ? (
-                      <div className="text-sm text-text-3">暂无评论</div>
+                      <div className="text-sm text-text-3">{t('暂无评论')}</div>
                     ) : (
                       <div className="space-y-4">
                         {pagedTopComments.map((comment) => {
@@ -2212,7 +2228,7 @@ export default function ArticleDetailPage() {
                                         }}
                                         variant="danger"
                                         size="sm"
-                                        title="取消"
+                                        title={t("取消")}
                                         className="rounded-full"
                                       >
                                         ×
@@ -2221,7 +2237,7 @@ export default function ArticleDetailPage() {
                                         onClick={handleSaveEditComment}
                                         variant="primary"
                                         size="sm"
-                                        title="保存"
+                                        title={t("保存")}
                                         className="rounded-full"
                                       >
                                         <IconCheck className="h-3.5 w-3.5" />
@@ -2233,7 +2249,7 @@ export default function ArticleDetailPage() {
                                         onClick={() => handleReplyTo(comment)}
                                         variant="ghost"
                                         size="sm"
-                                        title="回复"
+                                        title={t("回复")}
                                         className="rounded-full"
                                       >
                                         <IconReply className="h-3.5 w-3.5" />
@@ -2243,7 +2259,7 @@ export default function ArticleDetailPage() {
                                               onClick={() => handleToggleCommentHidden(comment)}
                                               variant="ghost"
                                               size="sm"
-                                              title={comment.is_hidden ? "显示" : "隐藏"}
+                                              title={comment.is_hidden ? t("显示") : t("隐藏")}
                                               className="rounded-full"
                                             >
                                               {comment.is_hidden ? (
@@ -2259,7 +2275,7 @@ export default function ArticleDetailPage() {
                                                 onClick={() => handleStartEditComment(comment)}
                                                 variant="ghost"
                                                 size="sm"
-                                                title="编辑"
+                                                title={t("编辑")}
                                                 className="rounded-full"
                                               >
                                                 <IconEdit className="h-3.5 w-3.5" />
@@ -2268,7 +2284,7 @@ export default function ArticleDetailPage() {
                                                 onClick={() => openDeleteCommentModal(comment.id)}
                                                 variant="danger"
                                                 size="sm"
-                                                title="删除"
+                                                title={t("删除")}
                                                 className="rounded-full"
                                               >
                                                 <IconTrash className="h-3.5 w-3.5" />
@@ -2296,13 +2312,13 @@ export default function ArticleDetailPage() {
                                     <div>
                                       {meta && (
                                         <div className="text-xs text-text-3 mb-2">
-                                          <span>回复 @{meta.user}</span>
+                                          <span>{t("回复")} @{meta.user}</span>
                                           {meta.link && (
                                             <a
                                               href={meta.link}
                                               className="ml-2 text-text-3 hover:text-text-1 transition underline"
                                             >
-                                              原评论
+                                              {t('原评论')}
                                             </a>
                                           )}
                                         </div>
@@ -2323,7 +2339,7 @@ export default function ArticleDetailPage() {
                                   className="mt-3 border border-border rounded-lg p-3 bg-muted"
                                 >
                                   <div className="mb-2 text-xs text-text-2">
-                                    回复 {replyToUser ? `@${replyToUser}` : ''}
+                                    {t("回复")} {replyToUser ? `@${replyToUser}` : ''}
                                   </div>
                                   <textarea
                                     ref={commentInputRef}
@@ -2331,7 +2347,7 @@ export default function ArticleDetailPage() {
                                     onChange={(e) => setCommentDraft(e.target.value)}
                                     rows={3}
                                     className="w-full px-3 py-2 border border-border rounded-lg bg-surface text-text-1 focus:outline-none focus:ring-2 focus:ring-primary"
-                                    placeholder="写下你的回复，支持 Markdown"
+                                    placeholder={t("写下你的回复，支持 Markdown")}
                                   />
                                   <div className="flex justify-end gap-1.5 mt-2">
                                     <IconButton
@@ -2343,7 +2359,7 @@ export default function ArticleDetailPage() {
                                       }}
                                       variant="ghost"
                                       size="sm"
-                                      title="取消"
+                                      title={t("取消")}
                                       className="rounded-full"
                                     >
                                       ×
@@ -2352,7 +2368,7 @@ export default function ArticleDetailPage() {
                                       onClick={handleSubmitComment}
                                       variant="primary"
                                       size="sm"
-                                      title="发布"
+                                      title={t("发布")}
                                       className="rounded-full"
                                     >
                                       <IconCheck className="h-3.5 w-3.5" />
@@ -2371,7 +2387,7 @@ export default function ArticleDetailPage() {
                                       }))
                                     }
                                     className="inline-flex items-center gap-1 text-xs text-text-3 hover:text-text-1 transition"
-                                    title={isExpanded ? "收起回复" : "查看回复"}
+                                    title={isExpanded ? t("收起回复") : t("查看回复")}
                                   >
                                     {isExpanded ? (
                                       <IconChevronUp className="h-3.5 w-3.5" />
@@ -2416,7 +2432,7 @@ export default function ArticleDetailPage() {
                                                     }}
                                                     variant="ghost"
                                                     size="sm"
-                                                    title="取消"
+                                                    title={t('取消')}
                                                     className="rounded-full"
                                                   >
                                                     ×
@@ -2425,7 +2441,7 @@ export default function ArticleDetailPage() {
                                                     onClick={handleSaveEditComment}
                                                     variant="primary"
                                                     size="sm"
-                                                    title="保存"
+                                                    title={t('保存')}
                                                     className="rounded-full"
                                                   >
                                                     <IconCheck className="h-3.5 w-3.5" />
@@ -2437,7 +2453,7 @@ export default function ArticleDetailPage() {
                                                     onClick={() => handleReplyTo(reply, comment.id)}
                                                     variant="ghost"
                                                     size="sm"
-                                                    title="回复"
+                                                    title={t('回复')}
                                                     className="rounded-full"
                                                   >
                                                     <IconReply className="h-3.5 w-3.5" />
@@ -2447,7 +2463,7 @@ export default function ArticleDetailPage() {
                                                     onClick={() => handleToggleCommentHidden(reply)}
                                                     variant="ghost"
                                                     size="sm"
-                                                    title={reply.is_hidden ? "显示" : "隐藏"}
+                                                    title={reply.is_hidden ? t('显示') : t('隐藏')}
                                                     className="rounded-full"
                                                   >
                                                     {reply.is_hidden ? (
@@ -2463,7 +2479,7 @@ export default function ArticleDetailPage() {
                                                       onClick={() => handleStartEditComment(reply)}
                                                       variant="ghost"
                                                       size="sm"
-                                                      title="编辑"
+                                                      title={t('编辑')}
                                                       className="rounded-full"
                                                     >
                                                       <IconEdit className="h-3.5 w-3.5" />
@@ -2472,7 +2488,7 @@ export default function ArticleDetailPage() {
                                                       onClick={() => openDeleteCommentModal(reply.id)}
                                                       variant="danger"
                                                       size="sm"
-                                                      title="删除"
+                                                      title={t('删除')}
                                                       className="rounded-full"
                                                     >
                                                       <IconTrash className="h-3.5 w-3.5" />
@@ -2500,13 +2516,13 @@ export default function ArticleDetailPage() {
                                                 <div>
                                                   {meta && (
                                                     <div className="text-xs text-text-3 mb-2">
-                                                      <span>回复 @{meta.user}</span>
+                                                      <span>{t("回复")} @{meta.user}</span>
                                                       {meta.link && (
                                                         <a
                                                           href={meta.link}
                                                           className="ml-2 text-text-3 hover:text-text-1 transition underline"
                                                         >
-                                                          原评论
+                                                          {t('原评论')}
                                                         </a>
                                                       )}
                                                     </div>
@@ -2527,7 +2543,7 @@ export default function ArticleDetailPage() {
                                               className="mt-3 border border-border rounded-lg p-3 bg-surface"
                                             >
                                               <div className="mb-2 text-xs text-text-2">
-                                                回复 {replyToUser ? `@${replyToUser}` : ''}
+                                                {t("回复")} {replyToUser ? `@${replyToUser}` : ''}
                                               </div>
                                               <textarea
                                                 ref={commentInputRef}
@@ -2535,7 +2551,7 @@ export default function ArticleDetailPage() {
                                                 onChange={(e) => setCommentDraft(e.target.value)}
                                                 rows={3}
                                                 className="w-full px-3 py-2 border border-border rounded-lg bg-surface text-text-1 focus:outline-none focus:ring-2 focus:ring-primary"
-                                                placeholder="写下你的回复，支持 Markdown"
+                                                placeholder={t("写下你的回复，支持 Markdown")}
                                               />
                                               <div className="flex justify-end gap-1.5 mt-2">
                                                 <IconButton
@@ -2547,7 +2563,7 @@ export default function ArticleDetailPage() {
                                                   }}
                                                   variant="ghost"
                                                   size="sm"
-                                                  title="取消"
+                                                  title={t('取消')}
                                                   className="rounded-full"
                                                 >
                                                   ×
@@ -2556,7 +2572,7 @@ export default function ArticleDetailPage() {
                                                   onClick={handleSubmitComment}
                                                   variant="primary"
                                                   size="sm"
-                                                  title="发布"
+                                                  title={t('发布')}
                                                   className="rounded-full"
                                                 >
                                                   <IconCheck className="h-3.5 w-3.5" />
@@ -2585,7 +2601,7 @@ export default function ArticleDetailPage() {
                           variant="secondary"
                           size="sm"
                         >
-                          上一页
+                          {t('上一页')}
                         </Button>
                         <span className="px-4 py-2 text-sm bg-surface border border-border rounded-sm text-text-2">
                           {commentPage} / {totalCommentPages}
@@ -2601,7 +2617,7 @@ export default function ArticleDetailPage() {
                           variant="secondary"
                           size="sm"
                         >
-                          下一页
+                          {t('下一页')}
                         </Button>
                       </div>
                     )}
@@ -2617,14 +2633,14 @@ export default function ArticleDetailPage() {
                 <div className="flex items-center justify-between mb-4">
                   {tocItems.length > 0 && (
                     <>
-                      <h2 className="text-lg font-semibold text-gray-900 inline-flex items-center gap-2">
-                        <IconList className="h-4 w-4" />
-                        <span>目录</span>
-                      </h2>
+                        <h2 className="text-lg font-semibold text-gray-900 inline-flex items-center gap-2">
+                          <IconList className="h-4 w-4" />
+                          <span>{t("目录")}</span>
+                        </h2>
                       <button
                         onClick={() => setTocCollapsed(!tocCollapsed)}
                         className="text-text-3 hover:text-primary transition"
-                        title={tocCollapsed ? '展开目录' : '收起目录'}
+                        title={tocCollapsed ? t("展开目录") : t("收起目录")}
                       >
                         <IconChevronDown className={`h-4 w-4 transition-transform duration-200 ${tocCollapsed ? '' : 'rotate-180'}`} />
                       </button>
@@ -2645,7 +2661,7 @@ export default function ArticleDetailPage() {
                       <div className="flex items-center justify-between mb-2">
                         <h2 className="text-lg font-semibold text-gray-900 inline-flex items-center gap-2">
                           <IconRobot className="h-4 w-4" />
-                          <span>AI解读</span>
+                          <span>{t("AI解读")}</span>
                         </h2>
                         {aiUpdatedAt && (
                           <span className="text-xs text-gray-500">{aiUpdatedAt}</span>
@@ -2661,7 +2677,7 @@ export default function ArticleDetailPage() {
 
                   {showSummarySection && (
                     <AIContentSection
-                title="摘要"
+                title={t("摘要")}
                       content={article.ai_analysis?.summary}
                       status={article.ai_analysis?.summary_status || (article.status === 'completed' ? 'completed' : article.status)}
                       onGenerate={() => handleGenerateContent('summary')}
@@ -2706,7 +2722,7 @@ export default function ArticleDetailPage() {
                               <button
                                 onClick={activeTabConfig.onGenerate}
                                 className="text-text-3 hover:text-primary transition"
-                                title={activeTabConfig.content ? '重新生成' : '生成'}
+                                title={activeTabConfig.content ? t("重新生成") : t("生成")}
                                 type="button"
                               >
                                 {activeTabConfig.content ? <IconRefresh className="h-4 w-4" /> : <IconBolt className="h-4 w-4" />}
@@ -2716,7 +2732,7 @@ export default function ArticleDetailPage() {
                               <button
                                 onClick={activeTabConfig.onCopy}
                                 className="text-text-3 hover:text-primary transition"
-                                title="复制内容"
+                                title={t('复制内容')}
                                 type="button"
                               >
                                 <IconCopy className="h-4 w-4" />
@@ -2749,13 +2765,13 @@ export default function ArticleDetailPage() {
                         <div className="flex items-center justify-between mb-2">
                           <h2 className="text-lg font-semibold text-gray-900 inline-flex items-center gap-2">
                             <IconTag className="h-4 w-4" />
-                            <span>推荐阅读</span>
+                            <span>{t("推荐阅读")}</span>
                           </h2>
                           {isAdmin && (
                             <button
                               onClick={handleRefreshEmbedding}
                               className="text-text-3 hover:text-primary transition disabled:opacity-50"
-                              title="重新生成向量"
+                              title={t("重新生成向量")}
                               type="button"
                               disabled={embeddingRefreshing}
                             >
@@ -2764,13 +2780,13 @@ export default function ArticleDetailPage() {
                           )}
                         </div>
                         {similarLoading ? (
-                          <div className="text-sm text-text-3">文章加载中...</div>
+                          <div className="text-sm text-text-3">{t("文章加载中...")}</div>
                         ) : similarStatus === 'pending' ? (
-                          <div className="text-sm text-text-3">文章生成中...</div>
+                          <div className="text-sm text-text-3">{t("文章生成中...")}</div>
                         ) : similarStatus === 'disabled' ? (
-                          <div className="text-sm text-text-3">文章推荐已关闭</div>
+                          <div className="text-sm text-text-3">{t("文章推荐已关闭")}</div>
                         ) : similarArticles.length === 0 ? (
-                          <div className="text-sm text-text-3">暂无推荐文章</div>
+                          <div className="text-sm text-text-3">{t("暂无推荐文章")}</div>
                         ) : (
                           <div className="space-y-2 text-sm text-text-2">
                             {similarArticles.map((item) => (
@@ -2807,7 +2823,7 @@ export default function ArticleDetailPage() {
             onClick={(event) => event.stopPropagation()}
           >
             <div className="flex items-center justify-between p-4 border-b">
-              <h3 className="text-lg font-semibold text-gray-900">选择生成配置</h3>
+              <h3 className="text-lg font-semibold text-gray-900">{t('选择生成配置')}</h3>
               <button
                 onClick={() => setShowConfigModal(false)}
                 className="text-gray-500 hover:text-gray-700 text-xl"
@@ -2819,7 +2835,7 @@ export default function ArticleDetailPage() {
             <div className="p-4 space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  模型配置
+                  {t('模型配置')}
                 </label>
                 <Select
                   value={selectedModelConfigId}
@@ -2827,7 +2843,7 @@ export default function ArticleDetailPage() {
                   className="select-modern-antd w-full"
                   popupClassName="select-modern-dropdown"
                   options={[
-                    { value: '', label: '使用默认配置' },
+                    { value: '', label: t('使用默认配置') },
                     ...modelConfigs.map((config) => ({
                       value: config.id,
                       label: `${config.name} (${config.model_name})`,
@@ -2838,7 +2854,7 @@ export default function ArticleDetailPage() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  提示词配置
+                  {t('提示词配置')}
                 </label>
                 <Select
                   value={selectedPromptConfigId}
@@ -2846,7 +2862,7 @@ export default function ArticleDetailPage() {
                   className="select-modern-antd w-full"
                   popupClassName="select-modern-dropdown"
                   options={[
-                    { value: '', label: '使用默认配置' },
+                    { value: '', label: t('使用默认配置') },
                     ...promptConfigs.map((config) => ({
                       value: config.id,
                       label: config.name,
@@ -2861,13 +2877,13 @@ export default function ArticleDetailPage() {
                 onClick={() => setShowConfigModal(false)}
                 className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
               >
-                取消
+                {t('取消')}
               </button>
               <button
                 onClick={handleConfigModalGenerate}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
               >
-                生成
+                {t('生成')}
               </button>
             </div>
           </div>
@@ -2884,7 +2900,7 @@ export default function ArticleDetailPage() {
           >
             <div className="flex items-center justify-between p-4 border-b">
               <h3 className="text-lg font-semibold text-gray-900">
-                编辑文章
+                {t('编辑文章')}
               </h3>
               <button
                 onClick={() => setShowEditModal(false)}
@@ -2897,7 +2913,7 @@ export default function ArticleDetailPage() {
             <div className="p-4 space-y-4 overflow-y-auto flex-1">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  标题
+                  {t('标题')}
                 </label>
                 <input
                   type="text"
@@ -2910,7 +2926,7 @@ export default function ArticleDetailPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    作者
+                    {t('作者')}
                   </label>
                   <input
                     type="text"
@@ -2921,7 +2937,7 @@ export default function ArticleDetailPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    分类
+                    {t('分类')}
                   </label>
                   <Select
                     value={editCategoryId}
@@ -2930,7 +2946,7 @@ export default function ArticleDetailPage() {
                     popupClassName="select-modern-dropdown"
                     loading={categoriesLoading}
                     options={[
-                      { value: '', label: '未分类' },
+                      { value: '', label: t('未分类') },
                       ...categories.map((category) => ({
                         value: category.id,
                         label: category.name,
@@ -2942,7 +2958,7 @@ export default function ArticleDetailPage() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  头图 URL
+                  {t('头图 URL')}
                 </label>
                 <div className="flex gap-2">
                   <input
@@ -2952,12 +2968,16 @@ export default function ArticleDetailPage() {
                     onPaste={handleTopImagePaste}
                     onInput={(e) => setEditTopImage(e.currentTarget.value)}
                     className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="输入图片 URL"
+                    placeholder={t("输入图片 URL")}
                   />
                   <IconButton
                     onClick={handleConvertTopImage}
                     disabled={mediaStorageLoading || mediaUploading || !mediaStorageEnabled}
-                    title={mediaStorageEnabled ? "转存为本地文件" : "未开启本地图片存储"}
+                    title={
+                      mediaStorageEnabled
+                        ? t("转存为本地文件")
+                        : t("未开启本地图片存储")
+                    }
                     variant="ghost"
                     size="md"
                     className="hover:bg-muted"
@@ -2967,14 +2987,14 @@ export default function ArticleDetailPage() {
                 </div>
                 {!mediaStorageEnabled && (
                   <div className="text-xs text-gray-500 mt-1">
-                    未开启本地存储，头图将保持外链
+                    {t("未开启本地存储，头图将保持外链")}
                   </div>
                 )}
                 {editTopImage && (
                   <div className="mt-2">
                     <img
                       src={editTopImage}
-                      alt="头图预览"
+                      alt={t("头图预览")}
                       className="max-h-32 rounded-lg object-cover"
                       onError={(e) => {
                         (e.target as HTMLImageElement).style.display = 'none';
@@ -2987,16 +3007,16 @@ export default function ArticleDetailPage() {
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <label className="block text-sm font-medium text-gray-700">
-                    内容（Markdown）
+                    {t('内容（Markdown）')}
                   </label>
                   <div className="flex items-center gap-2">
-                    <IconButton
-                      onClick={handleBatchConvertMarkdownImages}
-                      disabled={mediaUploading || !mediaStorageEnabled}
-                      title={
-                        mediaStorageEnabled
-                          ? '扫描并转存外链图片'
-                          : '未开启本地图片存储'
+                      <IconButton
+                        onClick={handleBatchConvertMarkdownImages}
+                        disabled={mediaUploading || !mediaStorageEnabled}
+                        title={
+                          mediaStorageEnabled
+                          ? t('扫描并转存外链图片')
+                          : t('未开启本地图片存储')
                       }
                       variant="ghost"
                       size="md"
@@ -3008,7 +3028,7 @@ export default function ArticleDetailPage() {
                 </div>
                 {!mediaStorageEnabled && (
                   <div className="text-xs text-gray-500 mb-2">
-                    未开启本地存储，外链将保持不变
+                    {t('未开启本地存储，外链将保持不变')}
                   </div>
                 )}
                 <textarea
@@ -3027,14 +3047,14 @@ export default function ArticleDetailPage() {
                 className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
                 disabled={saving}
               >
-                取消
+                {t('取消')}
               </button>
               <button
                 onClick={handleSaveEdit}
                 disabled={saving}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
               >
-                {saving ? '保存中...' : '保存'}
+                {saving ? t('保存中...') : t('保存')}
               </button>
             </div>
           </div>
@@ -3097,7 +3117,7 @@ export default function ArticleDetailPage() {
             onClick={(event) => event.stopPropagation()}
           >
             <div className="flex items-center justify-between p-4 border-b">
-              <h3 className="text-lg font-semibold text-gray-900">划线批注内容</h3>
+              <h3 className="text-lg font-semibold text-gray-900">{t('划线批注内容')}</h3>
               <button
                 onClick={() => setShowAnnotationView(false)}
                 className="text-gray-500 hover:text-gray-700 text-2xl"
@@ -3137,7 +3157,7 @@ export default function ArticleDetailPage() {
                     }}
                     className="px-4 py-2 text-blue-600 rounded-lg hover:bg-blue-50 transition"
                   >
-                    编辑
+                    {t('编辑')}
                   </button>
                   <button
                     onClick={() => {
@@ -3146,7 +3166,7 @@ export default function ArticleDetailPage() {
                     }}
                     className="px-4 py-2 text-red-600 rounded-lg hover:bg-red-50 transition"
                   >
-                    删除
+                    {t('删除')}
                   </button>
                 </>
               )}
@@ -3164,7 +3184,7 @@ export default function ArticleDetailPage() {
             onClick={(event) => event.stopPropagation()}
           >
             <div className="flex items-center justify-between p-4 border-b">
-              <h3 className="text-lg font-semibold text-gray-900">批注内容</h3>
+              <h3 className="text-lg font-semibold text-gray-900">{t('批注内容')}</h3>
               <button
                 onClick={() => setShowNoteModal(false)}
                 className="text-gray-500 hover:text-gray-700 text-2xl"
@@ -3178,7 +3198,7 @@ export default function ArticleDetailPage() {
                 onChange={(e) => setNoteDraft(e.target.value)}
                 rows={6}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="输入批注内容，支持 Markdown"
+                placeholder={t('输入批注内容，支持 Markdown')}
               />
             </div>
             <div className="flex justify-end gap-2 p-4 border-t bg-gray-50">
@@ -3187,20 +3207,20 @@ export default function ArticleDetailPage() {
                   onClick={handleDeleteNoteContent}
                   className="px-4 py-2 text-red-600 rounded-lg hover:bg-red-50 transition"
                 >
-                  删除
+                  {t('删除')}
                 </button>
               )}
               <button
                 onClick={() => setShowNoteModal(false)}
                 className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
               >
-                取消
+                {t('取消')}
               </button>
               <button
                 onClick={handleSaveNoteContent}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
               >
-                保存
+                {t('保存')}
               </button>
             </div>
           </div>
@@ -3216,7 +3236,7 @@ export default function ArticleDetailPage() {
             onClick={(event) => event.stopPropagation()}
           >
             <div className="flex items-center justify-between p-4 border-b">
-              <h3 className="text-lg font-semibold text-gray-900">添加划线批注</h3>
+              <h3 className="text-lg font-semibold text-gray-900">{t('添加划线批注')}</h3>
               <button
                 onClick={() => setShowAnnotationModal(false)}
                 className="text-gray-500 hover:text-gray-700 text-2xl"
@@ -3225,20 +3245,20 @@ export default function ArticleDetailPage() {
               </button>
             </div>
             <div className="p-4 space-y-3">
-              <div className="text-xs text-gray-500">已选内容：</div>
+              <div className="text-xs text-gray-500">{t('已选内容')}：</div>
               <div className="p-3 bg-gray-50 border border-gray-200 rounded text-sm text-gray-700">
-                {pendingAnnotationText || '（无）'}
+                {pendingAnnotationText || t('（无）')}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  划线批注内容
+                  {t('划线批注内容')}
                 </label>
                 <textarea
                   value={pendingAnnotationComment}
                   onChange={(e) => setPendingAnnotationComment(e.target.value)}
                   rows={4}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="输入划线批注内容"
+                  placeholder={t('输入划线批注内容')}
                 />
               </div>
             </div>
@@ -3247,13 +3267,13 @@ export default function ArticleDetailPage() {
                 onClick={() => setShowAnnotationModal(false)}
                 className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
               >
-                取消
+                {t('取消')}
               </button>
               <button
                 onClick={handleConfirmAnnotation}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
               >
-                {activeAnnotationId ? '保存' : '添加'}
+                {activeAnnotationId ? t('保存') : t('添加')}
               </button>
             </div>
           </div>
@@ -3262,10 +3282,10 @@ export default function ArticleDetailPage() {
 
       <ConfirmModal
         isOpen={showDeleteCommentModal}
-        title="删除评论"
-        message="确定要删除这条评论吗？此操作不可撤销。"
-        confirmText="删除"
-        cancelText="取消"
+        title={t('删除评论')}
+        message={t('确定要删除这条评论吗？此操作不可撤销。')}
+        confirmText={t('删除')}
+        cancelText={t('取消')}
         onConfirm={() => {
           if (pendingDeleteCommentId) {
             handleDeleteComment(pendingDeleteCommentId);
@@ -3281,10 +3301,10 @@ export default function ArticleDetailPage() {
 
       <ConfirmModal
         isOpen={showDeleteModal}
-        title="删除文章"
-        message="确定要删除这篇文章吗？此操作不可撤销。"
-        confirmText="删除"
-        cancelText="取消"
+        title={t('删除文章')}
+        message={t('确定要删除这篇文章吗？此操作不可撤销。')}
+        confirmText={t('删除')}
+        cancelText={t('取消')}
         onConfirm={() => {
           setShowDeleteModal(false);
           handleDelete();
@@ -3300,13 +3320,13 @@ export default function ArticleDetailPage() {
             <button
               onClick={() => setLightboxImage(null)}
               className="absolute -top-3 -right-3 w-8 h-8 rounded-full bg-white text-gray-700 shadow flex items-center justify-center hover:bg-gray-100"
-              aria-label="关闭"
+              aria-label={t('关闭')}
             >
               ×
             </button>
             <img
               src={lightboxImage}
-              alt="预览"
+              alt={t('预览')}
               className="max-h-[80vh] max-w-[90vw] rounded-lg shadow-xl"
             />
           </div>
@@ -3328,7 +3348,7 @@ export default function ArticleDetailPage() {
                 <button
                   onClick={() => setMindMapOpen(false)}
                   className="absolute top-3 right-3 w-8 h-8 rounded-full bg-white text-gray-700 shadow flex items-center justify-center hover:bg-gray-100"
-                  aria-label="关闭"
+                  aria-label={t('关闭')}
                 >
                   ×
                 </button>
@@ -3350,7 +3370,7 @@ export default function ArticleDetailPage() {
         <button
           onClick={() => setImmersiveMode(false)}
           className="fixed right-6 top-1/2 -translate-y-1/2 flex items-center justify-center w-10 h-10 rounded-full bg-surface border border-border shadow-lg text-text-2 hover:text-text-1 hover:bg-muted transition z-50"
-          title="退出沉浸模式 (Esc)"
+          title={`${t('退出沉浸模式')} (Esc)`}
         >
           <IconBook className="h-5 w-5" />
         </button>

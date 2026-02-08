@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useCallback, ReactNode } from 'react';
+import { useI18n } from '@/lib/i18n';
 
 type ToastType = 'success' | 'error' | 'info';
 
@@ -24,6 +25,7 @@ export function useToast() {
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const { t } = useI18n();
 
   const showToast = useCallback((message: string, type: ToastType = 'success') => {
     const id = Date.now();
@@ -56,7 +58,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             <span className="text-lg">
               {toast.type === 'success' ? '✓' : toast.type === 'error' ? '✕' : 'ℹ'}
             </span>
-            <span className="flex-1">{toast.message}</span>
+            <span className="flex-1">{t(toast.message)}</span>
             <button
               onClick={() => removeToast(toast.id)}
               className="text-white/80 hover:text-white"

@@ -101,14 +101,14 @@ type PromptType =
 	| "classification";
 
 const PROMPT_TYPES = [
-	{ value: "content_cleaning" as PromptType, label: "清洗" },
-	{ value: "content_validation" as PromptType, label: "校验" },
-	{ value: "classification" as PromptType, label: "分类" },
-	{ value: "summary" as PromptType, label: "摘要" },
-	{ value: "translation" as PromptType, label: "翻译" },
-	{ value: "key_points" as PromptType, label: "总结" },
-	{ value: "outline" as PromptType, label: "大纲" },
-	{ value: "quotes" as PromptType, label: "金句" },
+	{ value: "content_cleaning" as PromptType, labelKey: "清洗" },
+	{ value: "content_validation" as PromptType, labelKey: "校验" },
+	{ value: "classification" as PromptType, labelKey: "分类" },
+	{ value: "summary" as PromptType, labelKey: "摘要" },
+	{ value: "translation" as PromptType, labelKey: "翻译" },
+	{ value: "key_points" as PromptType, labelKey: "总结" },
+	{ value: "outline" as PromptType, labelKey: "大纲" },
+	{ value: "quotes" as PromptType, labelKey: "金句" },
 ];
 
 const PRESET_COLORS = [
@@ -135,12 +135,12 @@ const PRESET_COLORS = [
 ];
 
 const CURRENCY_OPTIONS = [
-	{ value: "", label: "默认" },
-	{ value: "USD", label: "美元 (USD)" },
-	{ value: "CNY", label: "人民币 (CNY)" },
-	{ value: "HKD", label: "港币 (HKD)" },
-	{ value: "EUR", label: "欧元 (EUR)" },
-	{ value: "JPY", label: "日元 (JPY)" },
+	{ value: "", labelKey: "默认" },
+	{ value: "USD", labelKey: "美元 (USD)" },
+	{ value: "CNY", labelKey: "人民币 (CNY)" },
+	{ value: "HKD", labelKey: "港币 (HKD)" },
+	{ value: "EUR", labelKey: "欧元 (EUR)" },
+	{ value: "JPY", labelKey: "日元 (JPY)" },
 ];
 
 interface Category {
@@ -182,6 +182,7 @@ function SortableCategoryItem({
 	onEdit,
 	onDelete,
 }: SortableCategoryItemProps) {
+	const { t } = useI18n();
 	const {
 		attributes,
 		listeners,
@@ -208,7 +209,7 @@ function SortableCategoryItem({
 					{...attributes}
 					{...listeners}
 					className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600 px-1"
-					title="拖动排序"
+					title={t("拖动排序")}
 				>
 					<IconGrip className="h-4 w-4" />
 				</button>
@@ -228,7 +229,7 @@ function SortableCategoryItem({
 						</span>
 					</div>
 					<p className="text-xs text-gray-600">
-						{category.description || "暂无描述"}
+						{category.description || t("暂无描述")}
 					</p>
 				</div>
 			</div>
@@ -238,7 +239,7 @@ function SortableCategoryItem({
 					onClick={() => onEdit(category)}
 					variant="primary"
 					size="sm"
-					title="编辑"
+					title={t("编辑")}
 				>
 					<IconEdit className="h-4 w-4" />
 				</IconButton>
@@ -246,7 +247,7 @@ function SortableCategoryItem({
 					onClick={() => onDelete(category.id)}
 					variant="danger"
 					size="sm"
-					title="删除"
+					title={t("删除")}
 				>
 					<IconTrash className="h-4 w-4" />
 				</IconButton>
@@ -389,8 +390,8 @@ export default function AdminPage() {
 		isOpen: false,
 		title: "",
 		message: "",
-		confirmText: "确定",
-		cancelText: "取消",
+		confirmText: t("确定"),
+		cancelText: t("取消"),
 		onConfirm: () => {},
 		onCancel: undefined,
 	});
@@ -713,7 +714,7 @@ const { section, article_title: articleTitleParam } = router.query;
 			setTaskTotal(response.pagination?.total || 0);
 		} catch (error) {
 			console.error("Failed to fetch AI tasks:", error);
-			showToast("任务加载失败", "error");
+			showToast(t("任务加载失败"), "error");
 		} finally {
 			setTaskLoading(false);
 		}
@@ -882,7 +883,7 @@ const { section, article_title: articleTitleParam } = router.query;
 			setRecommendationSettings(data);
 		} catch (error) {
 			console.error("Failed to fetch recommendation settings:", error);
-			showToast("文章推荐配置加载失败", "error");
+			showToast(t("文章推荐配置加载失败"), "error");
 		} finally {
 			setRecommendationSettingsLoading(false);
 		}
@@ -892,10 +893,10 @@ const { section, article_title: articleTitleParam } = router.query;
 		setRecommendationSettingsSaving(true);
 		try {
 			await recommendationSettingsApi.updateSettings(recommendationSettings);
-			showToast("文章推荐配置已保存");
+			showToast(t("文章推荐配置已保存"));
 		} catch (error) {
 			console.error("Failed to save recommendation settings:", error);
-			showToast("文章推荐配置保存失败", "error");
+			showToast(t("文章推荐配置保存失败"), "error");
 		} finally {
 			setRecommendationSettingsSaving(false);
 		}
@@ -906,11 +907,13 @@ const { section, article_title: articleTitleParam } = router.query;
 		try {
 			const result = await mediaApi.cleanup();
 			showToast(
-				`清理完成：记录 ${result.removed_records}，文件 ${result.removed_files}`,
+				t("清理完成：记录 {records}，文件 {files}")
+					.replace("{records}", String(result.removed_records))
+					.replace("{files}", String(result.removed_files)),
 			);
 		} catch (error) {
 			console.error("Failed to cleanup media:", error);
-			showToast("清理失败", "error");
+			showToast(t("清理失败"), "error");
 		} finally {
 			setStorageCleanupLoading(false);
 		}
@@ -933,7 +936,7 @@ const { section, article_title: articleTitleParam } = router.query;
 			typeof window !== "undefined" ? window.location.origin : "";
 
 		if (!commentSettings.comments_enabled) {
-			messages.push("评论已关闭，当前不会对访客开放。");
+			messages.push(t("评论已关闭，当前不会对访客开放。"));
 		}
 
 		const hasGithub =
@@ -944,22 +947,22 @@ const { section, article_title: articleTitleParam } = router.query;
 			Boolean(commentSettings.google_client_secret);
 
 		if (!commentSettings.nextauth_secret) {
-			messages.push("NextAuth Secret 未配置。");
+			messages.push(t("NextAuth Secret 未配置。"));
 		}
 		if (!hasGithub && !hasGoogle) {
-			messages.push("至少需要配置 GitHub 或 Google 的 Client 信息。");
+			messages.push(t("至少需要配置 GitHub 或 Google 的 Client 信息。"));
 		}
 		if (commentSettings.github_client_id && !commentSettings.github_client_secret) {
-			messages.push("GitHub Client Secret 未填写。");
+			messages.push(t("GitHub Client Secret 未填写。"));
 		}
 		if (commentSettings.github_client_secret && !commentSettings.github_client_id) {
-			messages.push("GitHub Client ID 未填写。");
+			messages.push(t("GitHub Client ID 未填写。"));
 		}
 		if (commentSettings.google_client_id && !commentSettings.google_client_secret) {
-			messages.push("Google Client Secret 未填写。");
+			messages.push(t("Google Client Secret 未填写。"));
 		}
 		if (commentSettings.google_client_secret && !commentSettings.google_client_id) {
-			messages.push("Google Client ID 未填写。");
+			messages.push(t("Google Client ID 未填写。"));
 		}
 
 		if (origin) {
@@ -974,38 +977,41 @@ const { section, article_title: articleTitleParam } = router.query;
 		const ok = messages.length === 0;
 		setCommentValidationResult({
 			ok,
-			messages: ok ? ["配置检查通过"] : messages,
+			messages: ok ? [t("配置检查通过")] : messages,
 			callbacks,
 		});
-		showToast(ok ? "OAuth 配置检查通过" : "OAuth 配置存在问题", ok ? "success" : "error");
+		showToast(
+			ok ? t("OAuth 配置检查通过") : t("OAuth 配置存在问题"),
+			ok ? "success" : "error",
+		);
 	};
 
 	const handleToggleCommentVisibility = async (commentId: string, nextHidden: boolean) => {
 		try {
 			await commentApi.toggleHidden(commentId, nextHidden);
-			showToast(nextHidden ? "评论已隐藏" : "评论已显示");
+			showToast(nextHidden ? t("评论已隐藏") : t("评论已显示"));
 			fetchCommentList();
 		} catch (error) {
 			console.error("Failed to toggle comment visibility:", error);
-			showToast("更新失败", "error");
+			showToast(t("更新失败"), "error");
 		}
 	};
 
 	const handleDeleteCommentAdmin = async (commentId: string) => {
 		setConfirmState({
 			isOpen: true,
-			title: "删除评论",
-			message: "确定要删除这条评论吗？此操作不可撤销。",
-			confirmText: "删除",
-			cancelText: "取消",
+			title: t("删除评论"),
+			message: t("确定要删除这条评论吗？此操作不可撤销。"),
+			confirmText: t("删除"),
+			cancelText: t("取消"),
 			onConfirm: async () => {
 				try {
 					await commentAdminApi.delete(commentId);
-					showToast("删除成功");
+					showToast(t("删除成功"));
 					fetchCommentList();
 				} catch (error) {
 					console.error("Failed to delete comment:", error);
-					showToast("删除失败", "error");
+					showToast(t("删除失败"), "error");
 				}
 			},
 			onCancel: () => {},
@@ -1242,32 +1248,34 @@ const { section, article_title: articleTitleParam } = router.query;
 			} else {
 				await articleApi.createModelAPIConfig(payload);
 			}
-			showToast(editingModelAPIConfig ? "配置已更新" : "配置已创建");
+			showToast(
+				editingModelAPIConfig ? t("配置已更新") : t("配置已创建"),
+			);
 			fetchModelAPIConfigs();
 			setShowModelAPIModal(false);
 			setShowModelAPIAdvanced(false);
 			setEditingModelAPIConfig(null);
 		} catch (error) {
 			console.error("Failed to save model API config:", error);
-			showToast("保存失败", "error");
+			showToast(t("保存失败"), "error");
 		}
 	};
 
 	const handleDeleteModelAPI = async (id: string) => {
 		setConfirmState({
 			isOpen: true,
-			title: "删除模型配置",
-			message: "确定要删除这个模型API配置吗？此操作不可撤销。",
-			confirmText: "删除",
-			cancelText: "取消",
+			title: t("删除模型配置"),
+			message: t("确定要删除这个模型API配置吗？此操作不可撤销。"),
+			confirmText: t("删除"),
+			cancelText: t("取消"),
 			onConfirm: async () => {
 				try {
 					await articleApi.deleteModelAPIConfig(id);
-					showToast("删除成功");
+					showToast(t("删除成功"));
 					fetchModelAPIConfigs();
 				} catch (error) {
 					console.error("Failed to delete model API config:", error);
-					showToast("删除失败", "error");
+					showToast(t("删除失败"), "error");
 				}
 			},
 		});
@@ -1277,8 +1285,10 @@ const { section, article_title: articleTitleParam } = router.query;
 		setModelAPITestConfig(config);
 		setModelAPITestPrompt(
 			(config.model_type || "general") === "vector"
-				? "针对敏感肌专门设计的天然有机护肤产品：体验由芦荟和洋甘菊提取物带来的自然呵护。我们的护肤产品特别为敏感肌设计，温和滋润，保护您的肌肤不受刺激。让您的肌肤告别不适，迎来健康光彩。"
-				: "请回复：OK",
+				? t(
+						"针对敏感肌专门设计的天然有机护肤产品：体验由芦荟和洋甘菊提取物带来的自然呵护。我们的护肤产品特别为敏感肌设计，温和滋润，保护您的肌肤不受刺激。让您的肌肤告别不适，迎来健康光彩。",
+					)
+				: t("请回复：OK"),
 		);
 		setModelAPITestResult("");
 		setModelAPITestRaw("");
@@ -1286,16 +1296,18 @@ const { section, article_title: articleTitleParam } = router.query;
 		setShowModelAPITestModal(true);
 	};
 
-		const handleFetchModelOptions = async () => {
-			if (!modelAPIFormData.base_url || !modelAPIFormData.api_key) {
-				showToast("请先填写API地址与密钥", "info");
-				return;
-			}
-			if (modelAPIFormData.provider === "jina") {
-				setModelOptions([]);
-				setModelOptionsError("JinaAI 暂不支持自动获取模型列表，请手动填写模型名称");
-				return;
-			}
+	const handleFetchModelOptions = async () => {
+		if (!modelAPIFormData.base_url || !modelAPIFormData.api_key) {
+			showToast(t("请先填写API地址与密钥"), "info");
+			return;
+		}
+		if (modelAPIFormData.provider === "jina") {
+			setModelOptions([]);
+			setModelOptionsError(
+				t("JinaAI 暂不支持自动获取模型列表，请手动填写模型名称"),
+			);
+			return;
+		}
 			setModelOptionsLoading(true);
 			setModelOptionsError("");
 		try {
@@ -1304,23 +1316,23 @@ const { section, article_title: articleTitleParam } = router.query;
 				api_key: modelAPIFormData.api_key,
 				provider: modelAPIFormData.provider,
 			});
-			if (result.success) {
-				setModelOptions(result.models || []);
-				showToast("已获取模型列表");
-			} else {
-				setModelOptions([]);
-				setModelOptionsError(result.message || "获取模型失败");
-				showToast("获取模型失败", "error");
-			}
-		} catch (error) {
-			console.error("Failed to fetch model list:", error);
+		if (result.success) {
+			setModelOptions(result.models || []);
+			showToast(t("已获取模型列表"));
+		} else {
 			setModelOptions([]);
-			setModelOptionsError("获取模型失败");
-			showToast("获取模型失败", "error");
-		} finally {
-			setModelOptionsLoading(false);
+			setModelOptionsError(result.message || t("获取模型失败"));
+			showToast(t("获取模型失败"), "error");
 		}
-	};
+	} catch (error) {
+		console.error("Failed to fetch model list:", error);
+		setModelOptions([]);
+		setModelOptionsError(t("获取模型失败"));
+		showToast(t("获取模型失败"), "error");
+	} finally {
+		setModelOptionsLoading(false);
+	}
+};
 
 	useEffect(() => {
 		if (!showModelAPIModal) return;
@@ -1349,24 +1361,24 @@ const { section, article_title: articleTitleParam } = router.query;
 				modelAPITestConfig.id,
 				{ prompt: modelAPITestPrompt },
 			);
-			if (result.success) {
-				setModelAPITestResult(result.content || "");
-				setModelAPITestRaw(result.raw_response || "");
-				showToast("调用成功");
-			} else {
-				setModelAPITestError(result.message || "调用失败");
-				setModelAPITestResult(result.content || "");
-				setModelAPITestRaw(result.raw_response || "");
-				showToast("调用失败", "error");
-			}
-		} catch (error) {
-			console.error("Failed to test model API config:", error);
-			setModelAPITestError("调用失败");
-			showToast("调用失败", "error");
-		} finally {
-			setModelAPITestLoading(false);
+		if (result.success) {
+			setModelAPITestResult(result.content || "");
+			setModelAPITestRaw(result.raw_response || "");
+			showToast(t("调用成功"));
+		} else {
+			setModelAPITestError(result.message || t("调用失败"));
+			setModelAPITestResult(result.content || "");
+			setModelAPITestRaw(result.raw_response || "");
+			showToast(t("调用失败"), "error");
 		}
-	};
+	} catch (error) {
+		console.error("Failed to test model API config:", error);
+		setModelAPITestError(t("调用失败"));
+		showToast(t("调用失败"), "error");
+	} finally {
+		setModelAPITestLoading(false);
+	}
+};
 
 	const handleCreatePromptNew = () => {
 		setEditingPromptConfig(null);
@@ -1439,87 +1451,89 @@ const { section, article_title: articleTitleParam } = router.query;
 			} else {
 				await articleApi.createPromptConfig(data);
 			}
-			showToast(editingPromptConfig ? "配置已更新" : "配置已创建");
+			showToast(
+				editingPromptConfig ? t("配置已更新") : t("配置已创建"),
+			);
 			fetchPromptConfigs();
 			setShowPromptModal(false);
 			setEditingPromptConfig(null);
 		} catch (error) {
 			console.error("Failed to save prompt config:", error);
-			showToast("保存失败", "error");
+			showToast(t("保存失败"), "error");
 		}
 	};
 
 	const handleRetryTask = async (taskId: string) => {
 		try {
 			await articleApi.retryAITasks([taskId]);
-			showToast("任务已重试");
+			showToast(t("任务已重试"));
 			fetchTasks();
 		} catch (error) {
 			console.error("Failed to retry task:", error);
-			showToast("重试失败", "error");
+			showToast(t("重试失败"), "error");
 		}
 	};
 
 	const handleCancelTask = async (taskId: string) => {
 		setConfirmState({
 			isOpen: true,
-			title: "取消任务",
-			message: "确定取消该任务吗？",
-			confirmText: "确定",
-			cancelText: "取消",
+			title: t("取消任务"),
+			message: t("确定取消该任务吗？"),
+			confirmText: t("确定"),
+			cancelText: t("取消"),
 			onConfirm: async () => {
 				try {
 					await articleApi.cancelAITasks([taskId]);
-					showToast("任务已取消");
+					showToast(t("任务已取消"));
 					fetchTasks();
 				} catch (error) {
 					console.error("Failed to cancel task:", error);
-					showToast("取消失败", "error");
+					showToast(t("取消失败"), "error");
 				}
 			},
 		});
 	};
 
 	const getTaskTypeLabel = (task: AITaskItem) => {
-		if (task.task_type === "process_article_cleaning") return "清洗";
-		if (task.task_type === "process_article_validation") return "校验";
-		if (task.task_type === "process_article_classification") return "分类";
-		if (task.task_type === "process_article_translation") return "翻译";
-		if (task.task_type === "process_article_embedding") return "向量化";
+		if (task.task_type === "process_article_cleaning") return t("清洗");
+		if (task.task_type === "process_article_validation") return t("校验");
+		if (task.task_type === "process_article_classification") return t("分类");
+		if (task.task_type === "process_article_translation") return t("翻译");
+		if (task.task_type === "process_article_embedding") return t("向量化");
 		if (task.task_type === "process_ai_content") {
-			if (task.content_type === "summary") return "摘要";
-			if (task.content_type === "key_points") return "总结";
-			if (task.content_type === "outline") return "大纲";
-			if (task.content_type === "quotes") return "金句";
-			return "AI内容";
+			if (task.content_type === "summary") return t("摘要");
+			if (task.content_type === "key_points") return t("总结");
+			if (task.content_type === "outline") return t("大纲");
+			if (task.content_type === "quotes") return t("金句");
+			return t("AI内容");
 		}
-		if (task.task_type === "process_article_ai") return "旧流程";
-		return "其他";
+		if (task.task_type === "process_article_ai") return t("旧流程");
+		return t("其他");
 	};
 
 	const getUsageStatusLabel = (status: string) => {
-		if (status === "completed") return "已完成";
-		if (status === "failed") return "失败";
-		if (status === "processing") return "处理中";
-		if (status === "cancelled") return "已取消";
-		return "待处理";
+		if (status === "completed") return t("已完成");
+		if (status === "failed") return t("失败");
+		if (status === "processing") return t("处理中");
+		if (status === "cancelled") return t("已取消");
+		return t("待处理");
 	};
 
 	const getUsageContentTypeLabel = (contentType: string | null) => {
 		if (!contentType) return "-";
-		if (contentType === "summary") return "摘要";
-		if (contentType === "key_points") return "总结";
-		if (contentType === "outline") return "大纲";
-		if (contentType === "quotes") return "金句";
-		if (contentType === "translation") return "翻译";
-		if (contentType === "content_cleaning") return "清洗";
-		if (contentType === "content_validation") return "校验";
-		if (contentType === "classification") return "分类";
+		if (contentType === "summary") return t("摘要");
+		if (contentType === "key_points") return t("总结");
+		if (contentType === "outline") return t("大纲");
+		if (contentType === "quotes") return t("金句");
+		if (contentType === "translation") return t("翻译");
+		if (contentType === "content_cleaning") return t("清洗");
+		if (contentType === "content_validation") return t("校验");
+		if (contentType === "classification") return t("分类");
 		return contentType;
 	};
 
 	const formatJsonPayload = (payload: string | null) => {
-		if (!payload) return "暂无数据";
+		if (!payload) return t("暂无数据");
 		try {
 			const parsed = JSON.parse(payload);
 			return JSON.stringify(parsed, null, 2);
@@ -1540,11 +1554,13 @@ const { section, article_title: articleTitleParam } = router.query;
 		price: number | null,
 		currency: string,
 	) => {
-		if (tokens == null || price == null) {
-			return `${label}：-`;
-		}
+	if (tokens == null || price == null) {
+		return `${label}: -`;
+	}
 	const cost = (tokens / 1000) * price;
-	return `${label}：${tokens} / 1000 * ${price.toFixed(6)} = ${cost.toFixed(6)} ${currency}`;
+	return `${label}: ${tokens} / 1000 * ${price.toFixed(6)} = ${cost.toFixed(
+		6,
+	)} ${currency}`;
 };
 
 const formatPrice = (value: number | null | undefined) => {
@@ -1555,7 +1571,8 @@ const formatPrice = (value: number | null | undefined) => {
 const stripReplyPrefix = (content: string) => {
 	if (!content) return "";
 	const lines = content.split("\n");
-	if (!lines[0]?.startsWith("> 回复 @")) return content;
+	const prefixes = ["> 回复 @", "> Reply @"];
+	if (!prefixes.some((prefix) => lines[0]?.startsWith(prefix))) return content;
 	const blankIndex = lines.findIndex((line, index) => index > 0 && !line.trim());
 	if (blankIndex >= 0) {
 		return lines.slice(blankIndex + 1).join("\n").trim();
@@ -1582,34 +1599,39 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 			log.completion_tokens > 0
 				? log.cost_output / (log.completion_tokens / 1000)
 				: null;
-		const inputLine = formatCostLine(
-			"输入",
-			log.prompt_tokens,
-			inputPrice,
-			currency,
-		);
-		const outputLine = formatCostLine(
-			"输出",
-			log.completion_tokens,
-			outputPrice,
-			currency,
-		);
+	const inputLine = formatCostLine(
+		t("输入"),
+		log.prompt_tokens,
+		inputPrice,
+		currency,
+	);
+	const outputLine = formatCostLine(
+		t("输出"),
+		log.completion_tokens,
+		outputPrice,
+		currency,
+	);
 		const total = log.cost_total != null
 			? `${log.cost_total.toFixed(6)} ${currency}`
 			: "-";
-		setUsageCostTitle("费用计算逻辑（仅供参考）");
-		setUsageCostDetails(`${inputLine}\n${outputLine}\n合计：${total}`);
+	setUsageCostTitle(t("费用计算逻辑（仅供参考）"));
+	setUsageCostDetails(
+		t("费用计算详情")
+			.replace("{inputLine}", inputLine)
+			.replace("{outputLine}", outputLine)
+			.replace("{total}", total),
+	);
 		setShowUsageCostModal(true);
 	};
 
 	const handleCopyPayload = async () => {
-		try {
-			await navigator.clipboard.writeText(usagePayloadContent);
-			showToast("已复制");
-		} catch (error) {
-			console.error("复制失败", error);
-			showToast("复制失败", "error");
-		}
+	try {
+		await navigator.clipboard.writeText(usagePayloadContent);
+		showToast(t("已复制"));
+	} catch (error) {
+		console.error(t("复制失败"), error);
+		showToast(t("复制失败"), "error");
+	}
 	};
 
 	const formatUsageDateTime = (value: string | null) => {
@@ -1640,12 +1662,12 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 	}, [usageByModel]);
 
 	const handleDeletePrompt = async (id: string) => {
-		setConfirmState({
-			isOpen: true,
-			title: "删除提示词配置",
-			message: "确定要删除这个提示词配置吗？此操作不可撤销。",
-			confirmText: "删除",
-			cancelText: "取消",
+	setConfirmState({
+		isOpen: true,
+		title: t("删除提示词配置"),
+		message: t("确定要删除这个提示词配置吗？此操作不可撤销。"),
+		confirmText: t("删除"),
+		cancelText: t("取消"),
 			onConfirm: async () => {
 				try {
 					await articleApi.deletePromptConfig(id);
@@ -1754,11 +1776,16 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 				}
 			}
 
-			showToast(`导入完成：新增 ${created}，更新 ${updated}，跳过 ${skipped}`);
+			showToast(
+				t("导入完成：新增 {created}，更新 {updated}，跳过 {skipped}")
+					.replace("{created}", String(created))
+					.replace("{updated}", String(updated))
+					.replace("{skipped}", String(skipped)),
+			);
 			fetchPromptConfigs();
 		} catch (error) {
 			console.error("Failed to import prompt configs:", error);
-			showToast("导入失败，请检查文件内容", "error");
+			showToast(t("导入失败，请检查文件内容"), "error");
 		} finally {
 			if (promptImportInputRef.current) {
 				promptImportInputRef.current.value = "";
@@ -1800,31 +1827,31 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 			} else {
 				await categoryApi.createCategory(categoryFormData);
 			}
-			showToast(editingCategory ? "分类已更新" : "分类已创建");
+			showToast(editingCategory ? t("分类已更新") : t("分类已创建"));
 			fetchCategories();
 			setShowCategoryModal(false);
 			setEditingCategory(null);
 		} catch (error) {
 			console.error("Failed to save category:", error);
-			showToast("保存失败", "error");
+			showToast(t("保存失败"), "error");
 		}
 	};
 
 	const handleDeleteCategory = async (id: string) => {
 		setConfirmState({
 			isOpen: true,
-			title: "删除分类",
-			message: "确定要删除这个分类吗？此操作不可撤销。",
-			confirmText: "删除",
-			cancelText: "取消",
+			title: t("删除分类"),
+			message: t("确定要删除这个分类吗？此操作不可撤销。"),
+			confirmText: t("删除"),
+			cancelText: t("取消"),
 			onConfirm: async () => {
 				try {
 					await categoryApi.deleteCategory(id);
-					showToast("删除成功");
+					showToast(t("删除成功"));
 					fetchCategories();
 				} catch (error) {
 					console.error("Failed to delete category:", error);
-					showToast("删除失败", "error");
+					showToast(t("删除失败"), "error");
 				}
 			},
 		});
@@ -1835,7 +1862,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 			<div className="min-h-screen bg-app flex flex-col">
 				<AppHeader />
 				<div className="flex-1 flex items-center justify-center">
-					<div className="text-text-3">加载中...</div>
+					<div className="text-text-3">{t("加载中")}</div>
 				</div>
 				<AppFooter />
 			</div>
@@ -2077,7 +2104,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 											>
 												<span className="inline-flex items-center gap-2">
 													<IconPlug className="h-4 w-4" />
-													<span>登录密钥</span>
+													<span>{t("登录密钥")}</span>
 												</span>
 											</button>
 											<button
@@ -2093,7 +2120,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 											>
 												<span className="inline-flex items-center gap-2">
 													<IconFilter className="h-4 w-4" />
-													<span>过滤规则</span>
+													<span>{t("过滤规则")}</span>
 												</span>
 											</button>
 											<button
@@ -2106,7 +2133,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 											>
 												<span className="inline-flex items-center gap-2">
 													<IconLink className="h-4 w-4" />
-													<span>文件存储</span>
+													<span>{t("文件存储")}</span>
 												</span>
 											</button>
 										</>
@@ -2120,7 +2147,9 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 								<div className="bg-surface rounded-sm shadow-sm border border-border p-6">
 									<div className="flex items-center justify-between mb-6">
 										<h2 className="text-lg font-semibold text-text-1">
-											{showUsageView ? "模型记录/计量" : "模型API配置列表"}
+											{showUsageView
+												? t("模型记录/计量")
+												: t("模型API配置列表")}
 										</h2>
 										<div className="flex items-center gap-2">
 											{!showUsageView && (
@@ -2128,7 +2157,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 													onClick={handleCreateModelAPINew}
 													className="px-4 py-2 bg-primary text-white rounded-sm hover:bg-primary-ink transition"
 												>
-													+ 创建配置
+													+ {t("创建配置")}
 												</button>
 											)}
 										</div>
@@ -2144,7 +2173,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 														: "bg-muted text-text-2 hover:bg-surface hover:text-text-1"
 												}`}
 											>
-												通用
+												{t("通用")}
 											</button>
 											<button
 												onClick={() => setModelCategory("vector")}
@@ -2154,7 +2183,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 														: "bg-muted text-text-2 hover:bg-surface hover:text-text-1"
 												}`}
 											>
-												向量
+												{t("向量")}
 											</button>
 										</div>
 									)}
@@ -2163,20 +2192,26 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 										<div className="space-y-6">
 											<div className="grid grid-cols-1 md:grid-cols-4 gap-3">
 												<div className="bg-surface border border-border rounded-sm p-3">
-													<div className="text-xs text-text-3">调用次数</div>
+													<div className="text-xs text-text-3">
+														{t("调用次数")}
+													</div>
 													<div className="text-lg font-semibold text-text-1">
 														{usageSummary?.calls ?? 0}
 													</div>
 												</div>
 										<div className="bg-surface border border-border rounded-sm p-3">
-											<div className="text-xs text-text-3">Tokens（输入/输出）</div>
+											<div className="text-xs text-text-3">
+												{t("Tokens（输入/输出）")}
+											</div>
 											<div className="text-lg font-semibold text-text-1">
 												{usageSummary?.prompt_tokens ?? 0}/
 												{usageSummary?.completion_tokens ?? 0}
 											</div>
 										</div>
 												<div className="bg-surface border border-border rounded-sm p-3">
-													<div className="text-xs text-text-3">费用合计（参考）</div>
+													<div className="text-xs text-text-3">
+														{t("费用合计（参考）")}
+													</div>
 													<div className="text-lg font-semibold text-text-1">
 														{usageCostByCurrency.length > 0 ? (
 															<div className="space-y-1">
@@ -2193,7 +2228,9 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 													</div>
 												</div>
 												<div className="bg-surface border border-border rounded-sm p-3">
-													<div className="text-xs text-text-3">明细条数</div>
+													<div className="text-xs text-text-3">
+														{t("明细条数")}
+													</div>
 													<div className="text-lg font-semibold text-text-1">
 														{usageTotal}
 													</div>
@@ -2202,14 +2239,14 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 
 												<div className="grid grid-cols-1 md:grid-cols-5 gap-4">
 													<FilterSelect
-														label="模型"
+														label={t("模型")}
 														value={usageModelId}
 														onChange={(value) => {
 															setUsageModelId(value);
 															setUsagePage(1);
 														}}
 														options={[
-															{ value: "", label: "全部" },
+															{ value: "", label: t("全部") },
 															...modelAPIConfigs.map((config) => ({
 																value: config.id,
 																label: config.name,
@@ -2217,41 +2254,43 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 														]}
 													/>
 													<FilterSelect
-														label="状态"
+														label={t("状态")}
 														value={usageStatus}
 														onChange={(value) => {
 															setUsageStatus(value);
 															setUsagePage(1);
 														}}
 														options={[
-															{ value: "", label: "全部" },
-															{ value: "completed", label: "已完成" },
-															{ value: "failed", label: "失败" },
-															{ value: "processing", label: "处理中" },
-															{ value: "pending", label: "待处理" },
+															{ value: "", label: t("全部") },
+															{ value: "completed", label: t("已完成") },
+															{ value: "failed", label: t("失败") },
+															{ value: "processing", label: t("处理中") },
+															{ value: "pending", label: t("待处理") },
 														]}
 													/>
 													<FilterSelect
-														label="类型"
+														label={t("类型")}
 														value={usageContentType}
 														onChange={(value) => {
 															setUsageContentType(value);
 															setUsagePage(1);
 														}}
 													options={[
-														{ value: "", label: "全部" },
-														{ value: "summary", label: "摘要" },
-														{ value: "key_points", label: "总结" },
-														{ value: "outline", label: "大纲" },
-														{ value: "quotes", label: "金句" },
-														{ value: "translation", label: "翻译" },
-														{ value: "content_cleaning", label: "清洗" },
-														{ value: "content_validation", label: "校验" },
-														{ value: "classification", label: "分类" },
+														{ value: "", label: t("全部") },
+														{ value: "summary", label: t("摘要") },
+														{ value: "key_points", label: t("总结") },
+														{ value: "outline", label: t("大纲") },
+														{ value: "quotes", label: t("金句") },
+														{ value: "translation", label: t("翻译") },
+														{ value: "content_cleaning", label: t("清洗") },
+														{ value: "content_validation", label: t("校验") },
+														{ value: "classification", label: t("分类") },
 													]}
 												/>
 													<div className="md:col-span-2">
-														<label htmlFor="usage-date-range" className="block text-sm text-text-2 mb-1.5">日期范围</label>
+														<label htmlFor="usage-date-range" className="block text-sm text-text-2 mb-1.5">
+															{t("日期范围")}
+														</label>
 														<DateRangePicker
 															id="usage-date-range"
 															value={toDayjsRangeFromDateStrings(usageStart, usageEnd)}
@@ -2268,21 +2307,21 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 
 											<div className="bg-surface border border-border rounded-sm p-4">
 												<div className="text-sm font-semibold text-text-1 mb-3">
-													按模型汇总
+													{t("按模型汇总")}
 												</div>
 												{usageByModel.length === 0 ? (
-													<div className="text-sm text-text-3">暂无数据</div>
+													<div className="text-sm text-text-3">{t("暂无数据")}</div>
 												) : (
 													<div className="overflow-x-auto">
 														<table className="min-w-full text-sm">
 															<thead className="bg-muted text-text-2">
 																<tr>
-																	<th className="text-left px-3 py-2">模型</th>
-																	<th className="text-left px-3 py-2">调用</th>
+																	<th className="text-left px-3 py-2">{t("模型")}</th>
+																	<th className="text-left px-3 py-2">{t("调用")}</th>
 															<th className="text-left px-3 py-2">
-																Tokens（输入/输出）
+																{t("Tokens（输入/输出）")}
 															</th>
-																	<th className="text-left px-3 py-2">费用（参考）</th>
+																	<th className="text-left px-3 py-2">{t("费用（参考）")}</th>
 																</tr>
 															</thead>
 															<tbody className="divide-y divide-border">
@@ -2317,35 +2356,35 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 											<div className="bg-surface border border-border rounded-sm p-4">
 												<div className="flex items-center justify-between mb-3">
 													<div className="text-sm font-semibold text-text-1">
-														调用明细
+														{t("调用明细")}
 													</div>
 													<div className="text-sm text-text-3">
-														共 {usageTotal} 条
+														{t("共")} {usageTotal} {t("条")}
 													</div>
 												</div>
 												{usageLoading ? (
 													<div className="text-center py-6 text-text-3">
-														加载中...
+														{t("加载中")}
 													</div>
 												) : usageLogs.length === 0 ? (
 													<div className="text-center py-6 text-text-3">
-														暂无记录
+														{t("暂无记录")}
 													</div>
 												) : (
 													<div className="overflow-x-auto">
 														<table className="min-w-full text-sm">
 															<thead className="bg-muted text-text-2">
 																<tr>
-																<th className="text-left px-3 py-2">时间</th>
-																	<th className="text-left px-3 py-2">模型</th>
-																	<th className="text-left px-3 py-2">文章</th>
-																	<th className="text-left px-3 py-2">类型</th>
+																<th className="text-left px-3 py-2">{t("时间")}</th>
+																	<th className="text-left px-3 py-2">{t("模型")}</th>
+																	<th className="text-left px-3 py-2">{t("文章")}</th>
+																	<th className="text-left px-3 py-2">{t("类型")}</th>
 																	<th className="text-left px-3 py-2">
-																		Tokens（输入/输出）
+																		{t("Tokens（输入/输出）")}
 																	</th>
-															<th className="text-left px-3 py-2">费用（参考）</th>
-															<th className="text-left px-3 py-2">状态</th>
-															<th className="text-left px-3 py-2">查看</th>
+															<th className="text-left px-3 py-2">{t("费用（参考）")}</th>
+															<th className="text-left px-3 py-2">{t("状态")}</th>
+															<th className="text-left px-3 py-2">{t("查看")}</th>
 														</tr>
 															</thead>
 															<tbody className="divide-y divide-border">
@@ -2363,7 +2402,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 																href={`/article/${log.article_slug || log.article_id}`}
 																className="text-primary hover:text-primary-ink"
 															>
-																查看
+																{t("查看")}
 															</Link>
 														) : (
 															"-"
@@ -2399,13 +2438,13 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 																			type="button"
 																			onClick={() =>
 																				openUsagePayload(
-																					"请求输入",
+																					t("请求输入"),
 																					log.request_payload,
 																				)
 																			}
 																			variant="ghost"
 																			size="sm"
-																			title="输入"
+																			title={t("输入")}
 																		>
 																			<IconArrowDown className="h-4 w-4" />
 																		</IconButton>
@@ -2413,13 +2452,13 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 																			type="button"
 																			onClick={() =>
 																				openUsagePayload(
-																					"响应输出",
+																					t("响应输出"),
 																					log.response_payload,
 																				)
 																			}
 																			variant="ghost"
 																			size="sm"
-																			title="输出"
+																			title={t("输出")}
 																		>
 																			<IconArrowUp className="h-4 w-4" />
 																		</IconButton>
@@ -2452,7 +2491,9 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 																	{ value: 50, label: "50" },
 																]}
 															/>
-															<span>条，共 {usageTotal} 条</span>
+															<span>
+																{t("条")}，{t("共")} {usageTotal} {t("条")}
+															</span>
 														</div>
 														<div className="flex items-center gap-2">
 														<Button
@@ -2463,11 +2504,11 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 															variant="secondary"
 															size="sm"
 														>
-															上一页
+															{t("上一页")}
 														</Button>
 														<span className="px-4 py-2 text-sm bg-surface border border-border rounded-sm text-text-2">
-															第 {usagePage} /{" "}
-															{Math.ceil(usageTotal / usagePageSize) || 1} 页
+															{t("第")} {usagePage} /{" "}
+															{Math.ceil(usageTotal / usagePageSize) || 1} {t("页")}
 														</span>
 														<Button
 															onClick={() => setUsagePage((page) => page + 1)}
@@ -2477,7 +2518,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 															variant="secondary"
 															size="sm"
 														>
-															下一页
+															{t("下一页")}
 														</Button>
 														</div>
 													</div>
@@ -2486,18 +2527,20 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 										</div>
 									) : modelLoading ? (
 										<div className="text-center py-12 text-text-3">
-											加载中...
+											{t("加载中...")}
 										</div>
 									) : filteredModelAPIConfigs.length === 0 ? (
 										<div className="text-center py-12 text-text-3">
 											<div className="mb-4">
-												暂无{modelCategory === "vector" ? "向量" : "通用"}模型配置
+												{t("暂无")}
+												{t(modelCategory === "vector" ? "向量" : "通用")}
+												{t("模型配置")}
 											</div>
 											<button
 												onClick={handleCreateModelAPINew}
 												className="px-4 py-2 bg-primary text-white rounded-sm hover:bg-primary-ink transition"
 											>
-												创建配置
+												{t("创建配置")}
 											</button>
 										</div>
 									) : (
@@ -2520,7 +2563,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 																	</h3>
 																	{config.is_default && (
 																		<span className="ml-2 px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">
-																			默认
+																			{t("默认")}
 																		</span>
 																	)}
 																	<span
@@ -2530,18 +2573,20 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 																				: "bg-gray-100 text-gray-600"
 																		}`}
 																	>
-																		{config.is_enabled ? "启用" : "禁用"}
+																		{config.is_enabled ? t("启用") : t("禁用")}
 																	</span>
 																</div>
 
 																<div className="space-y-1 text-sm text-gray-600">
 																	<div>
-																		<span className="font-medium">名称：</span>
+																		<span className="font-medium">
+																			{t("名称")}：
+																		</span>
 																		<span>{config.name}</span>
 																	</div>
 																	<div>
 																		<span className="font-medium">
-																			API地址：
+																			{t("API地址")}：
 																		</span>
 																		<code className="px-2 py-1 bg-gray-50 rounded text-xs">
 																			{config.base_url}
@@ -2549,25 +2594,29 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 																	</div>
 																	<div>
 																		<span className="font-medium">
-																			模型名称：
+																			{t("模型名称")}：
 																		</span>
 																		<code className="px-2 py-1 bg-gray-50 rounded text-xs">
 																			{config.model_name}
 																		</code>
 																	</div>
 																	<div>
-																		<span className="font-medium">模型类型：</span>
+																		<span className="font-medium">
+																			{t("模型类型")}：
+																		</span>
 																		<span>{config.model_type || "general"}</span>
 																	</div>
 																	{(config.model_type || "general") !== "vector" && (
 																		<div>
-																			<span className="font-medium">计费：</span>
+																			<span className="font-medium">
+																				{t("计费")}：
+																			</span>
 																			<span>
-																				输入{" "}
+																				{t("输入")}{" "}
 																				{formatPrice(
 																					config.price_input_per_1k,
 																				)}
-																				/ 输出{" "}
+																				/ {t("输出")}{" "}
 																				{formatPrice(
 																					config.price_output_per_1k,
 																				)}
@@ -2579,7 +2628,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 																	)}
 																	<div>
 																		<span className="font-medium">
-																			API密钥：
+																			{t("API密钥")}：
 																		</span>
 																		<code className="px-2 py-1 bg-gray-50 rounded text-xs">
 																			{config.api_key.slice(0, 8)}***
@@ -2593,7 +2642,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 																onClick={() => handleTestModelAPI(config)}
 																variant="primary"
 																size="sm"
-																title="测试连接"
+																title={t("测试连接")}
 															>
 																<IconLink className="h-4 w-4" />
 															</IconButton>
@@ -2601,7 +2650,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 																onClick={() => handleEditModelAPI(config)}
 																variant="primary"
 																size="sm"
-																title="编辑"
+																title={t("编辑")}
 															>
 																<IconEdit className="h-4 w-4" />
 															</IconButton>
@@ -2611,7 +2660,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 																}
 																variant="danger"
 																size="sm"
-																title="删除"
+																title={t("删除")}
 															>
 																<IconTrash className="h-4 w-4" />
 															</IconButton>
@@ -2628,32 +2677,32 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 								<div className="bg-white rounded-lg shadow-sm p-6">
 									<div className="flex items-center justify-between mb-4">
 										<h2 className="text-lg font-semibold text-gray-900">
-											提示词配置列表
+											{t("提示词配置列表")}
 										</h2>
 										<div className="flex items-center gap-2">
 											<button
 												onClick={() => handleExportPromptConfigs("current")}
 												className="px-3 py-2 text-sm bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
 											>
-												导出当前
+												{t("导出当前")}
 											</button>
 											<button
 												onClick={() => handleExportPromptConfigs("all")}
 												className="px-3 py-2 text-sm bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
 											>
-												导出全部
+												{t("导出全部")}
 											</button>
 											<button
 												onClick={() => promptImportInputRef.current?.click()}
 												className="px-3 py-2 text-sm bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
 											>
-												导入
+												{t("导入")}
 											</button>
 											<button
 												onClick={handleCreatePromptNew}
 												className="px-4 py-2 bg-primary text-white rounded-sm hover:bg-primary-ink transition"
 											>
-												+ 创建配置
+												+ {t("创建配置")}
 											</button>
 										</div>
 									</div>
@@ -2677,32 +2726,32 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 														: "bg-muted text-text-2 hover:bg-surface hover:text-text-1"
 												}`}
 											>
-												{type.label}
+												{t(type.labelKey)}
 											</button>
 										))}
 									</div>
 
 									{promptLoading ? (
 										<div className="text-center py-12 text-gray-500">
-											加载中...
+											{t("加载中...")}
 										</div>
 									) : promptConfigs.filter((c) => c.type === selectedPromptType)
 											.length === 0 ? (
 										<div className="text-center py-12 text-gray-500">
 											<div className="mb-4">
-												暂无
-												{
+												{t("暂无")}
+												{t(
 													PROMPT_TYPES.find(
 														(t) => t.value === selectedPromptType,
-													)?.label
-												}
-												配置
+													)?.labelKey || "",
+												)}
+												{t("配置")}
 											</div>
 											<button
 												onClick={handleCreatePromptNew}
 												className="px-4 py-2 bg-primary text-white rounded-sm hover:bg-primary-ink transition"
 											>
-												创建配置
+												{t("创建配置")}
 											</button>
 										</div>
 									) : (
@@ -2726,7 +2775,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 																	</h3>
 																	{config.is_default && (
 																		<span className="ml-2 px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">
-																			默认
+																			{t("默认")}
 																		</span>
 																	)}
 																	<span
@@ -2736,21 +2785,23 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 																				: "bg-gray-100 text-gray-600"
 																		}`}
 																	>
-																		{config.is_enabled ? "启用" : "禁用"}
+																		{config.is_enabled ? t("启用") : t("禁用")}
 																	</span>
 																</div>
 
 																<div className="space-y-1 text-sm text-gray-600">
 																	<div>
-																		<span className="font-medium">分类：</span>
+																		<span className="font-medium">
+																			{t("分类")}：
+																		</span>
 																		<span className="inline-flex items-center px-2 py-0.5 bg-gray-100 text-gray-700 rounded text-xs">
-																			{config.category_name || "通用"}
+																			{config.category_name || t("通用")}
 																		</span>
 																	</div>
 																	{config.model_api_config_name && (
 																		<div>
 																			<span className="font-medium">
-																				关联模型API：
+																				{t("关联模型API")}：
 																			</span>
 																			<span>
 																				{config.model_api_config_name}
@@ -2760,7 +2811,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 																	{config.system_prompt && (
 																		<div>
 																			<span className="font-medium">
-																				系统提示词：
+																				{t("系统提示词")}：
 																			</span>
 																			<code className="px-2 py-1 bg-gray-50 rounded text-xs block mt-1 max-h-20 overflow-y-auto">
 																				{config.system_prompt.slice(0, 100)}
@@ -2772,7 +2823,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 																	)}
 																	<div>
 																		<span className="font-medium">
-																			提示词：
+																			{t("提示词")}：
 																		</span>
 																		<code className="px-2 py-1 bg-gray-50 rounded text-xs block mt-1 max-h-20 overflow-y-auto">
 																			{config.prompt.slice(0, 100)}
@@ -2787,17 +2838,17 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 																		<div className="flex flex-wrap gap-2 pt-1">
 																			{config.response_format && (
 																				<span className="px-2 py-1 bg-gray-50 text-gray-700 rounded text-xs">
-																					响应格式: {config.response_format}
+																					{t("响应格式")}: {config.response_format}
 																				</span>
 																			)}
 																			{config.temperature != null && (
 																				<span className="px-2 py-1 bg-gray-50 text-gray-700 rounded text-xs">
-																					温度: {config.temperature}
+																					{t("温度")}: {config.temperature}
 																				</span>
 																			)}
 																			{config.max_tokens != null && (
 																				<span className="px-2 py-1 bg-gray-50 text-gray-700 rounded text-xs">
-																					最大Tokens: {config.max_tokens}
+																					{t("最大 Tokens")}: {config.max_tokens}
 																				</span>
 																			)}
 																			{config.top_p != null && (
@@ -2815,7 +2866,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 																	onClick={() => setShowPromptPreview(config)}
 																	variant="primary"
 																	size="sm"
-																	title="预览"
+																	title={t("预览")}
 																>
 																	<IconEye className="h-4 w-4" />
 																</IconButton>
@@ -2823,7 +2874,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 																	onClick={() => handleEditPrompt(config)}
 																	variant="primary"
 																	size="sm"
-																	title="编辑"
+																	title={t("编辑")}
 																>
 																	<IconEdit className="h-4 w-4" />
 																</IconButton>
@@ -2831,7 +2882,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 																	onClick={() => handleDeletePrompt(config.id)}
 																	variant="danger"
 																	size="sm"
-																	title="删除"
+																	title={t("删除")}
 																>
 																	<IconTrash className="h-4 w-4" />
 																</IconButton>
@@ -2961,7 +3012,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 
 									{categoryLoading ? (
 										<div className="text-center py-12 text-gray-500">
-											加载中...
+											{t("加载中...")}
 										</div>
 									) : categories.length === 0 ? (
 										<div className="text-center py-12 text-gray-500">
@@ -3004,12 +3055,14 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 								<div className="flex items-center justify-between mb-6">
 									<div>
 										<h2 className="text-lg font-semibold text-text-1">
-											{commentSubSection === "keys" ? "登录密钥" : "过滤规则"}
+											{commentSubSection === "keys"
+												? t("登录密钥")
+												: t("过滤规则")}
 										</h2>
 										<p className="text-sm text-text-3">
 											{commentSubSection === "keys"
-												? "配置第三方登录并启用文章评论功能"
-												: "配置评论敏感词过滤规则"}
+												? t("配置第三方登录并启用文章评论功能")
+												: t("配置评论敏感词过滤规则")}
 										</p>
 									</div>
 										<div className="flex items-center gap-2">
@@ -3018,7 +3071,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 													onClick={handleValidateCommentSettings}
 													className="px-4 py-2 text-sm bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
 												>
-													验证配置
+													{t("验证配置")}
 												</button>
 											)}
 											<button
@@ -3026,14 +3079,16 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 												disabled={commentSettingsSaving}
 												className="px-4 py-2 text-sm bg-primary text-white rounded-sm hover:bg-primary-ink transition disabled:opacity-60"
 											>
-												{commentSettingsSaving ? "保存中..." : "保存配置"}
+												{commentSettingsSaving
+													? t("保存中")
+													: t("保存配置")}
 											</button>
 										</div>
 									</div>
 
 											{commentSettingsLoading ? (
 												<div className="text-center py-12 text-text-3">
-													加载中...
+													{t("加载中")}
 												</div>
 											) : (
 												<div className="space-y-6">
@@ -3042,10 +3097,10 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 											<div className="flex items-center justify-between border border-border rounded-sm p-4 bg-surface">
 												<div>
 													<div className="text-sm font-medium text-text-1">
-														开启评论
+														{t("开启评论")}
 													</div>
 													<div className="text-xs text-text-3 mt-1">
-														关闭后访客评论入口将隐藏
+														{t("关闭后访客评论入口将隐藏")}
 													</div>
 												</div>
 												<label className="inline-flex items-center gap-2 text-sm text-text-2 cursor-pointer">
@@ -3061,7 +3116,9 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 														className="h-4 w-4"
 													/>
 													<span>
-														{commentSettings.comments_enabled ? "已开启" : "已关闭"}
+														{commentSettings.comments_enabled
+															? t("已开启")
+															: t("已关闭")}
 													</span>
 												</label>
 											</div>
@@ -3079,7 +3136,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 																github_client_id: e.target.value,
 															}))
 														}
-														placeholder="填写 GitHub OAuth Client ID"
+														placeholder={t("填写 GitHub OAuth Client ID")}
 														className="w-full h-9 px-3 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
 													/>
 												</div>
@@ -3096,7 +3153,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 																github_client_secret: e.target.value,
 															}))
 														}
-														placeholder="填写 GitHub OAuth Client Secret"
+														placeholder={t("填写 GitHub OAuth Client Secret")}
 														className="w-full h-9 px-3 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
 													/>
 												</div>
@@ -3112,7 +3169,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 																google_client_id: e.target.value,
 															}))
 														}
-														placeholder="填写 Google OAuth Client ID"
+														placeholder={t("填写 Google OAuth Client ID")}
 														className="w-full h-9 px-3 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
 													/>
 												</div>
@@ -3129,7 +3186,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 																google_client_secret: e.target.value,
 															}))
 														}
-														placeholder="填写 Google OAuth Client Secret"
+														placeholder={t("填写 Google OAuth Client Secret")}
 														className="w-full h-9 px-3 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
 													/>
 												</div>
@@ -3149,7 +3206,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 																nextauth_secret: e.target.value,
 															}))
 														}
-														placeholder="用于签名会话的 Secret"
+														placeholder={t("用于签名会话的 Secret")}
 														className="flex-1 h-9 px-3 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
 													/>
 													<button
@@ -3157,7 +3214,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 														onClick={handleGenerateNextAuthSecret}
 														className="px-3 h-9 text-xs rounded-sm border border-border text-text-2 hover:text-text-1 hover:bg-muted transition"
 													>
-														自动生成
+														{t("自动生成")}
 													</button>
 												</div>
 											</div>
@@ -3169,10 +3226,10 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 															<div className="flex items-center justify-between border border-border rounded-sm p-4 bg-surface">
 																<div>
 																	<div className="text-sm font-medium text-text-1">
-																		敏感词过滤
+																		{t("敏感词过滤")}
 																	</div>
 																	<div className="text-xs text-text-3 mt-1">
-																		启用后将拦截包含敏感词的评论
+																		{t("启用后将拦截包含敏感词的评论")}
 																	</div>
 																</div>
 																<label className="inline-flex items-center gap-2 text-sm text-text-2 cursor-pointer">
@@ -3188,7 +3245,9 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 																		className="h-4 w-4"
 																	/>
 																	<span>
-																		{commentSettings.sensitive_filter_enabled ? "已开启" : "已关闭"}
+																		{commentSettings.sensitive_filter_enabled
+																			? t("已开启")
+																			: t("已关闭")}
 																	</span>
 																</label>
 															</div>
@@ -3196,14 +3255,14 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 															<div>
 																<div className="flex items-center gap-2 mb-1">
 																	<label className="block text-sm text-text-2">
-																		敏感词列表
+																		{t("敏感词列表")}
 																	</label>
 																	<div className="relative group">
 																		<span className="h-5 w-5 rounded-full border border-border text-text-3 inline-flex items-center justify-center text-xs cursor-default">
 																			?
 																		</span>
 																		<div className="pointer-events-none absolute left-1/2 top-full mt-2 -translate-x-1/2 whitespace-nowrap rounded-sm border border-border bg-surface px-2 py-1 text-xs text-text-2 shadow-sm opacity-0 group-hover:opacity-100 transition">
-																			支持换行或逗号分隔
+																			{t("支持换行或逗号分隔")}
 																		</div>
 																	</div>
 																</div>
@@ -3216,7 +3275,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 																		}))
 																	}
 																	rows={4}
-																	placeholder="每行一个敏感词，或使用逗号分隔"
+																	placeholder={t("每行一个敏感词，或使用逗号分隔")}
 																	className="w-full px-3 py-2 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
 																/>
 															</div>
@@ -3232,7 +3291,9 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 													}`}
 												>
 													<div className="font-medium mb-1">
-														{commentValidationResult.ok ? "校验通过" : "校验提示"}
+														{commentValidationResult.ok
+															? t("校验通过")
+															: t("校验提示")}
 													</div>
 													<div className="space-y-1">
 														{commentValidationResult.messages.map((item) => (
@@ -3241,7 +3302,9 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 													</div>
 													{commentValidationResult.callbacks.length > 0 && (
 														<div className="mt-2 text-text-2">
-															<div className="font-medium mb-1">回调地址</div>
+															<div className="font-medium mb-1">
+																{t("回调地址")}
+															</div>
 															<div className="space-y-1">
 																{commentValidationResult.callbacks.map((item) => (
 																	<div key={item} className="break-all">
@@ -3255,7 +3318,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 											)}
 											{commentSubSection === "keys" && (
 												<div className="text-xs text-text-3">
-													保存后立即生效，如登录异常请检查 OAuth 回调地址配置。
+													{t("保存后立即生效，如登录异常请检查 OAuth 回调地址配置。")}
 												</div>
 											)}
 
@@ -3269,10 +3332,10 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 									<div className="flex items-center justify-between mb-6">
 									<div>
 										<h2 className="text-lg font-semibold text-text-1">
-											文件存储
+											{t("文件存储")}
 										</h2>
 										<p className="text-sm text-text-3">
-											控制图片是否转存为本地文件
+											{t("控制图片是否转存为本地文件")}
 										</p>
 									</div>
 									<div className="flex items-center gap-2">
@@ -3281,31 +3344,35 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 											disabled={storageCleanupLoading}
 											className="px-4 py-2 text-sm bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition disabled:opacity-60"
 										>
-											{storageCleanupLoading ? "清理中..." : "深度清理"}
+											{storageCleanupLoading
+												? t("清理中")
+												: t("深度清理")}
 										</button>
 										<button
 											onClick={handleSaveStorageSettings}
 											disabled={storageSettingsSaving}
 											className="px-4 py-2 text-sm bg-primary text-white rounded-sm hover:bg-primary-ink transition disabled:opacity-60"
 										>
-											{storageSettingsSaving ? "保存中..." : "保存配置"}
+											{storageSettingsSaving
+												? t("保存中")
+												: t("保存配置")}
 										</button>
 									</div>
 								</div>
 
 								{storageSettingsLoading ? (
 									<div className="text-center py-12 text-text-3">
-										加载中...
+										{t("加载中")}
 									</div>
 								) : (
 									<div className="space-y-4">
 										<div className="flex items-center justify-between border border-border rounded-sm p-4 bg-surface">
 												<div>
 													<div className="text-sm font-medium text-text-1">
-														开启本地图片存储
+														{t("开启本地图片存储")}
 													</div>
 													<div className="text-xs text-text-3 mt-1">
-														启用后会将外链图片转存为本地文件
+														{t("启用后会将外链图片转存为本地文件")}
 													</div>
 												</div>
 												<label className="inline-flex items-center gap-2 text-sm text-text-2 cursor-pointer">
@@ -3321,14 +3388,16 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 														className="h-4 w-4"
 													/>
 													<span>
-														{storageSettings.media_storage_enabled ? "已开启" : "已关闭"}
+														{storageSettings.media_storage_enabled
+															? t("已开启")
+															: t("已关闭")}
 													</span>
 											</label>
 										</div>
 										<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 											<div>
 												<label className="block text-sm text-text-2 mb-1">
-													压缩阈值 (KB)
+													{t("压缩阈值 (KB)")}
 												</label>
 												<input
 													type="number"
@@ -3344,12 +3413,12 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 														}))
 													}
 													className="w-full h-9 px-3 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
-													placeholder="超过该大小触发压缩"
+													placeholder={t("超过该大小触发压缩")}
 												/>
 											</div>
 											<div>
 												<label className="block text-sm text-text-2 mb-1">
-													最长边 (px)
+													{t("最长边 (px)")}
 												</label>
 												<input
 													type="number"
@@ -3365,12 +3434,12 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 														}))
 													}
 													className="w-full h-9 px-3 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
-													placeholder="限制图片最长边"
+													placeholder={t("限制图片最长边")}
 												/>
 											</div>
 											<div>
 												<label className="block text-sm text-text-2 mb-1">
-													WEBP 质量 (30-95)
+													{t("WEBP 质量 (30-95)")}
 												</label>
 												<input
 													type="number"
@@ -3387,7 +3456,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 														}))
 													}
 													className="w-full h-9 px-3 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
-													placeholder="WEBP 压缩质量"
+													placeholder={t("WEBP 压缩质量")}
 												/>
 											</div>
 										</div>
@@ -3401,10 +3470,10 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 									<div className="flex items-center justify-between mb-6">
 										<div>
 											<h2 className="text-lg font-semibold text-gray-900">
-												AI 任务监控
+												{t("AI 任务监控")}
 											</h2>
 											<p className="text-sm text-gray-500">
-												查看、重试或取消后台任务
+												{t("查看、重试或取消后台任务")}
 											</p>
 										</div>
 										<div className="flex items-center gap-2">
@@ -3418,85 +3487,85 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 												className="px-4 py-2 text-sm bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
 												disabled={!hasTaskFilters}
 											>
-												清空筛选
+												{t("清空筛选")}
 											</button>
 											<button
 												onClick={fetchTasks}
 												className="px-4 py-2 text-sm bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
 											>
-												刷新
+												{t("刷新")}
 											</button>
 										</div>
 									</div>
 
 									<div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
 										<FilterSelect
-											label="状态"
+											label={t("状态")}
 											value={taskStatusFilter}
 											onChange={(value) => {
 												setTaskStatusFilter(value);
 												setTaskPage(1);
 											}}
 											options={[
-												{ value: "", label: "全部" },
-												{ value: "pending", label: "待处理" },
-												{ value: "processing", label: "处理中" },
-												{ value: "completed", label: "已完成" },
-												{ value: "failed", label: "失败" },
-												{ value: "cancelled", label: "已取消" },
+												{ value: "", label: t("全部") },
+												{ value: "pending", label: t("待处理") },
+												{ value: "processing", label: t("处理中") },
+												{ value: "completed", label: t("已完成") },
+												{ value: "failed", label: t("失败") },
+												{ value: "cancelled", label: t("已取消") },
 											]}
 										/>
 										<FilterSelect
-											label="任务类型"
+											label={t("任务类型")}
 											value={taskTypeFilter}
 											onChange={(value) => {
 												setTaskTypeFilter(value);
 												setTaskPage(1);
 											}}
 											options={[
-												{ value: "", label: "全部" },
-												{ value: "process_article_cleaning", label: "清洗" },
-												{ value: "process_article_validation", label: "校验" },
-												{ value: "process_article_classification", label: "分类" },
-												{ value: "process_article_translation", label: "翻译" },
-												{ value: "process_article_embedding", label: "向量化" },
-												{ value: "process_ai_content:summary", label: "摘要" },
-												{ value: "process_ai_content:outline", label: "大纲" },
-												{ value: "process_ai_content:quotes", label: "金句" },
-												{ value: "process_ai_content:key_points", label: "总结" },
-												{ value: "process_article_ai", label: "旧流程" },
+												{ value: "", label: t("全部") },
+												{ value: "process_article_cleaning", label: t("清洗") },
+												{ value: "process_article_validation", label: t("校验") },
+												{ value: "process_article_classification", label: t("分类") },
+												{ value: "process_article_translation", label: t("翻译") },
+												{ value: "process_article_embedding", label: t("向量化") },
+												{ value: "process_ai_content:summary", label: t("摘要") },
+												{ value: "process_ai_content:outline", label: t("大纲") },
+												{ value: "process_ai_content:quotes", label: t("金句") },
+												{ value: "process_ai_content:key_points", label: t("总结") },
+												{ value: "process_article_ai", label: t("旧流程") },
 											]}
 										/>
 <ArticleSearchSelect
-													label="文章名称"
+													label={t("文章名称")}
 													value={taskArticleTitleFilter}
 													onChange={(value) => {
 														setTaskArticleTitleFilter(value);
 														setTaskPage(1);
 													}}
-													placeholder="输入文章名称搜索..."
+													placeholder={t("输入文章名称搜索...")}
 												/>
 									</div>
 
 									{taskLoading ? (
 										<div className="text-center py-12 text-gray-500">
-											加载中...
+											{t("加载中")}
 										</div>
 									) : taskItems.length === 0 ? (
 										<div className="text-center py-12 text-gray-500">
-											{hasTaskFilters ? "暂无匹配任务" : "暂无任务"}
+											{hasTaskFilters ? t("暂无匹配任务") : t("暂无任务")}
 										</div>
 									) : (
 										<div className="overflow-x-auto">
 											<table className="min-w-full text-sm">
 												<thead className="bg-gray-50 text-gray-600">
 													<tr>
-														<th className="text-left px-4 py-3">任务</th>
-														<th className="text-left px-4 py-3">状态</th>
-														<th className="text-left px-4 py-3">尝试</th>
-														<th className="text-left px-4 py-3">文章</th>
-														<th className="text-left px-4 py-3">时间</th>
-														<th className="text-right px-4 py-3">操作</th>
+														<th className="text-left px-4 py-3">{t("任务")}</th>
+														<th className="text-left px-4 py-3">{t("状态")}</th>
+														<th className="text-left px-4 py-3">{t("尝试")}</th>
+														<th className="text-left px-4 py-3">{t("文章")}</th>
+														<th className="text-left px-4 py-3">{t("时间")}</th>
+														<th className="text-right px-4 py-3">{t("操作")}</th>
 													</tr>
 												</thead>
 												<tbody className="divide-y divide-gray-100">
@@ -3504,7 +3573,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 														<tr key={task.id} className="hover:bg-gray-50">
 															<td className="px-4 py-3">
 																<div className="font-medium text-gray-900">
-																	{getTaskTypeLabel(task)}生成
+																	{getTaskTypeLabel(task)}{t("生成")}
 																</div>
 															</td>
 															<td className="px-4 py-3">
@@ -3522,14 +3591,14 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 																	}`}
 																>
 																	{task.status === "completed"
-																		? "已完成"
+																		? t("已完成")
 																		: task.status === "failed"
-																			? "失败"
+																			? t("失败")
 																			: task.status === "processing"
-																				? "处理中"
+																				? t("处理中")
 																				: task.status === "cancelled"
-																					? "已取消"
-																					: "待处理"}
+																					? t("已取消")
+																					: t("待处理")}
 																</span>
 																{task.last_error && (
 																	<div
@@ -3554,7 +3623,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 																	>
 																		{(() => {
 																			const title =
-																				task.article_title || "未知文章";
+																				task.article_title || t("未知文章");
 																			const chars = Array.from(title);
 																			const truncated = chars
 																				.slice(0, 10)
@@ -3570,14 +3639,14 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 															</td>
 															<td className="px-4 py-3 text-gray-500">
 																<div>
-																	创建：
+																	{t("创建")}：
 																	{new Date(task.created_at).toLocaleString(
 																		"zh-CN",
 																	)}
 																</div>
 																{task.finished_at && (
 																	<div>
-																		完成：
+																		{t("完成")}：
 																		{new Date(task.finished_at).toLocaleString(
 																			"zh-CN",
 																		)}
@@ -3590,7 +3659,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 																		onClick={() => handleRetryTask(task.id)}
 																		variant="ghost"
 																		size="sm"
-																		title="重试"
+																		title={t("重试")}
 																		disabled={task.status === "processing"}
 																	>
 																		<IconRefresh className="h-4 w-4" />
@@ -3599,7 +3668,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 																		onClick={() => handleCancelTask(task.id)}
 																		variant="danger"
 																		size="sm"
-																		title="取消"
+																		title={t("取消")}
 																	>
 																		<IconTrash className="h-4 w-4" />
 																	</IconButton>
@@ -3614,7 +3683,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 
 									<div className="mt-6 flex items-center justify-between">
 										<div className="flex items-center gap-2 text-sm text-gray-600">
-											<span>每页显示</span>
+											<span>{t("每页显示")}</span>
 											<Select
 												value={taskPageSize}
 												onChange={(value) => {
@@ -3629,7 +3698,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 													{ value: 50, label: "50" },
 												]}
 											/>
-											<span>条，共 {taskTotal} 条</span>
+											<span>{t("条")}，{t("共")} {taskTotal} {t("条")}</span>
 										</div>
 										<div className="flex items-center gap-2">
 											<Button
@@ -3638,11 +3707,11 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 												variant="secondary"
 												size="sm"
 											>
-												上一页
+												{t("上一页")}
 											</Button>
 											<span className="px-4 py-2 text-sm bg-surface border border-border rounded-sm text-text-2">
-												第 {taskPage} /{" "}
-												{Math.ceil(taskTotal / taskPageSize) || 1} 页
+												{t("第")} {taskPage} /{" "}
+												{Math.ceil(taskTotal / taskPageSize) || 1} {t("页")}
 											</span>
 											<Button
 												onClick={() => setTaskPage((p) => p + 1)}
@@ -3650,7 +3719,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 												variant="secondary"
 												size="sm"
 											>
-												下一页
+												{t("下一页")}
 											</Button>
 										</div>
 									</div>
@@ -3663,10 +3732,10 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 									<div className="flex items-center justify-between mb-6">
 										<div>
 											<h2 className="text-lg font-semibold text-text-1">
-												文章推荐配置
+												{t("文章推荐配置")}
 											</h2>
 											<p className="text-sm text-text-3">
-												控制相似文章推荐与向量化模型
+												{t("控制相似文章推荐与向量化模型")}
 											</p>
 										</div>
 										<div className="flex items-center gap-2">
@@ -3675,24 +3744,26 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 												disabled={recommendationSettingsSaving}
 												className="px-4 py-2 text-sm bg-primary text-white rounded-sm hover:bg-primary-ink transition disabled:opacity-60"
 											>
-												{recommendationSettingsSaving ? "保存中..." : "保存配置"}
+												{recommendationSettingsSaving
+													? t("保存中")
+													: t("保存配置")}
 											</button>
 										</div>
 									</div>
 
 									{recommendationSettingsLoading ? (
 										<div className="text-center py-12 text-text-3">
-											加载中...
+											{t("加载中")}
 										</div>
 									) : (
 										<div className="space-y-4">
 											<div className="flex items-center justify-between border border-border rounded-sm p-4 bg-surface">
 												<div>
 													<div className="text-sm font-medium text-text-1">
-														开启文章推荐
+														{t("开启文章推荐")}
 													</div>
 													<div className="text-xs text-text-3 mt-1">
-														基于向量相似度生成相似文章列表
+														{t("基于向量相似度生成相似文章列表")}
 													</div>
 												</div>
 												<label className="inline-flex items-center gap-2 text-sm text-text-2 cursor-pointer">
@@ -3708,20 +3779,22 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 														className="h-4 w-4"
 													/>
 													<span>
-														{recommendationSettings.recommendations_enabled ? "已开启" : "已关闭"}
+														{recommendationSettings.recommendations_enabled
+															? t("已开启")
+															: t("已关闭")}
 													</span>
 												</label>
 											</div>
 
 											<div>
 												<label className="block text-sm text-text-2 mb-1">
-													向量化模型
+													{t("向量化模型")}
 												</label>
 												{modelAPIConfigs.filter(
 													(config) => (config.model_type || "general") === "vector",
 												).length === 0 && (
 													<div className="text-xs text-text-3 mb-2">
-														暂无向量模型配置，请在模型API配置中设置模型类型为向量。
+														{t("暂无向量模型配置，请在模型API配置中设置模型类型为向量。")}
 													</div>
 												)}
 												<Select
@@ -3737,7 +3810,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 													options={[
 														{
 															value: "",
-															label: "本地默认模型 (all-MiniLM-L6-v2)",
+															label: t("本地默认模型 (all-MiniLM-L6-v2)"),
 														},
 														...modelAPIConfigs
 															.filter(
@@ -3751,7 +3824,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 													]}
 												/>
 												<div className="text-xs text-text-3 mt-2">
-													默认本地模型将使用本地推理；选择模型配置将走 API 调用生成向量。
+													{t("默认本地模型将使用本地推理；选择模型配置将走 API 调用生成向量。")}
 												</div>
 											</div>
 										</div>
@@ -3764,12 +3837,12 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 									<div className="bg-surface rounded-sm shadow-sm border border-border p-6">
 										<div className="flex items-center justify-between mb-6">
 											<div>
-												<h2 className="text-lg font-semibold text-text-1">
-													评论列表
-												</h2>
-												<p className="text-sm text-text-3">
-													查看与管理所有评论与回复
-												</p>
+											<h2 className="text-lg font-semibold text-text-1">
+												{t("评论列表")}
+											</h2>
+											<p className="text-sm text-text-3">
+												{t("查看与管理所有评论与回复")}
+											</p>
 											</div>
 											<div className="flex items-center gap-2">
 												<button
@@ -3777,74 +3850,74 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 													className="px-4 py-2 text-sm bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
 													disabled={!hasCommentFilters}
 												>
-													清空筛选
+													{t("清空筛选")}
 												</button>
 												<button
 													onClick={fetchCommentList}
 													className="px-4 py-2 text-sm bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
 												>
-													刷新
+													{t("刷新")}
 												</button>
 											</div>
 										</div>
 
 										<div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
 										<FilterInput
-											label="关键词"
+											label={t("关键词")}
 											value={commentQuery}
 											onChange={(value) => {
 												setCommentQuery(value);
 												setCommentListPage(1);
 											}}
-											placeholder="搜索评论内容"
+											placeholder={t("搜索评论内容")}
 										/>
 <ArticleSearchSelect
-													label="文章名称"
+													label={t("文章名称")}
 													value={commentArticleTitle}
 													onChange={(value) => {
 														setCommentArticleTitle(value);
 														setCommentListPage(1);
 													}}
-													placeholder="输入文章名称搜索..."
+													placeholder={t("输入文章名称搜索...")}
 												/>
 										<FilterInput
-											label="评论人"
+											label={t("评论人")}
 											value={commentAuthor}
 											onChange={(value) => {
 												setCommentAuthor(value);
 												setCommentListPage(1);
 											}}
-											placeholder="评论人昵称"
+											placeholder={t("评论人昵称")}
 										/>
 										<FilterSelect
-											label="可见性"
+											label={t("可见性")}
 											value={commentVisibility}
 											onChange={(value) => {
 												setCommentVisibility(value);
 												setCommentListPage(1);
 											}}
 											options={[
-												{ value: "", label: "全部" },
-												{ value: "visible", label: "可见" },
-												{ value: "hidden", label: "已隐藏" },
+												{ value: "", label: t("全部") },
+												{ value: "visible", label: t("可见") },
+												{ value: "hidden", label: t("已隐藏") },
 											]}
 										/>
 										<FilterSelect
-											label="类型"
+											label={t("类型")}
 											value={commentReplyFilter}
 											onChange={(value) => {
 												setCommentReplyFilter(value);
 												setCommentListPage(1);
 											}}
 											options={[
-												{ value: "", label: "全部" },
-												{ value: "main", label: "主评论" },
-												{ value: "reply", label: "回复" },
+												{ value: "", label: t("全部") },
+												{ value: "main", label: t("主评论") },
+												{ value: "reply", label: t("回复") },
 											]}
 										/>
 										<div>
 											<label className="block text-sm text-text-2 mb-1.5">
-												日期范围
+												{t("日期范围")}
 											</label>
 											<DateRangePicker
 												value={toDayjsRangeFromDateStrings(
@@ -3866,24 +3939,24 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 
 										{commentListLoading ? (
 											<div className="text-center py-12 text-text-3">
-												加载中...
+												{t("加载中")}
 											</div>
 										) : commentList.length === 0 ? (
 											<div className="text-center py-12 text-text-3">
-												{hasCommentFilters ? "暂无匹配评论" : "暂无评论"}
+												{hasCommentFilters ? t("暂无匹配评论") : t("暂无评论")}
 											</div>
 										) : (
 											<div className="overflow-x-auto">
 												<table className="min-w-full text-sm">
 										<thead className="bg-muted text-text-2">
 												<tr>
-													<th className="text-left px-4 py-3">时间</th>
-													<th className="text-left px-4 py-3">内容</th>
-													<th className="text-left px-4 py-3">作者</th>
-													<th className="text-left px-4 py-3">文章</th>
-													<th className="text-left px-4 py-3">类型</th>
-													<th className="text-left px-4 py-3">状态</th>
-													<th className="text-right px-4 py-3">操作</th>
+													<th className="text-left px-4 py-3">{t("时间")}</th>
+													<th className="text-left px-4 py-3">{t("内容")}</th>
+													<th className="text-left px-4 py-3">{t("作者")}</th>
+													<th className="text-left px-4 py-3">{t("文章")}</th>
+													<th className="text-left px-4 py-3">{t("类型")}</th>
+													<th className="text-left px-4 py-3">{t("状态")}</th>
+													<th className="text-right px-4 py-3">{t("操作")}</th>
 												</tr>
 											</thead>
 										<tbody className="divide-y divide-border">
@@ -3891,7 +3964,9 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 												return (
 													<tr key={comment.id} className="hover:bg-muted/40">
 														<td className="px-4 py-3 text-text-2 whitespace-nowrap">
-															{new Date(comment.created_at).toLocaleString("zh-CN")}
+															{new Date(comment.created_at).toLocaleString(
+																"zh-CN",
+															)}
 														</td>
 												<td className="px-4 py-3">
 													<span
@@ -3910,12 +3985,12 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 														className="inline-flex items-center gap-1 text-sm text-accent cursor-pointer"
 													>
 														<IconEye className="h-3 w-3" />
-														查看
+														{t("查看")}
 													</span>
 												</td>
 															<td className="px-4 py-3">
 																<div className="text-text-1">
-																	{comment.user_name || "匿名"}
+																	{comment.user_name || t("匿名")}
 																</div>
 																<div className="text-xs text-text-3">
 																	{comment.provider || "-"}
@@ -3928,12 +4003,12 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 														target="_blank"
 													>
 														<IconLink className="h-3 w-3" />
-														查看
+														{t("查看")}
 													</Link>
 												</td>
 															<td className="px-4 py-3">
 																<span className="text-xs text-text-2 bg-muted px-2 py-1 rounded-sm">
-																	{comment.reply_to_id ? "回复" : "主评论"}
+																	{comment.reply_to_id ? t("回复") : t("主评论")}
 																</span>
 															</td>
 															<td className="px-4 py-3">
@@ -3944,7 +4019,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 																			: "bg-green-50 text-green-600"
 																	}`}
 																>
-																	{comment.is_hidden ? "已隐藏" : "可见"}
+																	{comment.is_hidden ? t("已隐藏") : t("可见")}
 																</span>
 															</td>
 															<td className="px-4 py-3 text-right">
@@ -3959,7 +4034,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 																					variant="ghost"
 																					size="sm"
 																					title={
-																						comment.is_hidden ? "设为可见" : "设为隐藏"
+																						comment.is_hidden ? t("设为可见") : t("设为隐藏")
 																					}
 																				>
 																					<IconEye className="h-4 w-4" />
@@ -3970,7 +4045,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 																					}
 																					variant="danger"
 																					size="sm"
-																					title="删除"
+																					title={t("删除")}
 																				>
 																					<IconTrash className="h-4 w-4" />
 																				</IconButton>
@@ -3986,7 +4061,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 
 										<div className="mt-6 flex items-center justify-between">
 											<div className="flex items-center gap-2 text-sm text-text-2">
-												<span>每页显示</span>
+												<span>{t("每页显示")}</span>
 												<Select
 													value={commentListPageSize}
 													onChange={(value) => {
@@ -4001,7 +4076,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 														{ value: 50, label: "50" },
 													]}
 												/>
-												<span>条，共 {commentListTotal} 条</span>
+												<span>{t("条")}，{t("共")} {commentListTotal} {t("条")}</span>
 											</div>
 											<div className="flex items-center gap-2">
 												<Button
@@ -4012,11 +4087,11 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 													variant="secondary"
 													size="sm"
 												>
-													上一页
+													{t("上一页")}
 												</Button>
 												<span className="px-4 py-2 text-sm bg-surface border border-border rounded-sm text-text-2">
-													第 {commentListPage} /{" "}
-													{Math.ceil(commentListTotal / commentListPageSize) || 1} 页
+													{t("第")} {commentListPage} /{" "}
+													{Math.ceil(commentListTotal / commentListPageSize) || 1} {t("页")}
 												</span>
 												<Button
 													onClick={() => setCommentListPage((p) => p + 1)}
@@ -4024,7 +4099,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 													variant="secondary"
 													size="sm"
 												>
-													下一页
+													{t("下一页")}
 												</Button>
 											</div>
 									</div>
@@ -4056,8 +4131,8 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 							<div className="flex items-center justify-between p-6 border-b">
 								<h3 className="text-lg font-semibold text-gray-900">
 									{editingModelAPIConfig
-										? "编辑模型API配置"
-										: "创建新模型API配置"}
+										? t("编辑模型API配置")
+										: t("创建新模型API配置")}
 								</h3>
 												<button
 													onClick={() => {
@@ -4072,7 +4147,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 							<div className="p-6 space-y-4">
 								<div>
 									<label className="block text-sm font-medium text-gray-700 mb-2">
-										配置名称
+										{t("配置名称")}
 									</label>
 									<input
 										type="text"
@@ -4084,14 +4159,14 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 											})
 										}
 										className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-										placeholder="OpenAI GPT-4o"
+										placeholder={t("OpenAI GPT-4o")}
 										required
 									/>
 								</div>
 
 								<div>
 									<label className="block text-sm font-medium text-gray-700 mb-2">
-										API地址（Base URL）
+										{t("API地址（Base URL）")}
 									</label>
 									<input
 										type="text"
@@ -4103,13 +4178,13 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 											})
 										}
 										className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-										placeholder="https://api.openai.com/v1"
+										placeholder={t("https://api.openai.com/v1")}
 									/>
 								</div>
 
 								<div>
 									<label className="block text-sm font-medium text-gray-700 mb-2">
-										服务提供方
+										{t("服务提供方")}
 									</label>
 									<Select
 										value={modelAPIFormData.provider}
@@ -4122,7 +4197,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 										className="select-modern-antd w-full"
 										popupClassName="select-modern-dropdown"
 										options={[
-											{ value: "openai", label: "OpenAI 兼容" },
+											{ value: "openai", label: t("OpenAI 兼容") },
 											{ value: "jina", label: "JinaAI" },
 										]}
 									/>
@@ -4130,7 +4205,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 
 								<div>
 									<label className="block text-sm font-medium text-gray-700 mb-2">
-										API密钥
+										{t("API密钥")}
 									</label>
 									<input
 										type="password"
@@ -4142,14 +4217,14 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 											})
 										}
 										className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-										placeholder="sk-..."
+										placeholder={t("sk-...")}
 										required
 									/>
 								</div>
 
 								<div>
 									<label className="block text-sm font-medium text-gray-700 mb-2">
-										模型名称
+										{t("模型名称")}
 									</label>
 									{modelNameManual ? (
 										<div className="flex items-center gap-2">
@@ -4163,14 +4238,14 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 													})
 												}
 												className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-												placeholder="手动输入模型名称"
+												placeholder={t("手动输入模型名称")}
 												required
 											/>
 											<button
 												type="button"
 												onClick={() => setModelNameManual(false)}
 												className="px-3 py-2 text-sm bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
-												title="切换为选择"
+												title={t("切换为选择")}
 											>
 												<IconList className="h-4 w-4" />
 											</button>
@@ -4188,7 +4263,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 												className="select-modern-antd w-full h-10"
 												style={{ height: 40 }}
 												popupClassName="select-modern-dropdown"
-												placeholder="请选择模型"
+												placeholder={t("请选择模型")}
 												options={modelOptions.map((model) => ({
 													value: model,
 													label: model,
@@ -4199,7 +4274,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 												type="button"
 												onClick={() => setModelNameManual(true)}
 												className="px-3 py-2 text-sm bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
-												title="手动输入"
+												title={t("手动输入")}
 											>
 												<IconEdit className="h-4 w-4" />
 											</button>
@@ -4220,9 +4295,9 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 											onClick={() => setShowModelAPIAdvanced(!showModelAPIAdvanced)}
 											className="w-full flex items-center justify-between px-4 py-3 text-sm text-gray-700 hover:bg-gray-50"
 										>
-											<span>计费设置（可选）</span>
+											<span>{t("计费设置（可选）")}</span>
 											<span className="text-gray-400">
-												{showModelAPIAdvanced ? "收起" : "展开"}
+												{showModelAPIAdvanced ? t("收起") : t("展开")}
 											</span>
 										</button>
 										{showModelAPIAdvanced && (
@@ -4230,7 +4305,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 												<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 													<div>
 														<label className="block text-sm font-medium text-gray-700 mb-2">
-															输入单价（每 1K tokens）
+															{t("输入单价（每 1K tokens）")}
 														</label>
 														<input
 															type="number"
@@ -4243,12 +4318,12 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 																})
 															}
 															className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-															placeholder="0.00000"
+															placeholder={t("0.00000")}
 														/>
 													</div>
 													<div>
 														<label className="block text-sm font-medium text-gray-700 mb-2">
-															输出单价（每 1K tokens）
+															{t("输出单价（每 1K tokens）")}
 														</label>
 														<input
 															type="number"
@@ -4261,14 +4336,14 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 																})
 															}
 															className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-															placeholder="0.00000"
+															placeholder={t("0.00000")}
 														/>
 													</div>
 												</div>
 
 												<div>
 													<label className="block text-sm font-medium text-gray-700 mb-2">
-														币种
+														{t("币种")}
 													</label>
 													<Select
 														value={modelAPIFormData.currency || ""}
@@ -4280,7 +4355,10 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 														}
 														className="select-modern-antd w-full"
 														popupClassName="select-modern-dropdown"
-														options={CURRENCY_OPTIONS}
+														options={CURRENCY_OPTIONS.map((option) => ({
+															...option,
+															label: t(option.labelKey),
+														}))}
 													/>
 												</div>
 											</div>
@@ -4301,7 +4379,9 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 											}
 											className="w-4 h-4 text-blue-600 rounded"
 										/>
-										<span className="text-sm text-gray-700">启用此配置</span>
+										<span className="text-sm text-gray-700">
+											{t("启用此配置")}
+										</span>
 									</label>
 
 									{modelAPIFormData.model_type !== "vector" && (
@@ -4317,7 +4397,9 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 												}
 												className="w-4 h-4 text-blue-600 rounded"
 											/>
-											<span className="text-sm text-gray-700">设为默认配置</span>
+											<span className="text-sm text-gray-700">
+												{t("设为默认配置")}
+											</span>
 										</label>
 									)}
 								</div>
@@ -4330,13 +4412,13 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 											}}
 											className="px-4 py-2 bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
 										>
-									取消
+									{t("取消")}
 								</button>
 								<button
 									onClick={handleSaveModelAPI}
 									className="px-4 py-2 bg-primary text-white rounded-sm hover:bg-primary-ink transition"
 								>
-									{editingModelAPIConfig ? "保存" : "创建"}
+									{editingModelAPIConfig ? t("保存") : t("创建")}
 								</button>
 							</div>
 						</div>
@@ -4359,7 +4441,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 													<button
 														onClick={handleCopyPayload}
 														className="p-2 text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
-														aria-label="复制"
+														aria-label={t("复制")}
 													>
 														<IconCopy className="h-4 w-4" />
 													</button>
@@ -4418,7 +4500,9 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 						>
 							<div className="flex items-center justify-between p-6 border-b">
 								<h3 className="text-lg font-semibold text-gray-900">
-									{editingPromptConfig ? "编辑提示词配置" : "创建新提示词配置"}
+									{editingPromptConfig
+										? t("编辑提示词配置")
+										: t("创建新提示词配置")}
 								</h3>
 								<button
 									onClick={() => setShowPromptModal(false)}
@@ -4431,7 +4515,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 							<div className="p-6 space-y-4">
 								<div>
 									<label className="block text-sm font-medium text-gray-700 mb-2">
-										配置名称
+										{t("配置名称")}
 									</label>
 									<input
 										type="text"
@@ -4443,14 +4527,14 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 											})
 										}
 										className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-										placeholder="文章摘要提示词"
+										placeholder={t("文章摘要提示词")}
 										required
 									/>
 								</div>
 
 								<div>
 									<label className="block text-sm font-medium text-gray-700 mb-2">
-										分类
+										{t("分类")}
 									</label>
 									<Select
 										value={promptFormData.category_id}
@@ -4463,7 +4547,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 										className="select-modern-antd w-full"
 										popupClassName="select-modern-dropdown"
 										options={[
-											{ value: "", label: "通用" },
+											{ value: "", label: t("通用") },
 											...categories.map((cat) => ({
 												value: cat.id,
 												label: cat.name,
@@ -4474,7 +4558,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 
 								<div>
 									<label className="block text-sm font-medium text-gray-700 mb-2">
-										系统提示词
+										{t("系统提示词")}
 									</label>
 									<textarea
 										value={promptFormData.system_prompt}
@@ -4486,14 +4570,14 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 										}
 										rows={4}
 										className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-										placeholder="系统级约束，例如：你是一个严谨的内容分析助手..."
+										placeholder={t("系统级约束，例如：你是一个严谨的内容分析助手...")}
 										required
 									/>
 								</div>
 
 								<div>
 									<label className="block text-sm font-medium text-gray-700 mb-2">
-										提示词
+										{t("提示词")}
 									</label>
 									<textarea
 										value={promptFormData.prompt}
@@ -4505,7 +4589,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 										}
 										rows={6}
 										className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-										placeholder="请为以下文章生成摘要..."
+										placeholder={t("请为以下文章生成摘要...")}
 										required
 									/>
 								</div>
@@ -4516,9 +4600,9 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 										onClick={() => setShowPromptAdvanced(!showPromptAdvanced)}
 										className="w-full flex items-center justify-between px-4 py-3 text-sm text-gray-700 hover:bg-gray-50"
 									>
-										<span>高级设置（可选）</span>
+										<span>{t("高级设置（可选）")}</span>
 										<span className="text-gray-400">
-											{showPromptAdvanced ? "收起" : "展开"}
+											{showPromptAdvanced ? t("收起") : t("展开")}
 										</span>
 									</button>
 									{showPromptAdvanced && (
@@ -4526,7 +4610,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 											<div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 												<div>
 													<label className="block text-sm font-medium text-gray-700 mb-2">
-														响应格式
+														{t("响应格式")}
 													</label>
 													<Select
 														value={promptFormData.response_format}
@@ -4539,7 +4623,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 														className="select-modern-antd w-full"
 														popupClassName="select-modern-dropdown"
 														options={[
-															{ value: "", label: "默认" },
+															{ value: "", label: t("默认") },
 															{ value: "text", label: "text" },
 															{ value: "json_object", label: "json_object" },
 														]}
@@ -4548,7 +4632,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 
 												<div>
 													<label className="block text-sm font-medium text-gray-700 mb-2">
-														温度
+														{t("温度")}
 													</label>
 													<input
 														type="number"
@@ -4563,13 +4647,13 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 															})
 														}
 														className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-														placeholder="0.7"
+														placeholder={t("0.7")}
 													/>
 												</div>
 
 												<div>
 													<label className="block text-sm font-medium text-gray-700 mb-2">
-														最大 Tokens
+														{t("最大 Tokens")}
 													</label>
 													<input
 														type="number"
@@ -4582,7 +4666,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 															})
 														}
 														className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-														placeholder="1200"
+														placeholder={t("1200")}
 													/>
 												</div>
 
@@ -4603,7 +4687,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 															})
 														}
 														className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-														placeholder="1.0"
+														placeholder={t("1.0")}
 													/>
 												</div>
 											</div>
@@ -4613,7 +4697,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 
 								<div>
 									<label className="block text-sm font-medium text-gray-700 mb-2">
-										关联模型API配置（可选）
+										{t("关联模型API配置（可选）")}
 									</label>
 									<Select
 										value={promptFormData.model_api_config_id}
@@ -4626,7 +4710,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 										className="select-modern-antd w-full"
 										popupClassName="select-modern-dropdown"
 										options={[
-											{ value: "", label: "使用默认" },
+											{ value: "", label: t("使用默认") },
 											...modelAPIConfigs.map((config) => ({
 												value: config.id,
 												label: config.name,
@@ -4648,7 +4732,9 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 											}
 											className="w-4 h-4 text-blue-600 rounded"
 										/>
-										<span className="text-sm text-gray-700">启用此配置</span>
+										<span className="text-sm text-gray-700">
+											{t("启用此配置")}
+										</span>
 									</label>
 
 									<label className="flex items-center gap-2">
@@ -4663,7 +4749,9 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 											}
 											className="w-4 h-4 text-blue-600 rounded"
 										/>
-										<span className="text-sm text-gray-700">设为默认配置</span>
+										<span className="text-sm text-gray-700">
+											{t("设为默认配置")}
+										</span>
 									</label>
 								</div>
 							</div>
@@ -4673,13 +4761,13 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 									onClick={() => setShowPromptModal(false)}
 									className="px-4 py-2 bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
 								>
-									取消
+									{t("取消")}
 								</button>
 								<button
 									onClick={handleSavePrompt}
 									className="px-4 py-2 bg-primary text-white rounded-sm hover:bg-primary-ink transition"
 								>
-									{editingPromptConfig ? "保存" : "创建"}
+									{editingPromptConfig ? t("保存") : t("创建")}
 								</button>
 							</div>
 						</div>
@@ -4697,7 +4785,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 						>
 							<div className="flex items-center justify-between p-6 border-b">
 								<h3 className="text-lg font-semibold text-gray-900">
-									{editingCategory ? "编辑分类" : "新增分类"}
+									{editingCategory ? t("编辑分类") : t("新增分类")}
 								</h3>
 								<button
 									onClick={() => setShowCategoryModal(false)}
@@ -4710,7 +4798,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 							<div className="p-6 space-y-4">
 								<div>
 									<label className="block text-sm font-medium text-gray-700 mb-2">
-										分类名称
+										{t("分类名称")}
 									</label>
 									<input
 										type="text"
@@ -4728,7 +4816,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 
 								<div>
 									<label className="block text-sm font-medium text-gray-700 mb-2">
-										描述
+										{t("描述")}
 									</label>
 									<textarea
 										value={categoryFormData.description}
@@ -4745,7 +4833,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 
 								<div>
 									<label className="block text-sm font-medium text-gray-700 mb-2">
-										颜色
+										{t("颜色")}
 									</label>
 									<div className="grid grid-cols-10 gap-2">
 										{PRESET_COLORS.map((color) => (
@@ -4772,13 +4860,13 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 									onClick={() => setShowCategoryModal(false)}
 									className="px-4 py-2 bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
 								>
-									取消
+									{t("取消")}
 								</button>
 								<button
 									onClick={handleSaveCategory}
 									className="px-4 py-2 bg-primary text-white rounded-sm hover:bg-primary-ink transition"
 								>
-									{editingCategory ? "保存" : "创建"}
+									{editingCategory ? t("保存") : t("创建")}
 								</button>
 							</div>
 						</div>
@@ -4795,7 +4883,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 						>
 							<div className="flex items-center justify-between p-6 border-b">
 								<h3 className="text-lg font-semibold text-gray-900">
-									提示词预览 - {showPromptPreview.name}
+									{t("提示词预览")} - {showPromptPreview.name}
 								</h3>
 								<button
 									onClick={() => setShowPromptPreview(null)}
@@ -4810,30 +4898,37 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 									<span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm">
 										{PROMPT_TYPES.find(
 											(t) => t.value === showPromptPreview.type,
-										)?.label || showPromptPreview.type}
+										)?.labelKey
+											? t(
+													PROMPT_TYPES.find(
+														(t) => t.value === showPromptPreview.type,
+													)?.labelKey || "",
+												)
+											: showPromptPreview.type}
 									</span>
 									<span className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-sm">
-										分类: {showPromptPreview.category_name || "通用"}
+										{t("分类")}:{" "}
+										{showPromptPreview.category_name || t("通用")}
 									</span>
 									{showPromptPreview.model_api_config_name && (
 										<span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm">
-											模型: {showPromptPreview.model_api_config_name}
+											{t("模型")}: {showPromptPreview.model_api_config_name}
 										</span>
 									)}
 								</div>
 
 								<div>
 									<label className="block text-sm font-medium text-gray-700 mb-2">
-										系统提示词
+										{t("系统提示词")}
 									</label>
 									<pre className="w-full p-4 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-800 whitespace-pre-wrap font-mono">
-										{showPromptPreview.system_prompt || "未设置（必填）"}
+										{showPromptPreview.system_prompt || t("未设置（必填）")}
 									</pre>
 								</div>
 
 								<div>
 									<label className="block text-sm font-medium text-gray-700 mb-2">
-										提示词
+										{t("提示词")}
 									</label>
 									<pre className="w-full p-4 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-800 whitespace-pre-wrap font-mono">
 										{showPromptPreview.prompt}
@@ -4842,20 +4937,24 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 
 								<div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 									<div className="p-3 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700">
-										<div className="text-xs text-gray-500">响应格式</div>
-										<div>{showPromptPreview.response_format || "默认"}</div>
+										<div className="text-xs text-gray-500">
+											{t("响应格式")}
+										</div>
+										<div>{showPromptPreview.response_format || t("默认")}</div>
 									</div>
 									<div className="p-3 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700">
-										<div className="text-xs text-gray-500">温度</div>
-										<div>{showPromptPreview.temperature ?? "默认"}</div>
+										<div className="text-xs text-gray-500">{t("温度")}</div>
+										<div>{showPromptPreview.temperature ?? t("默认")}</div>
 									</div>
 									<div className="p-3 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700">
-										<div className="text-xs text-gray-500">最大 Tokens</div>
-										<div>{showPromptPreview.max_tokens ?? "默认"}</div>
+										<div className="text-xs text-gray-500">
+											{t("最大 Tokens")}
+										</div>
+										<div>{showPromptPreview.max_tokens ?? t("默认")}</div>
 									</div>
 									<div className="p-3 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700">
 										<div className="text-xs text-gray-500">Top P</div>
-										<div>{showPromptPreview.top_p ?? "默认"}</div>
+										<div>{showPromptPreview.top_p ?? t("默认")}</div>
 									</div>
 								</div>
 							</div>
@@ -4868,13 +4967,13 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 									}}
 									className="px-4 py-2 bg-primary text-white rounded-sm hover:bg-primary-ink transition"
 								>
-									编辑此配置
+									{t("编辑此配置")}
 								</button>
 								<button
 									onClick={() => setShowPromptPreview(null)}
 									className="px-4 py-2 bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
 								>
-									关闭
+									{t("关闭")}
 								</button>
 							</div>
 						</div>
@@ -4892,7 +4991,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 							<div className="flex items-center justify-between p-6 border-b">
 								<div>
 									<h3 className="text-lg font-semibold text-gray-900">
-										模型连接测试
+										{t("模型连接测试")}
 									</h3>
 									{modelAPITestConfig && (
 										<p className="text-sm text-gray-500 mt-1">
@@ -4912,37 +5011,37 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 							<div className="p-6 space-y-4">
 								<div>
 									<label className="block text-sm font-medium text-gray-700 mb-2">
-										测试输入
+										{t("测试输入")}
 									</label>
 									<textarea
 										value={modelAPITestPrompt}
 										onChange={(e) => setModelAPITestPrompt(e.target.value)}
 										rows={4}
 										className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-										placeholder="请输入要发送给模型的内容"
+										placeholder={t("请输入要发送给模型的内容")}
 									/>
 								</div>
 
 								<div>
 									<label className="block text-sm font-medium text-gray-700 mb-2">
-										返回结果
+										{t("返回结果")}
 									</label>
 									<div className="w-full p-4 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-800 whitespace-pre-wrap min-h-[120px]">
 										{modelAPITestLoading
-											? "调用中..."
+											? t("调用中...")
 											: modelAPITestError
 												? modelAPITestError
-												: modelAPITestResult || "暂无返回"}
+												: modelAPITestResult || t("暂无返回")}
 									</div>
 								</div>
 
 								{modelAPITestError && (
 									<div>
 										<label className="block text-sm font-medium text-gray-700 mb-2">
-											原始响应
+											{t("原始响应")}
 										</label>
 										<pre className="w-full p-4 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-800 whitespace-pre-wrap max-h-64 overflow-y-auto">
-											{modelAPITestRaw || "暂无原始响应"}
+											{modelAPITestRaw || t("暂无原始响应")}
 										</pre>
 									</div>
 								)}
@@ -4953,14 +5052,14 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 									onClick={() => setShowModelAPITestModal(false)}
 									className="px-4 py-2 bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
 								>
-									关闭
+									{t("关闭")}
 								</button>
 								<button
 									onClick={handleRunModelAPITest}
 									disabled={modelAPITestLoading}
 									className="px-4 py-2 bg-primary text-white rounded-sm hover:bg-primary-ink transition disabled:opacity-50 disabled:cursor-not-allowed"
 								>
-									{modelAPITestLoading ? "调用中..." : "开始测试"}
+									{modelAPITestLoading ? t("调用中...") : t("开始测试")}
 								</button>
 							</div>
 						</div>

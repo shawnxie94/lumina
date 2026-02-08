@@ -77,7 +77,7 @@ export default function Home() {
   const router = useRouter();
   const { showToast } = useToast();
   const { isAdmin } = useAuth();
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const { basicSettings } = useBasicSettings();
   const [articles, setArticles] = useState<Article[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -365,10 +365,10 @@ export default function Home() {
   const handleDelete = (slug: string) => {
     setConfirmState({
       isOpen: true,
-      title: '删除文章',
-      message: '确定要删除这篇文章吗？此操作不可撤销。',
-      confirmText: '删除',
-      cancelText: '取消',
+      title: t('删除文章'),
+      message: t('确定要删除这篇文章吗？此操作不可撤销。'),
+      confirmText: t('删除'),
+      cancelText: t('取消'),
       onConfirm: async () => {
         try {
           await articleApi.deleteArticle(slug);
@@ -455,12 +455,12 @@ export default function Home() {
       const selectedArticles = articles.filter(a => selectedArticleSlugs.has(a.slug));
       const categoryCount: Record<string, number> = {};
       selectedArticles.forEach(article => {
-        const catName = article.category?.name || '未分类';
+        const catName = article.category?.name || t('未分类');
         categoryCount[catName] = (categoryCount[catName] || 0) + 1;
       });
       
       const categoryInfo = Object.entries(categoryCount)
-        .map(([name, count]) => `${name}${count}篇`)
+        .map(([name, count]) => `${name}${count}${t('篇')}`)
         .join('_');
       
       a.download = `${timestamp}_${categoryInfo}.md`;
@@ -729,10 +729,10 @@ export default function Home() {
                           />
                           <button
                             type="button"
-                            onClick={handleBatchCategory}
-                            className="px-3 py-1 text-sm rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition"
-                          >
-                            应用分类
+                          onClick={handleBatchCategory}
+                          className="px-3 py-1 text-sm rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition"
+                        >
+                            {t('应用分类')}
                           </button>
                         </div>
                         <button
@@ -740,7 +740,7 @@ export default function Home() {
                           onClick={handleBatchDelete}
                           className="px-3 py-1 text-sm rounded-sm text-text-2 hover:text-red-600 hover:bg-red-50 transition"
                         >
-                          批量删除
+                          {t('批量删除')}
                         </button>
                       </div>
                     )}
@@ -750,9 +750,9 @@ export default function Home() {
             </div>
 
             {loading ? (
-              <div className="text-center py-12 text-gray-500">加载中...</div>
+              <div className="text-center py-12 text-gray-500">{t('加载中')}</div>
             ) : articles.length === 0 ? (
-              <div className="text-center py-12 text-gray-500">暂无文章</div>
+              <div className="text-center py-12 text-gray-500">{t('暂无文章')}</div>
              ) : (
                 <> 
                   {isAdmin && (
@@ -764,7 +764,9 @@ export default function Home() {
                           onChange={handleSelectAll}
                           className="w-4 h-4 text-blue-600 rounded"
                         />
-                        <span className="text-sm text-gray-600">全选 ({selectedArticleSlugs.size}/{articles.length})</span>
+                        <span className="text-sm text-gray-600">
+                          {t('全选')} ({selectedArticleSlugs.size}/{articles.length})
+                        </span>
                       </div>
                     </div>
                   )}
@@ -781,7 +783,7 @@ export default function Home() {
                               onClick={() => handleToggleVisibility(article.slug, article.is_visible)}
                               variant="default"
                               size="sm"
-                              title={article.is_visible ? '点击隐藏' : '点击显示'}
+                              title={article.is_visible ? t('点击隐藏') : t('点击显示')}
                             >
                               {article.is_visible ? (
                                 <IconEye className="h-4 w-4" />
@@ -793,7 +795,7 @@ export default function Home() {
                               onClick={() => handleDelete(article.slug)}
                               variant="danger"
                               size="sm"
-                              title="删除"
+                              title={t('删除')}
                             >
                               <IconTrash className="h-4 w-4" />
                             </IconButton>
@@ -839,12 +841,16 @@ export default function Home() {
                                     {article.source_domain}
                                   </span>
                                 )}
-                               {article.author && <span>作者: {article.author}</span>}
+                               {article.author && <span>{t('作者')}: {article.author}</span>}
                                <span>
-                                发表时间：
+                                {t('发表时间')}：
                                  {article.published_at
-                                   ? new Date(article.published_at).toLocaleDateString('zh-CN')
-                                   : new Date(article.created_at).toLocaleDateString('zh-CN')}
+                                   ? new Date(article.published_at).toLocaleDateString(
+                                      language === 'en' ? 'en-US' : 'zh-CN',
+                                    )
+                                   : new Date(article.created_at).toLocaleDateString(
+                                      language === 'en' ? 'en-US' : 'zh-CN',
+                                    )}
                                </span>
                              </div>
                               {article.summary && (
@@ -860,7 +866,7 @@ export default function Home() {
 
                 <div className="mt-6 flex items-center justify-between">
                   <div className="flex items-center gap-2 text-sm text-gray-600">
-                    <span>每页显示</span>
+                    <span>{t('每页显示')}</span>
                     <Select
                       value={pageSize}
                       onChange={(value) => { setPageSize(Number(value)); setPage(1); }}
@@ -873,7 +879,7 @@ export default function Home() {
                         { value: 100, label: '100' },
                       ]}
                     />
-                    <span>条，共 {total} 条</span>
+                    <span>{t('条')}，{t('共')} {total} {t('条')}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <Button
@@ -882,10 +888,10 @@ export default function Home() {
                       variant="secondary"
                       size="sm"
                     >
-                      上一页
+                      {t('上一页')}
                     </Button>
                     <span className="px-4 py-2 text-sm bg-surface border border-border rounded-sm text-text-2">
-                      第 {page} / {Math.ceil(total / pageSize) || 1} 页
+                      {t('第')} {page} / {Math.ceil(total / pageSize) || 1} {t('页')}
                     </span>
                     <Button
                       onClick={() => setPage((p) => p + 1)}
@@ -893,10 +899,10 @@ export default function Home() {
                       variant="secondary"
                       size="sm"
                     >
-                      下一页
+                      {t('下一页')}
                     </Button>
                     <div className="flex items-center gap-1 ml-2">
-                      <span className="text-sm text-text-2">跳转</span>
+                      <span className="text-sm text-text-2">{t('跳转')}</span>
                       <input
                         type="number"
                         value={jumpToPage}
@@ -911,7 +917,7 @@ export default function Home() {
                         variant="primary"
                         size="sm"
                       >
-                        GO
+                        {t('跳转')}
                       </Button>
                     </div>
                   </div>
