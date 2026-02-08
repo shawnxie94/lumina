@@ -89,57 +89,49 @@ export default function HomePage() {
       <AppHeader />
 
       <main className="flex-1">
-        <div className="bg-muted/60">
-          <section className="max-w-7xl mx-auto px-4 pt-10 pb-6">
-            <div
-              className="relative overflow-hidden rounded-2xl bg-surface/80"
-              style={{
-                backgroundImage: `url(${logoUrl})`,
-                backgroundRepeat: 'no-repeat',
-                backgroundPosition: '18% 75%',
-                backgroundSize: '30% auto',
-              }}
-            >
-              <div className="absolute inset-0 bg-gradient-to-br from-primary-soft/45 via-transparent to-transparent" />
-              <div className="absolute -right-16 top-10 h-56 w-56 rounded-full bg-primary-soft/40 blur-3xl" />
-              <div className="relative px-4 sm:px-6 lg:px-10 py-8 sm:py-12 min-h-[320px] flex items-center">
-                <div className="max-w-7xl mx-auto w-full">
-                  <div className="max-w-md mx-auto md:mx-0 md:ml-[55%] text-left">
-                    <div className="text-sm text-text-3">{t('信息灯塔')}</div>
-                    <h1 className="mt-2 text-3xl sm:text-4xl font-semibold text-text-1">
-                      {siteName}
-                    </h1>
-                    <p className="mt-3 text-lg text-text-2">{siteDescription}</p>
-                    <p className="mt-3 text-sm text-text-3 leading-relaxed">
-                      {t('汇流万象，智能提纯，沉淀真知。')}
-                    </p>
-                    <div className="mt-6 flex flex-wrap gap-3">
-                      <Link
-                        href="/list"
-                        className="inline-flex items-center justify-center rounded-full bg-primary px-5 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-primary-ink transition"
-                      >
-                        {t('浏览内容')}
-                      </Link>
-                      <a
-                        href={githubUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center justify-center rounded-full border border-border bg-surface px-5 py-2.5 text-sm font-medium text-text-2 hover:bg-muted hover:text-text-1 transition"
-                      >
-                        {t('了解更多')}
-                      </a>
-                    </div>
-                  </div>
-                </div>
+        <div className="relative overflow-hidden bg-surface/80">
+          <div
+            className="absolute inset-0 opacity-20"
+            style={{
+              backgroundImage: `url(${logoUrl})`,
+              backgroundRepeat: 'no-repeat',
+              backgroundPosition: 'center center',
+              backgroundSize: 'contain',
+            }}
+          />
+          <div className="absolute inset-0 bg-gradient-to-br from-primary-soft/30 via-transparent to-primary-soft/20" />
+          <div className="absolute -right-16 top-10 h-56 w-56 rounded-full bg-primary-soft/40 blur-3xl" />
+
+          <section className="relative px-4 sm:px-6 lg:px-10 py-8 sm:py-12 min-h-[420px] flex items-center justify-center">
+            <div className="max-w-md mx-auto text-center">
+              <div className="text-base text-text-3">{t('信息灯塔')}</div>
+              <h1 className="mt-2 text-4xl sm:text-5xl font-semibold text-text-1">
+                {siteName}
+              </h1>
+              <p className="mt-3 text-xl text-text-2">{siteDescription}</p>
+              <p className="mt-3 text-base text-text-3 leading-relaxed">
+                {t('汇流万象，智能提纯，沉淀真知。')}
+              </p>
+              <div className="mt-6 flex flex-wrap gap-3 justify-center">
+                <Link
+                  href="/list"
+                  className="inline-flex items-center justify-center rounded-full bg-primary px-5 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-primary-ink transition"
+                >
+                  {t('浏览内容')}
+                </Link>
+                <a
+                  href={githubUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center justify-center rounded-full border border-border bg-surface px-5 py-2.5 text-sm font-medium text-text-2 hover:bg-muted hover:text-text-1 transition"
+                >
+                  {t('了解更多')}
+                </a>
               </div>
             </div>
           </section>
 
-          <div className="h-6" />
-        </div>
-
-        <section className="max-w-7xl mx-auto px-4 pt-10 pb-12">
-          <div className="mt-6 text-center">
+          <div className="relative max-w-7xl mx-auto px-4 pb-12 text-center">
             <h2 className="text-2xl sm:text-3xl font-semibold text-text-1">
               {t('最新内容')}
             </h2>
@@ -148,18 +140,20 @@ export default function HomePage() {
             </div>
             <div className="mx-auto mt-4 h-[2px] w-64 bg-border-strong" />
           </div>
+        </div>
 
+        <section className="max-w-7xl mx-auto px-4 pb-12">
           {latestLoading ? (
             <div className="py-12 text-center text-text-3">{t('加载中')}</div>
           ) : latestArticles.length === 0 ? (
             <div className="py-12 text-center text-text-3">{t('暂无文章')}</div>
           ) : (
-            <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="mt-4 grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
               {latestArticles.map((article) => (
                 <Link
                   key={article.slug}
                   href={`/article/${article.slug}`}
-                  className="group rounded-2xl bg-surface/80 shadow-sm transition hover:shadow-md"
+                  className="group rounded-2xl bg-surface/80 shadow-md transition hover:shadow-lg hover:shadow-primary/10"
                 >
                   <div className="relative aspect-video overflow-hidden rounded-t-lg bg-muted">
                     {article.top_image ? (
@@ -173,7 +167,7 @@ export default function HomePage() {
                     )}
                   </div>
                   <div className="p-4">
-                    <h3 className="text-base font-semibold text-text-1 line-clamp-2 group-hover:text-primary transition">
+                    <h3 className="text-base font-semibold text-text-1 truncate group-hover:text-primary transition" title={article.title}>
                       {article.title}
                     </h3>
                     {article.summary && (
@@ -205,6 +199,14 @@ export default function HomePage() {
               ))}
             </div>
           )}
+          <div className="mt-8 text-center">
+            <Link
+              href="/list"
+              className="inline-flex items-center justify-center rounded-full border border-border bg-surface px-6 py-2.5 text-sm font-medium text-text-2 hover:bg-primary hover:text-white hover:border-primary transition"
+            >
+              {t('查看更多')}
+            </Link>
+          </div>
         </section>
       </main>
 
