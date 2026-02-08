@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { Select } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
 
-import { articleApi, categoryApi, Article, Category } from '@/lib/api';
+import { articleApi, categoryApi, Article, Category, resolveMediaUrl } from '@/lib/api';
 import AppFooter from '@/components/AppFooter';
 import AppHeader from '@/components/AppHeader';
 import Button from '@/components/Button';
@@ -819,7 +819,7 @@ export default function Home() {
                           {article.top_image && (
                             <div className="relative w-36 sm:w-40 aspect-square overflow-hidden rounded-lg bg-muted">
                               <img
-                                src={article.top_image}
+                                src={resolveMediaUrl(article.top_image)}
                                 alt={article.title}
                                 className="absolute inset-0 h-full w-full object-cover"
                               />

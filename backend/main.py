@@ -216,10 +216,15 @@ async def request_id_middleware(request: Request, call_next):
 
 
 allowed_origins_env = os.getenv("ALLOWED_ORIGINS", "")
+allow_credentials = True
 if allowed_origins_env:
-    allowed_origins = [
-        origin.strip() for origin in allowed_origins_env.split(",") if origin.strip()
-    ]
+    if allowed_origins_env.strip() == "*":
+        allowed_origins = ["*"]
+        allow_credentials = False
+    else:
+        allowed_origins = [
+            origin.strip() for origin in allowed_origins_env.split(",") if origin.strip()
+        ]
 else:
     allowed_origins = [
         "http://localhost:3000",
@@ -229,7 +234,7 @@ else:
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
-    allow_credentials=True,
+    allow_credentials=allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )

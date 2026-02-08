@@ -5,7 +5,7 @@ import { useRouter } from 'next/router';
 import Link from 'next/link';
 import { marked } from 'marked';
 
-import { articleApi, categoryApi, commentApi, commentSettingsApi, mediaApi, storageSettingsApi, type ArticleComment, type ArticleDetail, type Category, type ModelAPIConfig, type PromptConfig, type SimilarArticleItem } from '@/lib/api';
+import { articleApi, categoryApi, commentApi, commentSettingsApi, mediaApi, storageSettingsApi, normalizeMediaHtml, resolveMediaUrl, type ArticleComment, type ArticleDetail, type Category, type ModelAPIConfig, type PromptConfig, type SimilarArticleItem } from '@/lib/api';
 import AppFooter from '@/components/AppFooter';
 import AppHeader from '@/components/AppHeader';
 import Button from '@/components/Button';
@@ -677,7 +677,8 @@ export default function ArticleDetailPage() {
       : article.content_md
         ? renderMarkdown(article.content_md)
         : article.content_html;
-    return immersiveMode ? baseHtml : applyAnnotations(baseHtml, annotations);
+    const normalizedHtml = normalizeMediaHtml(baseHtml);
+    return immersiveMode ? normalizedHtml : applyAnnotations(normalizedHtml, annotations);
   }, [article, annotations, showTranslation, immersiveMode]);
 
   const activeAnnotation = annotations.find(
@@ -2987,7 +2988,7 @@ export default function ArticleDetailPage() {
                 {editTopImage && (
                   <div className="mt-2">
                     <img
-                      src={editTopImage}
+                      src={resolveMediaUrl(editTopImage)}
                       alt={t("头图预览")}
                       className="max-h-32 rounded-lg object-cover"
                       onError={(e) => {

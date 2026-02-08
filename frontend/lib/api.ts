@@ -1,7 +1,57 @@
 import axios from "axios";
 import { notificationStore } from "@/lib/notifications";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+export const getApiBaseUrl = (): string => {
+	if (process.env.NEXT_PUBLIC_API_URL) {
+		return process.env.NEXT_PUBLIC_API_URL;
+	}
+	if (typeof window !== "undefined") {
+		return `${window.location.protocol}//${window.location.hostname}:8000`;
+	}
+	return "http://localhost:8000";
+};
+
+export const resolveMediaUrl = (url?: string | null): string => {
+	if (!url) return "";
+	const apiBase = getApiBaseUrl().replace(/\/+$/, "");
+	if (url.startsWith("/media/")) {
+		return `${apiBase}${url}`;
+	}
+	if (typeof window !== "undefined") {
+		try {
+			const parsed = new URL(url, apiBase);
+			const isLocalhost =
+				parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1";
+			const isMediaPath = parsed.pathname.startsWith("/media/");
+			if (isLocalhost && isMediaPath) {
+				return `${apiBase}${parsed.pathname}`;
+			}
+		} catch {
+			return url;
+		}
+	}
+	return url;
+};
+
+export const normalizeMediaHtml = (html: string): string => {
+	if (typeof window === "undefined") return html;
+	try {
+		const parser = new DOMParser();
+		const doc = parser.parseFromString(html, "text/html");
+		doc.querySelectorAll("img").forEach((img) => {
+			const src = img.getAttribute("src");
+			const resolved = resolveMediaUrl(src);
+			if (resolved && resolved !== src) {
+				img.setAttribute("src", resolved);
+			}
+		});
+		return doc.body.innerHTML;
+	} catch {
+		return html;
+	}
+};
+
+const API_URL = getApiBaseUrl();
 
 const api = axios.create({
 	baseURL: API_URL,
