@@ -550,6 +550,24 @@ const translations: Record<Language, Record<string | number, string>> = {
 		输出: "Output",
 		限制图片最长边: "Max image edge",
 		信息灯塔: "Information Beacon",
+		站点概览: "Site overview",
+		功能亮点: "Highlights",
+		最新内容: "Latest content",
+		浏览内容: "Browse content",
+		了解更多: "Learn more",
+		文章总数: "Total articles",
+		分类数量: "Total categories",
+		来源数量: "Total sources",
+		"聚合多源内容，统一归档管理":
+			"Aggregate multi-source content with unified archiving",
+		"AI 生成摘要与关键点，快速掌握要义":
+			"AI summaries and key points for quick understanding",
+		"灵活标签与分类筛选，快速定位":
+			"Flexible tags and filters for fast discovery",
+		"汇流万象，智能提纯，沉淀真知。":
+			"Gather all streams, distill with intelligence, and settle into true knowledge.",
+		查看全部: "View all",
+		更新时间: "Updated",
 	},
 };
 

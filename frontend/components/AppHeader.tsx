@@ -268,7 +268,7 @@ export default function AppHeader() {
             </Link>
             <div className="hidden lg:flex items-center gap-2 text-base font-medium">
               <Link
-                href="/"
+                href="/list"
                 className="px-3 py-1 rounded-sm transition text-text-1 hover:bg-muted"
               >
                 {t('信息流')}
