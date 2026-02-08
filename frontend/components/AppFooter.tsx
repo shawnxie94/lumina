@@ -12,7 +12,7 @@ export default function AppFooter() {
             rel="noreferrer"
             className="text-text-2 hover:text-primary transition"
           >
-            Lumina
+            Power by Lumina
           </a>
         </div>
       </div>

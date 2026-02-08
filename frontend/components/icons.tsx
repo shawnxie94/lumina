@@ -171,6 +171,15 @@ export function IconMonitor(props: IconProps) {
   );
 }
 
+export function IconBell(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M18 8a6 6 0 1 0-12 0c0 7-3 8-3 8h18s-3-1-3-8" />
+      <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+    </IconBase>
+  );
+}
+
 export function IconGrip(props: IconProps) {
   return (
     <IconBase {...props}>

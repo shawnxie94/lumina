@@ -1,4 +1,5 @@
 import axios from "axios";
+import { notificationStore } from "@/lib/notifications";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -48,6 +49,31 @@ api.interceptors.request.use(
 api.interceptors.response.use(
 	(response) => response,
 	(error) => {
+		try {
+			if (typeof window !== "undefined") {
+				const status = error?.response?.status;
+				const detail =
+					error?.response?.data?.detail ||
+					error?.response?.data?.message ||
+					error?.message ||
+					"未知错误";
+				const endpoint = error?.config?.url || "";
+				const method = error?.config?.method?.toUpperCase() || "请求";
+				notificationStore.add({
+					id: `api:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`,
+					title: "接口请求失败",
+					message: `${method} ${endpoint} ${
+						status ? `(${status})` : ""
+					} ${detail}`.trim(),
+					level: "error",
+					source: "api",
+					category: "接口错误",
+					createdAt: new Date().toISOString(),
+				});
+			}
+		} catch {
+			// ignore
+		}
 		// 401 错误不自动清除 token，让调用方决定如何处理
 		return Promise.reject(error);
 	},

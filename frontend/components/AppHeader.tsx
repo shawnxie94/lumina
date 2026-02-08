@@ -1,8 +1,11 @@
 import Link from 'next/link';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useAuth } from '@/contexts/AuthContext';
+import { articleApi } from '@/lib/api';
+import { notificationStore, type NotificationItem } from '@/lib/notifications';
 import {
+  IconBell,
   IconGithub,
   IconLock,
   IconLogout,
@@ -10,13 +13,33 @@ import {
   IconSun,
   IconMoon,
   IconMonitor,
+  IconTrash,
 } from '@/components/icons';
+
+const ERROR_PAGE_SIZE = 50;
+
+type ErrorTaskItem = {
+  id: string;
+  article_id: string | null;
+  article_title?: string | null;
+  task_type: string;
+  content_type: string | null;
+  status: string;
+  last_error: string | null;
+  updated_at: string;
+  created_at: string;
+  finished_at: string | null;
+};
 
 export default function AppHeader() {
   const { isAdmin, logout } = useAuth();
   const [theme, setTheme] = useState<'light' | 'dark' | 'system'>('system');
   const [themeMenuOpen, setThemeMenuOpen] = useState(false);
   const themeMenuRef = useRef<HTMLDivElement | null>(null);
+  const [errorMenuOpen, setErrorMenuOpen] = useState(false);
+  const errorMenuRef = useRef<HTMLDivElement | null>(null);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [errorLoading, setErrorLoading] = useState(false);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -70,6 +93,81 @@ export default function AppHeader() {
     return () => document.removeEventListener('mousedown', handleClick);
   }, [themeMenuOpen]);
 
+  useEffect(() => {
+    if (!errorMenuOpen) return;
+    const handleClick = (event: MouseEvent) => {
+      if (!errorMenuRef.current) return;
+      if (errorMenuRef.current.contains(event.target as Node)) return;
+      setErrorMenuOpen(false);
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [errorMenuOpen]);
+
+  useEffect(() => {
+    const unsubscribe = notificationStore.subscribe((items) => {
+      setNotifications(items);
+    });
+    return () => {
+      unsubscribe();
+    };
+  }, []);
+
+  const getTaskTypeLabel = useCallback((task: ErrorTaskItem) => {
+    if (task.task_type === 'process_article_cleaning') return '清洗';
+    if (task.task_type === 'process_article_validation') return '校验';
+    if (task.task_type === 'process_article_classification') return '分类';
+    if (task.task_type === 'process_article_translation') return '翻译';
+    if (task.task_type === 'process_ai_content') {
+      if (task.content_type === 'summary') return '摘要';
+      if (task.content_type === 'key_points') return '总结';
+      if (task.content_type === 'outline') return '大纲';
+      if (task.content_type === 'quotes') return '金句';
+      return 'AI内容';
+    }
+    if (task.task_type === 'process_article_ai') return '旧流程';
+    return '其他';
+  }, []);
+
+  const fetchErrorTasks = useCallback(async () => {
+    if (!isAdmin) return;
+    setErrorLoading(true);
+    try {
+      const response = await articleApi.getAITasks({
+        page: 1,
+        size: ERROR_PAGE_SIZE,
+        status: 'failed',
+      });
+      const items = (response.data as ErrorTaskItem[]).map((task) => {
+        const title = task.article_title || `${getTaskTypeLabel(task)}任务`;
+        return {
+          id: `task:${task.id}`,
+          title,
+          message: task.last_error || '未知错误',
+          level: 'error' as const,
+          source: 'task' as const,
+          category: getTaskTypeLabel(task),
+          createdAt: task.finished_at || task.updated_at || task.created_at,
+        };
+      });
+      notificationStore.replaceSource('task', items);
+    } catch (error) {
+      console.error('Failed to fetch error tasks:', error);
+    } finally {
+      setErrorLoading(false);
+    }
+  }, [isAdmin, getTaskTypeLabel]);
+
+  useEffect(() => {
+    if (!isAdmin) {
+      notificationStore.replaceSource('task', []);
+      return;
+    }
+    fetchErrorTasks();
+    const timer = setInterval(fetchErrorTasks, 60000);
+    return () => clearInterval(timer);
+  }, [fetchErrorTasks, isAdmin]);
+
   const applyTheme = (nextTheme: 'light' | 'dark' | 'system') => {
     setTheme(nextTheme);
     if (typeof window !== 'undefined') {
@@ -92,6 +190,29 @@ export default function AppHeader() {
   );
 
   const activeTheme = themeOptions.find((option) => option.value === theme);
+  const notificationCount = notifications.length;
+
+  const handleDismissNotification = useCallback((id: string) => {
+    notificationStore.remove(id);
+  }, []);
+
+  const handleClearAllNotifications = useCallback(() => {
+    if (!notifications.length) return;
+    notificationStore.clear();
+  }, [notifications.length]);
+
+  const getSourceLabel = useCallback((item: NotificationItem) => {
+    if (item.source === 'task') return '任务错误';
+    if (item.source === 'api') return '接口错误';
+    if (item.source === 'system') return '系统通知';
+    return '通知';
+  }, []);
+
+  const getLevelClass = useCallback((level: NotificationItem['level']) => {
+    if (level === 'error') return 'text-red-500';
+    if (level === 'warning') return 'text-amber-500';
+    return 'text-blue-500';
+  }, []);
 
   return (
     <header className="bg-surface border-b border-border shadow-sm">
@@ -116,16 +237,90 @@ export default function AppHeader() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <a
-              href="https://github.com/shawnxie94/lumina"
-              target="_blank"
-              rel="noreferrer"
-              aria-label="访问 GitHub"
-              className="flex items-center gap-1 px-3 py-1 rounded-sm text-sm text-text-3 hover:text-text-1 hover:bg-muted transition"
-            >
-              <IconGithub className="h-4 w-4" />
-              <span>GitHub</span>
-            </a>
+            <div className="relative" ref={errorMenuRef}>
+              <button
+                type="button"
+                onClick={() => setErrorMenuOpen((prev) => !prev)}
+                className="relative flex items-center justify-center h-9 w-9 rounded-sm text-text-3 hover:text-text-1 hover:bg-muted transition"
+                title="通知中心"
+              >
+                <IconBell className="h-4 w-4" />
+                {notificationCount > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[18px] px-1 text-[10px] leading-5 bg-red-500 text-white rounded-full text-center">
+                    {notificationCount > 99 ? '99+' : notificationCount}
+                  </span>
+                )}
+              </button>
+              {errorMenuOpen && (
+                <div className="absolute right-0 mt-2 w-80 rounded-md border border-border bg-surface shadow-md z-20">
+                  <div className="flex items-center justify-between px-3 py-2 border-b border-border">
+                    <div className="text-sm font-medium text-text-1">
+                      通知中心
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleClearAllNotifications}
+                      className="flex items-center gap-1 text-xs text-text-3 hover:text-text-1 transition"
+                      title="清理全部"
+                    >
+                      <IconTrash className="h-3.5 w-3.5" />
+                      清理
+                    </button>
+                  </div>
+                  <div className="max-h-80 overflow-auto">
+                    {errorLoading && (
+                      <div className="px-3 py-4 text-xs text-text-3">
+                        加载中...
+                      </div>
+                    )}
+                    {!errorLoading && notifications.length === 0 && (
+                      <div className="px-3 py-4 text-xs text-text-3">
+                        暂无通知
+                      </div>
+                    )}
+                    {!errorLoading &&
+                      notifications.map((item) => (
+                        <div
+                          key={item.id}
+                          className="flex items-start gap-3 px-3 py-2 border-b border-border last:border-b-0 hover:bg-muted transition"
+                        >
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <div className="text-sm font-medium text-text-1 truncate">
+                                {item.title}
+                              </div>
+                              <div
+                                className={`text-xs ${getLevelClass(item.level)}`}
+                              >
+                                {getSourceLabel(item)}
+                              </div>
+                              {item.category && (
+                                <div className="text-xs text-text-3">
+                                  {item.category}
+                                </div>
+                              )}
+                            </div>
+                            <div className="text-xs text-text-2 mt-1">
+                              {item.message}
+                            </div>
+                            <div className="text-[11px] text-text-3 mt-1">
+                              {new Date(item.createdAt).toLocaleString('zh-CN')}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleDismissNotification(item.id)}
+                            className="text-text-3 hover:text-text-1 transition"
+                            title="清理"
+                          >
+                            <IconTrash className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
+            </div>
             <div className="relative" ref={themeMenuRef}>
               <button
                 type="button"
@@ -134,7 +329,6 @@ export default function AppHeader() {
                 title="切换主题"
               >
                 {activeTheme && <activeTheme.icon className="h-4 w-4" />}
-                <span>{activeTheme?.label ?? '主题'}</span>
               </button>
               {themeMenuOpen && (
                 <div className="absolute right-0 mt-2 w-28 rounded-md border border-border bg-surface shadow-md p-1 z-10">
@@ -170,7 +364,6 @@ export default function AppHeader() {
                 title="管理"
               >
                 <IconSettings className="h-4 w-4" />
-                <span>管理</span>
               </Link>
             )}
             {isAdmin ? (
@@ -181,7 +374,6 @@ export default function AppHeader() {
                 type="button"
               >
                 <IconLogout className="h-4 w-4" />
-                <span>登出</span>
               </button>
             ) : (
               <Link
@@ -190,7 +382,6 @@ export default function AppHeader() {
                 title="管理员登录"
               >
                 <IconLock className="h-4 w-4" />
-                <span>登录</span>
               </Link>
             )}
           </div>
