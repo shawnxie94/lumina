@@ -704,7 +704,37 @@ export default function ArticleDetailPage() {
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && immersiveMode) {
+      if (event.key !== 'Escape') return;
+      if (showAnnotationModal) {
+        setShowAnnotationModal(false);
+        return;
+      }
+      if (showNoteModal) {
+        setShowNoteModal(false);
+        return;
+      }
+      if (showEditModal) {
+        setShowEditModal(false);
+        return;
+      }
+      if (showConfigModal) {
+        setShowConfigModal(false);
+        return;
+      }
+      if (showAnnotationView) {
+        setShowAnnotationView(false);
+        return;
+      }
+      if (showDeleteCommentModal) {
+        setShowDeleteCommentModal(false);
+        setPendingDeleteCommentId(null);
+        return;
+      }
+      if (showDeleteModal) {
+        setShowDeleteModal(false);
+        return;
+      }
+      if (immersiveMode) {
         setImmersiveMode(false);
       }
     };
@@ -712,7 +742,16 @@ export default function ArticleDetailPage() {
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [immersiveMode]);
+  }, [
+    immersiveMode,
+    showAnnotationModal,
+    showNoteModal,
+    showEditModal,
+    showConfigModal,
+    showAnnotationView,
+    showDeleteCommentModal,
+    showDeleteModal,
+  ]);
 
   useEffect(() => {
     setIsHidden(immersiveMode);
@@ -1046,7 +1085,7 @@ export default function ArticleDetailPage() {
   const showKeyPointsSection = isAdmin || Boolean(article?.ai_analysis?.key_points);
   const showOutlineSection = isAdmin || Boolean(article?.ai_analysis?.outline);
   const showQuotesSection = isAdmin || Boolean(article?.ai_analysis?.quotes);
-  const aiUpdatedAt = article?.ai_analysis?.updated_at
+  const aiUpdatedAt = isAdmin && article?.ai_analysis?.updated_at
     ? new Date(article.ai_analysis.updated_at).toLocaleString('zh-CN')
     : '';
 
@@ -1578,6 +1617,33 @@ export default function ArticleDetailPage() {
     }
   };
 
+  const handleTopImagePaste = (event: React.ClipboardEvent<HTMLInputElement>) => {
+    const target = event.currentTarget;
+    const text = event.clipboardData?.getData('text/plain') || '';
+    if (text.trim()) {
+      setEditTopImage(text.trim());
+      return;
+    }
+    window.setTimeout(() => {
+      if (target?.value !== undefined) {
+        setEditTopImage(target.value);
+      }
+    }, 0);
+  };
+
+  const handleDeleteNoteContent = async () => {
+    try {
+      setNoteDraft('');
+      setNoteContent('');
+      await saveNotes('', annotations);
+      showToast('批注已删除');
+      setShowNoteModal(false);
+    } catch (error) {
+      console.error('Failed to delete notes:', error);
+      showToast('删除失败', 'error');
+    }
+  };
+
   const handleBatchConvertMarkdownImages = async () => {
     if (!article?.id) return;
     if (!editContent.trim()) {
@@ -1834,7 +1900,20 @@ export default function ArticleDetailPage() {
 
               {noteContent && !immersiveMode && (
                 <div className="note-panel mb-4 rounded-sm p-4 text-sm text-text-2">
-                  <div className="note-panel-title text-sm mb-2">批注</div>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="note-panel-title text-sm">批注</div>
+                    {isAdmin && (
+                      <IconButton
+                        onClick={handleDeleteNoteContent}
+                        variant="ghost"
+                        size="sm"
+                        title="删除批注"
+                        className="rounded-full"
+                      >
+                        <IconTrash className="h-3.5 w-3.5" />
+                      </IconButton>
+                    )}
+                  </div>
                   <div
                     className="prose prose-sm max-w-none"
                     dangerouslySetInnerHTML={{ __html: renderMarkdown(noteContent) }}
@@ -2475,7 +2554,6 @@ export default function ArticleDetailPage() {
                   )}
 
                     <div>
-                      <div className="w-full h-px bg-gray-200 mb-4" />
                       <div className="flex items-center justify-between mb-2">
                         <h2 className="text-lg font-semibold text-gray-900 inline-flex items-center gap-2">
                           <IconRobot className="h-4 w-4" />
@@ -2589,7 +2667,6 @@ export default function ArticleDetailPage() {
       {showConfigModal && (
         <div
           className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-          onClick={() => setShowConfigModal(false)}
         >
           <div
             className="bg-white rounded-lg shadow-xl max-w-md w-full"
@@ -2666,7 +2743,6 @@ export default function ArticleDetailPage() {
       {showEditModal && (
         <div
           className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-          onClick={() => setShowEditModal(false)}
         >
           <div
             className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] flex flex-col"
@@ -2739,6 +2815,8 @@ export default function ArticleDetailPage() {
                     type="text"
                     value={editTopImage}
                     onChange={(e) => setEditTopImage(e.target.value)}
+                    onPaste={handleTopImagePaste}
+                    onInput={(e) => setEditTopImage(e.currentTarget.value)}
                     className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     placeholder="输入图片 URL"
                   />
@@ -2879,7 +2957,6 @@ export default function ArticleDetailPage() {
       {showAnnotationView && activeAnnotation && (
         <div
           className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-          onClick={() => setShowAnnotationView(false)}
         >
           <div
             className="bg-white rounded-lg shadow-xl max-w-lg w-full overflow-hidden"
@@ -2947,7 +3024,6 @@ export default function ArticleDetailPage() {
       {showNoteModal && (
         <div
           className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-          onClick={() => setShowNoteModal(false)}
         >
           <div
             className="bg-white rounded-lg shadow-xl max-w-lg w-full"
@@ -2972,6 +3048,14 @@ export default function ArticleDetailPage() {
               />
             </div>
             <div className="flex justify-end gap-2 p-4 border-t bg-gray-50">
+              {isAdmin && noteContent && (
+                <button
+                  onClick={handleDeleteNoteContent}
+                  className="px-4 py-2 text-red-600 rounded-lg hover:bg-red-50 transition"
+                >
+                  删除
+                </button>
+              )}
               <button
                 onClick={() => setShowNoteModal(false)}
                 className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
@@ -2992,7 +3076,6 @@ export default function ArticleDetailPage() {
       {showAnnotationModal && (
         <div
           className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-          onClick={() => setShowAnnotationModal(false)}
         >
           <div
             className="bg-white rounded-lg shadow-xl max-w-lg w-full"
@@ -3078,7 +3161,6 @@ export default function ArticleDetailPage() {
       {lightboxImage && (
         <div
           className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4"
-          onClick={() => setLightboxImage(null)}
         >
           <div className="relative">
             <button
@@ -3092,7 +3174,6 @@ export default function ArticleDetailPage() {
               src={lightboxImage}
               alt="预览"
               className="max-h-[80vh] max-w-[90vw] rounded-lg shadow-xl"
-              onClick={(event) => event.stopPropagation()}
             />
           </div>
         </div>
@@ -3105,7 +3186,6 @@ export default function ArticleDetailPage() {
           return (
             <div
               className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4"
-              onClick={() => setMindMapOpen(false)}
             >
               <div
                 className="relative w-full max-w-6xl h-[80vh]"

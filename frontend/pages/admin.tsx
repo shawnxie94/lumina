@@ -87,8 +87,8 @@ type PromptType =
 	| "classification";
 
 const PROMPT_TYPES = [
-	{ value: "content_cleaning" as PromptType, label: "内容清洗" },
-	{ value: "content_validation" as PromptType, label: "内容校验" },
+	{ value: "content_cleaning" as PromptType, label: "清洗" },
+	{ value: "content_validation" as PromptType, label: "校验" },
 	{ value: "classification" as PromptType, label: "分类" },
 	{ value: "summary" as PromptType, label: "摘要" },
 	{ value: "translation" as PromptType, label: "翻译" },
@@ -304,6 +304,7 @@ export default function AdminPage() {
 
 	const [showModelAPIModal, setShowModelAPIModal] = useState(false);
 	const [showModelAPIAdvanced, setShowModelAPIAdvanced] = useState(false);
+	const [showModelAPITestModal, setShowModelAPITestModal] = useState(false);
 	const [showPromptModal, setShowPromptModal] = useState(false);
 	const [showCategoryModal, setShowCategoryModal] = useState(false);
 	const [showPromptPreview, setShowPromptPreview] =
@@ -341,6 +342,7 @@ export default function AdminPage() {
 		confirmText?: string;
 		cancelText?: string;
 		onConfirm: () => void | Promise<void>;
+		onCancel?: () => void;
 	}>({
 		isOpen: false,
 		title: "",
@@ -348,6 +350,7 @@ export default function AdminPage() {
 		confirmText: "确定",
 		cancelText: "取消",
 		onConfirm: () => {},
+		onCancel: undefined,
 	});
 
 	const [commentList, setCommentList] = useState<CommentListResponse["items"]>([]);
@@ -438,6 +441,7 @@ const { section, article_title: articleTitleParam } = router.query;
 		}
 	}, [router.isReady, router.query]);
 
+
 	useEffect(() => {
 		if (typeof window === "undefined") return;
 		localStorage.setItem("settings_active_section", activeSection);
@@ -449,6 +453,55 @@ const { section, article_title: articleTitleParam } = router.query;
 		localStorage.setItem("settings_comment_sub_section", commentSubSection);
 		localStorage.setItem("settings_prompt_type", selectedPromptType);
 	}, [activeSection, aiSubSection, monitoringSubSection, commentSubSection, selectedPromptType]);
+
+	useEffect(() => {
+		const handleKeyDown = (event: KeyboardEvent) => {
+			if (event.key !== "Escape") return;
+			if (showUsagePayloadModal) {
+				setShowUsagePayloadModal(false);
+				return;
+			}
+			if (showUsageCostModal) {
+				setShowUsageCostModal(false);
+				return;
+			}
+			if (showModelAPITestModal) {
+				setShowModelAPITestModal(false);
+				return;
+			}
+			if (showPromptPreview) {
+				setShowPromptPreview(null);
+				return;
+			}
+			if (showPromptModal) {
+				setShowPromptModal(false);
+				return;
+			}
+			if (showModelAPIModal) {
+				setShowModelAPIModal(false);
+				return;
+			}
+			if (showCategoryModal) {
+				setShowCategoryModal(false);
+				return;
+			}
+			if (confirmState.isOpen) {
+				confirmState.onCancel?.();
+				setConfirmState((prev) => ({ ...prev, isOpen: false }));
+			}
+		};
+		document.addEventListener("keydown", handleKeyDown);
+		return () => document.removeEventListener("keydown", handleKeyDown);
+	}, [
+		showUsagePayloadModal,
+		showUsageCostModal,
+		showModelAPITestModal,
+		showPromptPreview,
+		showPromptModal,
+		showModelAPIModal,
+		showCategoryModal,
+		confirmState.isOpen,
+	]);
 
 	const sensors = useSensors(
 		useSensor(PointerSensor),
@@ -514,7 +567,6 @@ const { section, article_title: articleTitleParam } = router.query;
 	const [modelOptionsLoading, setModelOptionsLoading] = useState(false);
 	const [modelOptionsError, setModelOptionsError] = useState("");
 	const [modelNameManual, setModelNameManual] = useState(false);
-	const [showModelAPITestModal, setShowModelAPITestModal] = useState(false);
 	const [modelAPITestConfig, setModelAPITestConfig] =
 		useState<ModelAPIConfig | null>(null);
 	const [modelAPITestPrompt, setModelAPITestPrompt] = useState("");
@@ -827,6 +879,7 @@ const { section, article_title: articleTitleParam } = router.query;
 					showToast("删除失败", "error");
 				}
 			},
+			onCancel: () => {},
 		});
 	};
 
@@ -1278,8 +1331,8 @@ const { section, article_title: articleTitleParam } = router.query;
 	};
 
 	const getTaskTypeLabel = (task: AITaskItem) => {
-		if (task.task_type === "process_article_cleaning") return "内容清洗";
-		if (task.task_type === "process_article_validation") return "内容校验";
+		if (task.task_type === "process_article_cleaning") return "清洗";
+		if (task.task_type === "process_article_validation") return "校验";
 		if (task.task_type === "process_article_classification") return "分类";
 		if (task.task_type === "process_article_translation") return "翻译";
 		if (task.task_type === "process_ai_content") {
@@ -1308,8 +1361,8 @@ const { section, article_title: articleTitleParam } = router.query;
 		if (contentType === "outline") return "大纲";
 		if (contentType === "quotes") return "金句";
 		if (contentType === "translation") return "翻译";
-		if (contentType === "content_cleaning") return "内容清洗";
-		if (contentType === "content_validation") return "内容校验";
+		if (contentType === "content_cleaning") return "清洗";
+		if (contentType === "content_validation") return "校验";
 		if (contentType === "classification") return "分类";
 		return contentType;
 	};
@@ -1983,8 +2036,8 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 														{ value: "outline", label: "大纲" },
 														{ value: "quotes", label: "金句" },
 														{ value: "translation", label: "翻译" },
-														{ value: "content_cleaning", label: "内容清洗" },
-														{ value: "content_validation", label: "内容校验" },
+														{ value: "content_cleaning", label: "清洗" },
+														{ value: "content_validation", label: "校验" },
 														{ value: "classification", label: "分类" },
 													]}
 												/>
@@ -3084,14 +3137,14 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 											}}
 											options={[
 												{ value: "", label: "全部" },
-												{ value: "process_article_cleaning", label: "内容清洗" },
-												{ value: "process_article_validation", label: "内容校验" },
+												{ value: "process_article_cleaning", label: "清洗" },
+												{ value: "process_article_validation", label: "校验" },
 												{ value: "process_article_classification", label: "分类" },
-												{ value: "process_article_translation", label: "翻译生成" },
-												{ value: "process_ai_content:summary", label: "AI摘要" },
-												{ value: "process_ai_content:outline", label: "大纲生成" },
-												{ value: "process_ai_content:quotes", label: "金句生成" },
-												{ value: "process_ai_content:key_points", label: "总结生成" },
+												{ value: "process_article_translation", label: "翻译" },
+												{ value: "process_ai_content:summary", label: "摘要" },
+												{ value: "process_ai_content:outline", label: "大纲" },
+												{ value: "process_ai_content:quotes", label: "金句" },
+												{ value: "process_ai_content:key_points", label: "总结" },
 												{ value: "process_article_ai", label: "旧流程" },
 											]}
 										/>
@@ -3571,14 +3624,10 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 					</div>
 				</div>
 
-				{showModelAPIModal && (
-										<div
-											className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-											onClick={() => {
-												setShowModelAPIModal(false);
-												setShowModelAPIAdvanced(false);
-											}}
-										>
+					{showModelAPIModal && (
+						<div
+							className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+						>
 						<div
 							className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
 							onClick={(event) => event.stopPropagation()}
@@ -3851,14 +3900,13 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 					</div>
 								)}
 
-								{showUsagePayloadModal && (
-									<div
-										className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-										onClick={() => setShowUsagePayloadModal(false)}
-									>
+									{showUsagePayloadModal && (
 										<div
-											className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto"
-											onClick={(event) => event.stopPropagation()}
+											className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+										>
+											<div
+												className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto"
+												onClick={(event) => event.stopPropagation()}
 										>
 											<div className="flex items-center justify-between p-6 border-b">
 												<div className="flex items-center gap-2">
@@ -3889,14 +3937,13 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 									</div>
 								)}
 
-								{showUsageCostModal && (
-									<div
-										className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-										onClick={() => setShowUsageCostModal(false)}
-									>
+									{showUsageCostModal && (
 										<div
-											className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
-											onClick={(event) => event.stopPropagation()}
+											className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+										>
+											<div
+												className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+												onClick={(event) => event.stopPropagation()}
 										>
 											<div className="flex items-center justify-between p-6 border-b">
 												<h3 className="text-lg font-semibold text-gray-900">
@@ -3918,14 +3965,13 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 									</div>
 								)}
 
-								{showPromptModal && (
-									<div
-										className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-						onClick={() => setShowPromptModal(false)}
-					>
-						<div
-							className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
-							onClick={(event) => event.stopPropagation()}
+									{showPromptModal && (
+										<div
+											className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+						>
+							<div
+								className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+								onClick={(event) => event.stopPropagation()}
 						>
 							<div className="flex items-center justify-between p-6 border-b">
 								<h3 className="text-lg font-semibold text-gray-900">
@@ -4198,14 +4244,13 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 				)}
 
 				{/* Category Modal */}
-				{showCategoryModal && (
-					<div
-						className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-						onClick={() => setShowCategoryModal(false)}
-					>
+					{showCategoryModal && (
 						<div
-							className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto"
-							onClick={(event) => event.stopPropagation()}
+							className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+						>
+							<div
+								className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto"
+								onClick={(event) => event.stopPropagation()}
 						>
 							<div className="flex items-center justify-between p-6 border-b">
 								<h3 className="text-lg font-semibold text-gray-900">
@@ -4297,11 +4342,10 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 					</div>
 				)}
 
-				{showPromptPreview && (
-					<div
-						className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-						onClick={() => setShowPromptPreview(null)}
-					>
+					{showPromptPreview && (
+						<div
+							className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+						>
 						<div
 							className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
 							onClick={(event) => event.stopPropagation()}
@@ -4394,14 +4438,13 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 					</div>
 				)}
 
-				{showModelAPITestModal && (
-					<div
-						className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-						onClick={() => setShowModelAPITestModal(false)}
-					>
+					{showModelAPITestModal && (
 						<div
-							className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
-							onClick={(event) => event.stopPropagation()}
+							className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+						>
+							<div
+								className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+								onClick={(event) => event.stopPropagation()}
 						>
 							<div className="flex items-center justify-between p-6 border-b">
 								<div>
@@ -4492,9 +4535,10 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 					setConfirmState((prev) => ({ ...prev, isOpen: false }));
 					await action();
 				}}
-				onCancel={() =>
-					setConfirmState((prev) => ({ ...prev, isOpen: false }))
-				}
+				onCancel={() => {
+					confirmState.onCancel?.();
+					setConfirmState((prev) => ({ ...prev, isOpen: false }));
+				}}
 			/>
 			<AppFooter />
 		</div>

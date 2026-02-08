@@ -116,6 +116,10 @@ body {
   color: var(--accent);
 }
 
+html[data-theme="dark"] .prose blockquote {
+  color: #e2e8f0;
+}
+
 .ai-tab-fade {
   background: linear-gradient(
     to left,
