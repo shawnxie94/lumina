@@ -266,7 +266,7 @@ export default function AppHeader() {
               />
               <span className="text-2xl font-bold">{siteName}</span>
             </Link>
-            <div className="flex items-center gap-2 text-base font-medium">
+            <div className="hidden lg:flex items-center gap-2 text-base font-medium">
               <Link
                 href="/"
                 className="px-3 py-1 rounded-sm transition text-text-1 hover:bg-muted"
@@ -277,7 +277,7 @@ export default function AppHeader() {
           </div>
           <div className="flex items-center gap-2">
             {isAdmin && (
-              <div className="relative" ref={errorMenuRef}>
+              <div className="relative hidden lg:block" ref={errorMenuRef}>
                 <button
                   type="button"
                   onClick={() => setErrorMenuOpen((prev) => !prev)}
@@ -440,7 +440,7 @@ export default function AppHeader() {
             {isAdmin && (
               <Link
                 href="/admin"
-                className="flex items-center gap-1 px-3 py-1 rounded-sm text-sm text-text-3 hover:text-text-1 hover:bg-muted transition"
+                className="hidden lg:flex items-center gap-1 px-3 py-1 rounded-sm text-sm text-text-3 hover:text-text-1 hover:bg-muted transition"
                 title={t('管理')}
               >
                 <IconSettings className="h-4 w-4" />
@@ -449,7 +449,7 @@ export default function AppHeader() {
             {isAdmin ? (
               <button
                 onClick={logout}
-                className="flex items-center gap-1 px-3 py-1 rounded-sm text-sm text-text-3 hover:text-red-600 hover:bg-red-50 transition"
+                className="hidden lg:flex items-center gap-1 px-3 py-1 rounded-sm text-sm text-text-3 hover:text-red-600 hover:bg-red-50 transition"
                 title={t('退出登录')}
                 type="button"
               >
@@ -458,7 +458,7 @@ export default function AppHeader() {
             ) : (
               <Link
                 href="/login"
-                className="flex items-center gap-1 px-3 py-1 rounded-sm text-sm text-text-3 hover:text-primary hover:bg-primary-soft transition"
+                className="hidden lg:flex items-center gap-1 px-3 py-1 rounded-sm text-sm text-text-3 hover:text-primary hover:bg-primary-soft transition"
                 title={t('管理员登录')}
               >
                 <IconLock className="h-4 w-4" />

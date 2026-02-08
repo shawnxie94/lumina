@@ -643,6 +643,9 @@ export default function ArticleDetailPage() {
   const [tocCollapsed, setTocCollapsed] = useState(false);
   const activeHeadingMapRef = useRef<Map<string, number>>(new Map());
   const [immersiveMode, setImmersiveMode] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  const [showAiPanel, setShowAiPanel] = useState(false);
+  const aiPanelTouchStartX = useRef<number | null>(null);
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
   const [mindMapOpen, setMindMapOpen] = useState(false);
   const [prevArticle, setPrevArticle] = useState<ArticleNeighbor | null>(null);
@@ -712,6 +715,13 @@ export default function ArticleDetailPage() {
   }, [commentPage, totalCommentPages]);
 
   useEffect(() => {
+    if (isMobile) {
+      setShowAiPanel(false);
+    }
+  }, [id, isMobile]);
+
+
+  useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
         setShowUserMenu(false);
@@ -777,8 +787,29 @@ export default function ArticleDetailPage() {
   ]);
 
   useEffect(() => {
-    setIsHidden(immersiveMode);
-  }, [immersiveMode, setIsHidden]);
+    setIsHidden(immersiveMode || isMobile || showAiPanel);
+  }, [immersiveMode, isMobile, showAiPanel, setIsHidden]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const media = window.matchMedia('(max-width: 1023px)');
+    const handleChange = (event?: MediaQueryListEvent) => {
+      const matches = event ? event.matches : media.matches;
+      setIsMobile(matches);
+      if (matches) {
+        setImmersiveMode(true);
+        setTocCollapsed(true);
+      }
+      if (!matches) {
+        setShowAiPanel(false);
+      }
+    };
+    handleChange();
+    media.addEventListener('change', handleChange);
+    return () => {
+      media.removeEventListener('change', handleChange);
+    };
+  }, []);
 
   useEffect(() => {
     if (id) {
@@ -1182,6 +1213,7 @@ export default function ArticleDetailPage() {
       )
     : '';
 
+
   const aiTabConfigs = [
     {
       key: 'key_points' as const,
@@ -1230,6 +1262,208 @@ export default function ArticleDetailPage() {
   const showActiveGenerateButton = isAdmin
     && (!activeTabConfig?.status || activeTabConfig.status === 'completed' || activeTabConfig.status === 'failed');
   const showActiveCopyButton = Boolean(activeTabConfig?.content);
+
+  const aiPanelContent = (
+    <div className="bg-white rounded-lg shadow-sm p-4">
+      <div className="flex items-center justify-between mb-4">
+        {tocItems.length > 0 && (
+          <>
+            <h2 className="text-lg font-semibold text-gray-900 inline-flex items-center gap-2">
+              <IconList className="h-4 w-4" />
+              <span>{t("目录")}</span>
+            </h2>
+            <button
+              onClick={() => setTocCollapsed(!tocCollapsed)}
+              className="text-text-3 hover:text-primary transition"
+              title={tocCollapsed ? t("展开目录") : t("收起目录")}
+            >
+              <IconChevronDown
+                className={`h-4 w-4 transition-transform duration-200 ${
+                  tocCollapsed ? '' : 'rotate-180'
+                }`}
+              />
+            </button>
+          </>
+        )}
+      </div>
+
+      <div className="space-y-6">
+        {tocItems.length > 0 && !tocCollapsed && (
+          <TableOfContents
+            items={tocItems}
+            activeId={activeTocId}
+            onSelect={setActiveTocId}
+          />
+        )}
+
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-lg font-semibold text-gray-900 inline-flex items-center gap-2">
+              <IconRobot className="h-4 w-4" />
+              <span>{t("AI解读")}</span>
+            </h2>
+            {aiUpdatedAt && (
+              <span className="text-xs text-gray-500">{aiUpdatedAt}</span>
+            )}
+          </div>
+        </div>
+
+        {isAdmin && article?.ai_analysis?.error_message && (
+          <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+            <p className="text-red-700 text-sm">
+              {article.ai_analysis.error_message}
+            </p>
+          </div>
+        )}
+
+        {showSummarySection && (
+          <AIContentSection
+            title={t("摘要")}
+            content={article?.ai_analysis?.summary}
+            status={
+              article?.ai_analysis?.summary_status ||
+              (article?.status === 'completed' ? 'completed' : article?.status)
+            }
+            onGenerate={() => handleGenerateContent('summary')}
+            onCopy={() => handleCopyContent(article?.ai_analysis?.summary, '摘要')}
+            canEdit={isAdmin}
+            showStatus={isAdmin}
+            statusLink={aiStatusLink}
+          />
+        )}
+
+        {(showKeyPointsSection || showOutlineSection || showQuotesSection) && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between gap-4">
+              <div className="relative flex-1">
+                <div className="flex items-center gap-2 overflow-x-auto pb-1 pr-6">
+                  {aiTabConfigs
+                    .filter((tab) => tab.enabled)
+                    .map((tab) => (
+                      <button
+                        key={tab.key}
+                        type="button"
+                        onClick={() => setActiveAiTab(tab.key)}
+                        className={`px-3 py-1.5 text-base font-semibold rounded-sm transition ${
+                          activeAiTab === tab.key
+                            ? 'bg-muted text-text-1'
+                            : 'text-text-2 hover:text-text-1 hover:bg-muted'
+                        }`}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                </div>
+                <div className="pointer-events-none absolute right-0 top-0 h-full w-8 ai-tab-fade" />
+              </div>
+              <div className="flex items-center gap-2 pr-2 shrink-0">
+                {activeStatusBadge && aiStatusLink ? (
+                  <Link href={aiStatusLink} className="hover:opacity-80 transition">
+                    {activeStatusBadge}
+                  </Link>
+                ) : (
+                  activeStatusBadge
+                )}
+                {showActiveGenerateButton && activeTabConfig && (
+                  <button
+                    onClick={activeTabConfig.onGenerate}
+                    className="text-text-3 hover:text-primary transition"
+                    title={
+                      activeTabConfig.content ? t("重新生成") : t("生成")
+                    }
+                    type="button"
+                  >
+                    {activeTabConfig.content ? (
+                      <IconRefresh className="h-4 w-4" />
+                    ) : (
+                      <IconBolt className="h-4 w-4" />
+                    )}
+                  </button>
+                )}
+                {showActiveCopyButton && activeTabConfig && (
+                  <button
+                    onClick={activeTabConfig.onCopy}
+                    className="text-text-3 hover:text-primary transition"
+                    title={t('复制内容')}
+                    type="button"
+                  >
+                    <IconCopy className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {activeTabConfig && (
+              <AIContentSection
+                title={activeTabConfig.label}
+                content={activeTabConfig.content}
+                status={activeTabConfig.status}
+                onGenerate={activeTabConfig.onGenerate}
+                onCopy={activeTabConfig.onCopy}
+                canEdit={isAdmin}
+                renderMarkdown={activeTabConfig.renderMarkdown}
+                renderMindMap={activeTabConfig.renderMindMap}
+                onMindMapOpen={activeTabConfig.onMindMapOpen}
+                showStatus={isAdmin}
+                statusLink={aiStatusLink}
+                showHeader={false}
+              />
+            )}
+          </div>
+        )}
+
+        {(isAdmin ||
+          similarLoading ||
+          similarStatus === 'pending' ||
+          similarStatus === 'disabled' ||
+          similarArticles.length > 0) && (
+          <div className="pt-4 border-t border-border">
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-lg font-semibold text-gray-900 inline-flex items-center gap-2">
+                <IconTag className="h-4 w-4" />
+                <span>{t("推荐阅读")}</span>
+              </h2>
+              {isAdmin && (
+                <button
+                  onClick={handleRefreshEmbedding}
+                  className="text-text-3 hover:text-primary transition disabled:opacity-50"
+                  title={t("重新生成向量")}
+                  type="button"
+                  disabled={embeddingRefreshing}
+                >
+                  <IconRefresh className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+            {similarLoading ? (
+              <div className="text-sm text-text-3">{t("文章加载中...")}</div>
+            ) : similarStatus === 'pending' ? (
+              <div className="text-sm text-text-3">{t("文章生成中...")}</div>
+            ) : similarStatus === 'disabled' ? (
+              <div className="text-sm text-text-3">{t("文章推荐已关闭")}</div>
+            ) : similarArticles.length === 0 ? (
+              <div className="text-sm text-text-3">{t("暂无推荐文章")}</div>
+            ) : (
+              <div className="space-y-2 text-sm text-text-2">
+                {similarArticles.map((item) => (
+                  <div key={item.id} className="flex items-start gap-2 truncate">
+                    <span className="text-text-3">·</span>
+                    <Link
+                      href={`/article/${item.slug}`}
+                      className="hover:text-text-1 transition truncate"
+                      title={item.title}
+                    >
+                      {item.title}
+                    </Link>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 
 
   useEffect(() => {
@@ -1858,7 +2092,7 @@ export default function ArticleDetailPage() {
       <ReadingProgress />
       <AppHeader />
 		<section className={`bg-surface ${immersiveMode ? '' : 'border-b border-border'}`}>
-			<div className="max-w-7xl mx-auto px-4 py-6">
+			<div className="max-w-7xl mx-auto px-4 py-5 sm:py-6">
           <h1 className="text-2xl font-bold text-text-1 text-center mb-3">
             {article.title}
           </h1>
@@ -1914,14 +2148,14 @@ export default function ArticleDetailPage() {
 
 			<div
 				className={`max-w-7xl w-full mx-auto px-4 ${
-					immersiveMode ? 'py-6' : 'py-8'
+					immersiveMode ? 'py-6' : 'py-6 sm:py-8'
 				} flex-1`}
 			>
-          <div className="flex gap-4">
-            <div className={`flex-1 bg-surface ${immersiveMode ? '' : 'rounded-sm shadow-sm border border-border p-6'}`}>
+          <div className="flex flex-col lg:flex-row gap-6">
+            <div className={`flex-1 w-full bg-surface ${immersiveMode ? '' : 'rounded-sm shadow-sm border border-border p-4 sm:p-6'}`}>
               {!immersiveMode && (
-                <div className="flex items-center justify-between mb-6">
-                  <div className="flex items-center gap-2">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+                  <div className="flex flex-wrap items-center gap-2">
                     <h2 className="text-lg font-semibold text-text-1 inline-flex items-center gap-2">
                       <IconDoc className="h-4 w-4" />
                       <span>{t('内容')}</span>
@@ -2028,12 +2262,12 @@ export default function ArticleDetailPage() {
                 className={`prose prose-sm max-w-none prose-img:cursor-zoom-in prose-img:rounded-lg prose-img:border prose-img:border-gray-200 prose-img:bg-white prose-img:shadow-sm ${
                   immersiveMode
                     ? 'immersive-content'
-                    : 'prose-img:max-w-[320px] sm:prose-img:max-w-[420px]'
+                    : 'prose-img:max-w-full lg:prose-img:max-w-[420px]'
                 }`}
                 dangerouslySetInnerHTML={{ __html: renderedHtml }}
               />
 
-              <div className="flex items-center justify-between mt-6 text-sm">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-6 text-sm">
                 <button
                   onClick={() => prevArticle && router.push(`/article/${prevArticle.slug}`)}
                   disabled={!prevArticle}
@@ -2623,187 +2857,9 @@ export default function ArticleDetailPage() {
             </div>
 
             {!immersiveMode && (
-              <aside className="flex-shrink-0 w-[420px]">
-              <div className="sticky top-4 max-h-[calc(100vh-2rem)] overflow-y-auto">
-                <div className="bg-white rounded-lg shadow-sm p-4">
-                <div className="flex items-center justify-between mb-4">
-                  {tocItems.length > 0 && (
-                    <>
-                        <h2 className="text-lg font-semibold text-gray-900 inline-flex items-center gap-2">
-                          <IconList className="h-4 w-4" />
-                          <span>{t("目录")}</span>
-                        </h2>
-                      <button
-                        onClick={() => setTocCollapsed(!tocCollapsed)}
-                        className="text-text-3 hover:text-primary transition"
-                        title={tocCollapsed ? t("展开目录") : t("收起目录")}
-                      >
-                        <IconChevronDown className={`h-4 w-4 transition-transform duration-200 ${tocCollapsed ? '' : 'rotate-180'}`} />
-                      </button>
-                    </>
-                  )}
-                </div>
-
-                <div className="space-y-6">
-                  {tocItems.length > 0 && !tocCollapsed && (
-                    <TableOfContents
-                      items={tocItems}
-                      activeId={activeTocId}
-                      onSelect={setActiveTocId}
-                    />
-                  )}
-
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <h2 className="text-lg font-semibold text-gray-900 inline-flex items-center gap-2">
-                          <IconRobot className="h-4 w-4" />
-                          <span>{t("AI解读")}</span>
-                        </h2>
-                        {aiUpdatedAt && (
-                          <span className="text-xs text-gray-500">{aiUpdatedAt}</span>
-                        )}
-                      </div>
-                    </div>
-
-                  {isAdmin && article.ai_analysis?.error_message && (
-                    <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-                      <p className="text-red-700 text-sm">{article.ai_analysis.error_message}</p>
-                    </div>
-                  )}
-
-                  {showSummarySection && (
-                    <AIContentSection
-                title={t("摘要")}
-                      content={article.ai_analysis?.summary}
-                      status={article.ai_analysis?.summary_status || (article.status === 'completed' ? 'completed' : article.status)}
-                      onGenerate={() => handleGenerateContent('summary')}
-                      onCopy={() => handleCopyContent(article.ai_analysis?.summary, '摘要')}
-                      canEdit={isAdmin}
-                      showStatus={isAdmin}
-                      statusLink={aiStatusLink}
-                    />
-                  )}
-
-                    {(showKeyPointsSection || showOutlineSection || showQuotesSection) && (
-                      <div className="space-y-4">
-                        <div className="flex items-center justify-between gap-4">
-                          <div className="relative flex-1">
-                            <div className="flex items-center gap-2 overflow-x-auto pb-1 pr-6">
-                              {aiTabConfigs.filter((tab) => tab.enabled).map((tab) => (
-                                <button
-                                  key={tab.key}
-                                  type="button"
-                                  onClick={() => setActiveAiTab(tab.key)}
-                                  className={`px-3 py-1.5 text-base font-semibold rounded-sm transition ${
-                                    activeAiTab === tab.key
-                                      ? 'bg-muted text-text-1'
-                                      : 'text-text-2 hover:text-text-1 hover:bg-muted'
-                                  }`}
-                                >
-                                  {tab.label}
-                                </button>
-                              ))}
-                            </div>
-                            <div className="pointer-events-none absolute right-0 top-0 h-full w-8 ai-tab-fade" />
-                          </div>
-                          <div className="flex items-center gap-2 pr-2 shrink-0">
-                            {activeStatusBadge && aiStatusLink ? (
-                              <Link href={aiStatusLink} className="hover:opacity-80 transition">
-                                {activeStatusBadge}
-                              </Link>
-                            ) : (
-                              activeStatusBadge
-                            )}
-                            {showActiveGenerateButton && activeTabConfig && (
-                              <button
-                                onClick={activeTabConfig.onGenerate}
-                                className="text-text-3 hover:text-primary transition"
-                                title={activeTabConfig.content ? t("重新生成") : t("生成")}
-                                type="button"
-                              >
-                                {activeTabConfig.content ? <IconRefresh className="h-4 w-4" /> : <IconBolt className="h-4 w-4" />}
-                              </button>
-                            )}
-                            {showActiveCopyButton && activeTabConfig && (
-                              <button
-                                onClick={activeTabConfig.onCopy}
-                                className="text-text-3 hover:text-primary transition"
-                                title={t('复制内容')}
-                                type="button"
-                              >
-                                <IconCopy className="h-4 w-4" />
-                              </button>
-                            )}
-                          </div>
-                        </div>
-
-                        {activeTabConfig && (
-                          <AIContentSection
-                            title={activeTabConfig.label}
-                            content={activeTabConfig.content}
-                            status={activeTabConfig.status}
-                            onGenerate={activeTabConfig.onGenerate}
-                            onCopy={activeTabConfig.onCopy}
-                            canEdit={isAdmin}
-                            renderMarkdown={activeTabConfig.renderMarkdown}
-                            renderMindMap={activeTabConfig.renderMindMap}
-                            onMindMapOpen={activeTabConfig.onMindMapOpen}
-                            showStatus={isAdmin}
-                            statusLink={aiStatusLink}
-                            showHeader={false}
-                          />
-                        )}
-                      </div>
-                    )}
-
-                    {(isAdmin || similarLoading || similarStatus === 'pending' || similarStatus === 'disabled' || similarArticles.length > 0) && (
-                      <div className="pt-4 border-t border-border">
-                        <div className="flex items-center justify-between mb-2">
-                          <h2 className="text-lg font-semibold text-gray-900 inline-flex items-center gap-2">
-                            <IconTag className="h-4 w-4" />
-                            <span>{t("推荐阅读")}</span>
-                          </h2>
-                          {isAdmin && (
-                            <button
-                              onClick={handleRefreshEmbedding}
-                              className="text-text-3 hover:text-primary transition disabled:opacity-50"
-                              title={t("重新生成向量")}
-                              type="button"
-                              disabled={embeddingRefreshing}
-                            >
-                              <IconRefresh className="h-4 w-4" />
-                            </button>
-                          )}
-                        </div>
-                        {similarLoading ? (
-                          <div className="text-sm text-text-3">{t("文章加载中...")}</div>
-                        ) : similarStatus === 'pending' ? (
-                          <div className="text-sm text-text-3">{t("文章生成中...")}</div>
-                        ) : similarStatus === 'disabled' ? (
-                          <div className="text-sm text-text-3">{t("文章推荐已关闭")}</div>
-                        ) : similarArticles.length === 0 ? (
-                          <div className="text-sm text-text-3">{t("暂无推荐文章")}</div>
-                        ) : (
-                          <div className="space-y-2 text-sm text-text-2">
-                            {similarArticles.map((item) => (
-                              <div key={item.id} className="flex items-start gap-2 truncate">
-                                <span className="text-text-3">·</span>
-                                <Link
-                                  href={`/article/${item.slug}`}
-                                  className="hover:text-text-1 transition truncate"
-                                  title={item.title}
-                                >
-                                  {item.title}
-                                </Link>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                  </div>
-                </div>
+              <aside className="flex-shrink-0 w-full lg:w-[420px]">
+              <div className="max-h-none overflow-visible lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">
+                {aiPanelContent}
               </div>
             </aside>
             )}
@@ -3361,7 +3417,56 @@ export default function ArticleDetailPage() {
       <AppFooter />
       <BackToTop />
 
-      {immersiveMode && (
+      {isMobile && (
+        <>
+          <button
+            onClick={() => setShowAiPanel(true)}
+            className="fixed right-4 top-24 flex items-center justify-center w-10 h-10 rounded-full bg-surface border border-border shadow-lg text-text-2 hover:text-text-1 hover:bg-muted transition z-50"
+            title={t('AI')}
+          >
+            AI
+          </button>
+          {showAiPanel && (
+            <div
+              className="fixed inset-0 z-50 bg-black/40 flex justify-end"
+              onClick={() => setShowAiPanel(false)}
+            >
+              <div
+                className="h-full w-[86vw] max-w-sm bg-surface shadow-xl overflow-y-auto"
+                onClick={(event) => event.stopPropagation()}
+                onTouchStart={(event) => {
+                  aiPanelTouchStartX.current = event.touches[0]?.clientX ?? null;
+                }}
+                onTouchEnd={(event) => {
+                  const startX = aiPanelTouchStartX.current;
+                  const endX = event.changedTouches[0]?.clientX ?? null;
+                  aiPanelTouchStartX.current = null;
+                  if (startX === null || endX === null) return;
+                  if (endX - startX > 60) {
+                    setShowAiPanel(false);
+                  }
+                }}
+              >
+                <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-surface">
+                  <span className="text-sm font-semibold text-text-1">
+                    {t('AI')}
+                  </span>
+                  <button
+                    onClick={() => setShowAiPanel(false)}
+                    className="text-text-3 hover:text-text-1 transition text-lg"
+                    aria-label={t('关闭')}
+                  >
+                    ×
+                  </button>
+                </div>
+                <div className="p-4">{aiPanelContent}</div>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {immersiveMode && !isMobile && (
         <button
           onClick={() => setImmersiveMode(false)}
           className="fixed right-6 top-1/2 -translate-y-1/2 flex items-center justify-center w-10 h-10 rounded-full bg-surface border border-border shadow-lg text-text-2 hover:text-text-1 hover:bg-muted transition z-50"

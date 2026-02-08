@@ -2169,7 +2169,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 							</div>
 						</aside>
 
-						<main className="flex-1">
+						<main className="flex-1 w-full">
 							{((activeSection === "ai" && aiSubSection === "model-api") || showUsageView) && (
 								<div className="bg-surface rounded-sm shadow-sm border border-border p-6">
 									<div className="flex items-center justify-between mb-6">

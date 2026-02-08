@@ -85,21 +85,21 @@ export default function LoginPage() {
       </title>
     </Head>
 
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-md w-full space-y-8">
+      <div className="min-h-screen flex items-center justify-center bg-app py-8 sm:py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-md w-full space-y-6 sm:space-y-8">
           <div>
-            <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
+            <h2 className="mt-2 sm:mt-6 text-center text-2xl sm:text-3xl font-extrabold text-text-1">
               {isSetupMode ? t('设置管理员密码') : t('管理员登录')}
             </h2>
-            <p className="mt-2 text-center text-sm text-gray-600">
+            <p className="mt-2 text-center text-sm text-text-2">
               {isSetupMode
                 ? t('首次使用，请设置管理员密码')
                 : t('登录后可进行文章管理操作')}
             </p>
           </div>
 
-          <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-            <div className="rounded-md shadow-sm -space-y-px">
+          <form className="mt-4 sm:mt-8 space-y-5" onSubmit={handleSubmit}>
+            <div className="rounded-md shadow-sm -space-y-px bg-surface border border-border">
               <div>
                 <label htmlFor="password" className="sr-only">
                   {t('密码')}
@@ -110,9 +110,9 @@ export default function LoginPage() {
                   type="password"
                   autoComplete={isSetupMode ? 'new-password' : 'current-password'}
                   required
-                  className={`appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 ${
+                  className={`appearance-none rounded-none relative block w-full px-3 py-2.5 border border-transparent border-b border-border placeholder-text-3 text-text-1 bg-surface ${
                     isSetupMode ? 'rounded-t-md' : 'rounded-md'
-                  } focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm`}
+                  } focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary focus:z-10 sm:text-sm`}
                   placeholder={t('请输入密码')}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -129,7 +129,7 @@ export default function LoginPage() {
                     type="password"
                     autoComplete="new-password"
                     required
-                    className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
+                    className="appearance-none rounded-none relative block w-full px-3 py-2.5 border border-transparent placeholder-text-3 text-text-1 bg-surface rounded-b-md focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary focus:z-10 sm:text-sm"
                     placeholder={t('请再次输入密码')}
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
@@ -146,7 +146,7 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={submitting}
-                className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="group relative w-full flex justify-center py-2.5 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-primary hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary/50 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {submitting
                   ? t('处理中...')
@@ -159,7 +159,7 @@ export default function LoginPage() {
             <div className="text-center">
               <Link
                 href="/"
-                className="text-sm text-gray-500 hover:text-gray-700"
+                className="text-sm text-text-3 hover:text-text-2"
               >
                 {t('以访客身份浏览')} →
               </Link>

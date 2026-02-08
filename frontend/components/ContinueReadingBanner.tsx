@@ -44,8 +44,11 @@ export function ContinueReadingBanner() {
   }
 
   return (
-    <div className="fixed top-24 right-4 z-40 animate-slide-in" ref={panelRef}>
-      <div className="bg-surface rounded-lg shadow-lg border border-border w-72">
+    <div
+      className="fixed top-24 left-1/2 -translate-x-1/2 lg:left-auto lg:translate-x-0 lg:right-4 z-40 animate-slide-in w-[calc(100vw-2rem)] max-w-sm lg:w-72"
+      ref={panelRef}
+    >
+      <div className="bg-surface rounded-lg shadow-lg border border-border w-full">
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
           <h3 className="font-semibold text-text-1 flex items-center gap-2">
             <IconClock className="h-4 w-4" />

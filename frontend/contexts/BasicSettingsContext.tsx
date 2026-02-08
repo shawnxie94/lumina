@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 
 import { basicSettingsApi, type BasicSettings } from "@/lib/api";
 
@@ -50,6 +50,7 @@ export function BasicSettingsProvider({
 }) {
 	const [basicSettings, setBasicSettings] =
 		useState<BasicSettings>(DEFAULT_BASIC_SETTINGS);
+	const basicSettingsRef = useRef<BasicSettings>(DEFAULT_BASIC_SETTINGS);
 	const [languagePreference, setLanguagePreferenceState] =
 		useState<LanguagePreference>(null);
 	const [language, setLanguage] = useState<"zh-CN" | "en">(
@@ -70,9 +71,9 @@ export function BasicSettingsProvider({
 			setBasicSettings(data);
 			return data;
 		} catch {
-			return basicSettings;
+			return basicSettingsRef.current;
 		}
-	}, [basicSettings]);
+	}, []);
 
 	const updateBasicSettings = useCallback(
 		(next: BasicSettings) => {
@@ -95,6 +96,10 @@ export function BasicSettingsProvider({
 			applyLanguage(storedPreference, data);
 		})();
 	}, [applyLanguage, refreshBasicSettings]);
+
+	useEffect(() => {
+		basicSettingsRef.current = basicSettings;
+	}, [basicSettings]);
 
 	useEffect(() => {
 		if (languagePreference) return;

@@ -106,10 +106,16 @@ export default function Home() {
   const [initialized, setInitialized] = useState(false);
   const [selectedArticleSlugs, setSelectedArticleSlugs] = useState<Set<string>>(new Set());
   const [showFilters, setShowFilters] = useState(false);
+  const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [jumpToPage, setJumpToPage] = useState('');
   const [batchCategoryId, setBatchCategoryId] = useState('');
+  const [isMobile, setIsMobile] = useState(false);
+  const [isAppending, setIsAppending] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const [confirmState, setConfirmState] = useState<{
     isOpen: boolean;
     title: string;
@@ -130,7 +136,11 @@ export default function Home() {
   const [createdStartDate, createdEndDate] = createdDateRange;
 
   const fetchArticles = async () => {
-    setLoading(true);
+    if (isAppending) {
+      setLoadingMore(true);
+    } else {
+      setLoading(true);
+    }
     try {
       const visibilityValue =
         visibilityFilter === 'visible' ? true : visibilityFilter === 'hidden' ? false : undefined;
@@ -148,12 +158,18 @@ export default function Home() {
         created_at_end: formatDate(createdEndDate) || undefined,
         sort_by: sortBy,
       });
-      setArticles(response.data);
       setTotal(response.pagination.total);
+      setArticles((prev) => {
+        const next = isAppending ? [...prev, ...response.data] : response.data;
+        setHasMore(next.length < response.pagination.total);
+        return next;
+      });
     } catch (error) {
       console.error('Failed to fetch articles:', error);
     } finally {
       setLoading(false);
+      setLoadingMore(false);
+      setIsAppending(false);
     }
   };
 
@@ -203,6 +219,8 @@ export default function Home() {
 
   useEffect(() => {
     if (!initialized) return;
+    setHasMore(true);
+    setIsAppending(false);
     if (debounceRef.current) {
       clearTimeout(debounceRef.current);
     }
@@ -254,6 +272,38 @@ export default function Home() {
     fetchAuthors();
     fetchSources();
   }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const media = window.matchMedia('(max-width: 1023px)');
+    const handleChange = (event?: MediaQueryListEvent) => {
+      const matches = event ? event.matches : media.matches;
+      setIsMobile(matches);
+      if (!matches) {
+        setShowMobileFilters(false);
+      }
+    };
+    handleChange();
+    media.addEventListener('change', handleChange);
+    return () => media.removeEventListener('change', handleChange);
+  }, []);
+
+  useEffect(() => {
+    if (!isMobile) return;
+    const node = loadMoreRef.current;
+    if (!node) return;
+    if (!hasMore || loadingMore || loading) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries[0]?.isIntersecting) return;
+        setIsAppending(true);
+        setPage((prev) => prev + 1);
+      },
+      { rootMargin: '200px' },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [isMobile, hasMore, loadingMore, loading]);
 
 
   const handleQuickDateChange = (option: QuickDateOption) => {
@@ -367,6 +417,127 @@ export default function Home() {
     isAdmin,
     visibilityFilter,
   ]);
+
+  const advancedFiltersBody = (
+    <>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+        <FilterInput
+          label={t('文章标题')}
+          value={searchTerm}
+          onChange={(value) => { setSearchTerm(value); setPage(1); }}
+          placeholder={t('模糊匹配标题')}
+        />
+        <FilterSelect
+          label={t('来源')}
+          value={sourceDomain}
+          onChange={(value) => { setSourceDomain(value); setPage(1); }}
+          options={[{ value: '', label: t('全部来源') }, ...sources.map((s) => ({ value: s, label: s }))]}
+        />
+        <FilterSelect
+          label={t('作者')}
+          value={author}
+          onChange={(value) => { setAuthor(value); setPage(1); }}
+          options={[{ value: '', label: t('全部作者') }, ...authors.map((a) => ({ value: a, label: a }))]}
+        />
+      </div>
+      {isMobile && (
+        <div className="grid grid-cols-1 gap-4 mb-4">
+          <FilterSelect
+            label={t('创建时间')}
+            value={quickDateFilter}
+            onChange={(value) => handleQuickDateChange(value as QuickDateOption)}
+            options={[
+              { value: '', label: t('全部') },
+              { value: '1d', label: t('1天内') },
+              { value: '3d', label: t('3天内') },
+              { value: '1w', label: t('1周内') },
+              { value: '1m', label: t('1个月') },
+              { value: '3m', label: t('3个月') },
+              { value: '6m', label: t('6个月') },
+              { value: '1y', label: t('1年内') },
+            ]}
+          />
+          {isAdmin && (
+            <FilterSelect
+              label={t('可见性')}
+              value={visibilityFilter}
+              onChange={(value) => { setVisibilityFilter(value); setPage(1); }}
+              options={[
+                { value: '', label: t('全部') },
+                { value: 'visible', label: t('可见') },
+                { value: 'hidden', label: t('隐藏') },
+              ]}
+            />
+          )}
+          <FilterSelect
+            label={t('排序')}
+            value={sortBy}
+            onChange={(value) => { setSortBy(value); setPage(1); }}
+            options={[
+              { value: 'published_at_desc', label: t('发表时间倒序') },
+              { value: 'created_at_desc', label: t('创建时间倒序') },
+            ]}
+          />
+        </div>
+      )}
+      <div className="hidden lg:grid grid-cols-1 md:grid-cols-3 gap-4 mb-2">
+        <div>
+          <label htmlFor="published-date-range" className="block text-sm text-text-2 mb-1.5">{t('发表时间')}</label>
+          <DateRangePicker
+            id="published-date-range"
+            value={toDayjsRange(publishedDateRange)}
+            onChange={(values) => {
+              const [start, end] = values || [];
+              setPublishedDateRange([start ? start.toDate() : null, end ? end.toDate() : null]);
+              setPage(1);
+            }}
+            className="w-full"
+          />
+        </div>
+        <div>
+          <label htmlFor="created-date-range" className="block text-sm text-text-2 mb-1.5">{t('创建时间')}</label>
+          <DateRangePicker
+            id="created-date-range"
+            value={toDayjsRange(createdDateRange)}
+            onChange={(values) => {
+              const [start, end] = values || [];
+              setCreatedDateRange([start ? start.toDate() : null, end ? end.toDate() : null]);
+              setQuickDateFilter('');
+              setPage(1);
+            }}
+            className="w-full"
+          />
+        </div>
+        <div className="hidden md:block" />
+      </div>
+    </>
+  );
+
+  const filterSummary = (
+    <div className="flex flex-wrap items-center gap-2">
+      {activeFilters.length === 0 ? (
+        <span className="text-sm text-text-3">{t('暂无筛选条件')}</span>
+      ) : (
+        activeFilters.map((filter) => (
+          <span
+            key={filter}
+            className="px-2 py-1 text-sm bg-primary-soft text-primary-ink rounded-xs"
+          >
+            {filter}
+          </span>
+        ))
+      )}
+      <button
+        type="button"
+        onClick={handleClearFilters}
+        className={`ml-auto px-3 py-1 text-sm rounded-lg transition ${activeFilters.length === 0 ? 'bg-gray-50 text-gray-400 cursor-not-allowed' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+        disabled={activeFilters.length === 0}
+      >
+        {t('清除筛选')}
+      </button>
+    </div>
+  );
+
 
   const handleDelete = (slug: string) => {
     setConfirmState({
@@ -500,6 +671,67 @@ export default function Home() {
     }
   };
 
+  const batchActions = (
+    <div className="mt-4 pt-4 border-t border-gray-200">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="text-sm text-gray-600">{t('已选')} {selectedArticleSlugs.size} {t('篇')}</span>
+          <button
+            onClick={handleExport}
+            className="px-3 py-1 text-sm rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition"
+          >
+            {t('导出选中')} ({selectedArticleSlugs.size})
+          </button>
+        </div>
+        {isAdmin && (
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={() => handleBatchVisibility(true)}
+              className="px-3 py-1 text-sm rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition"
+            >
+              {t('设为可见')}
+            </button>
+            <button
+              type="button"
+              onClick={() => handleBatchVisibility(false)}
+              className="px-3 py-1 text-sm rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition"
+            >
+              {t('设为隐藏')}
+            </button>
+            <div className="flex items-center gap-2">
+              <Select
+                value={batchCategoryId}
+                onChange={(value) => setBatchCategoryId(value)}
+                className="select-modern-antd"
+                popupClassName="select-modern-dropdown"
+                options={[
+                  { value: '', label: t('选择分类') },
+                  { value: '__clear__', label: t('清空分类') },
+                  ...categories.map((category) => ({ value: category.id, label: category.name })),
+                ]}
+              />
+              <button
+                type="button"
+                onClick={handleBatchCategory}
+                className="px-3 py-1 text-sm rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition"
+              >
+                {t('应用分类')}
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={handleBatchDelete}
+              className="px-3 py-1 text-sm rounded-sm text-text-2 hover:text-red-600 hover:bg-red-50 transition"
+            >
+              {t('批量删除')}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-app flex flex-col">
       <Head>
@@ -509,11 +741,45 @@ export default function Home() {
       </Head>
       <AppHeader />
 
+      <div className="lg:hidden border-b border-border bg-surface">
+        <div className="max-w-7xl mx-auto px-4 py-3">
+          <div className="flex items-center gap-2 overflow-x-auto">
+            <button
+              onClick={() => { setSelectedCategory(''); setPage(1); }}
+              className={`whitespace-nowrap px-3 py-1.5 text-sm rounded-full transition ${
+                selectedCategory === '' ? 'bg-primary-soft text-primary-ink' : 'bg-muted text-text-2'
+              }`}
+            >
+              {t('全部')} ({categoryStats.reduce((sum, c) => sum + c.article_count, 0)})
+            </button>
+            {categoryStats.map((category) => (
+              <button
+                key={category.id}
+                onClick={() => { setSelectedCategory(category.id); setPage(1); }}
+                className={`whitespace-nowrap px-3 py-1.5 text-sm rounded-full transition ${
+                  selectedCategory === category.id ? 'bg-primary-soft text-primary-ink' : 'bg-muted text-text-2'
+                }`}
+              >
+                {category.name} ({category.article_count})
+              </button>
+            ))}
+          </div>
+          <div className="pt-3">
+            {filterSummary}
+          </div>
+          {isAdmin && !isMobile && selectedArticleSlugs.size > 0 && (
+            <div className="pt-3">
+              {batchActions}
+            </div>
+          )}
+        </div>
+      </div>
+
       <div className="flex-1">
-        <div className="max-w-7xl mx-auto px-4 py-8">
-          <div className="flex gap-6">
-          <aside className={`flex-shrink-0 transition-all duration-300 ${sidebarCollapsed ? 'w-12' : 'w-56'}`}>
-            <div className="sticky top-4 bg-surface rounded-sm shadow-sm border border-border p-4 max-h-[calc(100vh-2rem)] overflow-y-auto">
+        <div className="max-w-7xl mx-auto px-4 py-6 sm:py-8">
+          <div className="flex flex-col lg:flex-row gap-6">
+          <aside className={`hidden lg:block flex-shrink-0 w-full transition-all duration-300 ${sidebarCollapsed ? 'lg:w-12' : 'lg:w-56'}`}>
+            <div className="bg-surface rounded-sm shadow-sm border border-border p-4 max-h-none overflow-visible lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">
               <div className="flex items-center justify-between mb-4">
                 {!sidebarCollapsed && (
                   <h2 className="font-semibold text-text-1 inline-flex items-center gap-2">
@@ -556,204 +822,77 @@ export default function Home() {
           </aside>
 
           <main className="flex-1">
-            <div className="bg-surface rounded-sm shadow-sm border border-border p-6 mb-6">
-              <div className="flex flex-wrap items-center justify-between gap-4">
-                <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setShowFilters(!showFilters)}
-                      className={`px-4 py-1 text-sm rounded-sm transition ${showFilters ? 'bg-primary-soft text-primary-ink' : 'bg-muted text-text-2 hover:bg-surface'}`}
-                    >
-                      <span className="inline-flex items-center gap-2">
-                        <IconSearch className="h-4 w-4" />
-                        <span>{t('高级筛选')}</span>
-                      </span>
-                    </button>
-                </div>
-                <div className="flex flex-wrap items-center justify-end gap-4">
-                  <FilterSelectInline
-                    label={`${t('创建时间')}：`}
-                    value={quickDateFilter}
-                    onChange={(value) => handleQuickDateChange(value as QuickDateOption)}
-                    options={[
-                      { value: '', label: t('全部') },
-                      { value: '1d', label: t('1天内') },
-                      { value: '3d', label: t('3天内') },
-                      { value: '1w', label: t('1周内') },
-                      { value: '1m', label: t('1个月') },
-                      { value: '3m', label: t('3个月') },
-                      { value: '6m', label: t('6个月') },
-                      { value: '1y', label: t('1年内') },
-                    ]}
-                  />
-                  {isAdmin && (
-                    <FilterSelectInline
-                      label={`${t('可见性')}：`}
-                      value={visibilityFilter}
-                      onChange={(value) => { setVisibilityFilter(value); setPage(1); }}
-                      options={[
-                        { value: '', label: t('全部') },
-                        { value: 'visible', label: t('可见') },
-                        { value: 'hidden', label: t('隐藏') },
-                      ]}
-                    />
-                  )}
-                  <FilterSelectInline
-                    label={`${t('排序')}：`}
-                    value={sortBy}
-                    onChange={(value) => { setSortBy(value); setPage(1); }}
-                    options={[
-                      { value: 'published_at_desc', label: t('发表时间倒序') },
-                      { value: 'created_at_desc', label: t('创建时间倒序') },
-                    ]}
-                  />
-                </div>
-              </div>
-
-              {showFilters && (
-                <div className="mt-4 pt-4 border-t border-border">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                    <FilterInput
-                      label={t('文章标题')}
-                      value={searchTerm}
-                      onChange={(value) => { setSearchTerm(value); setPage(1); }}
-                      placeholder={t('模糊匹配标题')}
-                    />
-                    <FilterSelect
-                      label={t('来源')}
-                      value={sourceDomain}
-                      onChange={(value) => { setSourceDomain(value); setPage(1); }}
-                      options={[{ value: '', label: t('全部来源') }, ...sources.map((s) => ({ value: s, label: s }))]}
-                    />
-                    <FilterSelect
-                      label={t('作者')}
-                      value={author}
-                      onChange={(value) => { setAuthor(value); setPage(1); }}
-                      options={[{ value: '', label: t('全部作者') }, ...authors.map((a) => ({ value: a, label: a }))]}
-                    />
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-2">
-                    <div>
-                      <label htmlFor="published-date-range" className="block text-sm text-text-2 mb-1.5">{t('发表时间')}</label>
-                      <DateRangePicker
-                        id="published-date-range"
-                        value={toDayjsRange(publishedDateRange)}
-                        onChange={(values) => {
-                          const [start, end] = values || [];
-                          setPublishedDateRange([start ? start.toDate() : null, end ? end.toDate() : null]);
-                          setPage(1);
-                        }}
-                        className="w-full"
-                      />
-                    </div>
-                    <div>
-                      <label htmlFor="created-date-range" className="block text-sm text-text-2 mb-1.5">{t('创建时间')}</label>
-                      <DateRangePicker
-                        id="created-date-range"
-                        value={toDayjsRange(createdDateRange)}
-                        onChange={(values) => {
-                          const [start, end] = values || [];
-                          setCreatedDateRange([start ? start.toDate() : null, end ? end.toDate() : null]);
-                          setQuickDateFilter('');
-                          setPage(1);
-                        }}
-                        className="w-full"
-                      />
-                    </div>
-                    <div className="hidden md:block" />
-                  </div>
-                </div>
-              )}
-
-              <div className="mt-4 pt-4 border-t border-border">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex flex-wrap gap-2">
-                    {activeFilters.length === 0 ? (
-                      <span className="text-sm text-text-3">{t('暂无筛选条件')}</span>
-                    ) : (
-                      activeFilters.map((filter) => (
-                        <span
-                          key={filter}
-                          className="px-2 py-1 text-sm bg-primary-soft text-primary-ink rounded-xs"
-                        >
-                          {filter}
-                        </span>
-                      ))
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={handleClearFilters}
-                      className={`px-3 py-1 text-sm rounded-lg transition ${activeFilters.length === 0 ? 'bg-gray-50 text-gray-400 cursor-not-allowed' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
-                      disabled={activeFilters.length === 0}
-                    >
-                      {t('清除筛选')}
-                    </button>
-                  </div>
-                </div>
-              </div>
-              {isAdmin && selectedArticleSlugs.size > 0 && (
-                <div className="mt-4 pt-4 border-t border-gray-200">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex flex-wrap items-center gap-3">
-                      <span className="text-sm text-gray-600">{t('已选')} {selectedArticleSlugs.size} {t('篇')}</span>
-                      <button
-                        onClick={handleExport}
-                        className="px-3 py-1 text-sm rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition"
-                      >
-                        {t('导出选中')} ({selectedArticleSlugs.size})
-                      </button>
-                    </div>
-                    {isAdmin && (
-                      <div className="flex flex-wrap items-center gap-3">
+            {!isMobile && (
+              <div className="bg-surface rounded-sm shadow-sm border border-border p-4 sm:p-6 mb-6">
+                {!isMobile && (
+                  <>
+                    <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                      <div className="flex items-center gap-2">
                         <button
-                          type="button"
-                          onClick={() => handleBatchVisibility(true)}
-                          className="px-3 py-1 text-sm rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition"
-                        >
-                          {t('设为可见')}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleBatchVisibility(false)}
-                          className="px-3 py-1 text-sm rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition"
-                        >
-                          {t('设为隐藏')}
-                        </button>
-                        <div className="flex items-center gap-2">
-                          <Select
-                            value={batchCategoryId}
-                            onChange={(value) => setBatchCategoryId(value)}
-                            className="select-modern-antd"
-                            popupClassName="select-modern-dropdown"
+                            type="button"
+                            onClick={() => setShowFilters(!showFilters)}
+                            className={`hidden lg:inline-flex px-4 py-1 text-sm rounded-sm transition ${showFilters ? 'bg-primary-soft text-primary-ink' : 'bg-muted text-text-2 hover:bg-surface'}`}
+                          >
+                            <span className="inline-flex items-center gap-2">
+                              <IconSearch className="h-4 w-4" />
+                              <span>{t('高级筛选')}</span>
+                            </span>
+                          </button>
+                      </div>
+                      <div className="hidden lg:flex flex-wrap items-center gap-4 lg:justify-end">
+                        <FilterSelectInline
+                          label={`${t('创建时间')}：`}
+                          value={quickDateFilter}
+                          onChange={(value) => handleQuickDateChange(value as QuickDateOption)}
+                          options={[
+                            { value: '', label: t('全部') },
+                            { value: '1d', label: t('1天内') },
+                            { value: '3d', label: t('3天内') },
+                            { value: '1w', label: t('1周内') },
+                            { value: '1m', label: t('1个月') },
+                            { value: '3m', label: t('3个月') },
+                            { value: '6m', label: t('6个月') },
+                            { value: '1y', label: t('1年内') },
+                          ]}
+                        />
+                        {isAdmin && (
+                          <FilterSelectInline
+                            label={`${t('可见性')}：`}
+                            value={visibilityFilter}
+                            onChange={(value) => { setVisibilityFilter(value); setPage(1); }}
                             options={[
-                              { value: '', label: t('选择分类') },
-                              { value: '__clear__', label: t('清空分类') },
-                              ...categories.map((category) => ({ value: category.id, label: category.name })),
+                              { value: '', label: t('全部') },
+                              { value: 'visible', label: t('可见') },
+                              { value: 'hidden', label: t('隐藏') },
                             ]}
                           />
-                          <button
-                            type="button"
-                          onClick={handleBatchCategory}
-                          className="px-3 py-1 text-sm rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition"
-                        >
-                            {t('应用分类')}
-                          </button>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={handleBatchDelete}
-                          className="px-3 py-1 text-sm rounded-sm text-text-2 hover:text-red-600 hover:bg-red-50 transition"
-                        >
-                          {t('批量删除')}
-                        </button>
+                        )}
+                        <FilterSelectInline
+                          label={`${t('排序')}：`}
+                          value={sortBy}
+                          onChange={(value) => { setSortBy(value); setPage(1); }}
+                          options={[
+                            { value: 'published_at_desc', label: t('发表时间倒序') },
+                            { value: 'created_at_desc', label: t('创建时间倒序') },
+                          ]}
+                        />
+                      </div>
+                    </div>
+
+                    {showFilters && (
+                      <div className="mt-4 pt-4 border-t border-border">
+                        {advancedFiltersBody}
                       </div>
                     )}
-                  </div>
-                </div>
-              )}
-            </div>
+
+                    <div className="mt-4 pt-4 border-t border-border">
+                      {filterSummary}
+                    </div>
+                  </>
+                )}
+                {isAdmin && !isMobile && selectedArticleSlugs.size > 0 && batchActions}
+              </div>
+            )}
 
             {loading ? (
               <div className="text-center py-12 text-gray-500">{t('加载中')}</div>
@@ -761,9 +900,9 @@ export default function Home() {
               <div className="text-center py-12 text-gray-500">{t('暂无文章')}</div>
              ) : (
                 <> 
-                  {isAdmin && (
+                  {isAdmin && !isMobile && (
                     <div className="mb-4">
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <input
                           type="checkbox"
                           checked={selectedArticleSlugs.size === articles.length}
@@ -781,9 +920,9 @@ export default function Home() {
                       <div
                         key={article.slug}
                         onClick={(event) => handleOpenArticle(event, article)}
-                        className={`bg-white rounded-lg shadow-sm p-6 hover:shadow-md transition relative cursor-pointer ${!article.is_visible && isAdmin ? 'opacity-60' : ''}`}
+                        className={`bg-white rounded-lg shadow-sm p-4 sm:p-6 hover:shadow-md transition relative cursor-pointer ${!article.is_visible && isAdmin ? 'opacity-60' : ''}`}
                       >
-                         {isAdmin && (
+                         {isAdmin && !isMobile && (
                            <div className="absolute top-3 right-3 flex items-center gap-1">
                             <IconButton
                               onClick={() => handleToggleVisibility(article.slug, article.is_visible)}
@@ -807,8 +946,8 @@ export default function Home() {
                             </IconButton>
                           </div>
                         )}
-                         <div className="flex gap-4">
-                           {isAdmin && (
+                         <div className="flex flex-col sm:flex-row gap-4">
+                           {isAdmin && !isMobile && (
                              <input
                                type="checkbox"
                                checked={selectedArticleSlugs.has(article.slug)}
@@ -817,7 +956,7 @@ export default function Home() {
                              />
                            )}
                           {article.top_image && (
-                            <div className="relative w-36 sm:w-40 aspect-square overflow-hidden rounded-lg bg-muted">
+                            <div className="relative w-full sm:w-40 aspect-video sm:aspect-square overflow-hidden rounded-lg bg-muted">
                               <img
                                 src={resolveMediaUrl(article.top_image)}
                                 alt={article.title}
@@ -828,7 +967,7 @@ export default function Home() {
                               </span>
                             </div>
                           )}
-                          <div className="flex-1 pr-6">
+                          <div className="flex-1 sm:pr-6">
                             <Link href={`/article/${article.slug}`}>
                               <h3 className="text-xl font-semibold text-gray-900 hover:text-blue-600 transition cursor-pointer">
                                 {article.title}
@@ -869,64 +1008,72 @@ export default function Home() {
                     ))}
                   </div>
 
-                <div className="mt-6 flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-sm text-gray-600">
-                    <span>{t('每页显示')}</span>
-                    <Select
-                      value={pageSize}
-                      onChange={(value) => { setPageSize(Number(value)); setPage(1); }}
-                      className="select-modern-antd"
-                      popupClassName="select-modern-dropdown"
-                      options={[
-                        { value: 10, label: '10' },
-                        { value: 20, label: '20' },
-                        { value: 50, label: '50' },
-                        { value: 100, label: '100' },
-                      ]}
-                    />
-                    <span>{t('条')}，{t('共')} {total} {t('条')}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      onClick={() => setPage((p) => Math.max(1, p - 1))}
-                      disabled={page === 1}
-                      variant="secondary"
-                      size="sm"
-                    >
-                      {t('上一页')}
-                    </Button>
-                    <span className="px-4 py-2 text-sm bg-surface border border-border rounded-sm text-text-2">
-                      {t('第')} {page} / {Math.ceil(total / pageSize) || 1} {t('页')}
-                    </span>
-                    <Button
-                      onClick={() => setPage((p) => p + 1)}
-                      disabled={articles.length < pageSize}
-                      variant="secondary"
-                      size="sm"
-                    >
-                      {t('下一页')}
-                    </Button>
-                    <div className="flex items-center gap-1 ml-2">
-                      <span className="text-sm text-text-2">{t('跳转')}</span>
-                      <input
-                        type="number"
-                        value={jumpToPage}
-                        onChange={(e) => setJumpToPage(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleJumpToPage()}
-                        className="w-16 px-2 py-1.5 text-sm border border-border rounded-sm focus:outline-none focus:ring-2 focus:ring-accent/20 text-center bg-surface"
-                        min={1}
-                        max={Math.ceil(total / pageSize) || 1}
+                {!isMobile && (
+                  <div className="mt-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                    <div className="flex flex-wrap items-center gap-2 text-sm text-gray-600">
+                      <span>{t('每页显示')}</span>
+                      <Select
+                        value={pageSize}
+                        onChange={(value) => { setPageSize(Number(value)); setPage(1); }}
+                        className="select-modern-antd"
+                        popupClassName="select-modern-dropdown"
+                        options={[
+                          { value: 10, label: '10' },
+                          { value: 20, label: '20' },
+                          { value: 50, label: '50' },
+                          { value: 100, label: '100' },
+                        ]}
                       />
+                      <span>{t('条')}，{t('共')} {total} {t('条')}</span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
                       <Button
-                        onClick={handleJumpToPage}
-                        variant="primary"
+                        onClick={() => setPage((p) => Math.max(1, p - 1))}
+                        disabled={page === 1}
+                        variant="secondary"
                         size="sm"
                       >
-                        {t('跳转')}
+                        {t('上一页')}
                       </Button>
+                      <span className="px-4 py-2 text-sm bg-surface border border-border rounded-sm text-text-2">
+                        {t('第')} {page} / {Math.ceil(total / pageSize) || 1} {t('页')}
+                      </span>
+                      <Button
+                        onClick={() => setPage((p) => p + 1)}
+                        disabled={articles.length < pageSize}
+                        variant="secondary"
+                        size="sm"
+                      >
+                        {t('下一页')}
+                      </Button>
+                      <div className="flex items-center gap-1 ml-2">
+                        <span className="text-sm text-text-2">{t('跳转')}</span>
+                        <input
+                          type="number"
+                          value={jumpToPage}
+                          onChange={(e) => setJumpToPage(e.target.value)}
+                          onKeyDown={(e) => e.key === 'Enter' && handleJumpToPage()}
+                          className="w-16 px-2 py-1.5 text-sm border border-border rounded-sm focus:outline-none focus:ring-2 focus:ring-accent/20 text-center bg-surface"
+                          min={1}
+                          max={Math.ceil(total / pageSize) || 1}
+                        />
+                        <Button
+                          onClick={handleJumpToPage}
+                          variant="primary"
+                          size="sm"
+                        >
+                          {t('跳转')}
+                        </Button>
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
+                {isMobile && (
+                  <div className="mt-6 text-center text-sm text-text-3">
+                    {loadingMore ? t('加载中...') : hasMore ? t('上拉加载更多') : t('没有更多了')}
+                    <div ref={loadMoreRef} className="h-6" />
+                  </div>
+                )}
               </>
             )}
           </main>
@@ -946,6 +1093,45 @@ export default function Home() {
         }}
         onCancel={() => setConfirmState((prev) => ({ ...prev, isOpen: false }))}
       />
+      {isMobile && (
+        <>
+          <button
+            onClick={() => {
+              setShowFilters(true);
+              setShowMobileFilters(true);
+            }}
+            className="fixed right-4 top-24 flex items-center justify-center w-10 h-10 rounded-full bg-surface border border-border shadow-lg text-text-2 hover:text-text-1 hover:bg-muted transition z-50"
+            title={t('高级筛选')}
+          >
+            <IconSearch className="h-4 w-4" />
+          </button>
+          {showMobileFilters && (
+            <div
+              className="fixed inset-0 z-50 bg-black/40 flex justify-end"
+              onClick={() => setShowMobileFilters(false)}
+            >
+              <div
+                className="h-full w-[86vw] max-w-sm bg-surface shadow-xl overflow-y-auto"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-surface">
+                  <span className="text-sm font-semibold text-text-1">
+                    {t('高级筛选')}
+                  </span>
+                  <button
+                    onClick={() => setShowMobileFilters(false)}
+                    className="text-text-3 hover:text-text-1 transition text-lg"
+                    aria-label={t('关闭')}
+                  >
+                    ×
+                  </button>
+                </div>
+                <div className="p-4">{advancedFiltersBody}</div>
+              </div>
+            </div>
+          )}
+        </>
+      )}
       <AppFooter />
       <BackToTop />
     </div>
