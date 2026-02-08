@@ -40,7 +40,6 @@ import {
 	IconLink,
 	IconList,
 	IconCopy,
-	IconDoc,
 	IconMoney,
 	IconNote,
 	IconPlug,
@@ -276,7 +275,7 @@ export default function AdminPage() {
 		useState<SettingSection>("monitoring");
 	const [aiSubSection, setAISubSection] = useState<AISubSection>("model-api");
 	const [monitoringSubSection, setMonitoringSubSection] =
-		useState<MonitoringSubSection>("tasks");
+		useState<MonitoringSubSection>("ai-usage");
 	const [commentSubSection, setCommentSubSection] =
 		useState<CommentSubSection>("keys");
 	const [modelAPIConfigs, setModelAPIConfigs] = useState<ModelAPIConfig[]>([]);
@@ -328,6 +327,13 @@ export default function AdminPage() {
 		activeSection === "monitoring" && monitoringSubSection === "comments";
 	const prevActiveSectionRef = useRef<SettingSection | null>(null);
 	const prevMonitoringSubSectionRef = useRef<MonitoringSubSection | null>(null);
+	const [collapsedSettings, setCollapsedSettings] = useState<{
+		ai: boolean;
+		comments: boolean;
+	}>({
+		ai: false,
+		comments: false,
+	});
 
 	const [showModelAPIModal, setShowModelAPIModal] = useState(false);
 	const [showModelAPITestModal, setShowModelAPITestModal] = useState(false);
@@ -434,49 +440,13 @@ export default function AdminPage() {
 
 	useEffect(() => {
 		if (typeof window === "undefined") return;
-		const storedSection = localStorage.getItem("settings_active_section");
-		const storedAiSubSection = localStorage.getItem("settings_ai_sub_section");
-		const storedMonitoringSubSection = localStorage.getItem(
-			"settings_monitoring_sub_section",
-		);
-		const storedCommentSubSection = localStorage.getItem(
-			"settings_comment_sub_section",
-		);
-		const storedPromptType = localStorage.getItem("settings_prompt_type");
-
-		if (
-			storedSection === "ai" ||
-			storedSection === "basic" ||
-			storedSection === "categories" ||
-			storedSection === "monitoring" ||
-			storedSection === "comments" ||
-			storedSection === "storage"
-		) {
-			setActiveSection(storedSection);
-			setPrimaryTab(
-				storedSection === "monitoring" ? "monitoring" : "settings",
-			);
-		}
-		if (
-			storedAiSubSection === "model-api" ||
-			storedAiSubSection === "prompt" ||
-			storedAiSubSection === "recommendations"
-		) {
-			setAISubSection(storedAiSubSection);
-		}
-		if (
-			storedMonitoringSubSection === "tasks" ||
-			storedMonitoringSubSection === "ai-usage" ||
-			storedMonitoringSubSection === "comments"
-		) {
-			setMonitoringSubSection(storedMonitoringSubSection);
-		}
-		if (storedCommentSubSection === "keys" || storedCommentSubSection === "filters") {
-			setCommentSubSection(storedCommentSubSection);
-		}
-		if (PROMPT_TYPES.some((type) => type.value === storedPromptType)) {
-			setSelectedPromptType(storedPromptType as PromptType);
-		}
+		return () => {
+			localStorage.removeItem("settings_active_section");
+			localStorage.removeItem("settings_ai_sub_section");
+			localStorage.removeItem("settings_monitoring_sub_section");
+			localStorage.removeItem("settings_comment_sub_section");
+			localStorage.removeItem("settings_prompt_type");
+		};
 	}, []);
 
 	useEffect(() => {
@@ -496,18 +466,6 @@ const { section, article_title: articleTitleParam } = router.query;
 		}
 	}, [router.isReady, router.query]);
 
-
-	useEffect(() => {
-		if (typeof window === "undefined") return;
-		localStorage.setItem("settings_active_section", activeSection);
-		localStorage.setItem("settings_ai_sub_section", aiSubSection);
-		localStorage.setItem(
-			"settings_monitoring_sub_section",
-			monitoringSubSection,
-		);
-		localStorage.setItem("settings_comment_sub_section", commentSubSection);
-		localStorage.setItem("settings_prompt_type", selectedPromptType);
-	}, [activeSection, aiSubSection, monitoringSubSection, commentSubSection, selectedPromptType]);
 
 	useEffect(() => {
 		if (settingsSections.has(activeSection)) {
@@ -1943,22 +1901,6 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 											<button
 												onClick={() => {
 													setActiveSection("monitoring");
-													setMonitoringSubSection("tasks");
-												}}
-												className={`w-full text-left px-4 py-3 rounded-sm transition ${
-													activeSection === "monitoring" && monitoringSubSection === "tasks"
-														? "bg-muted text-text-1"
-														: "text-text-2 hover:text-text-1 hover:bg-muted"
-												}`}
-											>
-												<span className="inline-flex items-center gap-2">
-													<IconList className="h-4 w-4" />
-													<span>{t("任务监控")}</span>
-												</span>
-											</button>
-											<button
-												onClick={() => {
-													setActiveSection("monitoring");
 													setMonitoringSubSection("ai-usage");
 												}}
 												className={`w-full text-left px-4 py-3 rounded-sm transition ${
@@ -1970,6 +1912,22 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 												<span className="inline-flex items-center gap-2">
 													<IconMoney className="h-4 w-4" />
 													<span>{t("模型记录/计量")}</span>
+												</span>
+											</button>
+											<button
+												onClick={() => {
+													setActiveSection("monitoring");
+													setMonitoringSubSection("tasks");
+												}}
+												className={`w-full text-left px-4 py-3 rounded-sm transition ${
+													activeSection === "monitoring" && monitoringSubSection === "tasks"
+														? "bg-muted text-text-1"
+														: "text-text-2 hover:text-text-1 hover:bg-muted"
+												}`}
+											>
+												<span className="inline-flex items-center gap-2">
+													<IconList className="h-4 w-4" />
+													<span>{t("任务监控")}</span>
 												</span>
 											</button>
 											<button
@@ -2017,112 +1975,181 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 													<span>{t("分类管理")}</span>
 												</span>
 											</button>
-											<button
-												onClick={() => setActiveSection("ai")}
-												className={`w-full text-left px-4 py-3 rounded-sm transition ${
+											<div
+												className={`w-full rounded-sm transition flex items-center ${
 													activeSection === "ai"
 														? "bg-muted text-text-1"
 														: "text-text-2 hover:text-text-1 hover:bg-muted"
 												}`}
 											>
-												<span className="inline-flex items-center gap-2">
+												<button
+													type="button"
+													onClick={() => {
+														setActiveSection("ai");
+														setAISubSection("model-api");
+														setCollapsedSettings((prev) => ({
+															...prev,
+															ai: false,
+														}));
+													}}
+													className="flex-1 text-left px-4 py-3 inline-flex items-center gap-2"
+												>
 													<IconRobot className="h-4 w-4" />
 													<span>{t("AI配置")}</span>
-												</span>
-											</button>
-											<button
-												onClick={() => {
-													setActiveSection("ai");
-													setAISubSection("model-api");
-												}}
-												className={`w-full text-left px-6 py-2 text-sm rounded-sm transition ${
-													activeSection === "ai" && aiSubSection === "model-api"
-														? "bg-muted text-text-1"
-														: "text-text-2 hover:text-text-1 hover:bg-muted"
-												}`}
-											>
-												<span className="inline-flex items-center gap-2">
-													<IconPlug className="h-4 w-4" />
-													<span>{t("模型API")}</span>
-												</span>
-											</button>
-											<button
-												onClick={() => {
-													setActiveSection("ai");
-													setAISubSection("prompt");
-												}}
-												className={`w-full text-left px-6 py-2 text-sm rounded-sm transition ${
-													activeSection === "ai" && aiSubSection === "prompt"
-														? "bg-muted text-text-1"
-														: "text-text-2 hover:text-text-1 hover:bg-muted"
-												}`}
-											>
-												<span className="inline-flex items-center gap-2">
-													<IconNote className="h-4 w-4" />
-													<span>{t("提示词")}</span>
-												</span>
-											</button>
-											<button
-												onClick={() => {
-													setActiveSection("ai");
-													setAISubSection("recommendations");
-												}}
-												className={`w-full text-left px-6 py-2 text-sm rounded-sm transition ${
-													activeSection === "ai" && aiSubSection === "recommendations"
-														? "bg-muted text-text-1"
-														: "text-text-2 hover:text-text-1 hover:bg-muted"
-												}`}
-											>
-												<span className="inline-flex items-center gap-2">
-													<IconDoc className="h-4 w-4" />
-													<span>{t("文章推荐")}</span>
-												</span>
-											</button>
-											<button
-												onClick={() => setActiveSection("comments")}
-												className={`w-full text-left px-4 py-3 rounded-sm transition ${
+												</button>
+												<button
+													type="button"
+													onClick={() => {
+														setCollapsedSettings((prev) => ({
+															...prev,
+															ai: !prev.ai,
+														}));
+													}}
+													className="px-3 py-3 text-current"
+													aria-label={collapsedSettings.ai ? t("展开") : t("收起")}
+												>
+													{collapsedSettings.ai ? (
+														<IconArrowDown className="h-4 w-4" />
+													) : (
+														<IconArrowUp className="h-4 w-4" />
+													)}
+												</button>
+											</div>
+											{!collapsedSettings.ai && (
+												<>
+													<button
+														onClick={() => {
+															setActiveSection("ai");
+															setAISubSection("model-api");
+														}}
+														className={`w-full text-left px-6 py-2 text-sm rounded-sm transition ${
+															activeSection === "ai" &&
+															aiSubSection === "model-api"
+																? "bg-muted text-text-1"
+																: "text-text-2 hover:text-text-1 hover:bg-muted"
+														}`}
+													>
+														<span className="inline-flex items-center gap-2">
+															<IconPlug className="h-4 w-4" />
+															<span>{t("模型API")}</span>
+														</span>
+													</button>
+													<button
+														onClick={() => {
+															setActiveSection("ai");
+															setAISubSection("prompt");
+														}}
+														className={`w-full text-left px-6 py-2 text-sm rounded-sm transition ${
+															activeSection === "ai" &&
+															aiSubSection === "prompt"
+																? "bg-muted text-text-1"
+																: "text-text-2 hover:text-text-1 hover:bg-muted"
+														}`}
+													>
+														<span className="inline-flex items-center gap-2">
+															<IconNote className="h-4 w-4" />
+															<span>{t("提示词")}</span>
+														</span>
+													</button>
+													<button
+														onClick={() => {
+															setActiveSection("ai");
+															setAISubSection("recommendations");
+														}}
+														className={`w-full text-left px-6 py-2 text-sm rounded-sm transition ${
+															activeSection === "ai" &&
+															aiSubSection === "recommendations"
+																? "bg-muted text-text-1"
+																: "text-text-2 hover:text-text-1 hover:bg-muted"
+														}`}
+													>
+														<span className="inline-flex items-center gap-2">
+															<IconTag className="h-4 w-4" />
+															<span>{t("文章推荐")}</span>
+														</span>
+													</button>
+												</>
+											)}
+											<div
+												className={`w-full rounded-sm transition flex items-center ${
 													activeSection === "comments"
 														? "bg-muted text-text-1"
 														: "text-text-2 hover:text-text-1 hover:bg-muted"
 												}`}
 											>
-												<span className="inline-flex items-center gap-2">
+												<button
+													type="button"
+													onClick={() => {
+														setActiveSection("comments");
+														setCommentSubSection("keys");
+														setCollapsedSettings((prev) => ({
+															...prev,
+															comments: false,
+														}));
+													}}
+													className="flex-1 text-left px-4 py-3 inline-flex items-center gap-2"
+												>
 													<IconFilter className="h-4 w-4" />
 													<span>{t("评论配置")}</span>
-												</span>
-											</button>
-											<button
-												onClick={() => {
-													setActiveSection("comments");
-													setCommentSubSection("keys");
-												}}
-												className={`w-full text-left px-6 py-2 text-sm rounded-sm transition ${
-													activeSection === "comments" && commentSubSection === "keys"
-														? "bg-muted text-text-1"
-														: "text-text-2 hover:text-text-1 hover:bg-muted"
-												}`}
-											>
-												<span className="inline-flex items-center gap-2">
-													<IconPlug className="h-4 w-4" />
-													<span>{t("登录密钥")}</span>
-												</span>
-											</button>
-											<button
-												onClick={() => {
-													setActiveSection("comments");
-													setCommentSubSection("filters");
-												}}
-												className={`w-full text-left px-6 py-2 text-sm rounded-sm transition ${
-													activeSection === "comments" && commentSubSection === "filters"
-														? "bg-muted text-text-1"
-														: "text-text-2 hover:text-text-1 hover:bg-muted"
-												}`}
-											>
-												<span className="inline-flex items-center gap-2">
-													<IconFilter className="h-4 w-4" />
-													<span>{t("过滤规则")}</span>
-												</span>
-											</button>
+												</button>
+												<button
+													type="button"
+													onClick={() => {
+														setCollapsedSettings((prev) => ({
+															...prev,
+															comments: !prev.comments,
+														}));
+													}}
+													className="px-3 py-3 text-current"
+													aria-label={
+														collapsedSettings.comments ? t("展开") : t("收起")
+													}
+												>
+													{collapsedSettings.comments ? (
+														<IconArrowDown className="h-4 w-4" />
+													) : (
+														<IconArrowUp className="h-4 w-4" />
+													)}
+												</button>
+											</div>
+											{!collapsedSettings.comments && (
+												<>
+													<button
+														onClick={() => {
+															setActiveSection("comments");
+															setCommentSubSection("keys");
+														}}
+														className={`w-full text-left px-6 py-2 text-sm rounded-sm transition ${
+															activeSection === "comments" &&
+															commentSubSection === "keys"
+																? "bg-muted text-text-1"
+																: "text-text-2 hover:text-text-1 hover:bg-muted"
+														}`}
+													>
+														<span className="inline-flex items-center gap-2">
+															<IconPlug className="h-4 w-4" />
+															<span>{t("登录密钥")}</span>
+														</span>
+													</button>
+													<button
+														onClick={() => {
+															setActiveSection("comments");
+															setCommentSubSection("filters");
+														}}
+														className={`w-full text-left px-6 py-2 text-sm rounded-sm transition ${
+															activeSection === "comments" &&
+															commentSubSection === "filters"
+																? "bg-muted text-text-1"
+																: "text-text-2 hover:text-text-1 hover:bg-muted"
+														}`}
+													>
+														<span className="inline-flex items-center gap-2">
+															<IconFilter className="h-4 w-4" />
+															<span>{t("过滤规则")}</span>
+														</span>
+													</button>
+												</>
+											)}
 											<button
 												onClick={() => setActiveSection("storage")}
 												className={`w-full text-left px-4 py-3 rounded-sm transition ${

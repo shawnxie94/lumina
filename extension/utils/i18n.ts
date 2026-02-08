@@ -60,8 +60,6 @@ const translations: Record<ExtensionLanguage, Record<string, string>> = {
 		采集失败: "Collection failed",
 		"无法在此页面运行，请刷新页面后重试":
 			"Cannot run on this page. Refresh and try again.",
-		"未能提取到文章内容，请确认页面已加载完成":
-			"Failed to extract content. Make sure the page is fully loaded.",
 		未命名: "Untitled",
 		"提取内容时出错，请刷新页面后重试":
 			"Extraction failed. Refresh and try again.",

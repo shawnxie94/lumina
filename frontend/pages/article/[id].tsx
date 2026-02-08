@@ -1714,17 +1714,11 @@ export default function ArticleDetailPage() {
   };
 
   const handleTopImagePaste = (event: React.ClipboardEvent<HTMLInputElement>) => {
-    const target = event.currentTarget;
     const text = event.clipboardData?.getData('text/plain') || '';
     if (text.trim()) {
+      event.preventDefault();
       setEditTopImage(text.trim());
-      return;
     }
-    window.setTimeout(() => {
-      if (target?.value !== undefined) {
-        setEditTopImage(target.value);
-      }
-    }, 0);
   };
 
   const handleDeleteNoteContent = async () => {
@@ -2967,7 +2961,6 @@ export default function ArticleDetailPage() {
                     value={editTopImage}
                     onChange={(e) => setEditTopImage(e.target.value)}
                     onPaste={handleTopImagePaste}
-                    onInput={(e) => setEditTopImage(e.currentTarget.value)}
                     className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     placeholder={t("输入图片 URL")}
                   />

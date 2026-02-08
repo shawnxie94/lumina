@@ -18,7 +18,7 @@ import ConfirmModal from '@/components/ConfirmModal';
 import IconButton from '@/components/IconButton';
 import { useToast } from '@/components/Toast';
 import { BackToTop } from '@/components/BackToTop';
-import { IconEye, IconEyeOff, IconGlobe, IconSearch, IconTag, IconTrash } from '@/components/icons';
+import { IconEye, IconEyeOff, IconSearch, IconTag, IconTrash } from '@/components/icons';
 import { useAuth } from '@/contexts/AuthContext';
 import { useBasicSettings } from '@/contexts/BasicSettingsContext';
 import { useI18n } from '@/lib/i18n';
@@ -38,6 +38,12 @@ const toDayjsRange = (range: [Date | null, Date | null]): [Dayjs | null, Dayjs |
   range[0] ? dayjs(range[0]) : null,
   range[1] ? dayjs(range[1]) : null,
 ];
+
+const getArticleLanguageTag = (article: Article): string => {
+  const sample = `${article.title || ''} ${article.summary || ''}`;
+  const hasChinese = /[\u4e00-\u9fff]/.test(sample);
+  return hasChinese ? '中文' : '英文';
+};
 
 
 const getDateRangeFromQuickOption = (option: QuickDateOption): [Date | null, Date | null] => {
@@ -531,7 +537,7 @@ export default function Home() {
                       selectedCategory === '' ? 'bg-primary-soft text-primary-ink' : 'hover:bg-muted'
                     }`}
                   >
-                    {t('全部文章')} ({categoryStats.reduce((sum, c) => sum + c.article_count, 0)})
+                    {t('全部内容')} ({categoryStats.reduce((sum, c) => sum + c.article_count, 0)})
                   </button>
                   {categoryStats.map((category) => (
                     <button
@@ -811,11 +817,16 @@ export default function Home() {
                              />
                            )}
                           {article.top_image && (
-                            <img
-                              src={article.top_image}
-                              alt={article.title}
-                              className="w-32 h-32 object-cover rounded-lg"
-                            />
+                            <div className="relative w-36 sm:w-40 aspect-square overflow-hidden rounded-lg bg-muted">
+                              <img
+                                src={article.top_image}
+                                alt={article.title}
+                                className="absolute inset-0 h-full w-full object-cover"
+                              />
+                              <span className="absolute left-2 top-2 rounded-sm bg-black/60 px-2 py-0.5 text-xs text-white">
+                                {getArticleLanguageTag(article)}
+                              </span>
+                            </div>
                           )}
                           <div className="flex-1 pr-6">
                             <Link href={`/article/${article.slug}`}>
@@ -835,12 +846,6 @@ export default function Home() {
                                    {article.category.name}
                                  </span>
                                )}
-                                {article.source_domain && (
-                                  <span className="px-2 py-1 bg-gray-100 rounded text-gray-600 inline-flex items-center gap-1">
-                                    <IconGlobe className="h-3.5 w-3.5" />
-                                    {article.source_domain}
-                                  </span>
-                                )}
                                {article.author && <span>{t('作者')}: {article.author}</span>}
                                <span>
                                 {t('发表时间')}：
