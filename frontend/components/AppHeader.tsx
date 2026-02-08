@@ -16,6 +16,7 @@ import {
   IconMoon,
   IconMonitor,
   IconTrash,
+  IconGlobe,
 } from '@/components/icons';
 
 const ERROR_PAGE_SIZE = 50;
@@ -403,10 +404,10 @@ export default function AppHeader() {
               <button
                 type="button"
                 onClick={() => setLanguageMenuOpen((prev) => !prev)}
-                className="flex items-center gap-1 px-3 py-1 rounded-sm text-sm text-text-3 hover:text-text-1 hover:bg-muted transition"
+                className="flex items-center justify-center w-8 h-8 rounded-sm text-text-3 hover:text-text-1 hover:bg-muted transition"
                 title={t('语言')}
               >
-                <span>{t('语言')}</span>
+                <IconGlobe className="h-4 w-4" />
               </button>
               {languageMenuOpen && (
                 <div className="absolute right-0 mt-2 w-40 rounded-md border border-border bg-surface shadow-md p-1 z-10">

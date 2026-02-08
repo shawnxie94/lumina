@@ -13,7 +13,7 @@ import IconButton from '@/components/IconButton';
 import { useToast } from '@/components/Toast';
 import ConfirmModal from '@/components/ConfirmModal';
 import { BackToTop } from '@/components/BackToTop';
-import { IconBolt, IconBook, IconCopy, IconDoc, IconEdit, IconEye, IconEyeOff, IconLink, IconList, IconNote, IconRefresh, IconRobot, IconTrash, IconCheck, IconReply, IconChevronDown, IconChevronUp, IconTag } from '@/components/icons';
+import { IconBolt, IconBook, IconCopy, IconDoc, IconEdit, IconEye, IconEyeOff, IconLink, IconList, IconNote, IconRefresh, IconRobot, IconTrash, IconCheck, IconReply, IconChevronDown, IconChevronUp, IconTag, IconGlobe } from '@/components/icons';
 import { useAuth } from '@/contexts/AuthContext';
 import { useBasicSettings } from '@/contexts/BasicSettingsContext';
 import { useReading } from '@/contexts/ReadingContext';
@@ -1987,9 +1987,10 @@ export default function ArticleDetailPage() {
                     {article.content_trans && (
                       <button
                         onClick={() => setShowTranslation(!showTranslation)}
-                        className="flex items-center justify-center w-8 h-8 rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition text-base"
+                        className="flex items-center justify-center w-8 h-8 rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition"
+                        title={showTranslation ? t('原') : t('译')}
                       >
-                        {showTranslation ? t('原') : t('译')}
+                        <IconGlobe className="h-4 w-4" />
                       </button>
                     )}
                     <button

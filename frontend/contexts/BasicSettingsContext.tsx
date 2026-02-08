@@ -27,6 +27,22 @@ const BasicSettingsContext = createContext<BasicSettingsContextType | undefined>
 	undefined,
 );
 
+const getSystemLanguage = (): "zh-CN" | "en" | null => {
+	if (typeof window === "undefined") return null;
+	const browserLang = navigator.language?.toLowerCase() || "";
+	if (browserLang.startsWith("zh")) return "zh-CN";
+	if (browserLang.startsWith("en")) return "en";
+	return null;
+};
+
+const resolveLanguage = (
+	preference: LanguagePreference,
+	settings: BasicSettings,
+): "zh-CN" | "en" => {
+	if (preference) return preference;
+	return getSystemLanguage() || settings.default_language;
+};
+
 export function BasicSettingsProvider({
 	children,
 }: {
@@ -42,7 +58,7 @@ export function BasicSettingsProvider({
 
 	const applyLanguage = useCallback(
 		(nextPreference: LanguagePreference, settings: BasicSettings) => {
-			const resolved = nextPreference || settings.default_language;
+			const resolved = resolveLanguage(nextPreference, settings);
 			setLanguage(resolved);
 		},
 		[],
@@ -82,7 +98,7 @@ export function BasicSettingsProvider({
 
 	useEffect(() => {
 		if (languagePreference) return;
-		setLanguage(basicSettings.default_language);
+		setLanguage(resolveLanguage(null, basicSettings));
 	}, [basicSettings.default_language, languagePreference]);
 
 	const setLanguagePreference = useCallback(
@@ -91,7 +107,7 @@ export function BasicSettingsProvider({
 			if (next === "system") {
 				localStorage.removeItem(LANGUAGE_STORAGE_KEY);
 				setLanguagePreferenceState(null);
-				setLanguage(basicSettings.default_language);
+				setLanguage(resolveLanguage(null, basicSettings));
 				return;
 			}
 			localStorage.setItem(LANGUAGE_STORAGE_KEY, next);
