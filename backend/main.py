@@ -19,6 +19,7 @@ from models import (
     Article,
     AITask,
     AIUsageLog,
+    ArticleEmbedding,
     ModelAPIConfig,
     PromptConfig,
     ArticleComment,
@@ -58,6 +59,8 @@ if not logger.handlers:
     logging.basicConfig(level=logging.INFO)
 
 INTERNAL_API_TOKEN = os.getenv("INTERNAL_API_TOKEN", "")
+SIMILAR_ARTICLE_CANDIDATE_LIMIT = 500
+CATEGORY_SIMILARITY_BOOST = 0.05
 
 
 def log_event(event: str, request_id: str, **fields) -> None:
@@ -282,6 +285,7 @@ class ModelAPITestRequest(BaseModel):
 class ModelAPIModelsRequest(BaseModel):
     base_url: str
     api_key: str
+    provider: Optional[str] = None
 
 
 class ExportRequest(BaseModel):
@@ -292,7 +296,9 @@ class ModelAPIConfigBase(BaseModel):
     name: str
     base_url: str
     api_key: str
+    provider: str = "openai"
     model_name: str = "gpt-4o"
+    model_type: str = "general"
     price_input_per_1k: Optional[float] = None
     price_output_per_1k: Optional[float] = None
     currency: Optional[str] = None
@@ -345,6 +351,11 @@ class StorageSettingsUpdate(BaseModel):
     media_compress_threshold: Optional[int] = None
     media_max_dim: Optional[int] = None
     media_webp_quality: Optional[int] = None
+
+
+class RecommendationSettingsUpdate(BaseModel):
+    recommendations_enabled: Optional[bool] = None
+    recommendation_model_config_id: Optional[str] = None
 
 
 class MediaIngestRequest(BaseModel):
@@ -514,6 +525,44 @@ async def update_storage_settings(
         admin.media_max_dim = max(600, payload.media_max_dim)
     if payload.media_webp_quality is not None:
         admin.media_webp_quality = min(95, max(30, payload.media_webp_quality))
+    admin.updated_at = now_str()
+    db.commit()
+    db.refresh(admin)
+    return {"success": True}
+
+
+# ============ 文章推荐配置 ============
+
+
+@app.get("/api/settings/recommendations")
+async def get_recommendation_settings(
+    _: bool = Depends(get_admin_or_internal),
+    db: Session = Depends(get_db),
+):
+    admin = get_admin_settings(db)
+    if admin is None:
+        raise HTTPException(status_code=404, detail="未初始化管理员设置")
+    return {
+        "recommendations_enabled": bool(admin.recommendations_enabled),
+        "recommendation_model_config_id": admin.recommendation_model_config_id or "",
+    }
+
+
+@app.put("/api/settings/recommendations")
+async def update_recommendation_settings(
+    payload: RecommendationSettingsUpdate,
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
+    admin = get_admin_settings(db)
+    if admin is None:
+        raise HTTPException(status_code=404, detail="未初始化管理员设置")
+    if payload.recommendations_enabled is not None:
+        admin.recommendations_enabled = bool(payload.recommendations_enabled)
+    if payload.recommendation_model_config_id is not None:
+        admin.recommendation_model_config_id = (
+            payload.recommendation_model_config_id or ""
+        )
     admin.updated_at = now_str()
     db.commit()
     db.refresh(admin)
@@ -795,6 +844,105 @@ async def get_article(
         if next_article
         else None,
     }
+
+
+@app.get("/api/articles/{article_slug}/similar")
+async def get_similar_articles(
+    article_slug: str,
+    limit: int = 4,
+    db: Session = Depends(get_db),
+    is_admin: bool = Depends(check_is_admin),
+):
+    admin = get_admin_settings(db)
+    if admin and not bool(admin.recommendations_enabled):
+        return {"status": "disabled", "items": []}
+
+    article = article_service.get_article_by_slug(db, article_slug)
+    if not article:
+        raise HTTPException(status_code=404, detail="文章不存在")
+
+    if not is_admin and not article.is_visible:
+        raise HTTPException(status_code=404, detail="文章不存在")
+
+    embedding = (
+        db.query(ArticleEmbedding)
+        .filter(ArticleEmbedding.article_id == article.id)
+        .first()
+    )
+    if not embedding:
+        article_service.enqueue_task(
+            db,
+            task_type="process_article_embedding",
+            article_id=article.id,
+            content_type="embedding",
+        )
+        return {"status": "pending", "items": []}
+
+    try:
+        base_vector = json.loads(embedding.embedding)
+    except Exception:
+        return {"status": "pending", "items": []}
+
+    query = (
+        db.query(ArticleEmbedding, Article)
+        .join(Article, ArticleEmbedding.article_id == Article.id)
+        .filter(ArticleEmbedding.article_id != article.id)
+        .filter(ArticleEmbedding.embedding.isnot(None))
+        .filter(ArticleEmbedding.model == embedding.model)
+    )
+    if not is_admin:
+        query = query.filter(Article.is_visible == True)
+
+    candidates = (
+        query.order_by(Article.created_at.desc())
+        .limit(SIMILAR_ARTICLE_CANDIDATE_LIMIT)
+        .all()
+    )
+
+    scored = []
+    base_category_id = article.category_id
+    for record, candidate_article in candidates:
+        try:
+            vector = json.loads(record.embedding)
+        except Exception:
+            continue
+        score = article_service.cosine_similarity(base_vector, vector)
+        if base_category_id and candidate_article.category_id == base_category_id:
+            score += CATEGORY_SIMILARITY_BOOST
+        scored.append((score, candidate_article))
+
+    scored.sort(key=lambda item: item[0], reverse=True)
+    items = []
+    for _, candidate_article in scored[: max(0, limit)]:
+        items.append(
+            {
+                "id": candidate_article.id,
+                "slug": candidate_article.slug,
+                "title": candidate_article.title,
+                "published_at": candidate_article.published_at,
+                "created_at": candidate_article.created_at,
+            }
+        )
+    return {"status": "ready", "items": items}
+
+
+@app.post("/api/articles/{article_slug}/embedding")
+async def regenerate_article_embedding(
+    article_slug: str,
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
+    article = article_service.get_article_by_slug(db, article_slug)
+    if not article:
+        raise HTTPException(status_code=404, detail="文章不存在")
+
+    task_id = article_service.enqueue_task(
+        db,
+        task_type="process_article_embedding",
+        article_id=article.id,
+        content_type="embedding",
+    )
+    return {"success": True, "task_id": task_id}
 
 
 @app.get("/api/articles/{article_slug}/comments")
@@ -1905,7 +2053,9 @@ async def get_model_api_configs(
             "name": c.name,
             "base_url": c.base_url,
             "api_key": c.api_key,
+            "provider": c.provider or "openai",
             "model_name": c.model_name,
+            "model_type": c.model_type or "general",
             "price_input_per_1k": c.price_input_per_1k,
             "price_output_per_1k": c.price_output_per_1k,
             "currency": c.currency,
@@ -1934,7 +2084,9 @@ async def get_model_api_config(
         "name": config.name,
         "base_url": config.base_url,
         "api_key": config.api_key,
+        "provider": config.provider or "openai",
         "model_name": config.model_name,
+        "model_type": config.model_type or "general",
         "price_input_per_1k": config.price_input_per_1k,
         "price_output_per_1k": config.price_output_per_1k,
         "currency": config.currency,
@@ -1967,7 +2119,9 @@ async def create_model_api_config(
             "name": new_config.name,
             "base_url": new_config.base_url,
             "api_key": new_config.api_key,
+            "provider": new_config.provider or "openai",
             "model_name": new_config.model_name,
+            "model_type": new_config.model_type or "general",
             "price_input_per_1k": new_config.price_input_per_1k,
             "price_output_per_1k": new_config.price_output_per_1k,
             "currency": new_config.currency,
@@ -2005,7 +2159,9 @@ async def update_model_api_config(
         existing_config.name = config.name
         existing_config.base_url = config.base_url
         existing_config.api_key = config.api_key
+        existing_config.provider = config.provider or "openai"
         existing_config.model_name = config.model_name
+        existing_config.model_type = config.model_type or "general"
         existing_config.price_input_per_1k = config.price_input_per_1k
         existing_config.price_output_per_1k = config.price_output_per_1k
         existing_config.currency = config.currency
@@ -2020,7 +2176,9 @@ async def update_model_api_config(
             "name": existing_config.name,
             "base_url": existing_config.base_url,
             "api_key": existing_config.api_key,
+            "provider": existing_config.provider or "openai",
             "model_name": existing_config.model_name,
+            "model_type": existing_config.model_type or "general",
             "price_input_per_1k": existing_config.price_input_per_1k,
             "price_output_per_1k": existing_config.price_output_per_1k,
             "currency": existing_config.currency,
@@ -2071,30 +2229,68 @@ async def test_model_api_config(
         max_tokens = payload.max_tokens if payload and payload.max_tokens else 200
 
         async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"{config.base_url}/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {config.api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": config.model_name,
-                    "messages": [{"role": "user", "content": prompt}],
-                    "max_tokens": max_tokens,
-                    "temperature": 0.2,
-                },
-                timeout=10.0,
-            )
+            is_vector = (config.model_type or "general") == "vector"
+            provider = (config.provider or "openai").lower()
+            if is_vector:
+                if provider == "jina":
+                    jina_base = config.base_url.rstrip("/")
+                    if not jina_base.endswith("/v1"):
+                        jina_base = f"{jina_base}/v1"
+                    response = await client.post(
+                        f"{jina_base}/embeddings",
+                        headers={
+                            "Authorization": f"Bearer {config.api_key}",
+                            "Content-Type": "application/json",
+                            "Accept": "application/json",
+                        },
+                        json={
+                            "model": config.model_name,
+                            "input": [prompt],
+                        },
+                        timeout=10.0,
+                    )
+                else:
+                    response = await client.post(
+                        f"{config.base_url}/embeddings",
+                        headers={
+                            "Authorization": f"Bearer {config.api_key}",
+                            "Content-Type": "application/json",
+                        },
+                        json={
+                            "model": config.model_name,
+                            "input": prompt,
+                        },
+                        timeout=10.0,
+                    )
+            else:
+                response = await client.post(
+                    f"{config.base_url}/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {config.api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": config.model_name,
+                        "messages": [{"role": "user", "content": prompt}],
+                        "max_tokens": max_tokens,
+                        "temperature": 0.2,
+                    },
+                    timeout=10.0,
+                )
 
             if response.status_code in [200, 201]:
                 content = ""
                 try:
                     data = response.json()
-                    content = (
-                        data.get("choices", [{}])[0]
-                        .get("message", {})
-                        .get("content", "")
-                    )
+                    if (config.model_type or "general") == "vector":
+                        embedding = (data.get("data") or [{}])[0].get("embedding") or []
+                        content = f"embedding维度: {len(embedding)}"
+                    else:
+                        content = (
+                            data.get("choices", [{}])[0]
+                            .get("message", {})
+                            .get("content", "")
+                        )
                 except Exception:
                     content = response.text
                 return {
@@ -2124,6 +2320,9 @@ async def fetch_model_api_models(
         import httpx
 
         base_url = payload.base_url.rstrip("/")
+        provider = (payload.provider or "openai").lower()
+        if provider == "jina":
+            return {"success": True, "models": [], "raw_response": "jina"}
         async with httpx.AsyncClient() as client:
             response = await client.get(
                 f"{base_url}/models",

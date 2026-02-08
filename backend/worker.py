@@ -163,6 +163,12 @@ async def run_task_async(task: AITask) -> None:
         )
         return
 
+    if task.task_type == "process_article_embedding":
+        if not article_id:
+            raise ValueError("缺少文章ID")
+        await service.process_article_embedding(article_id)
+        return
+
     raise ValueError(f"未知任务类型: {task.task_type}")
 
 

@@ -40,6 +40,7 @@ import {
 	IconLink,
 	IconList,
 	IconCopy,
+	IconDoc,
 	IconMoney,
 	IconNote,
 	IconPlug,
@@ -64,7 +65,9 @@ import {
 	commentApi,
 	commentSettingsApi,
 	mediaApi,
+	recommendationSettingsApi,
 	storageSettingsApi,
+	type RecommendationSettings,
 	type CommentListResponse,
 	type CommentSettings,
 	type StorageSettings,
@@ -72,8 +75,13 @@ import {
 	type PromptConfig,
 } from "@/lib/api";
 
-type SettingSection = "ai" | "categories" | "monitoring" | "comments" | "storage";
-type AISubSection = "model-api" | "prompt";
+type SettingSection =
+	| "ai"
+	| "categories"
+	| "monitoring"
+	| "comments"
+	| "storage";
+type AISubSection = "model-api" | "prompt" | "recommendations";
 type MonitoringSubSection = "tasks" | "ai-usage" | "comments";
 type CommentSubSection = "keys" | "filters";
 type PromptType =
@@ -273,6 +281,7 @@ export default function AdminPage() {
 		taskStatusFilter || taskTypeFilter || taskArticleTitleFilter,
 	);
 
+
 	const [usageLogs, setUsageLogs] = useState<AIUsageLogItem[]>([]);
 	const [usageSummary, setUsageSummary] = useState<
 		AIUsageSummaryResponse["summary"] | null
@@ -303,7 +312,6 @@ export default function AdminPage() {
 	const prevMonitoringSubSectionRef = useRef<MonitoringSubSection | null>(null);
 
 	const [showModelAPIModal, setShowModelAPIModal] = useState(false);
-	const [showModelAPIAdvanced, setShowModelAPIAdvanced] = useState(false);
 	const [showModelAPITestModal, setShowModelAPITestModal] = useState(false);
 	const [showPromptModal, setShowPromptModal] = useState(false);
 	const [showCategoryModal, setShowCategoryModal] = useState(false);
@@ -325,10 +333,19 @@ export default function AdminPage() {
 		media_max_dim: 2000,
 		media_webp_quality: 80,
 	});
+	const [recommendationSettings, setRecommendationSettings] =
+		useState<RecommendationSettings>({
+			recommendations_enabled: false,
+			recommendation_model_config_id: "",
+		});
 	const [commentSettingsLoading, setCommentSettingsLoading] = useState(false);
 	const [commentSettingsSaving, setCommentSettingsSaving] = useState(false);
 	const [storageSettingsLoading, setStorageSettingsLoading] = useState(false);
 	const [storageSettingsSaving, setStorageSettingsSaving] = useState(false);
+	const [recommendationSettingsLoading, setRecommendationSettingsLoading] =
+		useState(false);
+	const [recommendationSettingsSaving, setRecommendationSettingsSaving] =
+		useState(false);
 	const [storageCleanupLoading, setStorageCleanupLoading] = useState(false);
 	const [commentValidationResult, setCommentValidationResult] = useState<{
 		ok: boolean;
@@ -405,11 +422,16 @@ export default function AdminPage() {
 			storedSection === "ai" ||
 			storedSection === "categories" ||
 			storedSection === "monitoring" ||
-			storedSection === "comments"
+			storedSection === "comments" ||
+			storedSection === "storage"
 		) {
 			setActiveSection(storedSection);
 		}
-		if (storedAiSubSection === "model-api" || storedAiSubSection === "prompt") {
+		if (
+			storedAiSubSection === "model-api" ||
+			storedAiSubSection === "prompt" ||
+			storedAiSubSection === "recommendations"
+		) {
 			setAISubSection(storedAiSubSection);
 		}
 		if (
@@ -539,7 +561,9 @@ const { section, article_title: articleTitleParam } = router.query;
 		name: "",
 		base_url: "https://api.openai.com/v1",
 		api_key: "",
+		provider: "openai",
 		model_name: "gpt-4o",
+		model_type: "general",
 		price_input_per_1k: "",
 		price_output_per_1k: "",
 		currency: "USD",
@@ -567,6 +591,18 @@ const { section, article_title: articleTitleParam } = router.query;
 	const [modelOptionsLoading, setModelOptionsLoading] = useState(false);
 	const [modelOptionsError, setModelOptionsError] = useState("");
 	const [modelNameManual, setModelNameManual] = useState(false);
+	const [showModelAPIAdvanced, setShowModelAPIAdvanced] = useState(false);
+	const [modelCategory, setModelCategory] =
+		useState<"general" | "vector">("general");
+
+	const filteredModelAPIConfigs = useMemo(() => {
+		const isVector = (config: ModelAPIConfig) =>
+			(config.model_type || "general") === "vector";
+		if (modelCategory === "vector") {
+			return modelAPIConfigs.filter(isVector);
+		}
+		return modelAPIConfigs.filter((config) => !isVector(config));
+	}, [modelAPIConfigs, modelCategory]);
 	const [modelAPITestConfig, setModelAPITestConfig] =
 		useState<ModelAPIConfig | null>(null);
 	const [modelAPITestPrompt, setModelAPITestPrompt] = useState("");
@@ -772,6 +808,32 @@ const { section, article_title: articleTitleParam } = router.query;
 		}
 	};
 
+	const fetchRecommendationSettings = async () => {
+		setRecommendationSettingsLoading(true);
+		try {
+			const data = await recommendationSettingsApi.getSettings();
+			setRecommendationSettings(data);
+		} catch (error) {
+			console.error("Failed to fetch recommendation settings:", error);
+			showToast("文章推荐配置加载失败", "error");
+		} finally {
+			setRecommendationSettingsLoading(false);
+		}
+	};
+
+	const handleSaveRecommendationSettings = async () => {
+		setRecommendationSettingsSaving(true);
+		try {
+			await recommendationSettingsApi.updateSettings(recommendationSettings);
+			showToast("文章推荐配置已保存");
+		} catch (error) {
+			console.error("Failed to save recommendation settings:", error);
+			showToast("文章推荐配置保存失败", "error");
+		} finally {
+			setRecommendationSettingsSaving(false);
+		}
+	};
+
 	const handleCleanupMedia = async () => {
 		setStorageCleanupLoading(true);
 		try {
@@ -918,8 +980,11 @@ const { section, article_title: articleTitleParam } = router.query;
 		if (activeSection === "ai") {
 			if (aiSubSection === "model-api") {
 				fetchModelAPIConfigs();
-			} else {
+			} else if (aiSubSection === "prompt") {
 				fetchPromptConfigs();
+			} else {
+				fetchRecommendationSettings();
+				fetchModelAPIConfigs();
 			}
 			return;
 		}
@@ -1039,12 +1104,15 @@ const { section, article_title: articleTitleParam } = router.query;
 	]);
 
 	const handleCreateModelAPINew = () => {
+		const nextModelType = modelCategory === "vector" ? "vector" : "general";
 		setEditingModelAPIConfig(null);
 		setModelAPIFormData({
 			name: "",
 			base_url: "https://api.openai.com/v1",
 			api_key: "",
+			provider: "openai",
 			model_name: "gpt-4o",
+			model_type: nextModelType,
 			price_input_per_1k: "",
 			price_output_per_1k: "",
 			currency: "USD",
@@ -1060,15 +1128,16 @@ const { section, article_title: articleTitleParam } = router.query;
 
 	const handleEditModelAPI = (config: ModelAPIConfig) => {
 		setEditingModelAPIConfig(config);
-		const hasPricingValue =
-			config.price_input_per_1k != null ||
-			config.price_output_per_1k != null ||
-			(!!config.currency && config.currency !== "USD");
+		if ((config.model_type || "general") === "vector") {
+			setModelCategory("vector");
+		}
 		setModelAPIFormData({
 			name: config.name,
 			base_url: config.base_url,
 			api_key: config.api_key,
+			provider: config.provider || "openai",
 			model_name: config.model_name,
+			model_type: config.model_type || "general",
 			price_input_per_1k: config.price_input_per_1k?.toString() || "",
 			price_output_per_1k: config.price_output_per_1k?.toString() || "",
 			currency: config.currency || "USD",
@@ -1078,7 +1147,7 @@ const { section, article_title: articleTitleParam } = router.query;
 		setModelOptions([]);
 		setModelOptionsError("");
 		setModelNameManual(false);
-		setShowModelAPIAdvanced(hasPricingValue);
+		setShowModelAPIAdvanced(false);
 		setShowModelAPIModal(true);
 	};
 
@@ -1135,24 +1204,34 @@ const { section, article_title: articleTitleParam } = router.query;
 
 	const handleTestModelAPI = (config: ModelAPIConfig) => {
 		setModelAPITestConfig(config);
-		setModelAPITestPrompt("请回复：OK");
+		setModelAPITestPrompt(
+			(config.model_type || "general") === "vector"
+				? "针对敏感肌专门设计的天然有机护肤产品：体验由芦荟和洋甘菊提取物带来的自然呵护。我们的护肤产品特别为敏感肌设计，温和滋润，保护您的肌肤不受刺激。让您的肌肤告别不适，迎来健康光彩。"
+				: "请回复：OK",
+		);
 		setModelAPITestResult("");
 		setModelAPITestRaw("");
 		setModelAPITestError("");
 		setShowModelAPITestModal(true);
 	};
 
-	const handleFetchModelOptions = async () => {
-		if (!modelAPIFormData.base_url || !modelAPIFormData.api_key) {
-			showToast("请先填写API地址与密钥", "info");
-			return;
-		}
-		setModelOptionsLoading(true);
-		setModelOptionsError("");
+		const handleFetchModelOptions = async () => {
+			if (!modelAPIFormData.base_url || !modelAPIFormData.api_key) {
+				showToast("请先填写API地址与密钥", "info");
+				return;
+			}
+			if (modelAPIFormData.provider === "jina") {
+				setModelOptions([]);
+				setModelOptionsError("JinaAI 暂不支持自动获取模型列表，请手动填写模型名称");
+				return;
+			}
+			setModelOptionsLoading(true);
+			setModelOptionsError("");
 		try {
 			const result = await articleApi.getModelAPIModels({
 				base_url: modelAPIFormData.base_url,
 				api_key: modelAPIFormData.api_key,
+				provider: modelAPIFormData.provider,
 			});
 			if (result.success) {
 				setModelOptions(result.models || []);
@@ -1335,6 +1414,7 @@ const { section, article_title: articleTitleParam } = router.query;
 		if (task.task_type === "process_article_validation") return "校验";
 		if (task.task_type === "process_article_classification") return "分类";
 		if (task.task_type === "process_article_translation") return "翻译";
+		if (task.task_type === "process_article_embedding") return "向量化";
 		if (task.task_type === "process_ai_content") {
 			if (task.content_type === "summary") return "摘要";
 			if (task.content_type === "key_points") return "总结";
@@ -1848,7 +1928,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 											>
 												<span className="inline-flex items-center gap-2">
 													<IconPlug className="h-4 w-4" />
-													<span>模型API配置</span>
+													<span>模型配置</span>
 												</span>
 											</button>
 											<button
@@ -1865,6 +1945,22 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 												<span className="inline-flex items-center gap-2">
 													<IconNote className="h-4 w-4" />
 													<span>提示词配置</span>
+												</span>
+											</button>
+											<button
+												onClick={() => {
+													setActiveSection("ai");
+													setAISubSection("recommendations");
+												}}
+												className={`w-full text-left px-6 py-2 text-sm rounded-sm transition ${
+													activeSection === "ai" && aiSubSection === "recommendations"
+														? "bg-muted text-text-1"
+														: "text-text-2 hover:text-text-1 hover:bg-muted"
+												}`}
+											>
+												<span className="inline-flex items-center gap-2">
+													<IconDoc className="h-4 w-4" />
+													<span>文章推荐</span>
 												</span>
 											</button>
 											<button
@@ -1949,6 +2045,31 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 											)}
 										</div>
 									</div>
+
+									{!showUsageView && (
+										<div className="flex gap-2 mb-4">
+											<button
+												onClick={() => setModelCategory("general")}
+												className={`px-4 py-2 text-sm rounded-sm transition ${
+													modelCategory === "general"
+														? "bg-primary-soft text-primary-ink"
+														: "bg-muted text-text-2 hover:bg-surface hover:text-text-1"
+												}`}
+											>
+												通用
+											</button>
+											<button
+												onClick={() => setModelCategory("vector")}
+												className={`px-4 py-2 text-sm rounded-sm transition ${
+													modelCategory === "vector"
+														? "bg-primary-soft text-primary-ink"
+														: "bg-muted text-text-2 hover:bg-surface hover:text-text-1"
+												}`}
+											>
+												向量
+											</button>
+										</div>
+									)}
 
 									{showUsageView ? (
 										<div className="space-y-6">
@@ -2279,9 +2400,11 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 										<div className="text-center py-12 text-text-3">
 											加载中...
 										</div>
-									) : modelAPIConfigs.length === 0 ? (
+									) : filteredModelAPIConfigs.length === 0 ? (
 										<div className="text-center py-12 text-text-3">
-											<div className="mb-4">暂无模型API配置</div>
+											<div className="mb-4">
+												暂无{modelCategory === "vector" ? "向量" : "通用"}模型配置
+											</div>
 											<button
 												onClick={handleCreateModelAPINew}
 												className="px-4 py-2 bg-primary text-white rounded-sm hover:bg-primary-ink transition"
@@ -2291,7 +2414,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 										</div>
 									) : (
 										<div className="space-y-4">
-											{[...modelAPIConfigs]
+											{[...filteredModelAPIConfigs]
 												.sort(
 													(a, b) =>
 														(b.is_default ? 1 : 0) - (a.is_default ? 1 : 0),
@@ -2345,21 +2468,27 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 																		</code>
 																	</div>
 																	<div>
-																		<span className="font-medium">计费：</span>
-																		<span>
-																			输入{" "}
-																			{formatPrice(
-																				config.price_input_per_1k,
-																			)}
-																			/ 输出{" "}
-																			{formatPrice(
-																				config.price_output_per_1k,
-																			)}
-																			{config.currency
-																				? ` ${config.currency}`
-																				: ""}
-																		</span>
+																		<span className="font-medium">模型类型：</span>
+																		<span>{config.model_type || "general"}</span>
 																	</div>
+																	{(config.model_type || "general") !== "vector" && (
+																		<div>
+																			<span className="font-medium">计费：</span>
+																			<span>
+																				输入{" "}
+																				{formatPrice(
+																					config.price_input_per_1k,
+																				)}
+																				/ 输出{" "}
+																				{formatPrice(
+																					config.price_output_per_1k,
+																				)}
+																				{config.currency
+																					? ` ${config.currency}`
+																					: ""}
+																			</span>
+																		</div>
+																	)}
 																	<div>
 																		<span className="font-medium">
 																			API密钥：
@@ -3141,6 +3270,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 												{ value: "process_article_validation", label: "校验" },
 												{ value: "process_article_classification", label: "分类" },
 												{ value: "process_article_translation", label: "翻译" },
+												{ value: "process_article_embedding", label: "向量化" },
 												{ value: "process_ai_content:summary", label: "摘要" },
 												{ value: "process_ai_content:outline", label: "大纲" },
 												{ value: "process_ai_content:quotes", label: "金句" },
@@ -3335,6 +3465,108 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 											</Button>
 										</div>
 									</div>
+								</div>
+							)}
+
+							{activeSection === "ai" &&
+								aiSubSection === "recommendations" && (
+								<div className="bg-surface rounded-sm shadow-sm border border-border p-6">
+									<div className="flex items-center justify-between mb-6">
+										<div>
+											<h2 className="text-lg font-semibold text-text-1">
+												文章推荐配置
+											</h2>
+											<p className="text-sm text-text-3">
+												控制相似文章推荐与向量化模型
+											</p>
+										</div>
+										<div className="flex items-center gap-2">
+											<button
+												onClick={handleSaveRecommendationSettings}
+												disabled={recommendationSettingsSaving}
+												className="px-4 py-2 text-sm bg-primary text-white rounded-sm hover:bg-primary-ink transition disabled:opacity-60"
+											>
+												{recommendationSettingsSaving ? "保存中..." : "保存配置"}
+											</button>
+										</div>
+									</div>
+
+									{recommendationSettingsLoading ? (
+										<div className="text-center py-12 text-text-3">
+											加载中...
+										</div>
+									) : (
+										<div className="space-y-4">
+											<div className="flex items-center justify-between border border-border rounded-sm p-4 bg-surface">
+												<div>
+													<div className="text-sm font-medium text-text-1">
+														开启文章推荐
+													</div>
+													<div className="text-xs text-text-3 mt-1">
+														基于向量相似度生成相似文章列表
+													</div>
+												</div>
+												<label className="inline-flex items-center gap-2 text-sm text-text-2 cursor-pointer">
+													<input
+														type="checkbox"
+														checked={recommendationSettings.recommendations_enabled}
+														onChange={(e) =>
+															setRecommendationSettings((prev) => ({
+																...prev,
+																recommendations_enabled: e.target.checked,
+															}))
+														}
+														className="h-4 w-4"
+													/>
+													<span>
+														{recommendationSettings.recommendations_enabled ? "已开启" : "已关闭"}
+													</span>
+												</label>
+											</div>
+
+											<div>
+												<label className="block text-sm text-text-2 mb-1">
+													向量化模型
+												</label>
+												{modelAPIConfigs.filter(
+													(config) => (config.model_type || "general") === "vector",
+												).length === 0 && (
+													<div className="text-xs text-text-3 mb-2">
+														暂无向量模型配置，请在模型API配置中设置模型类型为向量。
+													</div>
+												)}
+												<Select
+													value={recommendationSettings.recommendation_model_config_id || ""}
+													onChange={(value) =>
+														setRecommendationSettings((prev) => ({
+															...prev,
+															recommendation_model_config_id: value,
+														}))
+													}
+													className="select-modern-antd w-full"
+													popupClassName="select-modern-dropdown"
+													options={[
+														{
+															value: "",
+															label: "本地默认模型 (all-MiniLM-L6-v2)",
+														},
+														...modelAPIConfigs
+															.filter(
+																(config) =>
+																	(config.model_type || "general") === "vector",
+															)
+															.map((config) => ({
+																value: config.id,
+																label: `${config.name} (${config.model_name})`,
+															})),
+													]}
+												/>
+												<div className="text-xs text-text-3 mt-2">
+													默认本地模型将使用本地推理；选择模型配置将走 API 调用生成向量。
+												</div>
+											</div>
+										</div>
+									)}
 								</div>
 							)}
 
@@ -3641,7 +3873,6 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 												<button
 													onClick={() => {
 													setShowModelAPIModal(false);
-													setShowModelAPIAdvanced(false);
 												}}
 												className="text-gray-500 hover:text-gray-700 text-2xl"
 												>
@@ -3684,6 +3915,27 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 										}
 										className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
 										placeholder="https://api.openai.com/v1"
+									/>
+								</div>
+
+								<div>
+									<label className="block text-sm font-medium text-gray-700 mb-2">
+										服务提供方
+									</label>
+									<Select
+										value={modelAPIFormData.provider}
+										onChange={(value) =>
+											setModelAPIFormData({
+												...modelAPIFormData,
+												provider: value,
+											})
+										}
+										className="select-modern-antd w-full"
+										popupClassName="select-modern-dropdown"
+										options={[
+											{ value: "openai", label: "OpenAI 兼容" },
+											{ value: "jina", label: "JinaAI" },
+										]}
 									/>
 								</div>
 
@@ -3771,80 +4023,81 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 									)}
 								</div>
 
-							<div className="border border-gray-200 rounded-lg">
-								<button
-									type="button"
-									onClick={() =>
-										setShowModelAPIAdvanced(!showModelAPIAdvanced)
-									}
-									className="w-full flex items-center justify-between px-4 py-3 text-sm text-gray-700 hover:bg-gray-50"
-								>
-									<span>高级设置（可选）</span>
-									<span className="text-gray-400">
-										{showModelAPIAdvanced ? "收起" : "展开"}
-									</span>
-								</button>
-								{showModelAPIAdvanced && (
-									<div className="border-t border-gray-200 p-4 space-y-4">
-										<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-											<div>
-												<label className="block text-sm font-medium text-gray-700 mb-2">
-													输入单价（每 1K tokens）
-												</label>
-												<input
-													type="number"
-													step="0.00001"
-													value={modelAPIFormData.price_input_per_1k}
-													onChange={(e) =>
-														setModelAPIFormData({
-															...modelAPIFormData,
-															price_input_per_1k: e.target.value,
-														})
-													}
-													className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-													placeholder="0.00000"
-												/>
-											</div>
-											<div>
-												<label className="block text-sm font-medium text-gray-700 mb-2">
-													输出单价（每 1K tokens）
-												</label>
-												<input
-													type="number"
-													step="0.00001"
-													value={modelAPIFormData.price_output_per_1k}
-													onChange={(e) =>
-														setModelAPIFormData({
-															...modelAPIFormData,
-															price_output_per_1k: e.target.value,
-														})
-													}
-													className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-													placeholder="0.00000"
-												/>
-											</div>
-										</div>
 
-										<div>
-											<label className="block text-sm font-medium text-gray-700 mb-2">
-												币种
-											</label>
-											<Select
-												value={modelAPIFormData.currency || ""}
-												onChange={(value) =>
-													setModelAPIFormData({
-														...modelAPIFormData,
-														currency: value,
-													})
-												}
-												className="select-modern-antd w-full"
-												popupClassName="select-modern-dropdown"
-												options={CURRENCY_OPTIONS}
-											/>
-										</div>
+								{modelAPIFormData.model_type !== "vector" && (
+									<div className="border border-gray-200 rounded-lg">
+										<button
+											type="button"
+											onClick={() => setShowModelAPIAdvanced(!showModelAPIAdvanced)}
+											className="w-full flex items-center justify-between px-4 py-3 text-sm text-gray-700 hover:bg-gray-50"
+										>
+											<span>计费设置（可选）</span>
+											<span className="text-gray-400">
+												{showModelAPIAdvanced ? "收起" : "展开"}
+											</span>
+										</button>
+										{showModelAPIAdvanced && (
+											<div className="border-t border-gray-200 p-4 space-y-4">
+												<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+													<div>
+														<label className="block text-sm font-medium text-gray-700 mb-2">
+															输入单价（每 1K tokens）
+														</label>
+														<input
+															type="number"
+															step="0.00001"
+															value={modelAPIFormData.price_input_per_1k}
+															onChange={(e) =>
+																setModelAPIFormData({
+																	...modelAPIFormData,
+																	price_input_per_1k: e.target.value,
+																})
+															}
+															className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+															placeholder="0.00000"
+														/>
+													</div>
+													<div>
+														<label className="block text-sm font-medium text-gray-700 mb-2">
+															输出单价（每 1K tokens）
+														</label>
+														<input
+															type="number"
+															step="0.00001"
+															value={modelAPIFormData.price_output_per_1k}
+															onChange={(e) =>
+																setModelAPIFormData({
+																	...modelAPIFormData,
+																	price_output_per_1k: e.target.value,
+																})
+															}
+															className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+															placeholder="0.00000"
+														/>
+													</div>
+												</div>
+
+												<div>
+													<label className="block text-sm font-medium text-gray-700 mb-2">
+														币种
+													</label>
+													<Select
+														value={modelAPIFormData.currency || ""}
+														onChange={(value) =>
+															setModelAPIFormData({
+																...modelAPIFormData,
+																currency: value,
+															})
+														}
+														className="select-modern-antd w-full"
+														popupClassName="select-modern-dropdown"
+														options={CURRENCY_OPTIONS}
+													/>
+												</div>
+											</div>
+										)}
 									</div>
 								)}
-							</div>
 
 								<div className="flex items-center gap-4">
 									<label className="flex items-center gap-2">
@@ -3862,20 +4115,22 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 										<span className="text-sm text-gray-700">启用此配置</span>
 									</label>
 
-									<label className="flex items-center gap-2">
-										<input
-											type="checkbox"
-											checked={modelAPIFormData.is_default}
-											onChange={(e) =>
-												setModelAPIFormData({
-													...modelAPIFormData,
-													is_default: e.target.checked,
-												})
-											}
-											className="w-4 h-4 text-blue-600 rounded"
-										/>
-										<span className="text-sm text-gray-700">设为默认配置</span>
-									</label>
+									{modelAPIFormData.model_type !== "vector" && (
+										<label className="flex items-center gap-2">
+											<input
+												type="checkbox"
+												checked={modelAPIFormData.is_default}
+												onChange={(e) =>
+													setModelAPIFormData({
+														...modelAPIFormData,
+														is_default: e.target.checked,
+													})
+												}
+												className="w-4 h-4 text-blue-600 rounded"
+											/>
+											<span className="text-sm text-gray-700">设为默认配置</span>
+										</label>
+									)}
 								</div>
 							</div>
 
@@ -3883,7 +4138,6 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 										<button
 											onClick={() => {
 												setShowModelAPIModal(false);
-												setShowModelAPIAdvanced(false);
 											}}
 											className="px-4 py-2 bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
 										>

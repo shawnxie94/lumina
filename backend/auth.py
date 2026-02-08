@@ -140,6 +140,8 @@ def create_admin_settings(db: Session, password: str) -> AdminSettings:
         media_compress_threshold=1536 * 1024,
         media_max_dim=2000,
         media_webp_quality=80,
+        recommendations_enabled=False,
+        recommendation_model_config_id=None,
     )
     db.add(admin)
     db.commit()

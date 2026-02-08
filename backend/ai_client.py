@@ -229,3 +229,35 @@ class ConfigurableAIClient:
         except Exception as e:
             print(f"翻译失败: {e}")
             raise
+
+    async def generate_embedding(
+        self,
+        content: str,
+        model_name: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        if not content:
+            raise ValueError("embedding内容不能为空")
+        request_model = model_name or self.model_name
+        try:
+            start_time = time.monotonic()
+            response = await self.client.embeddings.create(
+                model=request_model,
+                input=content,
+            )
+            latency_ms = int((time.monotonic() - start_time) * 1000)
+            data = response.data[0].embedding if response.data else []
+            usage_data = self._serialize_usage(getattr(response, "usage", None))
+            return {
+                "embedding": data,
+                "usage": getattr(response, "usage", None),
+                "model": getattr(response, "model", request_model),
+                "latency_ms": latency_ms,
+                "request_payload": {"model": request_model},
+                "response_payload": {
+                    "model": getattr(response, "model", request_model),
+                    "usage": usage_data,
+                },
+            }
+        except Exception as e:
+            print(f"Embedding生成失败: {e}")
+            raise

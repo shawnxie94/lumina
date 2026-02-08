@@ -177,6 +177,24 @@ export interface ArticleDetail extends Article {
 	next_article?: { id: string; slug: string; title: string } | null;
 }
 
+export interface SimilarArticleItem {
+	id: string;
+	slug: string;
+	title: string;
+	published_at: string | null;
+	created_at: string;
+}
+
+export interface SimilarArticleResponse {
+	status: "ready" | "pending" | "disabled";
+	items: SimilarArticleItem[];
+}
+
+export interface RecommendationSettings {
+	recommendations_enabled: boolean;
+	recommendation_model_config_id: string;
+}
+
 export interface ArticleComment {
 	id: string;
 	article_id: string;
@@ -233,7 +251,9 @@ export interface ModelAPIConfig {
 	name: string;
 	base_url: string;
 	api_key: string;
+	provider?: string | null;
 	model_name: string;
+	model_type?: string | null;
 	price_input_per_1k?: number | null;
 	price_output_per_1k?: number | null;
 	currency?: string | null;
@@ -335,6 +355,20 @@ export const articleApi = {
 
 	getArticle: async (id: string) => {
 		const response = await api.get(`/api/articles/${id}`);
+		return response.data;
+	},
+
+	getSimilarArticles: async (
+		slug: string,
+		limit = 4,
+	): Promise<SimilarArticleResponse> => {
+		const response = await api.get(`/api/articles/${slug}/similar`, {
+			params: { limit },
+		});
+		return response.data;
+	},
+	generateArticleEmbedding: async (slug: string) => {
+		const response = await api.post(`/api/articles/${slug}/embedding`);
 		return response.data;
 	},
 
@@ -530,7 +564,11 @@ export const articleApi = {
 		);
 		return response.data;
 	},
-	getModelAPIModels: async (data: { base_url: string; api_key: string }) => {
+	getModelAPIModels: async (data: {
+		base_url: string;
+		api_key: string;
+		provider?: string;
+	}) => {
 		const response = await api.post("/api/model-api-configs/models", data);
 		return response.data as {
 			success: boolean;
@@ -594,6 +632,18 @@ export const articleApi = {
 
 	deletePromptConfig: async (configId: string) => {
 		const response = await api.delete(`/api/prompt-configs/${configId}`);
+		return response.data;
+	},
+};
+
+export const recommendationSettingsApi = {
+	getSettings: async () => {
+		const response = await api.get("/api/settings/recommendations");
+		return response.data as RecommendationSettings;
+	},
+
+	updateSettings: async (data: RecommendationSettings) => {
+		const response = await api.put("/api/settings/recommendations", data);
 		return response.data;
 	},
 };

@@ -92,6 +92,9 @@ class Article(Base):
     media_assets = relationship(
         "MediaAsset", back_populates="article", cascade="all, delete-orphan"
     )
+    embedding = relationship(
+        "ArticleEmbedding", back_populates="article", uselist=False, cascade="all, delete-orphan"
+    )
 
 
 class ArticleComment(Base):
@@ -205,6 +208,24 @@ class AIUsageLog(Base):
     created_at = Column(String, default=now_str)
 
 
+class ArticleEmbedding(Base):
+    __tablename__ = "article_embeddings"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    article_id = Column(
+        String,
+        ForeignKey("articles.id", ondelete="CASCADE"),
+        unique=True,
+        nullable=False,
+    )
+    model = Column(String, nullable=True)
+    embedding = Column(Text, nullable=False)
+    created_at = Column(String, default=now_str)
+    updated_at = Column(String, default=now_str)
+
+    article = relationship("Article", back_populates="embedding")
+
+
 class ModelAPIConfig(Base):
     __tablename__ = "model_api_configs"
 
@@ -212,7 +233,9 @@ class ModelAPIConfig(Base):
     name = Column(String, nullable=False)
     base_url = Column(String, nullable=False, default="https://api.openai.com/v1")
     api_key = Column(String, nullable=False)
+    provider = Column(String, nullable=False, default="openai")
     model_name = Column(String, nullable=False, default="gpt-4o")
+    model_type = Column(String, nullable=False, default="general")
     price_input_per_1k = Column(Float, nullable=True)
     price_output_per_1k = Column(Float, nullable=True)
     currency = Column(String, nullable=True)
@@ -269,6 +292,8 @@ class AdminSettings(Base):
     media_compress_threshold = Column(Integer, default=1536 * 1024)
     media_max_dim = Column(Integer, default=2000)
     media_webp_quality = Column(Integer, default=80)
+    recommendations_enabled = Column(Boolean, default=False)
+    recommendation_model_config_id = Column(String, nullable=True)
     created_at = Column(String, default=now_str)
     updated_at = Column(String, default=now_str)
 
@@ -327,9 +352,11 @@ def init_db():
             ensure_columns(
                 "model_api_configs",
                 [
+                    ("provider", "TEXT"),
                     ("price_input_per_1k", "REAL"),
                     ("price_output_per_1k", "REAL"),
                     ("currency", "TEXT"),
+                    ("model_type", "TEXT"),
                 ],
             )
 
@@ -373,6 +400,8 @@ def init_db():
                     ("media_compress_threshold", "INTEGER"),
                     ("media_max_dim", "INTEGER"),
                     ("media_webp_quality", "INTEGER"),
+                    ("recommendations_enabled", "INTEGER"),
+                    ("recommendation_model_config_id", "TEXT"),
                 ],
             )
             ensure_columns(

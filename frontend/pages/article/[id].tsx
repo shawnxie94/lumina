@@ -5,7 +5,7 @@ import { useRouter } from 'next/router';
 import Link from 'next/link';
 import { marked } from 'marked';
 
-import { articleApi, categoryApi, commentApi, commentSettingsApi, mediaApi, storageSettingsApi, type ArticleComment, type ArticleDetail, type Category, type ModelAPIConfig, type PromptConfig } from '@/lib/api';
+import { articleApi, categoryApi, commentApi, commentSettingsApi, mediaApi, storageSettingsApi, type ArticleComment, type ArticleDetail, type Category, type ModelAPIConfig, type PromptConfig, type SimilarArticleItem } from '@/lib/api';
 import AppFooter from '@/components/AppFooter';
 import AppHeader from '@/components/AppHeader';
 import Button from '@/components/Button';
@@ -13,7 +13,7 @@ import IconButton from '@/components/IconButton';
 import { useToast } from '@/components/Toast';
 import ConfirmModal from '@/components/ConfirmModal';
 import { BackToTop } from '@/components/BackToTop';
-import { IconBolt, IconBook, IconCopy, IconDoc, IconEdit, IconEye, IconEyeOff, IconLink, IconList, IconNote, IconRefresh, IconRobot, IconTrash, IconCheck, IconReply, IconChevronDown, IconChevronUp } from '@/components/icons';
+import { IconBolt, IconBook, IconCopy, IconDoc, IconEdit, IconEye, IconEyeOff, IconLink, IconList, IconNote, IconRefresh, IconRobot, IconTrash, IconCheck, IconReply, IconChevronDown, IconChevronUp, IconTag } from '@/components/icons';
 import { useAuth } from '@/contexts/AuthContext';
 import { useReading } from '@/contexts/ReadingContext';
 import { Select } from 'antd';
@@ -21,6 +21,13 @@ import { signIn, signOut, useSession } from 'next-auth/react';
 
 // 轮询间隔（毫秒）
 const POLLING_INTERVAL = 3000;
+const SIMILAR_ARTICLE_LIMIT = 4;
+const SIMILAR_CACHE_TTL = 5 * 60 * 1000;
+const similarCache = new Map<string, {
+  status: 'ready' | 'pending' | 'disabled';
+  items: SimilarArticleItem[];
+  ts: number;
+}>();
 
 interface AIContentSectionProps {
   title: string;
@@ -630,8 +637,13 @@ export default function ArticleDetailPage() {
   const [mindMapOpen, setMindMapOpen] = useState(false);
   const [prevArticle, setPrevArticle] = useState<ArticleNeighbor | null>(null);
   const [nextArticle, setNextArticle] = useState<ArticleNeighbor | null>(null);
+  const [similarArticles, setSimilarArticles] = useState<SimilarArticleItem[]>([]);
+  const [similarStatus, setSimilarStatus] = useState<'ready' | 'pending' | 'disabled'>('ready');
+  const [similarLoading, setSimilarLoading] = useState(false);
+  const [embeddingRefreshing, setEmbeddingRefreshing] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
+  const similarPollingRef = useRef<NodeJS.Timeout | null>(null);
 
   const needsPolling = useCallback((data: ArticleDetail | null): boolean => {
     if (!data) return false;
@@ -765,8 +777,29 @@ export default function ArticleDetailPage() {
       if (pollingRef.current) {
         clearInterval(pollingRef.current);
       }
+      if (similarPollingRef.current) {
+        clearInterval(similarPollingRef.current);
+      }
     };
   }, [id]);
+
+  useEffect(() => {
+    if (!article?.slug) return;
+    if (similarPollingRef.current) {
+      clearInterval(similarPollingRef.current);
+      similarPollingRef.current = null;
+    }
+    if (similarStatus !== 'pending') return;
+    similarPollingRef.current = setInterval(() => {
+      fetchSimilarArticles(article, true);
+    }, 5000);
+    return () => {
+      if (similarPollingRef.current) {
+        clearInterval(similarPollingRef.current);
+        similarPollingRef.current = null;
+      }
+    };
+  }, [article?.slug, similarStatus]);
 
   useEffect(() => {
     if (id && commentsEnabled) {
@@ -973,11 +1006,58 @@ export default function ArticleDetailPage() {
       } else {
         setNextArticle(null);
       }
+      fetchSimilarArticles(data);
     } catch (error) {
       console.error('Failed to fetch article:', error);
       showToast('加载文章失败', 'error');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchSimilarArticles = async (detail: ArticleDetail, force = false) => {
+    if (!detail?.slug) return;
+    const cached = similarCache.get(detail.slug);
+    if (!force && cached && Date.now() - cached.ts < SIMILAR_CACHE_TTL) {
+      setSimilarStatus(cached.status);
+      setSimilarArticles(cached.items);
+      return;
+    }
+    setSimilarLoading(true);
+    try {
+      const result = await articleApi.getSimilarArticles(
+        detail.slug,
+        SIMILAR_ARTICLE_LIMIT,
+      );
+      setSimilarStatus(result.status);
+      setSimilarArticles(result.items || []);
+      similarCache.set(detail.slug, {
+        status: result.status,
+        items: result.items || [],
+        ts: Date.now(),
+      });
+    } catch (error) {
+      console.error('Failed to fetch similar articles:', error);
+      setSimilarStatus('ready');
+      setSimilarArticles([]);
+    } finally {
+      setSimilarLoading(false);
+    }
+  };
+
+  const handleRefreshEmbedding = async () => {
+    if (!article?.slug) return;
+    setEmbeddingRefreshing(true);
+    try {
+      await articleApi.generateArticleEmbedding(article.slug);
+      similarCache.delete(article.slug);
+      setSimilarStatus('pending');
+      showToast('已提交向量化任务');
+    } catch (error: any) {
+      console.error('Failed to refresh embedding:', error);
+      showToast(error?.response?.data?.detail || '提交向量化失败', 'error');
+    } finally {
+      setEmbeddingRefreshing(false);
     }
   };
 
@@ -2652,6 +2732,52 @@ export default function ArticleDetailPage() {
                             statusLink={aiStatusLink}
                             showHeader={false}
                           />
+                        )}
+                      </div>
+                    )}
+
+                    {(isAdmin || similarLoading || similarStatus === 'pending' || similarStatus === 'disabled' || similarArticles.length > 0) && (
+                      <div className="pt-4 border-t border-border">
+                        <div className="flex items-center justify-between mb-2">
+                          <h2 className="text-lg font-semibold text-gray-900 inline-flex items-center gap-2">
+                            <IconTag className="h-4 w-4" />
+                            <span>推荐阅读</span>
+                          </h2>
+                          {isAdmin && (
+                            <button
+                              onClick={handleRefreshEmbedding}
+                              className="text-text-3 hover:text-primary transition disabled:opacity-50"
+                              title="重新生成向量"
+                              type="button"
+                              disabled={embeddingRefreshing}
+                            >
+                              <IconRefresh className="h-4 w-4" />
+                            </button>
+                          )}
+                        </div>
+                        {similarLoading ? (
+                          <div className="text-sm text-text-3">文章加载中...</div>
+                        ) : similarStatus === 'pending' ? (
+                          <div className="text-sm text-text-3">文章生成中...</div>
+                        ) : similarStatus === 'disabled' ? (
+                          <div className="text-sm text-text-3">文章推荐已关闭</div>
+                        ) : similarArticles.length === 0 ? (
+                          <div className="text-sm text-text-3">暂无推荐文章</div>
+                        ) : (
+                          <div className="space-y-2 text-sm text-text-2">
+                            {similarArticles.map((item) => (
+                              <div key={item.id} className="flex items-start gap-2 truncate">
+                                <span className="text-text-3">·</span>
+                                <Link
+                                  href={`/article/${item.slug}`}
+                                  className="hover:text-text-1 transition truncate"
+                                  title={item.title}
+                                >
+                                  {item.title}
+                                </Link>
+                              </div>
+                            ))}
+                          </div>
                         )}
                       </div>
                     )}
