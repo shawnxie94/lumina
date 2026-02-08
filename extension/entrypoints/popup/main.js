@@ -15,6 +15,11 @@ import {
 } from "../../utils/errorLogger";
 import { htmlToMarkdown } from "../../utils/markdownConverter";
 import { ensureContentScriptLoaded } from "../../utils/contentScript";
+import {
+	resolveLanguage,
+	setStoredLanguage,
+	translate,
+} from "../../utils/i18n";
 
 setupGlobalErrorHandler("popup");
 
@@ -24,6 +29,7 @@ class PopupController {
 	#currentTab = null;
 	#selectionAvailable = false;
 	#toastTimer = null;
+	#language = "zh-CN";
 
 	constructor() {
 		this.#apiClient = new ApiClient();
@@ -31,6 +37,8 @@ class PopupController {
 
 	async init() {
 		try {
+			await this.loadLanguage();
+			this.applyTranslations();
 			await this.loadConfig();
 			await this.setupEventListeners();
 			this.checkApiHealth();
@@ -47,8 +55,37 @@ class PopupController {
 		} catch (error) {
 			console.error("Failed to initialize popup:", error);
 			logError("popup", error, { action: "init" });
-			this.updateStatus("error", "初始化失败");
+			this.updateStatus("error", this.t("初始化失败"));
 		}
+	}
+
+	async loadLanguage() {
+		this.#language = await resolveLanguage();
+		if (document?.documentElement) {
+			document.documentElement.lang = this.#language;
+		}
+	}
+
+	t(key) {
+		return translate(this.#language, key);
+	}
+
+	applyTranslations() {
+		const elements = document.querySelectorAll("[data-i18n]");
+		elements.forEach((el) => {
+			const key = el.getAttribute("data-i18n");
+			if (!key) return;
+			const attrList = el.getAttribute("data-i18n-attr");
+			if (attrList) {
+				attrList.split(",").forEach((attr) => {
+					const trimmed = attr.trim();
+					if (!trimmed) return;
+					el.setAttribute(trimmed, this.t(key));
+				});
+			}
+			if (el.getAttribute("data-i18n-text") === "false") return;
+			el.textContent = this.t(key);
+		});
 	}
 
 	async loadConfig() {
@@ -79,7 +116,9 @@ class PopupController {
 		if (loginBtn) loginBtn.classList.toggle("hidden", this.#isLoggedIn);
 		if (logoutBtn) logoutBtn.classList.toggle("hidden", !this.#isLoggedIn);
 		if (loginStatus) {
-			loginStatus.textContent = this.#isLoggedIn ? "已登录" : "未登录";
+			loginStatus.textContent = this.#isLoggedIn
+				? this.t("已登录")
+				: this.t("未登录");
 			loginStatus.className = `login-status ${this.#isLoggedIn ? "logged-in" : "logged-out"}`;
 		}
 	}
@@ -91,7 +130,7 @@ class PopupController {
 		if (mainContent) mainContent.classList.add("hidden");
 		if (loginPrompt) loginPrompt.classList.remove("hidden");
 
-		this.updateStatus("warning", "请先登录管理员账号");
+		this.updateStatus("warning", this.t("请先登录管理员账号"));
 	}
 
 	async handleLogin() {
@@ -119,10 +158,13 @@ class PopupController {
 
 		if (ok) {
 			dotEl.classList.add("connected");
-			statusEl.title = `已连接 (${latency}ms)`;
+			statusEl.title = this.t("已连接 ({latency}ms)").replace(
+				"{latency}",
+				latency,
+			);
 		} else {
 			dotEl.classList.add("disconnected");
-			statusEl.title = "无法连接到服务器，请检查配置";
+			statusEl.title = this.t("无法连接到服务器，请检查配置");
 		}
 	}
 
@@ -138,6 +180,9 @@ class PopupController {
 		document
 			.getElementById("configBtn")
 			?.addEventListener("click", () => this.openConfigModal());
+		document
+			.getElementById("languageBtn")
+			?.addEventListener("click", () => this.toggleLanguage());
 		document
 			.getElementById("homeLink")
 			?.addEventListener("click", (event) => {
@@ -198,7 +243,7 @@ class PopupController {
 					}),
 			});
 			if (!scriptLoaded) {
-				this.updateStatus("error", "无法在此页面提取内容");
+				this.updateStatus("error", this.t("无法在此页面提取内容"));
 				return;
 			}
 			const selectionCheck = await chrome.tabs.sendMessage(tab.id, {
@@ -217,13 +262,13 @@ class PopupController {
 		const hintEl = document.getElementById("selectionHint");
 		if (hintEl) {
 			hintEl.textContent = this.#selectionAvailable
-				? "已检测到选区 · 将采集选中内容"
-				: "未检测到选区 · 将采集全文";
+				? this.t("已检测到选区 · 将采集选中内容")
+				: this.t("未检测到选区 · 将采集全文");
 		}
 	}
 
 	async collectArticle() {
-		this.updateStatus("loading", "正在连接页面...");
+		this.updateStatus("loading", this.t("正在连接页面..."));
 
 		try {
 			const [tab] = await chrome.tabs.query({
@@ -233,7 +278,7 @@ class PopupController {
 			this.#currentTab = tab;
 
 			if (!tab?.id) {
-				this.updateStatus("error", "无法获取当前标签页");
+				this.updateStatus("error", this.t("无法获取当前标签页"));
 				return;
 			}
 
@@ -241,7 +286,7 @@ class PopupController {
 				tab.url?.startsWith("chrome://") ||
 				tab.url?.startsWith("chrome-extension://")
 			) {
-				this.updateStatus("error", "无法在此页面提取内容");
+				this.updateStatus("error", this.t("无法在此页面提取内容"));
 				return;
 			}
 
@@ -253,7 +298,7 @@ class PopupController {
 					}),
 			});
 			if (!scriptLoaded) {
-				this.updateStatus("error", "无法在此页面提取内容");
+				this.updateStatus("error", this.t("无法在此页面提取内容"));
 				return;
 			}
 
@@ -277,7 +322,7 @@ class PopupController {
 				if (xArticleCheck?.shouldRedirect && xArticleCheck?.articleUrl) {
 					this.updateStatus(
 						"loading",
-						"检测到 X 长文章，正在跳转到专注模式...",
+						this.t("检测到 X 长文章，正在跳转到专注模式..."),
 					);
 					await chrome.tabs.update(tab.id, { url: xArticleCheck.articleUrl });
 					await new Promise((resolve) => setTimeout(resolve, 3000));
@@ -295,7 +340,7 @@ class PopupController {
 
 			this.updateStatus(
 				"loading",
-				hasSelection ? "正在提取选区..." : "正在提取全文...",
+				hasSelection ? this.t("正在提取选区...") : this.t("正在提取全文..."),
 			);
 
 			const extractedData = await chrome.tabs.sendMessage(tab.id, {
@@ -304,13 +349,16 @@ class PopupController {
 			});
 
 			if (!extractedData || !extractedData.content_html) {
-				this.updateStatus("error", "未能提取到文章内容，请确认页面已加载完成");
+				this.updateStatus(
+					"error",
+					this.t("未能提取到文章内容，请确认页面已加载完成"),
+				);
 				return;
 			}
 
 			const contentMd = this.htmlToMarkdown(extractedData.content_html);
 
-			this.updateStatus("loading", "正在上传内容...");
+			this.updateStatus("loading", this.t("正在上传内容..."));
 
 			const result = await this.#apiClient.createArticle({
 				title: extractedData.title || document.title,
@@ -324,14 +372,14 @@ class PopupController {
 				content_structured: extractedData.content_structured || null,
 			});
 
-			this.updateStatus("success", "采集成功");
+			this.updateStatus("success", this.t("采集成功"));
 			await this.clearErrorLogList();
 
 			const articleSlug = result?.slug || result?.id;
 			await addToHistory({
 				articleId: result?.id ? String(result.id) : String(articleSlug || ""),
 				slug: articleSlug ? String(articleSlug) : undefined,
-				title: extractedData.title || document.title || "(无标题)",
+				title: extractedData.title || document.title || this.t("(无标题)"),
 				url: extractedData.source_url || tab.url,
 				domain: extractedData.source_domain || new URL(tab.url).hostname,
 				topImage: extractedData.top_image || undefined,
@@ -354,11 +402,11 @@ class PopupController {
 				await ApiClient.removeToken();
 				this.#isLoggedIn = false;
 				this.updateLoginUI();
-				this.updateStatus("error", "登录已过期，请重新登录");
+				this.updateStatus("error", this.t("登录已过期，请重新登录"));
 				return;
 			}
 
-			this.updateStatus("error", "采集失败，请重试");
+			this.updateStatus("error", this.t("采集失败，请重试"));
 		}
 	}
 
@@ -393,24 +441,46 @@ class PopupController {
 		}
 	}
 
+	async toggleLanguage() {
+		const next = this.#language === "zh-CN" ? "en" : "zh-CN";
+		await setStoredLanguage(next);
+		this.#language = next;
+		if (document?.documentElement) {
+			document.documentElement.lang = this.#language;
+		}
+		this.applyTranslations();
+		this.updateLoginUI();
+		this.updateSelectionHint();
+		this.checkApiHealth();
+		await this.loadHistory();
+		await this.loadErrorLogs();
+		try {
+			chrome.contextMenus?.update("collect-article", {
+				title: this.t("采集到 Lumina"),
+			});
+		} catch {
+			// ignore
+		}
+	}
+
 	async saveConfig() {
 		const apiHostInput = document.getElementById("apiHostInput");
 		const newApiHost = apiHostInput?.value.trim();
 
 		if (!newApiHost) {
-			this.showToast("请输入有效的 API 地址", "error");
+			this.showToast(this.t("请输入有效的 API 地址"), "error");
 			return;
 		}
 
 		try {
 			await ApiClient.saveApiHost(newApiHost);
-			this.showToast("配置已保存，页面将重新加载", "success");
+			this.showToast(this.t("配置已保存，页面将重新加载"), "success");
 			this.closeConfigModal();
 			setTimeout(() => location.reload(), 600);
 		} catch (error) {
 			console.error("Failed to save config:", error);
 			logError("popup", error, { action: "saveConfig" });
-			this.showToast("保存配置失败", "error");
+			this.showToast(this.t("保存配置失败"), "error");
 		}
 	}
 
@@ -473,7 +543,7 @@ class PopupController {
           <div class="history-item-title">${this.escapeHtml(item.title)}</div>
           <div class="history-item-meta">
             <span>${item.domain}</span>
-            <span>${formatHistoryDate(item.collectedAt)}</span>
+            <span>${formatHistoryDate(item.collectedAt, this.#language)}</span>
           </div>
         </div>
       `;
