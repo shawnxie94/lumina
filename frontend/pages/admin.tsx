@@ -45,6 +45,7 @@ import {
 	IconNote,
 	IconPlug,
 	IconRobot,
+	IconSettings,
 	IconRefresh,
 	IconSearch,
 	IconTag,
@@ -53,6 +54,8 @@ import {
 } from "@/components/icons";
 import { useToast } from "@/components/Toast";
 import { useAuth } from "@/contexts/AuthContext";
+import { useBasicSettings } from "@/contexts/BasicSettingsContext";
+import { useI18n } from "@/lib/i18n";
 import {
 	type AIUsageListResponse,
 	type AIUsageLogItem,
@@ -60,6 +63,8 @@ import {
 	type ArticleComment,
 	aiUsageApi,
 	articleApi,
+	type BasicSettings,
+	basicSettingsApi,
 	categoryApi,
 	commentAdminApi,
 	commentApi,
@@ -76,6 +81,7 @@ import {
 } from "@/lib/api";
 
 type SettingSection =
+	| "basic"
 	| "ai"
 	| "categories"
 	| "monitoring"
@@ -253,7 +259,18 @@ export default function AdminPage() {
 	const router = useRouter();
 	const { showToast } = useToast();
 	const { isAdmin, isLoading: authLoading } = useAuth();
-	const [primaryTab, setPrimaryTab] = useState<'monitoring' | 'settings'>('monitoring');
+	const { t } = useI18n();
+	const {
+		basicSettings,
+		updateBasicSettings: updateBasicSettingsContext,
+	} = useBasicSettings();
+	const [primaryTab, setPrimaryTab] = useState<"monitoring" | "settings">(
+		"monitoring",
+	);
+	const settingsSections = useMemo(
+		() => new Set<SettingSection>(["basic", "categories", "ai", "comments", "storage"]),
+		[],
+	);
 	const [activeSection, setActiveSection] =
 		useState<SettingSection>("monitoring");
 	const [aiSubSection, setAISubSection] = useState<AISubSection>("model-api");
@@ -327,6 +344,12 @@ export default function AdminPage() {
 		sensitive_filter_enabled: true,
 		sensitive_words: "",
 	});
+	const [basicSettingsForm, setBasicSettingsForm] = useState<BasicSettings>({
+		default_language: "zh-CN",
+		site_name: "Lumina",
+		site_description: "信息灯塔",
+		site_logo_url: "",
+	});
 	const [storageSettings, setStorageSettings] = useState<StorageSettings>({
 		media_storage_enabled: false,
 		media_compress_threshold: 1536 * 1024,
@@ -340,6 +363,8 @@ export default function AdminPage() {
 		});
 	const [commentSettingsLoading, setCommentSettingsLoading] = useState(false);
 	const [commentSettingsSaving, setCommentSettingsSaving] = useState(false);
+	const [basicSettingsLoading, setBasicSettingsLoading] = useState(false);
+	const [basicSettingsSaving, setBasicSettingsSaving] = useState(false);
 	const [storageSettingsLoading, setStorageSettingsLoading] = useState(false);
 	const [storageSettingsSaving, setStorageSettingsSaving] = useState(false);
 	const [recommendationSettingsLoading, setRecommendationSettingsLoading] =
@@ -420,12 +445,16 @@ export default function AdminPage() {
 
 		if (
 			storedSection === "ai" ||
+			storedSection === "basic" ||
 			storedSection === "categories" ||
 			storedSection === "monitoring" ||
 			storedSection === "comments" ||
 			storedSection === "storage"
 		) {
 			setActiveSection(storedSection);
+			setPrimaryTab(
+				storedSection === "monitoring" ? "monitoring" : "settings",
+			);
 		}
 		if (
 			storedAiSubSection === "model-api" ||
@@ -454,6 +483,9 @@ export default function AdminPage() {
 const { section, article_title: articleTitleParam } = router.query;
 		if (section && typeof section === "string") {
 			setActiveSection(section as SettingSection);
+			setPrimaryTab(
+				section === "monitoring" ? "monitoring" : "settings",
+			);
 		}
 		if (articleTitleParam && typeof articleTitleParam === "string") {
 			setActiveSection("monitoring");
@@ -475,6 +507,14 @@ const { section, article_title: articleTitleParam } = router.query;
 		localStorage.setItem("settings_comment_sub_section", commentSubSection);
 		localStorage.setItem("settings_prompt_type", selectedPromptType);
 	}, [activeSection, aiSubSection, monitoringSubSection, commentSubSection, selectedPromptType]);
+
+	useEffect(() => {
+		if (settingsSections.has(activeSection)) {
+			setPrimaryTab("settings");
+			return;
+		}
+		setPrimaryTab("monitoring");
+	}, [activeSection, settingsSections]);
 
 	useEffect(() => {
 		const handleKeyDown = (event: KeyboardEvent) => {
@@ -782,6 +822,33 @@ const { section, article_title: articleTitleParam } = router.query;
 		}
 	};
 
+	const fetchBasicSettings = async () => {
+		setBasicSettingsLoading(true);
+		try {
+			const data = await basicSettingsApi.getSettings();
+			setBasicSettingsForm(data);
+		} catch (error) {
+			console.error("Failed to fetch basic settings:", error);
+			showToast(t("基础配置加载失败"), "error");
+		} finally {
+			setBasicSettingsLoading(false);
+		}
+	};
+
+	const handleSaveBasicSettings = async () => {
+		setBasicSettingsSaving(true);
+		try {
+			await basicSettingsApi.updateSettings(basicSettingsForm);
+			updateBasicSettingsContext(basicSettingsForm);
+			showToast(t("基础配置已保存"));
+		} catch (error) {
+			console.error("Failed to save basic settings:", error);
+			showToast(t("基础配置保存失败"), "error");
+		} finally {
+			setBasicSettingsSaving(false);
+		}
+	};
+
 	const fetchStorageSettings = async () => {
 		setStorageSettingsLoading(true);
 		try {
@@ -975,6 +1042,10 @@ const { section, article_title: articleTitleParam } = router.query;
 	useEffect(() => {
 		if (activeSection === "categories") {
 			fetchCategories();
+			return;
+		}
+		if (activeSection === "basic") {
+			fetchBasicSettings();
 			return;
 		}
 		if (activeSection === "ai") {
@@ -1777,9 +1848,9 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 				<AppHeader />
 				<div className="flex-1 flex items-center justify-center">
 					<div className="text-center">
-						<div className="text-text-3 mb-4">无权限访问此页面</div>
+						<div className="text-text-3 mb-4">{t("无权限访问此页面")}</div>
 						<Link href="/login" className="text-primary hover:underline">
-							去登录
+							{t("去登录")}
 						</Link>
 					</div>
 				</div>
@@ -1791,7 +1862,9 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 	return (
 		<div className="min-h-screen bg-app flex flex-col">
 			<Head>
-				<title>管理台 - Lumina</title>
+				<title>
+					{t("管理台")} - {basicSettings.site_name || "Lumina"}
+				</title>
 			</Head>
 			<AppHeader />
 
@@ -1810,12 +1883,12 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 									: 'text-text-2 hover:text-text-1 hover:bg-muted'
 							}`}
 						>
-							监控
+							{t("监控")}
 						</button>
 						<button
 							onClick={() => {
 								setPrimaryTab('settings');
-								setActiveSection('categories');
+								setActiveSection('basic');
 							}}
 							className={`px-6 py-3 text-sm font-medium rounded-t-sm transition ${
 								primaryTab === 'settings'
@@ -1823,7 +1896,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 									: 'text-text-2 hover:text-text-1 hover:bg-muted'
 							}`}
 						>
-							设置
+							{t("设置")}
 						</button>
 					</div>
 				</div>
@@ -1833,7 +1906,9 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 						<aside className="w-64 flex-shrink-0">
 							<div className="bg-white rounded-lg shadow-sm p-4">
 								<h2 className="font-semibold text-text-1 mb-4">
-									{primaryTab === 'monitoring' ? '监控模块' : '设置模块'}
+									{primaryTab === "monitoring"
+										? t("监控模块")
+										: t("设置模块")}
 								</h2>
 								<div className="space-y-2">
 									{primaryTab === 'monitoring' ? (
@@ -1851,7 +1926,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 											>
 												<span className="inline-flex items-center gap-2">
 													<IconList className="h-4 w-4" />
-													<span>任务监控</span>
+													<span>{t("任务监控")}</span>
 												</span>
 											</button>
 											<button
@@ -1867,7 +1942,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 											>
 												<span className="inline-flex items-center gap-2">
 													<IconMoney className="h-4 w-4" />
-													<span>模型记录/计量</span>
+													<span>{t("模型记录/计量")}</span>
 												</span>
 											</button>
 											<button
@@ -1883,12 +1958,25 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 											>
 												<span className="inline-flex items-center gap-2">
 													<IconNote className="h-4 w-4" />
-													<span>评论列表</span>
+													<span>{t("评论列表")}</span>
 												</span>
 											</button>
 										</>
 									) : (
 										<>
+											<button
+												onClick={() => setActiveSection("basic")}
+												className={`w-full text-left px-4 py-3 rounded-sm transition ${
+													activeSection === "basic"
+														? "bg-muted text-text-1"
+														: "text-text-2 hover:text-text-1 hover:bg-muted"
+												}`}
+											>
+												<span className="inline-flex items-center gap-2">
+													<IconSettings className="h-4 w-4" />
+													<span>{t("基础配置")}</span>
+												</span>
+											</button>
 											<button
 												onClick={() => setActiveSection("categories")}
 												className={`w-full text-left px-4 py-3 rounded-sm transition ${
@@ -1899,7 +1987,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 											>
 												<span className="inline-flex items-center gap-2">
 													<IconTag className="h-4 w-4" />
-													<span>分类管理</span>
+													<span>{t("分类管理")}</span>
 												</span>
 											</button>
 											<button
@@ -1912,7 +2000,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 											>
 												<span className="inline-flex items-center gap-2">
 													<IconRobot className="h-4 w-4" />
-													<span>AI配置</span>
+													<span>{t("AI配置")}</span>
 												</span>
 											</button>
 											<button
@@ -1928,7 +2016,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 											>
 												<span className="inline-flex items-center gap-2">
 													<IconPlug className="h-4 w-4" />
-													<span>模型配置</span>
+													<span>{t("模型API")}</span>
 												</span>
 											</button>
 											<button
@@ -1944,7 +2032,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 											>
 												<span className="inline-flex items-center gap-2">
 													<IconNote className="h-4 w-4" />
-													<span>提示词配置</span>
+													<span>{t("提示词")}</span>
 												</span>
 											</button>
 											<button
@@ -1960,7 +2048,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 											>
 												<span className="inline-flex items-center gap-2">
 													<IconDoc className="h-4 w-4" />
-													<span>文章推荐</span>
+													<span>{t("文章推荐")}</span>
 												</span>
 											</button>
 											<button
@@ -1973,7 +2061,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 											>
 												<span className="inline-flex items-center gap-2">
 													<IconFilter className="h-4 w-4" />
-													<span>评论配置</span>
+													<span>{t("评论配置")}</span>
 												</span>
 											</button>
 											<button
@@ -2756,17 +2844,118 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 								</div>
 							)}
 
+							{activeSection === "basic" && (
+								<div className="bg-surface rounded-sm shadow-sm border border-border p-6">
+									<div className="flex items-center justify-between mb-6">
+										<div>
+											<h2 className="text-lg font-semibold text-text-1">
+												{t("基础配置")}
+											</h2>
+											<p className="text-sm text-text-3">
+												{t("配置站点名称与默认语言")}
+											</p>
+										</div>
+										<button
+											onClick={handleSaveBasicSettings}
+											disabled={basicSettingsSaving}
+											className="px-4 py-2 text-sm bg-primary text-white rounded-sm hover:bg-primary-ink transition disabled:opacity-60"
+										>
+											{basicSettingsSaving ? t("保存中") : t("保存配置")}
+										</button>
+									</div>
+
+									{basicSettingsLoading ? (
+										<div className="text-center py-12 text-text-3">
+											{t("加载中")}
+										</div>
+									) : (
+										<div className="space-y-6">
+											<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+												<div>
+													<label className="block text-sm text-text-2 mb-1">
+														{t("站点名称")}
+													</label>
+													<input
+													value={basicSettingsForm.site_name}
+													onChange={(e) =>
+															setBasicSettingsForm((prev) => ({
+																...prev,
+																site_name: e.target.value,
+															}))
+														}
+														placeholder={t("请输入站点名称")}
+														className="w-full h-9 px-3 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
+													/>
+												</div>
+												<div>
+													<label className="block text-sm text-text-2 mb-1">
+														{t("站点Logo地址")}
+													</label>
+													<input
+													value={basicSettingsForm.site_logo_url}
+													onChange={(e) =>
+															setBasicSettingsForm((prev) => ({
+																...prev,
+																site_logo_url: e.target.value,
+															}))
+														}
+														placeholder={t("可选，留空使用默认图标")}
+														className="w-full h-9 px-3 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
+													/>
+												</div>
+											</div>
+											<div>
+												<label className="block text-sm text-text-2 mb-1">
+													{t("站点描述")}
+												</label>
+												<textarea
+													value={basicSettingsForm.site_description}
+													onChange={(e) =>
+															setBasicSettingsForm((prev) => ({
+																...prev,
+																site_description: e.target.value,
+															}))
+														}
+													rows={3}
+													placeholder={t("请输入站点描述")}
+													className="w-full px-3 py-2 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
+												/>
+											</div>
+											<div className="max-w-xs">
+												<label className="block text-sm text-text-2 mb-1">
+													{t("默认语言")}
+												</label>
+												<Select
+													value={basicSettingsForm.default_language}
+													onChange={(value) =>
+															setBasicSettingsForm((prev) => ({
+																...prev,
+																default_language: value as "zh-CN" | "en",
+															}))
+														}
+													options={[
+														{ value: "zh-CN", label: t("中文") },
+														{ value: "en", label: t("英文") },
+													]}
+													style={{ width: "100%" }}
+												/>
+											</div>
+										</div>
+									)}
+								</div>
+							)}
+
 							{activeSection === "categories" && (
 								<div className="bg-white rounded-lg shadow-sm p-6">
 									<div className="flex items-center justify-between mb-6">
 										<h2 className="text-lg font-semibold text-gray-900">
-											分类列表
+											{t("分类列表")}
 										</h2>
 										<button
 											onClick={handleCreateCategoryNew}
 											className="px-4 py-2 bg-primary text-white rounded-sm hover:bg-primary-ink transition"
 										>
-											+ 新增分类
+											+ {t("新增分类")}
 										</button>
 									</div>
 
@@ -2776,12 +2965,12 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 										</div>
 									) : categories.length === 0 ? (
 										<div className="text-center py-12 text-gray-500">
-											<div className="mb-4">暂无分类</div>
+											<div className="mb-4">{t("暂无分类")}</div>
 											<button
 												onClick={handleCreateCategoryNew}
 												className="px-4 py-2 bg-primary text-white rounded-sm hover:bg-primary-ink transition"
 											>
-												新增分类
+												{t("新增分类")}
 											</button>
 										</div>
 									) : (

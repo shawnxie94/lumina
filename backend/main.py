@@ -61,6 +61,12 @@ if not logger.handlers:
 INTERNAL_API_TOKEN = os.getenv("INTERNAL_API_TOKEN", "")
 SIMILAR_ARTICLE_CANDIDATE_LIMIT = 500
 CATEGORY_SIMILARITY_BOOST = 0.05
+DEFAULT_BASIC_SETTINGS = {
+    "default_language": "zh-CN",
+    "site_name": "Lumina",
+    "site_description": "信息灯塔",
+    "site_logo_url": "",
+}
 
 
 def log_event(event: str, request_id: str, **fields) -> None:
@@ -82,6 +88,17 @@ def is_private_request(request: Request) -> bool:
         return ip.is_private or ip.is_loopback
     except ValueError:
         return False
+
+
+def build_basic_settings(admin: Optional[AdminSettings]) -> dict:
+    if admin is None:
+        return DEFAULT_BASIC_SETTINGS.copy()
+    return {
+        "default_language": admin.default_language or DEFAULT_BASIC_SETTINGS["default_language"],
+        "site_name": admin.site_name or DEFAULT_BASIC_SETTINGS["site_name"],
+        "site_description": admin.site_description or DEFAULT_BASIC_SETTINGS["site_description"],
+        "site_logo_url": admin.site_logo_url or "",
+    }
 
 
 def comments_enabled(db: Session) -> bool:
@@ -358,6 +375,13 @@ class RecommendationSettingsUpdate(BaseModel):
     recommendation_model_config_id: Optional[str] = None
 
 
+class BasicSettingsUpdate(BaseModel):
+    default_language: Optional[str] = None
+    site_name: Optional[str] = None
+    site_description: Optional[str] = None
+    site_logo_url: Optional[str] = None
+
+
 class MediaIngestRequest(BaseModel):
     url: str
     article_id: str
@@ -414,6 +438,53 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
 
     token = create_token(admin.jwt_secret)
     return LoginResponse(token=token, message="登录成功")
+
+
+# ============ 基础配置 ============
+
+
+@app.get("/api/settings/basic")
+async def get_basic_settings(
+    _: bool = Depends(get_admin_or_internal),
+    db: Session = Depends(get_db),
+):
+    admin = get_admin_settings(db)
+    if admin is None:
+        raise HTTPException(status_code=404, detail="未初始化管理员设置")
+    return build_basic_settings(admin)
+
+
+@app.put("/api/settings/basic")
+async def update_basic_settings(
+    payload: BasicSettingsUpdate,
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
+    admin = get_admin_settings(db)
+    if admin is None:
+        raise HTTPException(status_code=404, detail="未初始化管理员设置")
+    if payload.default_language is not None:
+        if payload.default_language not in ("zh-CN", "en"):
+            raise HTTPException(status_code=400, detail="默认语言仅支持 zh-CN 或 en")
+        admin.default_language = payload.default_language
+    if payload.site_name is not None:
+        admin.site_name = payload.site_name or DEFAULT_BASIC_SETTINGS["site_name"]
+    if payload.site_description is not None:
+        admin.site_description = (
+            payload.site_description or DEFAULT_BASIC_SETTINGS["site_description"]
+        )
+    if payload.site_logo_url is not None:
+        admin.site_logo_url = payload.site_logo_url or ""
+    admin.updated_at = now_str()
+    db.commit()
+    db.refresh(admin)
+    return {"success": True}
+
+
+@app.get("/api/settings/basic/public")
+async def get_basic_settings_public(db: Session = Depends(get_db)):
+    admin = get_admin_settings(db)
+    return build_basic_settings(admin)
 
 
 # ============ 评论配置 ============

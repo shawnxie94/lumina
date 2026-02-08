@@ -1,5 +1,7 @@
 import React from 'react';
 
+import { useI18n } from '@/lib/i18n';
+
 export interface ConfirmModalProps {
   isOpen: boolean;
   title: string;
@@ -14,11 +16,15 @@ export default function ConfirmModal({
   isOpen,
   title,
   message,
-  confirmText = '确定',
-  cancelText = '取消',
+  confirmText,
+  cancelText,
   onConfirm,
   onCancel,
 }: ConfirmModalProps) {
+  const { t } = useI18n();
+  const confirmLabel = confirmText || t('确定');
+  const cancelLabel = cancelText || t('取消');
+
   if (!isOpen) return null;
 
   return (
@@ -35,13 +41,13 @@ export default function ConfirmModal({
             onClick={onCancel}
             className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
           >
-            {cancelText}
+            {cancelLabel}
           </button>
           <button
             onClick={onConfirm}
             className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition"
           >
-            {confirmText}
+            {confirmLabel}
           </button>
         </div>
       </div>

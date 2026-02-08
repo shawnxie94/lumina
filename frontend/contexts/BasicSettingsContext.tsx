@@ -1,0 +1,136 @@
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+
+import { basicSettingsApi, type BasicSettings } from "@/lib/api";
+
+const LANGUAGE_STORAGE_KEY = "ui_language";
+
+const DEFAULT_BASIC_SETTINGS: BasicSettings = {
+	default_language: "zh-CN",
+	site_name: "Lumina",
+	site_description: "信息灯塔",
+	site_logo_url: "",
+};
+
+type LanguagePreference = "zh-CN" | "en" | null;
+type LanguageOption = "zh-CN" | "en" | "system";
+
+interface BasicSettingsContextType {
+	basicSettings: BasicSettings;
+	language: "zh-CN" | "en";
+	languagePreference: LanguagePreference;
+	setLanguagePreference: (next: LanguageOption) => void;
+	refreshBasicSettings: () => Promise<BasicSettings>;
+	updateBasicSettings: (next: BasicSettings) => void;
+}
+
+const BasicSettingsContext = createContext<BasicSettingsContextType | undefined>(
+	undefined,
+);
+
+export function BasicSettingsProvider({
+	children,
+}: {
+	children: React.ReactNode;
+}) {
+	const [basicSettings, setBasicSettings] =
+		useState<BasicSettings>(DEFAULT_BASIC_SETTINGS);
+	const [languagePreference, setLanguagePreferenceState] =
+		useState<LanguagePreference>(null);
+	const [language, setLanguage] = useState<"zh-CN" | "en">(
+		DEFAULT_BASIC_SETTINGS.default_language,
+	);
+
+	const applyLanguage = useCallback(
+		(nextPreference: LanguagePreference, settings: BasicSettings) => {
+			const resolved = nextPreference || settings.default_language;
+			setLanguage(resolved);
+		},
+		[],
+	);
+
+	const refreshBasicSettings = useCallback(async () => {
+		try {
+			const data = await basicSettingsApi.getPublicSettings();
+			setBasicSettings(data);
+			return data;
+		} catch {
+			return basicSettings;
+		}
+	}, [basicSettings]);
+
+	const updateBasicSettings = useCallback(
+		(next: BasicSettings) => {
+			setBasicSettings(next);
+			if (!languagePreference) {
+				setLanguage(next.default_language);
+			}
+		},
+		[languagePreference],
+	);
+
+	useEffect(() => {
+		if (typeof window === "undefined") return;
+		const stored = localStorage.getItem(LANGUAGE_STORAGE_KEY);
+		const storedPreference: LanguagePreference =
+			stored === "zh-CN" || stored === "en" ? stored : null;
+		setLanguagePreferenceState(storedPreference);
+		(async () => {
+			const data = await refreshBasicSettings();
+			applyLanguage(storedPreference, data);
+		})();
+	}, [applyLanguage, refreshBasicSettings]);
+
+	useEffect(() => {
+		if (languagePreference) return;
+		setLanguage(basicSettings.default_language);
+	}, [basicSettings.default_language, languagePreference]);
+
+	const setLanguagePreference = useCallback(
+		(next: LanguageOption) => {
+			if (typeof window === "undefined") return;
+			if (next === "system") {
+				localStorage.removeItem(LANGUAGE_STORAGE_KEY);
+				setLanguagePreferenceState(null);
+				setLanguage(basicSettings.default_language);
+				return;
+			}
+			localStorage.setItem(LANGUAGE_STORAGE_KEY, next);
+			setLanguagePreferenceState(next);
+			setLanguage(next);
+		},
+		[basicSettings.default_language],
+	);
+
+	const value = useMemo(
+		() => ({
+			basicSettings,
+			language,
+			languagePreference,
+			setLanguagePreference,
+			refreshBasicSettings,
+			updateBasicSettings,
+		}),
+		[
+			basicSettings,
+			language,
+			languagePreference,
+			setLanguagePreference,
+			refreshBasicSettings,
+			updateBasicSettings,
+		],
+	);
+
+	return (
+		<BasicSettingsContext.Provider value={value}>
+			{children}
+		</BasicSettingsContext.Provider>
+	);
+}
+
+export function useBasicSettings() {
+	const context = useContext(BasicSettingsContext);
+	if (!context) {
+		throw new Error("useBasicSettings must be used within a BasicSettingsProvider");
+	}
+	return context;
+}

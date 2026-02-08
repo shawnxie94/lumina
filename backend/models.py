@@ -294,6 +294,10 @@ class AdminSettings(Base):
     media_webp_quality = Column(Integer, default=80)
     recommendations_enabled = Column(Boolean, default=False)
     recommendation_model_config_id = Column(String, nullable=True)
+    default_language = Column(String, default="zh-CN")
+    site_name = Column(String, default="Lumina")
+    site_description = Column(Text, default="信息灯塔")
+    site_logo_url = Column(String, nullable=True)
     created_at = Column(String, default=now_str)
     updated_at = Column(String, default=now_str)
 
@@ -402,6 +406,10 @@ def init_db():
                     ("media_webp_quality", "INTEGER"),
                     ("recommendations_enabled", "INTEGER"),
                     ("recommendation_model_config_id", "TEXT"),
+                    ("default_language", "TEXT"),
+                    ("site_name", "TEXT"),
+                    ("site_description", "TEXT"),
+                    ("site_logo_url", "TEXT"),
                 ],
             )
             ensure_columns(

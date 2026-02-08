@@ -7,6 +7,7 @@ import { ToastProvider } from '@/components/Toast';
 import { ContinueReadingBanner } from '@/components/ContinueReadingBanner';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { ReadingProvider } from '@/contexts/ReadingContext';
+import { BasicSettingsProvider } from '@/contexts/BasicSettingsContext';
 
 export default function App({ Component, pageProps }: AppProps) {
   return (
@@ -17,12 +18,14 @@ export default function App({ Component, pageProps }: AppProps) {
       </Head>
       <SessionProvider session={(pageProps as { session?: any }).session}>
         <AuthProvider>
-          <ReadingProvider>
-            <ToastProvider>
-              <Component {...pageProps} />
-              <ContinueReadingBanner />
-            </ToastProvider>
-          </ReadingProvider>
+          <BasicSettingsProvider>
+            <ReadingProvider>
+              <ToastProvider>
+                <Component {...pageProps} />
+                <ContinueReadingBanner />
+              </ToastProvider>
+            </ReadingProvider>
+          </BasicSettingsProvider>
         </AuthProvider>
       </SessionProvider>
     </>

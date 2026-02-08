@@ -2,7 +2,9 @@ import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useAuth } from '@/contexts/AuthContext';
+import { useBasicSettings } from '@/contexts/BasicSettingsContext';
 import { articleApi } from '@/lib/api';
+import { useI18n } from '@/lib/i18n';
 import { notificationStore, type NotificationItem } from '@/lib/notifications';
 import {
   IconBell,
@@ -33,9 +35,14 @@ type ErrorTaskItem = {
 
 export default function AppHeader() {
   const { isAdmin, logout } = useAuth();
+  const { t, language } = useI18n();
+  const { basicSettings, languagePreference, setLanguagePreference } =
+    useBasicSettings();
   const [theme, setTheme] = useState<'light' | 'dark' | 'system'>('system');
   const [themeMenuOpen, setThemeMenuOpen] = useState(false);
   const themeMenuRef = useRef<HTMLDivElement | null>(null);
+  const [languageMenuOpen, setLanguageMenuOpen] = useState(false);
+  const languageMenuRef = useRef<HTMLDivElement | null>(null);
   const [errorMenuOpen, setErrorMenuOpen] = useState(false);
   const errorMenuRef = useRef<HTMLDivElement | null>(null);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
@@ -94,6 +101,17 @@ export default function AppHeader() {
   }, [themeMenuOpen]);
 
   useEffect(() => {
+    if (!languageMenuOpen) return;
+    const handleClick = (event: MouseEvent) => {
+      if (!languageMenuRef.current) return;
+      if (languageMenuRef.current.contains(event.target as Node)) return;
+      setLanguageMenuOpen(false);
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [languageMenuOpen]);
+
+  useEffect(() => {
     if (!errorMenuOpen) return;
     const handleClick = (event: MouseEvent) => {
       if (!errorMenuRef.current) return;
@@ -113,22 +131,25 @@ export default function AppHeader() {
     };
   }, []);
 
-  const getTaskTypeLabel = useCallback((task: ErrorTaskItem) => {
-    if (task.task_type === 'process_article_cleaning') return '清洗';
-    if (task.task_type === 'process_article_validation') return '校验';
-    if (task.task_type === 'process_article_classification') return '分类';
-    if (task.task_type === 'process_article_translation') return '翻译';
-    if (task.task_type === 'process_article_embedding') return '向量化';
-    if (task.task_type === 'process_ai_content') {
-      if (task.content_type === 'summary') return '摘要';
-      if (task.content_type === 'key_points') return '总结';
-      if (task.content_type === 'outline') return '大纲';
-      if (task.content_type === 'quotes') return '金句';
-      return 'AI内容';
-    }
-    if (task.task_type === 'process_article_ai') return '旧流程';
-    return '其他';
-  }, []);
+  const getTaskTypeLabel = useCallback(
+    (task: ErrorTaskItem) => {
+      if (task.task_type === 'process_article_cleaning') return t('清洗');
+      if (task.task_type === 'process_article_validation') return t('校验');
+      if (task.task_type === 'process_article_classification') return t('分类');
+      if (task.task_type === 'process_article_translation') return t('翻译');
+      if (task.task_type === 'process_article_embedding') return t('向量化');
+      if (task.task_type === 'process_ai_content') {
+        if (task.content_type === 'summary') return t('摘要');
+        if (task.content_type === 'key_points') return t('总结');
+        if (task.content_type === 'outline') return t('大纲');
+        if (task.content_type === 'quotes') return t('金句');
+        return t('AI内容');
+      }
+      if (task.task_type === 'process_article_ai') return t('旧流程');
+      return t('其他');
+    },
+    [t],
+  );
 
   const fetchErrorTasks = useCallback(async () => {
     if (!isAdmin) return;
@@ -140,11 +161,12 @@ export default function AppHeader() {
         status: 'failed',
       });
       const items = (response.data as ErrorTaskItem[]).map((task) => {
-        const title = task.article_title || `${getTaskTypeLabel(task)}任务`;
+        const title =
+          task.article_title || `${getTaskTypeLabel(task)}${t('任务')}`;
         return {
           id: `task:${task.id}`,
           title,
-          message: task.last_error || '未知错误',
+          message: task.last_error || t('未知错误'),
           level: 'error' as const,
           source: 'task' as const,
           category: getTaskTypeLabel(task),
@@ -183,11 +205,20 @@ export default function AppHeader() {
 
   const themeOptions = useMemo(
     () => [
-      { value: 'light' as const, label: '明亮', icon: IconSun },
-      { value: 'dark' as const, label: '暗黑', icon: IconMoon },
-      { value: 'system' as const, label: '系统', icon: IconMonitor },
+      { value: 'light' as const, label: t('明亮'), icon: IconSun },
+      { value: 'dark' as const, label: t('暗黑'), icon: IconMoon },
+      { value: 'system' as const, label: t('系统'), icon: IconMonitor },
     ],
-    [],
+    [t],
+  );
+
+  const languageOptions = useMemo(
+    () => [
+      { value: 'zh-CN' as const, label: t('中文') },
+      { value: 'en' as const, label: t('英文') },
+      { value: 'system' as const, label: t('跟随系统默认') },
+    ],
+    [t],
   );
 
   const activeTheme = themeOptions.find((option) => option.value === theme);
@@ -202,18 +233,24 @@ export default function AppHeader() {
     notificationStore.clear();
   }, [notifications.length]);
 
-  const getSourceLabel = useCallback((item: NotificationItem) => {
-    if (item.source === 'task') return '任务错误';
-    if (item.source === 'api') return '接口错误';
-    if (item.source === 'system') return '系统通知';
-    return '通知';
-  }, []);
+  const getSourceLabel = useCallback(
+    (item: NotificationItem) => {
+      if (item.source === 'task') return t('任务错误');
+      if (item.source === 'api') return t('接口错误');
+      if (item.source === 'system') return t('系统通知');
+      return t('通知');
+    },
+    [t],
+  );
 
   const getLevelClass = useCallback((level: NotificationItem['level']) => {
     if (level === 'error') return 'text-red-500';
     if (level === 'warning') return 'text-amber-500';
     return 'text-blue-500';
   }, []);
+
+  const siteName = basicSettings.site_name || 'Lumina';
+  const siteLogo = basicSettings.site_logo_url || '/favicon.png';
 
   return (
     <header className="bg-surface border-b border-border shadow-sm">
@@ -222,18 +259,18 @@ export default function AppHeader() {
           <div className="flex items-center gap-8">
             <Link href="/" className="inline-flex items-center gap-2 text-text-1">
               <img
-                src="/favicon.png"
-                alt="Lumina"
+                src={siteLogo}
+                alt={siteName}
                 className="h-7 w-7 logo-mark"
               />
-              <span className="text-2xl font-bold">Lumina</span>
+              <span className="text-2xl font-bold">{siteName}</span>
             </Link>
             <div className="flex items-center gap-2 text-base font-medium">
               <Link
                 href="/"
                 className="px-3 py-1 rounded-sm transition text-text-1 hover:bg-muted"
               >
-                信息流
+                {t('信息流')}
               </Link>
             </div>
           </div>
@@ -244,7 +281,7 @@ export default function AppHeader() {
                   type="button"
                   onClick={() => setErrorMenuOpen((prev) => !prev)}
                   className="relative flex items-center justify-center h-9 w-9 rounded-sm text-text-3 hover:text-text-1 hover:bg-muted transition"
-                  title="通知中心"
+                  title={t('通知中心')}
                 >
                   <IconBell className="h-4 w-4" />
                   {notificationCount > 0 && (
@@ -257,27 +294,27 @@ export default function AppHeader() {
                   <div className="absolute right-0 mt-2 w-80 rounded-md border border-border bg-surface shadow-md z-20">
                     <div className="flex items-center justify-between px-3 py-2 border-b border-border">
                       <div className="text-sm font-medium text-text-1">
-                        通知中心
+                        {t('通知中心')}
                       </div>
                       <button
                         type="button"
                         onClick={handleClearAllNotifications}
                         className="flex items-center gap-1 text-xs text-text-3 hover:text-text-1 transition"
-                        title="清理全部"
+                        title={t('清理全部')}
                       >
                         <IconTrash className="h-3.5 w-3.5" />
-                        清理
+                        {t('清理')}
                       </button>
                     </div>
                     <div className="max-h-80 overflow-auto">
                       {errorLoading && (
                         <div className="px-3 py-4 text-xs text-text-3">
-                          加载中...
+                          {t('加载中')}
                         </div>
                       )}
                       {!errorLoading && notifications.length === 0 && (
                         <div className="px-3 py-4 text-xs text-text-3">
-                          暂无通知
+                          {t('暂无通知')}
                         </div>
                       )}
                       {!errorLoading &&
@@ -306,14 +343,16 @@ export default function AppHeader() {
                                 {item.message}
                               </div>
                               <div className="text-[11px] text-text-3 mt-1">
-                                {new Date(item.createdAt).toLocaleString('zh-CN')}
+                                {new Date(item.createdAt).toLocaleString(
+                                  language === 'en' ? 'en-US' : 'zh-CN',
+                                )}
                               </div>
                             </div>
                             <button
                               type="button"
                               onClick={() => handleDismissNotification(item.id)}
                               className="text-text-3 hover:text-text-1 transition"
-                              title="清理"
+                              title={t('清理')}
                             >
                               <IconTrash className="h-3.5 w-3.5" />
                             </button>
@@ -329,7 +368,7 @@ export default function AppHeader() {
                 type="button"
                 onClick={() => setThemeMenuOpen((prev) => !prev)}
                 className="flex items-center gap-1 px-3 py-1 rounded-sm text-sm text-text-3 hover:text-text-1 hover:bg-muted transition"
-                title="切换主题"
+                title={t('切换主题')}
               >
                 {activeTheme && <activeTheme.icon className="h-4 w-4" />}
               </button>
@@ -360,11 +399,48 @@ export default function AppHeader() {
                 </div>
               )}
             </div>
+            <div className="relative" ref={languageMenuRef}>
+              <button
+                type="button"
+                onClick={() => setLanguageMenuOpen((prev) => !prev)}
+                className="flex items-center gap-1 px-3 py-1 rounded-sm text-sm text-text-3 hover:text-text-1 hover:bg-muted transition"
+                title={t('语言')}
+              >
+                <span>{t('语言')}</span>
+              </button>
+              {languageMenuOpen && (
+                <div className="absolute right-0 mt-2 w-40 rounded-md border border-border bg-surface shadow-md p-1 z-10">
+                  {languageOptions.map((option) => {
+                    const isActive =
+                      option.value === 'system'
+                        ? languagePreference === null
+                        : languagePreference === option.value;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => {
+                          setLanguagePreference(option.value);
+                          setLanguageMenuOpen(false);
+                        }}
+                        className={`w-full flex items-center gap-2 px-2 py-1 rounded text-xs transition ${
+                          isActive
+                            ? 'bg-muted text-text-1'
+                            : 'text-text-2 hover:text-text-1 hover:bg-muted'
+                        }`}
+                      >
+                        <span>{option.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
             {isAdmin && (
               <Link
                 href="/admin"
                 className="flex items-center gap-1 px-3 py-1 rounded-sm text-sm text-text-3 hover:text-text-1 hover:bg-muted transition"
-                title="管理"
+                title={t('管理')}
               >
                 <IconSettings className="h-4 w-4" />
               </Link>
@@ -373,7 +449,7 @@ export default function AppHeader() {
               <button
                 onClick={logout}
                 className="flex items-center gap-1 px-3 py-1 rounded-sm text-sm text-text-3 hover:text-red-600 hover:bg-red-50 transition"
-                title="退出登录"
+                title={t('退出登录')}
                 type="button"
               >
                 <IconLogout className="h-4 w-4" />
@@ -382,7 +458,7 @@ export default function AppHeader() {
               <Link
                 href="/login"
                 className="flex items-center gap-1 px-3 py-1 rounded-sm text-sm text-text-3 hover:text-primary hover:bg-primary-soft transition"
-                title="管理员登录"
+                title={t('管理员登录')}
               >
                 <IconLock className="h-4 w-4" />
               </Link>

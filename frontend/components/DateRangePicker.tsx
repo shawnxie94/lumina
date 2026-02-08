@@ -1,6 +1,7 @@
 import { ConfigProvider, DatePicker } from "antd";
 import type { Dayjs } from "dayjs";
 import type { CSSProperties } from "react";
+import { useI18n } from "@/lib/i18n";
 
 type DateRangeValue = [Dayjs | null, Dayjs | null] | null;
 
@@ -16,11 +17,14 @@ interface DateRangePickerProps {
 export default function DateRangePicker({
   value,
   onChange,
-  placeholder = ["开始日期", "结束日期"],
+  placeholder,
   className,
   style,
   id,
 }: DateRangePickerProps) {
+  const { t } = useI18n();
+  const resolvedPlaceholder = placeholder || [t("开始日期"), t("结束日期")];
+
   return (
     <ConfigProvider
       theme={{
@@ -39,7 +43,7 @@ export default function DateRangePicker({
         className={className}
         size="middle"
         allowClear
-        placeholder={placeholder}
+        placeholder={resolvedPlaceholder}
         format="YYYY-MM-DD"
         style={{ height: 36, width: "100%", minWidth: 0, ...style }}
       />

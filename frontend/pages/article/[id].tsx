@@ -15,7 +15,9 @@ import ConfirmModal from '@/components/ConfirmModal';
 import { BackToTop } from '@/components/BackToTop';
 import { IconBolt, IconBook, IconCopy, IconDoc, IconEdit, IconEye, IconEyeOff, IconLink, IconList, IconNote, IconRefresh, IconRobot, IconTrash, IconCheck, IconReply, IconChevronDown, IconChevronUp, IconTag } from '@/components/icons';
 import { useAuth } from '@/contexts/AuthContext';
+import { useBasicSettings } from '@/contexts/BasicSettingsContext';
 import { useReading } from '@/contexts/ReadingContext';
+import { useI18n } from '@/lib/i18n';
 import { Select } from 'antd';
 import { signIn, signOut, useSession } from 'next-auth/react';
 
@@ -556,6 +558,8 @@ export default function ArticleDetailPage() {
   const router = useRouter();
   const { showToast } = useToast();
   const { isAdmin } = useAuth();
+  const { t } = useI18n();
+  const { basicSettings } = useBasicSettings();
   const { addArticle, setIsHidden } = useReading();
   const { data: session } = useSession();
   const { id } = router.query;
@@ -1838,7 +1842,11 @@ export default function ArticleDetailPage() {
   return (
     <div className={`min-h-screen ${immersiveMode ? 'bg-surface' : 'bg-app'} flex flex-col`}>
       <Head>
-        <title>{article?.title ? `${article.title} - Lumina` : '文章详情 - Lumina'}</title>
+        <title>
+          {article?.title
+            ? `${article.title} - ${basicSettings.site_name || 'Lumina'}`
+            : `${t('文章详情')} - ${basicSettings.site_name || 'Lumina'}`}
+        </title>
       </Head>
       <ReadingProgress />
       <AppHeader />

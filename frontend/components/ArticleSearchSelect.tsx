@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { articleApi } from '@/lib/api';
+import { useI18n } from '@/lib/i18n';
 
 interface ArticleOption {
   id: string;
@@ -19,9 +20,10 @@ export function ArticleSearchSelect({
   label,
   value,
   onChange,
-  placeholder = '搜索文章标题...',
+  placeholder,
   className = '',
 }: ArticleSearchSelectProps) {
+  const { t } = useI18n();
   const [inputValue, setInputValue] = useState('');
   const [options, setOptions] = useState<ArticleOption[]>([]);
   const [isOpen, setIsOpen] = useState(false);
@@ -99,6 +101,7 @@ export function ArticleSearchSelect({
   };
 
   const inputId = `article-search-${label}`;
+  const resolvedPlaceholder = placeholder || t('搜索文章标题...');
 
   return (
     <div ref={wrapperRef} className={`relative ${className}`}>
@@ -113,7 +116,7 @@ export function ArticleSearchSelect({
             setIsOpen(true);
             if (inputValue) searchArticles(inputValue);
           }}
-          placeholder={placeholder}
+          placeholder={resolvedPlaceholder}
           className="w-full h-9 px-3 pr-8 border border-border rounded-sm bg-surface text-text-1 text-sm placeholder:text-sm placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
         />
         {(inputValue || selectedArticle) && (
@@ -123,7 +126,7 @@ export function ArticleSearchSelect({
             className="absolute right-2 top-1/2 -translate-y-1/2 text-text-3 hover:text-text-1"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <title>清除</title>
+              <title>{t('清除')}</title>
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
@@ -133,7 +136,7 @@ export function ArticleSearchSelect({
       {isOpen && (
         <div className="absolute z-50 left-0 right-0 mt-1 bg-surface border border-border rounded-lg shadow-lg max-h-60 overflow-auto">
           {loading ? (
-            <div className="px-3 py-2 text-sm text-text-3">搜索中...</div>
+            <div className="px-3 py-2 text-sm text-text-3">{t('搜索中...')}</div>
           ) : options.length > 0 ? (
             options.map((article) => (
               <button
@@ -146,9 +149,9 @@ export function ArticleSearchSelect({
               </button>
             ))
           ) : inputValue ? (
-            <div className="px-3 py-2 text-sm text-text-3">未找到匹配的文章</div>
+            <div className="px-3 py-2 text-sm text-text-3">{t('未找到匹配的文章')}</div>
           ) : (
-            <div className="px-3 py-2 text-sm text-text-3">输入关键词搜索文章</div>
+            <div className="px-3 py-2 text-sm text-text-3">{t('输入关键词搜索文章')}</div>
           )}
         </div>
       )}

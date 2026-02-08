@@ -20,6 +20,8 @@ import { useToast } from '@/components/Toast';
 import { BackToTop } from '@/components/BackToTop';
 import { IconEye, IconEyeOff, IconGlobe, IconSearch, IconTag, IconTrash } from '@/components/icons';
 import { useAuth } from '@/contexts/AuthContext';
+import { useBasicSettings } from '@/contexts/BasicSettingsContext';
+import { useI18n } from '@/lib/i18n';
 
 const formatDate = (date: Date | null): string => {
   if (!date) return '';
@@ -75,6 +77,8 @@ export default function Home() {
   const router = useRouter();
   const { showToast } = useToast();
   const { isAdmin } = useAuth();
+  const { t } = useI18n();
+  const { basicSettings } = useBasicSettings();
   const [articles, setArticles] = useState<Article[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [categoryStats, setCategoryStats] = useState<{ id: string; name: string; color: string | null; article_count: number }[]>([]);
@@ -111,8 +115,8 @@ export default function Home() {
     isOpen: false,
     title: '',
     message: '',
-    confirmText: '确定',
-    cancelText: '取消',
+    confirmText: t('确定'),
+    cancelText: t('取消'),
     onConfirm: () => {},
   });
 
@@ -269,33 +273,33 @@ export default function Home() {
     if (selectedArticleSlugs.size === 0) return;
     try {
       await articleApi.batchUpdateVisibility(Array.from(selectedArticleSlugs), isVisible);
-      showToast(isVisible ? '已批量设为可见' : '已批量设为隐藏');
+      showToast(isVisible ? t('已批量设为可见') : t('已批量设为隐藏'));
       setSelectedArticleSlugs(new Set());
       fetchArticles();
       fetchCategoryStats();
     } catch (error) {
       console.error('Failed to batch update visibility:', error);
-      showToast('操作失败', 'error');
+      showToast(t('操作失败'), 'error');
     }
   };
 
   const handleBatchCategory = async () => {
     if (selectedArticleSlugs.size === 0) return;
     if (!batchCategoryId) {
-      showToast('请选择分类', 'info');
+      showToast(t('请选择分类'), 'info');
       return;
     }
     const targetCategoryId = batchCategoryId === '__clear__' ? null : batchCategoryId;
     try {
       await articleApi.batchUpdateCategory(Array.from(selectedArticleSlugs), targetCategoryId);
-      showToast('分类已更新');
+      showToast(t('分类已更新'));
       setBatchCategoryId('');
       setSelectedArticleSlugs(new Set());
       fetchArticles();
       fetchCategoryStats();
     } catch (error) {
       console.error('Failed to batch update category:', error);
-      showToast('操作失败', 'error');
+      showToast(t('操作失败'), 'error');
     }
   };
 
@@ -304,20 +308,20 @@ export default function Home() {
     const slugs = Array.from(selectedArticleSlugs);
     setConfirmState({
       isOpen: true,
-      title: '批量删除文章',
-      message: '确定要删除选中的文章吗？此操作不可撤销。',
-      confirmText: '删除',
-      cancelText: '取消',
+      title: t('批量删除文章'),
+      message: t('确定要删除选中的文章吗？此操作不可撤销。'),
+      confirmText: t('删除'),
+      cancelText: t('取消'),
       onConfirm: async () => {
         try {
           await articleApi.batchDeleteArticles(slugs);
-          showToast('删除成功');
+          showToast(t('删除成功'));
           setSelectedArticleSlugs(new Set());
           fetchArticles();
           fetchCategoryStats();
         } catch (error) {
           console.error('Failed to batch delete articles:', error);
-          showToast('删除失败', 'error');
+          showToast(t('删除失败'), 'error');
         }
       },
     });
@@ -326,21 +330,21 @@ export default function Home() {
   const activeFilters = useMemo(() => {
     const filters: string[] = [];
     const categoryName = categories.find((c) => c.id === selectedCategory)?.name;
-    if (categoryName) filters.push(`分类：${categoryName}`);
-    if (searchTerm) filters.push(`标题：${searchTerm}`);
-    if (sourceDomain) filters.push(`来源：${sourceDomain}`);
-    if (author) filters.push(`作者：${author}`);
+    if (categoryName) filters.push(`${t('分类')}：${categoryName}`);
+    if (searchTerm) filters.push(`${t('标题')}：${searchTerm}`);
+    if (sourceDomain) filters.push(`${t('来源')}：${sourceDomain}`);
+    if (author) filters.push(`${t('作者')}：${author}`);
     if (isAdmin && visibilityFilter) {
-      filters.push(visibilityFilter === 'visible' ? '可见：是' : '可见：否');
+      filters.push(visibilityFilter === 'visible' ? `${t('可见')}：${t('是')}` : `${t('可见')}：${t('否')}`);
     }
     if (publishedStartDate || publishedEndDate) {
-      filters.push(`发表：${formatDate(publishedStartDate)} ~ ${formatDate(publishedEndDate)}`.trim());
+      filters.push(`${t('发表')}：${formatDate(publishedStartDate)} ~ ${formatDate(publishedEndDate)}`.trim());
     }
     if (createdStartDate || createdEndDate) {
-      filters.push(`创建：${formatDate(createdStartDate)} ~ ${formatDate(createdEndDate)}`.trim());
+      filters.push(`${t('创建')}：${formatDate(createdStartDate)} ~ ${formatDate(createdEndDate)}`.trim());
     }
-    if (sortBy === 'published_at_desc') filters.push('排序：发表时间倒序');
-    if (sortBy === 'created_at_desc') filters.push('排序：创建时间倒序');
+    if (sortBy === 'published_at_desc') filters.push(`${t('排序')}：${t('发表时间倒序')}`);
+    if (sortBy === 'created_at_desc') filters.push(`${t('排序')}：${t('创建时间倒序')}`);
     return filters;
   }, [
     categories,
@@ -368,11 +372,11 @@ export default function Home() {
       onConfirm: async () => {
         try {
           await articleApi.deleteArticle(slug);
-          showToast('删除成功');
+          showToast(t('删除成功'));
           fetchArticles();
         } catch (error) {
           console.error('Failed to delete article:', error);
-          showToast('删除失败', 'error');
+          showToast(t('删除失败'), 'error');
         }
       },
     });
@@ -384,10 +388,10 @@ export default function Home() {
       setArticles((prev) =>
         prev.map((a) => (a.slug === slug ? { ...a, is_visible: !currentVisibility } : a))
       );
-      showToast(currentVisibility ? '已设为不可见' : '已设为可见');
+      showToast(currentVisibility ? t('已设为不可见') : t('已设为可见'));
     } catch (error) {
       console.error('Failed to toggle visibility:', error);
-      showToast('操作失败', 'error');
+      showToast(t('操作失败'), 'error');
     }
   };
 
@@ -429,12 +433,12 @@ export default function Home() {
 
   const handleExport = async () => {
     if (!isAdmin) {
-      showToast('仅管理员可导出文章', 'info');
+      showToast(t('仅管理员可导出文章'), 'info');
       return;
     }
 
     if (selectedArticleSlugs.size === 0) {
-      showToast('请先选择要导出的文章', 'info');
+      showToast(t('请先选择要导出的文章'), 'info');
       return;
     }
 
@@ -466,10 +470,10 @@ export default function Home() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
       setSelectedArticleSlugs(new Set());
-      showToast('导出成功');
+      showToast(t('导出成功'));
     } catch (error) {
       console.error('Failed to export articles:', error);
-      showToast('导出失败', 'error');
+      showToast(t('导出失败'), 'error');
     }
   };
 
@@ -480,14 +484,22 @@ export default function Home() {
       setPage(pageNum);
       setJumpToPage('');
     } else {
-      showToast(`请输入1-${totalPages}之间的页码`, 'error');
+      showToast(
+        t("请输入1-{totalPages}之间的页码").replace(
+          "{totalPages}",
+          totalPages.toString(),
+        ),
+        "error",
+      );
     }
   };
 
   return (
     <div className="min-h-screen bg-app flex flex-col">
       <Head>
-        <title>Lumina - 信息灯塔</title>
+        <title>
+          {basicSettings.site_name || 'Lumina'} - {basicSettings.site_description || t('信息灯塔')}
+        </title>
       </Head>
       <AppHeader />
 
@@ -500,13 +512,13 @@ export default function Home() {
                 {!sidebarCollapsed && (
                   <h2 className="font-semibold text-text-1 inline-flex items-center gap-2">
                     <IconTag className="h-4 w-4" />
-                    <span>分类筛选</span>
+                    <span>{t('分类筛选')}</span>
                   </h2>
                 )}
                 <button
                   onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
                   className="text-text-3 hover:text-text-2 transition"
-                  title={sidebarCollapsed ? '展开' : '收起'}
+                  title={sidebarCollapsed ? t('展开') : t('收起')}
                 >
                   {sidebarCollapsed ? '»' : '«'}
                 </button>
@@ -519,7 +531,7 @@ export default function Home() {
                       selectedCategory === '' ? 'bg-primary-soft text-primary-ink' : 'hover:bg-muted'
                     }`}
                   >
-                    全部文章 ({categoryStats.reduce((sum, c) => sum + c.article_count, 0)})
+                    {t('全部文章')} ({categoryStats.reduce((sum, c) => sum + c.article_count, 0)})
                   </button>
                   {categoryStats.map((category) => (
                     <button
@@ -548,45 +560,45 @@ export default function Home() {
                     >
                       <span className="inline-flex items-center gap-2">
                         <IconSearch className="h-4 w-4" />
-                        <span>高级筛选</span>
+                        <span>{t('高级筛选')}</span>
                       </span>
                     </button>
                 </div>
                 <div className="flex flex-wrap items-center justify-end gap-4">
                   <FilterSelectInline
-                    label="创建时间："
+                    label={`${t('创建时间')}：`}
                     value={quickDateFilter}
                     onChange={(value) => handleQuickDateChange(value as QuickDateOption)}
                     options={[
-                      { value: '', label: '全部' },
-                      { value: '1d', label: '1天内' },
-                      { value: '3d', label: '3天内' },
-                      { value: '1w', label: '1周内' },
-                      { value: '1m', label: '1个月' },
-                      { value: '3m', label: '3个月' },
-                      { value: '6m', label: '6个月' },
-                      { value: '1y', label: '1年内' },
+                      { value: '', label: t('全部') },
+                      { value: '1d', label: t('1天内') },
+                      { value: '3d', label: t('3天内') },
+                      { value: '1w', label: t('1周内') },
+                      { value: '1m', label: t('1个月') },
+                      { value: '3m', label: t('3个月') },
+                      { value: '6m', label: t('6个月') },
+                      { value: '1y', label: t('1年内') },
                     ]}
                   />
                   {isAdmin && (
                     <FilterSelectInline
-                      label="可见性："
+                      label={`${t('可见性')}：`}
                       value={visibilityFilter}
                       onChange={(value) => { setVisibilityFilter(value); setPage(1); }}
                       options={[
-                        { value: '', label: '全部' },
-                        { value: 'visible', label: '可见' },
-                        { value: 'hidden', label: '隐藏' },
+                        { value: '', label: t('全部') },
+                        { value: 'visible', label: t('可见') },
+                        { value: 'hidden', label: t('隐藏') },
                       ]}
                     />
                   )}
                   <FilterSelectInline
-                    label="排序："
+                    label={`${t('排序')}：`}
                     value={sortBy}
                     onChange={(value) => { setSortBy(value); setPage(1); }}
                     options={[
-                      { value: 'published_at_desc', label: '发表时间倒序' },
-                      { value: 'created_at_desc', label: '创建时间倒序' },
+                      { value: 'published_at_desc', label: t('发表时间倒序') },
+                      { value: 'created_at_desc', label: t('创建时间倒序') },
                     ]}
                   />
                 </div>
@@ -596,27 +608,27 @@ export default function Home() {
                 <div className="mt-4 pt-4 border-t border-border">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                     <FilterInput
-                      label="文章标题"
+                      label={t('文章标题')}
                       value={searchTerm}
                       onChange={(value) => { setSearchTerm(value); setPage(1); }}
-                      placeholder="模糊匹配标题"
+                      placeholder={t('模糊匹配标题')}
                     />
                     <FilterSelect
-                      label="来源"
+                      label={t('来源')}
                       value={sourceDomain}
                       onChange={(value) => { setSourceDomain(value); setPage(1); }}
-                      options={[{ value: '', label: '全部来源' }, ...sources.map((s) => ({ value: s, label: s }))]}
+                      options={[{ value: '', label: t('全部来源') }, ...sources.map((s) => ({ value: s, label: s }))]}
                     />
                     <FilterSelect
-                      label="作者"
+                      label={t('作者')}
                       value={author}
                       onChange={(value) => { setAuthor(value); setPage(1); }}
-                      options={[{ value: '', label: '全部作者' }, ...authors.map((a) => ({ value: a, label: a }))]}
+                      options={[{ value: '', label: t('全部作者') }, ...authors.map((a) => ({ value: a, label: a }))]}
                     />
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-2">
                     <div>
-                      <label htmlFor="published-date-range" className="block text-sm text-text-2 mb-1.5">发表时间</label>
+                      <label htmlFor="published-date-range" className="block text-sm text-text-2 mb-1.5">{t('发表时间')}</label>
                       <DateRangePicker
                         id="published-date-range"
                         value={toDayjsRange(publishedDateRange)}
@@ -629,7 +641,7 @@ export default function Home() {
                       />
                     </div>
                     <div>
-                      <label htmlFor="created-date-range" className="block text-sm text-text-2 mb-1.5">创建时间</label>
+                      <label htmlFor="created-date-range" className="block text-sm text-text-2 mb-1.5">{t('创建时间')}</label>
                       <DateRangePicker
                         id="created-date-range"
                         value={toDayjsRange(createdDateRange)}
@@ -651,7 +663,7 @@ export default function Home() {
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="flex flex-wrap gap-2">
                     {activeFilters.length === 0 ? (
-                      <span className="text-sm text-text-3">暂无筛选条件</span>
+                      <span className="text-sm text-text-3">{t('暂无筛选条件')}</span>
                     ) : (
                       activeFilters.map((filter) => (
                         <span
@@ -670,7 +682,7 @@ export default function Home() {
                       className={`px-3 py-1 text-sm rounded-lg transition ${activeFilters.length === 0 ? 'bg-gray-50 text-gray-400 cursor-not-allowed' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
                       disabled={activeFilters.length === 0}
                     >
-                      清除筛选
+                      {t('清除筛选')}
                     </button>
                   </div>
                 </div>
@@ -679,12 +691,12 @@ export default function Home() {
                 <div className="mt-4 pt-4 border-t border-gray-200">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="flex flex-wrap items-center gap-3">
-                      <span className="text-sm text-gray-600">已选 {selectedArticleSlugs.size} 篇</span>
+                      <span className="text-sm text-gray-600">{t('已选')} {selectedArticleSlugs.size} {t('篇')}</span>
                       <button
                         onClick={handleExport}
                         className="px-3 py-1 text-sm rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition"
                       >
-                        导出选中 ({selectedArticleSlugs.size})
+                        {t('导出选中')} ({selectedArticleSlugs.size})
                       </button>
                     </div>
                     {isAdmin && (
@@ -694,14 +706,14 @@ export default function Home() {
                           onClick={() => handleBatchVisibility(true)}
                           className="px-3 py-1 text-sm rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition"
                         >
-                          设为可见
+                          {t('设为可见')}
                         </button>
                         <button
                           type="button"
                           onClick={() => handleBatchVisibility(false)}
                           className="px-3 py-1 text-sm rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition"
                         >
-                          设为隐藏
+                          {t('设为隐藏')}
                         </button>
                         <div className="flex items-center gap-2">
                           <Select
@@ -710,8 +722,8 @@ export default function Home() {
                             className="select-modern-antd"
                             popupClassName="select-modern-dropdown"
                             options={[
-                              { value: '', label: '选择分类' },
-                              { value: '__clear__', label: '清空分类' },
+                              { value: '', label: t('选择分类') },
+                              { value: '__clear__', label: t('清空分类') },
                               ...categories.map((category) => ({ value: category.id, label: category.name })),
                             ]}
                           />

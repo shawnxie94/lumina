@@ -228,6 +228,13 @@ export interface StorageSettings {
 	media_webp_quality: number;
 }
 
+export interface BasicSettings {
+	default_language: "zh-CN" | "en";
+	site_name: string;
+	site_description: string;
+	site_logo_url: string;
+}
+
 export interface CommentListResponse {
 	items: ArticleComment[];
 	pagination: {
@@ -796,6 +803,21 @@ export const commentApi = {
 			is_hidden: isHidden,
 		});
 		return response.data as { id: string; is_hidden: boolean; updated_at: string };
+	},
+};
+
+export const basicSettingsApi = {
+	getSettings: async (): Promise<BasicSettings> => {
+		const response = await api.get("/api/settings/basic");
+		return response.data;
+	},
+	updateSettings: async (payload: Partial<BasicSettings>) => {
+		const response = await api.put("/api/settings/basic", payload);
+		return response.data;
+	},
+	getPublicSettings: async (): Promise<BasicSettings> => {
+		const response = await api.get("/api/settings/basic/public");
+		return response.data;
 	},
 };
 

@@ -142,6 +142,10 @@ def create_admin_settings(db: Session, password: str) -> AdminSettings:
         media_webp_quality=80,
         recommendations_enabled=False,
         recommendation_model_config_id=None,
+        default_language="zh-CN",
+        site_name="Lumina",
+        site_description="信息灯塔",
+        site_logo_url="",
     )
     db.add(admin)
     db.commit()
