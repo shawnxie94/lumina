@@ -15,7 +15,6 @@ import {
 	verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Select } from "antd";
 import type { Dayjs } from "dayjs";
 import dayjs from "dayjs";
 import Head from "next/head";
@@ -30,6 +29,15 @@ import DateRangePicker from "@/components/DateRangePicker";
 import FilterInput from "@/components/FilterInput";
 import FilterSelect from "@/components/FilterSelect";
 import IconButton from "@/components/IconButton";
+import CheckboxInput from "@/components/ui/CheckboxInput";
+import FormField from "@/components/ui/FormField";
+import ModalShell from "@/components/ui/ModalShell";
+import SectionToggleButton from "@/components/ui/SectionToggleButton";
+import SelectableButton from "@/components/ui/SelectableButton";
+import SelectField from "@/components/ui/SelectField";
+import StatusTag from "@/components/ui/StatusTag";
+import TextArea from "@/components/ui/TextArea";
+import TextInput from "@/components/ui/TextInput";
 import { ArticleSearchSelect } from "@/components/ArticleSearchSelect";
 import {
 	IconEdit,
@@ -201,13 +209,13 @@ function SortableCategoryItem({
 		<div
 			ref={setNodeRef}
 			style={style}
-			className="border rounded-lg px-3 py-2 hover:shadow-sm transition flex items-center justify-between bg-white"
+			className="border rounded-lg px-3 py-2 hover:shadow-sm transition flex items-center justify-between bg-surface"
 		>
 			<div className="flex items-center gap-3">
 				<button
 					{...attributes}
 					{...listeners}
-					className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600 px-1"
+					className="cursor-grab active:cursor-grabbing text-text-3 hover:text-text-2 px-1"
 					title={t("拖动排序")}
 				>
 					<IconGrip className="h-4 w-4" />
@@ -220,14 +228,14 @@ function SortableCategoryItem({
 				</div>
 				<div>
 					<div className="flex items-center gap-2">
-						<h3 className="font-semibold text-gray-900 text-sm">
+						<h3 className="font-semibold text-text-1 text-sm">
 							{category.name}
 						</h3>
 						<span className="text-xs text-text-3">
 							{category.article_count}
 						</span>
 					</div>
-					<p className="text-xs text-gray-600">
+					<p className="text-xs text-text-2">
 						{category.description || t("暂无描述")}
 					</p>
 				</div>
@@ -1863,134 +1871,118 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 
 				<div className="max-w-7xl mx-auto px-4 pt-6">
 					<div className="flex gap-1 border-b border-border">
-						<button
+						<SelectableButton
 							onClick={() => {
-								setPrimaryTab('monitoring');
-								setActiveSection('monitoring');
+								setPrimaryTab("monitoring");
+								setActiveSection("monitoring");
 							}}
-							className={`px-6 py-3 text-sm font-medium rounded-t-sm transition ${
-								primaryTab === 'monitoring'
-									? 'bg-primary-soft text-primary-ink'
-									: 'text-text-2 hover:text-text-1 hover:bg-muted'
-							}`}
+							active={primaryTab === "monitoring"}
+							variant="tab"
 						>
 							{t("监控")}
-						</button>
-						<button
+						</SelectableButton>
+						<SelectableButton
 							onClick={() => {
-								setPrimaryTab('settings');
-								setActiveSection('basic');
+								setPrimaryTab("settings");
+								setActiveSection("basic");
 							}}
-							className={`px-6 py-3 text-sm font-medium rounded-t-sm transition ${
-								primaryTab === 'settings'
-									? 'bg-primary-soft text-primary-ink'
-									: 'text-text-2 hover:text-text-1 hover:bg-muted'
-							}`}
+							active={primaryTab === "settings"}
+							variant="tab"
 						>
 							{t("设置")}
-						</button>
+						</SelectableButton>
 					</div>
 				</div>
 
 				<div className="max-w-7xl mx-auto px-4 py-6">
 					<div className="flex gap-6">
 						<aside className="w-64 flex-shrink-0">
-							<div className="bg-white rounded-lg shadow-sm p-4">
+							<div className="bg-surface rounded-lg shadow-sm p-4">
 								<h2 className="font-semibold text-text-1 mb-4">
 									{primaryTab === "monitoring"
 										? t("监控模块")
 										: t("设置模块")}
 								</h2>
 								<div className="space-y-2">
-									{primaryTab === 'monitoring' ? (
-										<>
-											<button
-												onClick={() => {
-													setActiveSection("monitoring");
-													setMonitoringSubSection("ai-usage");
-												}}
-												className={`w-full text-left px-4 py-3 rounded-sm transition ${
-													activeSection === "monitoring" && monitoringSubSection === "ai-usage"
-														? "bg-muted text-text-1"
-														: "text-text-2 hover:text-text-1 hover:bg-muted"
-												}`}
-											>
-												<span className="inline-flex items-center gap-2">
-													<IconMoney className="h-4 w-4" />
-													<span>{t("模型记录/计量")}</span>
-												</span>
-											</button>
-											<button
-												onClick={() => {
-													setActiveSection("monitoring");
-													setMonitoringSubSection("tasks");
-												}}
-												className={`w-full text-left px-4 py-3 rounded-sm transition ${
-													activeSection === "monitoring" && monitoringSubSection === "tasks"
-														? "bg-muted text-text-1"
-														: "text-text-2 hover:text-text-1 hover:bg-muted"
-												}`}
-											>
-												<span className="inline-flex items-center gap-2">
-													<IconList className="h-4 w-4" />
-													<span>{t("任务监控")}</span>
-												</span>
-											</button>
-											<button
-												onClick={() => {
-													setActiveSection("monitoring");
-													setMonitoringSubSection("comments");
-												}}
-												className={`w-full text-left px-4 py-3 rounded-sm transition ${
-													activeSection === "monitoring" && monitoringSubSection === "comments"
-														? "bg-muted text-text-1"
-														: "text-text-2 hover:text-text-1 hover:bg-muted"
-												}`}
-											>
-												<span className="inline-flex items-center gap-2">
-													<IconNote className="h-4 w-4" />
-													<span>{t("评论列表")}</span>
-												</span>
-											</button>
-										</>
-									) : (
-										<>
-											<button
-												onClick={() => setActiveSection("basic")}
-												className={`w-full text-left px-4 py-3 rounded-sm transition ${
-													activeSection === "basic"
-														? "bg-muted text-text-1"
-														: "text-text-2 hover:text-text-1 hover:bg-muted"
-												}`}
-											>
-												<span className="inline-flex items-center gap-2">
-													<IconSettings className="h-4 w-4" />
-													<span>{t("基础配置")}</span>
-												</span>
-											</button>
-											<button
-												onClick={() => setActiveSection("categories")}
-												className={`w-full text-left px-4 py-3 rounded-sm transition ${
-													activeSection === "categories"
-														? "bg-muted text-text-1"
-														: "text-text-2 hover:text-text-1 hover:bg-muted"
-												}`}
-											>
-												<span className="inline-flex items-center gap-2">
-													<IconTag className="h-4 w-4" />
-													<span>{t("分类管理")}</span>
-												</span>
-											</button>
-											<div
-												className={`w-full rounded-sm transition flex items-center ${
-													activeSection === "ai"
-														? "bg-muted text-text-1"
-														: "text-text-2 hover:text-text-1 hover:bg-muted"
-												}`}
-											>
-												<button
-													type="button"
+										{primaryTab === "monitoring" ? (
+											<>
+												<SelectableButton
 													onClick={() => {
+														setActiveSection("monitoring");
+														setMonitoringSubSection("ai-usage");
+													}}
+													active={
+														activeSection === "monitoring" &&
+														monitoringSubSection === "ai-usage"
+													}
+													variant="menu"
+												>
+													<span className="inline-flex items-center gap-2">
+														<IconMoney className="h-4 w-4" />
+														<span>{t("模型记录/计量")}</span>
+													</span>
+												</SelectableButton>
+												<SelectableButton
+													onClick={() => {
+														setActiveSection("monitoring");
+														setMonitoringSubSection("tasks");
+													}}
+													active={
+														activeSection === "monitoring" &&
+														monitoringSubSection === "tasks"
+													}
+													variant="menu"
+												>
+													<span className="inline-flex items-center gap-2">
+														<IconList className="h-4 w-4" />
+														<span>{t("任务监控")}</span>
+													</span>
+												</SelectableButton>
+												<SelectableButton
+													onClick={() => {
+														setActiveSection("monitoring");
+														setMonitoringSubSection("comments");
+													}}
+													active={
+														activeSection === "monitoring" &&
+														monitoringSubSection === "comments"
+													}
+													variant="menu"
+												>
+													<span className="inline-flex items-center gap-2">
+														<IconNote className="h-4 w-4" />
+														<span>{t("评论列表")}</span>
+													</span>
+												</SelectableButton>
+											</>
+										) : (
+											<>
+												<SelectableButton
+													onClick={() => setActiveSection("basic")}
+													active={activeSection === "basic"}
+													variant="menu"
+												>
+													<span className="inline-flex items-center gap-2">
+														<IconSettings className="h-4 w-4" />
+														<span>{t("基础配置")}</span>
+													</span>
+												</SelectableButton>
+												<SelectableButton
+													onClick={() => setActiveSection("categories")}
+													active={activeSection === "categories"}
+													variant="menu"
+												>
+													<span className="inline-flex items-center gap-2">
+														<IconTag className="h-4 w-4" />
+														<span>{t("分类管理")}</span>
+													</span>
+												</SelectableButton>
+
+												<SectionToggleButton
+													label={t("AI配置")}
+													active={activeSection === "ai"}
+													expanded={!collapsedSettings.ai}
+													onMainClick={() => {
 														setActiveSection("ai");
 														setAISubSection("model-api");
 														setCollapsedSettings((prev) => ({
@@ -1998,94 +1990,71 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 															ai: false,
 														}));
 													}}
-													className="flex-1 text-left px-4 py-3 inline-flex items-center gap-2"
-												>
-													<IconRobot className="h-4 w-4" />
-													<span>{t("AI配置")}</span>
-												</button>
-												<button
-													type="button"
-													onClick={() => {
+													onToggle={() => {
 														setCollapsedSettings((prev) => ({
 															...prev,
 															ai: !prev.ai,
 														}));
 													}}
-													className="px-3 py-3 text-current"
-													aria-label={collapsedSettings.ai ? t("展开") : t("收起")}
-												>
-													{collapsedSettings.ai ? (
-														<IconArrowDown className="h-4 w-4" />
-													) : (
-														<IconArrowUp className="h-4 w-4" />
-													)}
-												</button>
-											</div>
-											{!collapsedSettings.ai && (
-												<>
-													<button
-														onClick={() => {
-															setActiveSection("ai");
-															setAISubSection("model-api");
-														}}
-														className={`w-full text-left px-6 py-2 text-sm rounded-sm transition ${
-															activeSection === "ai" &&
-															aiSubSection === "model-api"
-																? "bg-muted text-text-1"
-																: "text-text-2 hover:text-text-1 hover:bg-muted"
-														}`}
-													>
-														<span className="inline-flex items-center gap-2">
-															<IconPlug className="h-4 w-4" />
-															<span>{t("模型API")}</span>
-														</span>
-													</button>
-													<button
-														onClick={() => {
-															setActiveSection("ai");
-															setAISubSection("prompt");
-														}}
-														className={`w-full text-left px-6 py-2 text-sm rounded-sm transition ${
-															activeSection === "ai" &&
-															aiSubSection === "prompt"
-																? "bg-muted text-text-1"
-																: "text-text-2 hover:text-text-1 hover:bg-muted"
-														}`}
-													>
-														<span className="inline-flex items-center gap-2">
-															<IconNote className="h-4 w-4" />
-															<span>{t("提示词")}</span>
-														</span>
-													</button>
-													<button
-														onClick={() => {
-															setActiveSection("ai");
-															setAISubSection("recommendations");
-														}}
-														className={`w-full text-left px-6 py-2 text-sm rounded-sm transition ${
-															activeSection === "ai" &&
-															aiSubSection === "recommendations"
-																? "bg-muted text-text-1"
-																: "text-text-2 hover:text-text-1 hover:bg-muted"
-														}`}
-													>
-														<span className="inline-flex items-center gap-2">
-															<IconTag className="h-4 w-4" />
-															<span>{t("文章推荐")}</span>
-														</span>
-													</button>
-												</>
-											)}
-											<div
-												className={`w-full rounded-sm transition flex items-center ${
-													activeSection === "comments"
-														? "bg-muted text-text-1"
-														: "text-text-2 hover:text-text-1 hover:bg-muted"
-												}`}
-											>
-												<button
-													type="button"
-													onClick={() => {
+													toggleAriaLabel={collapsedSettings.ai ? t("展开") : t("收起")}
+													icon={<IconRobot className="h-4 w-4" />}
+													expandedIndicator={<IconArrowUp className="h-4 w-4" />}
+													collapsedIndicator={<IconArrowDown className="h-4 w-4" />}
+												/>
+
+												{!collapsedSettings.ai && (
+													<>
+														<SelectableButton
+															onClick={() => {
+																setActiveSection("ai");
+																setAISubSection("model-api");
+															}}
+															active={
+																activeSection === "ai" && aiSubSection === "model-api"
+															}
+															variant="submenu"
+														>
+															<span className="inline-flex items-center gap-2">
+																<IconPlug className="h-4 w-4" />
+																<span>{t("模型API")}</span>
+															</span>
+														</SelectableButton>
+														<SelectableButton
+															onClick={() => {
+																setActiveSection("ai");
+																setAISubSection("prompt");
+															}}
+															active={activeSection === "ai" && aiSubSection === "prompt"}
+															variant="submenu"
+														>
+															<span className="inline-flex items-center gap-2">
+																<IconNote className="h-4 w-4" />
+																<span>{t("提示词")}</span>
+															</span>
+														</SelectableButton>
+														<SelectableButton
+															onClick={() => {
+																setActiveSection("ai");
+																setAISubSection("recommendations");
+															}}
+															active={
+																activeSection === "ai" && aiSubSection === "recommendations"
+															}
+															variant="submenu"
+														>
+															<span className="inline-flex items-center gap-2">
+																<IconTag className="h-4 w-4" />
+																<span>{t("文章推荐")}</span>
+															</span>
+														</SelectableButton>
+													</>
+												)}
+
+												<SectionToggleButton
+													label={t("评论配置")}
+													active={activeSection === "comments"}
+													expanded={!collapsedSettings.comments}
+													onMainClick={() => {
 														setActiveSection("comments");
 														setCommentSubSection("keys");
 														setCollapsedSettings((prev) => ({
@@ -2093,86 +2062,71 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 															comments: false,
 														}));
 													}}
-													className="flex-1 text-left px-4 py-3 inline-flex items-center gap-2"
-												>
-													<IconFilter className="h-4 w-4" />
-													<span>{t("评论配置")}</span>
-												</button>
-												<button
-													type="button"
-													onClick={() => {
+													onToggle={() => {
 														setCollapsedSettings((prev) => ({
 															...prev,
 															comments: !prev.comments,
 														}));
 													}}
-													className="px-3 py-3 text-current"
-													aria-label={
+													toggleAriaLabel={
 														collapsedSettings.comments ? t("展开") : t("收起")
 													}
+													icon={<IconFilter className="h-4 w-4" />}
+													expandedIndicator={<IconArrowUp className="h-4 w-4" />}
+													collapsedIndicator={<IconArrowDown className="h-4 w-4" />}
+												/>
+
+												{!collapsedSettings.comments && (
+													<>
+														<SelectableButton
+															onClick={() => {
+																setActiveSection("comments");
+																setCommentSubSection("keys");
+															}}
+															active={
+																activeSection === "comments" && commentSubSection === "keys"
+															}
+															variant="submenu"
+														>
+															<span className="inline-flex items-center gap-2">
+																<IconPlug className="h-4 w-4" />
+																<span>{t("登录密钥")}</span>
+															</span>
+														</SelectableButton>
+														<SelectableButton
+															onClick={() => {
+																setActiveSection("comments");
+																setCommentSubSection("filters");
+															}}
+															active={
+																activeSection === "comments" &&
+																commentSubSection === "filters"
+															}
+															variant="submenu"
+														>
+															<span className="inline-flex items-center gap-2">
+																<IconFilter className="h-4 w-4" />
+																<span>{t("过滤规则")}</span>
+															</span>
+														</SelectableButton>
+													</>
+												)}
+
+												<SelectableButton
+													onClick={() => setActiveSection("storage")}
+													active={activeSection === "storage"}
+													variant="menu"
 												>
-													{collapsedSettings.comments ? (
-														<IconArrowDown className="h-4 w-4" />
-													) : (
-														<IconArrowUp className="h-4 w-4" />
-													)}
-												</button>
-											</div>
-											{!collapsedSettings.comments && (
-												<>
-													<button
-														onClick={() => {
-															setActiveSection("comments");
-															setCommentSubSection("keys");
-														}}
-														className={`w-full text-left px-6 py-2 text-sm rounded-sm transition ${
-															activeSection === "comments" &&
-															commentSubSection === "keys"
-																? "bg-muted text-text-1"
-																: "text-text-2 hover:text-text-1 hover:bg-muted"
-														}`}
-													>
-														<span className="inline-flex items-center gap-2">
-															<IconPlug className="h-4 w-4" />
-															<span>{t("登录密钥")}</span>
-														</span>
-													</button>
-													<button
-														onClick={() => {
-															setActiveSection("comments");
-															setCommentSubSection("filters");
-														}}
-														className={`w-full text-left px-6 py-2 text-sm rounded-sm transition ${
-															activeSection === "comments" &&
-															commentSubSection === "filters"
-																? "bg-muted text-text-1"
-																: "text-text-2 hover:text-text-1 hover:bg-muted"
-														}`}
-													>
-														<span className="inline-flex items-center gap-2">
-															<IconFilter className="h-4 w-4" />
-															<span>{t("过滤规则")}</span>
-														</span>
-													</button>
-												</>
-											)}
-											<button
-												onClick={() => setActiveSection("storage")}
-												className={`w-full text-left px-4 py-3 rounded-sm transition ${
-													activeSection === "storage"
-														? "bg-muted text-text-1"
-														: "text-text-2 hover:text-text-1 hover:bg-muted"
-												}`}
-											>
-												<span className="inline-flex items-center gap-2">
-													<IconLink className="h-4 w-4" />
-													<span>{t("文件存储")}</span>
-												</span>
-											</button>
-										</>
-									)}
+													<span className="inline-flex items-center gap-2">
+														<IconLink className="h-4 w-4" />
+														<span>{t("文件存储")}</span>
+													</span>
+												</SelectableButton>
+											</>
+										)}
+									</div>
+
 								</div>
-							</div>
 						</aside>
 
 						<main className="flex-1 w-full">
@@ -2186,38 +2140,29 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 										</h2>
 										<div className="flex items-center gap-2">
 											{!showUsageView && (
-												<button
-													onClick={handleCreateModelAPINew}
-													className="px-4 py-2 bg-primary text-white rounded-sm hover:bg-primary-ink transition"
-												>
-													+ {t("创建配置")}
-												</button>
+												<Button onClick={handleCreateModelAPINew} variant="primary">
+												+ {t("创建配置")}
+											</Button>
 											)}
 										</div>
 									</div>
 
 									{!showUsageView && (
-										<div className="flex gap-2 mb-4">
-											<button
+										<div className="mb-4 flex gap-2">
+											<SelectableButton
 												onClick={() => setModelCategory("general")}
-												className={`px-4 py-2 text-sm rounded-sm transition ${
-													modelCategory === "general"
-														? "bg-primary-soft text-primary-ink"
-														: "bg-muted text-text-2 hover:bg-surface hover:text-text-1"
-												}`}
+												active={modelCategory === "general"}
+												variant="pill"
 											>
 												{t("通用")}
-											</button>
-											<button
+											</SelectableButton>
+											<SelectableButton
 												onClick={() => setModelCategory("vector")}
-												className={`px-4 py-2 text-sm rounded-sm transition ${
-													modelCategory === "vector"
-														? "bg-primary-soft text-primary-ink"
-														: "bg-muted text-text-2 hover:bg-surface hover:text-text-1"
-												}`}
+												active={modelCategory === "vector"}
+												variant="pill"
 											>
 												{t("向量")}
-											</button>
+											</SelectableButton>
 										</div>
 									)}
 
@@ -2510,13 +2455,13 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 												{usageTotal > usagePageSize && (
 													<div className="flex items-center justify-between mt-4">
 														<div className="flex items-center gap-2 text-sm text-text-2">
-															<Select
+															<SelectField
 																value={usagePageSize}
 																onChange={(value) => {
 																	setUsagePageSize(Number(value));
 																	setUsagePage(1);
 																}}
-																className="select-modern-antd"
+																className="w-20"
 																popupClassName="select-modern-dropdown"
 																options={[
 																	{ value: 10, label: "10" },
@@ -2569,12 +2514,9 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 												{t(modelCategory === "vector" ? "向量" : "通用")}
 												{t("模型配置")}
 											</div>
-											<button
-												onClick={handleCreateModelAPINew}
-												className="px-4 py-2 bg-primary text-white rounded-sm hover:bg-primary-ink transition"
-											>
+											<Button onClick={handleCreateModelAPINew} variant="primary">
 												{t("创建配置")}
-											</button>
+											</Button>
 										</div>
 									) : (
 										<div className="space-y-4">
@@ -2591,26 +2533,20 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 														<div className="flex items-start justify-between mb-3">
 															<div className="flex-1">
 																<div className="flex items-center gap-2 mb-2">
-																	<h3 className="font-semibold text-gray-900">
+																	<h3 className="font-semibold text-text-1">
 																		{config.name}
 																	</h3>
-																	{config.is_default && (
-																		<span className="ml-2 px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">
-																			{t("默认")}
-																		</span>
-																	)}
-																	<span
-																		className={`px-2 py-1 rounded text-xs ${
-																			config.is_enabled
-																				? "bg-green-100 text-green-700"
-																				: "bg-gray-100 text-gray-600"
-																		}`}
-																	>
-																		{config.is_enabled ? t("启用") : t("禁用")}
-																	</span>
+															{config.is_default && (
+																<StatusTag tone="info" className="ml-2">
+																	{t("默认")}
+																</StatusTag>
+															)}
+															<StatusTag tone={config.is_enabled ? "success" : "neutral"}>
+																{config.is_enabled ? t("启用") : t("禁用")}
+															</StatusTag>
 																</div>
 
-																<div className="space-y-1 text-sm text-gray-600">
+																<div className="space-y-1 text-sm text-text-2">
 																	<div>
 																		<span className="font-medium">
 																			{t("名称")}：
@@ -2621,7 +2557,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 																		<span className="font-medium">
 																			{t("API地址")}：
 																		</span>
-																		<code className="px-2 py-1 bg-gray-50 rounded text-xs">
+																		<code className="px-2 py-1 bg-muted rounded text-xs">
 																			{config.base_url}
 																		</code>
 																	</div>
@@ -2629,7 +2565,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 																		<span className="font-medium">
 																			{t("模型名称")}：
 																		</span>
-																		<code className="px-2 py-1 bg-gray-50 rounded text-xs">
+																		<code className="px-2 py-1 bg-muted rounded text-xs">
 																			{config.model_name}
 																		</code>
 																	</div>
@@ -2663,7 +2599,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 																		<span className="font-medium">
 																			{t("API密钥")}：
 																		</span>
-																		<code className="px-2 py-1 bg-gray-50 rounded text-xs">
+																		<code className="px-2 py-1 bg-muted rounded text-xs">
 																			{config.api_key.slice(0, 8)}***
 																		</code>
 																	</div>
@@ -2707,40 +2643,40 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 							)}
 
 							{activeSection === "ai" && aiSubSection === "prompt" && (
-								<div className="bg-white rounded-lg shadow-sm p-6">
+								<div className="bg-surface rounded-lg shadow-sm p-6">
 									<div className="flex items-center justify-between mb-4">
-										<h2 className="text-lg font-semibold text-gray-900">
+										<h2 className="text-lg font-semibold text-text-1">
 											{t("提示词配置列表")}
 										</h2>
 										<div className="flex items-center gap-2">
-											<button
+											<Button
 												onClick={() => handleExportPromptConfigs("current")}
-												className="px-3 py-2 text-sm bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
+												variant="secondary"
+												size="sm"
 											>
 												{t("导出当前")}
-											</button>
-											<button
+											</Button>
+											<Button
 												onClick={() => handleExportPromptConfigs("all")}
-												className="px-3 py-2 text-sm bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
+												variant="secondary"
+												size="sm"
 											>
 												{t("导出全部")}
-											</button>
-											<button
+											</Button>
+											<Button
 												onClick={() => promptImportInputRef.current?.click()}
-												className="px-3 py-2 text-sm bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
+												variant="secondary"
+												size="sm"
 											>
 												{t("导入")}
-											</button>
-											<button
-												onClick={handleCreatePromptNew}
-												className="px-4 py-2 bg-primary text-white rounded-sm hover:bg-primary-ink transition"
-											>
+											</Button>
+											<Button onClick={handleCreatePromptNew} variant="primary">
 												+ {t("创建配置")}
-											</button>
+											</Button>
 										</div>
 									</div>
 
-									<input
+									<TextInput
 										ref={promptImportInputRef}
 										type="file"
 										accept="application/json"
@@ -2750,27 +2686,24 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 
 									<div className="flex gap-2 mb-6">
 										{PROMPT_TYPES.map((type) => (
-											<button
+											<SelectableButton
 												key={type.value}
 												onClick={() => setSelectedPromptType(type.value)}
-												className={`px-4 py-2 text-sm rounded-sm transition ${
-													selectedPromptType === type.value
-														? "bg-primary-soft text-primary-ink"
-														: "bg-muted text-text-2 hover:bg-surface hover:text-text-1"
-												}`}
+												active={selectedPromptType === type.value}
+												variant="pill"
 											>
 												{t(type.labelKey)}
-											</button>
+											</SelectableButton>
 										))}
 									</div>
 
 									{promptLoading ? (
-										<div className="text-center py-12 text-gray-500">
+										<div className="text-center py-12 text-text-3">
 											{t("加载中...")}
 										</div>
 									) : promptConfigs.filter((c) => c.type === selectedPromptType)
 											.length === 0 ? (
-										<div className="text-center py-12 text-gray-500">
+										<div className="text-center py-12 text-text-3">
 											<div className="mb-4">
 												{t("暂无")}
 												{t(
@@ -2780,12 +2713,9 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 												)}
 												{t("配置")}
 											</div>
-											<button
-												onClick={handleCreatePromptNew}
-												className="px-4 py-2 bg-primary text-white rounded-sm hover:bg-primary-ink transition"
-											>
+											<Button onClick={handleCreatePromptNew} variant="primary">
 												{t("创建配置")}
-											</button>
+											</Button>
 										</div>
 									) : (
 										<div className="space-y-4">
@@ -2803,42 +2733,34 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 														<div className="flex items-start justify-between mb-3">
 															<div className="flex-1">
 																<div className="flex items-center gap-2 mb-2">
-																	<h3 className="font-semibold text-gray-900">
+																	<h3 className="font-semibold text-text-1">
 																		{config.name}
 																	</h3>
 																	{config.is_default && (
-																		<span className="ml-2 px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">
+																		<StatusTag tone="info" className="ml-2">
 																			{t("默认")}
-																		</span>
+																		</StatusTag>
 																	)}
-																	<span
-																		className={`px-2 py-1 rounded text-xs ${
-																			config.is_enabled
-																				? "bg-green-100 text-green-700"
-																				: "bg-gray-100 text-gray-600"
-																		}`}
-																	>
+																	<StatusTag tone={config.is_enabled ? "success" : "neutral"}>
 																		{config.is_enabled ? t("启用") : t("禁用")}
-																	</span>
+																	</StatusTag>
 																</div>
 
-																<div className="space-y-1 text-sm text-gray-600">
+																<div className="space-y-1 text-sm text-text-2">
 																	<div>
 																		<span className="font-medium">
 																			{t("分类")}：
 																		</span>
-																		<span className="inline-flex items-center px-2 py-0.5 bg-gray-100 text-gray-700 rounded text-xs">
+																		<StatusTag tone="neutral">
 																			{config.category_name || t("通用")}
-																		</span>
+																		</StatusTag>
 																	</div>
 																	{config.model_api_config_name && (
 																		<div>
 																			<span className="font-medium">
 																				{t("关联模型API")}：
 																			</span>
-																			<span>
-																				{config.model_api_config_name}
-																			</span>
+																			<span>{config.model_api_config_name}</span>
 																		</div>
 																	)}
 																	{config.system_prompt && (
@@ -2846,11 +2768,9 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 																			<span className="font-medium">
 																				{t("系统提示词")}：
 																			</span>
-																			<code className="px-2 py-1 bg-gray-50 rounded text-xs block mt-1 max-h-20 overflow-y-auto">
+																			<code className="px-2 py-1 bg-muted rounded text-xs block mt-1 max-h-20 overflow-y-auto">
 																				{config.system_prompt.slice(0, 100)}
-																				{config.system_prompt.length > 100
-																					? "..."
-																					: ""}
+																				{config.system_prompt.length > 100 ? "..." : ""}
 																			</code>
 																		</div>
 																	)}
@@ -2858,7 +2778,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 																		<span className="font-medium">
 																			{t("提示词")}：
 																		</span>
-																		<code className="px-2 py-1 bg-gray-50 rounded text-xs block mt-1 max-h-20 overflow-y-auto">
+																		<code className="px-2 py-1 bg-muted rounded text-xs block mt-1 max-h-20 overflow-y-auto">
 																			{config.prompt.slice(0, 100)}
 																			{config.prompt.length > 100 ? "..." : ""}
 																		</code>
@@ -2870,24 +2790,22 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 																		config.top_p != null) && (
 																		<div className="flex flex-wrap gap-2 pt-1">
 																			{config.response_format && (
-																				<span className="px-2 py-1 bg-gray-50 text-gray-700 rounded text-xs">
+																				<StatusTag tone="neutral">
 																					{t("响应格式")}: {config.response_format}
-																				</span>
+																				</StatusTag>
 																			)}
 																			{config.temperature != null && (
-																				<span className="px-2 py-1 bg-gray-50 text-gray-700 rounded text-xs">
+																				<StatusTag tone="neutral">
 																					{t("温度")}: {config.temperature}
-																				</span>
+																				</StatusTag>
 																			)}
 																			{config.max_tokens != null && (
-																				<span className="px-2 py-1 bg-gray-50 text-gray-700 rounded text-xs">
+																				<StatusTag tone="neutral">
 																					{t("最大 Tokens")}: {config.max_tokens}
-																				</span>
+																				</StatusTag>
 																			)}
 																			{config.top_p != null && (
-																				<span className="px-2 py-1 bg-gray-50 text-gray-700 rounded text-xs">
-																					Top P: {config.top_p}
-																				</span>
+																				<StatusTag tone="neutral">Top P: {config.top_p}</StatusTag>
 																			)}
 																		</div>
 																	)}
@@ -2939,13 +2857,13 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 												{t("配置站点名称与默认语言")}
 											</p>
 										</div>
-										<button
-											onClick={handleSaveBasicSettings}
-											disabled={basicSettingsSaving}
-											className="px-4 py-2 text-sm bg-primary text-white rounded-sm hover:bg-primary-ink transition disabled:opacity-60"
-										>
-											{basicSettingsSaving ? t("保存中") : t("保存配置")}
-										</button>
+										<Button
+										onClick={handleSaveBasicSettings}
+										disabled={basicSettingsSaving}
+										variant="primary"
+									>
+										{basicSettingsSaving ? t("保存中") : t("保存配置")}
+									</Button>
 									</div>
 
 									{basicSettingsLoading ? (
@@ -2959,7 +2877,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 													<label className="block text-sm text-text-2 mb-1">
 														{t("首页顶部标语")}
 													</label>
-													<input
+													<TextInput
 														value={basicSettingsForm.home_badge_text}
 														onChange={(e) =>
 															setBasicSettingsForm((prev) => ({
@@ -2968,14 +2886,13 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 															}))
 														}
 														placeholder={t("请输入首页顶部标语（留空使用默认）")}
-														className="w-full h-9 px-3 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
-													/>
+														/>
 												</div>
 												<div>
 													<label className="block text-sm text-text-2 mb-1">
 														{t("站点名称")}
 													</label>
-													<input
+													<TextInput
 														value={basicSettingsForm.site_name}
 														onChange={(e) =>
 															setBasicSettingsForm((prev) => ({
@@ -2984,49 +2901,47 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 															}))
 														}
 														placeholder={t("请输入站点名称")}
-														className="w-full h-9 px-3 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
-													/>
+														/>
 												</div>
 											</div>
-											<div>
-												<label className="block text-sm text-text-2 mb-1">
-													{t("站点描述")}
-												</label>
-												<textarea
-													value={basicSettingsForm.site_description}
-													onChange={(e) =>
-														setBasicSettingsForm((prev) => ({
-															...prev,
-															site_description: e.target.value,
-														}))
-													}
-													rows={3}
-													placeholder={t("请输入站点描述")}
-													className="w-full px-3 py-2 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
-												/>
-											</div>
-											<div>
-												<label className="block text-sm text-text-2 mb-1">
-													{t("首页补充文案")}
-												</label>
-												<input
-													value={basicSettingsForm.home_tagline_text}
-													onChange={(e) =>
-														setBasicSettingsForm((prev) => ({
-															...prev,
-															home_tagline_text: e.target.value,
-														}))
-													}
-													placeholder={t("请输入首页补充文案（留空使用默认）")}
-													className="w-full h-9 px-3 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
-												/>
+											<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+												<div>
+													<label className="block text-sm text-text-2 mb-1">
+														{t("站点描述")}
+													</label>
+													<TextInput
+														value={basicSettingsForm.site_description}
+														onChange={(e) =>
+															setBasicSettingsForm((prev) => ({
+																...prev,
+																site_description: e.target.value,
+															}))
+														}
+														placeholder={t("请输入站点描述")}
+														/>
+												</div>
+												<div>
+													<label className="block text-sm text-text-2 mb-1">
+														{t("首页补充文案")}
+													</label>
+													<TextInput
+														value={basicSettingsForm.home_tagline_text}
+														onChange={(e) =>
+															setBasicSettingsForm((prev) => ({
+																...prev,
+																home_tagline_text: e.target.value,
+															}))
+														}
+														placeholder={t("请输入首页补充文案（留空使用默认）")}
+														/>
+												</div>
 											</div>
 											<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 												<div>
 													<label className="block text-sm text-text-2 mb-1">
 														{t("首页主按钮文案")}
 													</label>
-													<input
+													<TextInput
 														value={basicSettingsForm.home_primary_button_text}
 														onChange={(e) =>
 															setBasicSettingsForm((prev) => ({
@@ -3035,14 +2950,13 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 															}))
 														}
 														placeholder={t("请输入按钮文案（留空使用默认）")}
-														className="w-full h-9 px-3 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
-													/>
+														/>
 												</div>
 												<div>
 													<label className="block text-sm text-text-2 mb-1">
 														{t("首页主按钮链接")}
 													</label>
-													<input
+													<TextInput
 														value={basicSettingsForm.home_primary_button_url}
 														onChange={(e) =>
 															setBasicSettingsForm((prev) => ({
@@ -3051,8 +2965,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 															}))
 														}
 														placeholder={t("请输入按钮链接（支持 /path 或 https://，留空使用默认）")}
-														className="w-full h-9 px-3 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
-													/>
+														/>
 												</div>
 											</div>
 											<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -3060,7 +2973,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 													<label className="block text-sm text-text-2 mb-1">
 														{t("首页副按钮文案")}
 													</label>
-													<input
+													<TextInput
 														value={basicSettingsForm.home_secondary_button_text}
 														onChange={(e) =>
 															setBasicSettingsForm((prev) => ({
@@ -3069,14 +2982,13 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 															}))
 														}
 														placeholder={t("请输入按钮文案（留空使用默认）")}
-														className="w-full h-9 px-3 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
-													/>
+														/>
 												</div>
 												<div>
 													<label className="block text-sm text-text-2 mb-1">
 														{t("首页副按钮链接")}
 													</label>
-													<input
+													<TextInput
 														value={basicSettingsForm.home_secondary_button_url}
 														onChange={(e) =>
 															setBasicSettingsForm((prev) => ({
@@ -3085,8 +2997,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 															}))
 														}
 														placeholder={t("请输入按钮链接（支持 /path 或 https://，留空使用默认）")}
-														className="w-full h-9 px-3 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
-													/>
+														/>
 												</div>
 											</div>
 											<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -3094,7 +3005,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 													<label className="block text-sm text-text-2 mb-1">
 														{t("站点Logo地址")}
 													</label>
-													<input
+													<TextInput
 														value={basicSettingsForm.site_logo_url}
 														onChange={(e) =>
 															setBasicSettingsForm((prev) => ({
@@ -3103,14 +3014,13 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 															}))
 														}
 														placeholder={t("可选，留空使用默认图标")}
-														className="w-full h-9 px-3 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
-													/>
+														/>
 												</div>
 												<div className="max-w-xs">
 													<label className="block text-sm text-text-2 mb-1">
 														{t("默认语言")}
 													</label>
-													<Select
+													<SelectField
 														value={basicSettingsForm.default_language}
 														onChange={(value) =>
 															setBasicSettingsForm((prev) => ({
@@ -3132,32 +3042,26 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 							)}
 
 							{activeSection === "categories" && (
-								<div className="bg-white rounded-lg shadow-sm p-6">
+								<div className="bg-surface rounded-lg shadow-sm p-6">
 									<div className="flex items-center justify-between mb-6">
-										<h2 className="text-lg font-semibold text-gray-900">
+										<h2 className="text-lg font-semibold text-text-1">
 											{t("分类列表")}
 										</h2>
-										<button
-											onClick={handleCreateCategoryNew}
-											className="px-4 py-2 bg-primary text-white rounded-sm hover:bg-primary-ink transition"
-										>
+										<Button onClick={handleCreateCategoryNew} variant="primary">
 											+ {t("新增分类")}
-										</button>
+										</Button>
 									</div>
 
 									{categoryLoading ? (
-										<div className="text-center py-12 text-gray-500">
+										<div className="text-center py-12 text-text-3">
 											{t("加载中...")}
 										</div>
 									) : categories.length === 0 ? (
-										<div className="text-center py-12 text-gray-500">
+										<div className="text-center py-12 text-text-3">
 											<div className="mb-4">{t("暂无分类")}</div>
-											<button
-												onClick={handleCreateCategoryNew}
-												className="px-4 py-2 bg-primary text-white rounded-sm hover:bg-primary-ink transition"
-											>
-												{t("新增分类")}
-											</button>
+											<Button onClick={handleCreateCategoryNew} variant="primary">
+											{t("新增分类")}
+										</Button>
 										</div>
 									) : (
 										<DndContext
@@ -3202,22 +3106,17 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 									</div>
 										<div className="flex items-center gap-2">
 											{commentSubSection === "keys" && (
-												<button
-													onClick={handleValidateCommentSettings}
-													className="px-4 py-2 text-sm bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
-												>
+												<Button onClick={handleValidateCommentSettings} variant="secondary">
 													{t("验证配置")}
-												</button>
+												</Button>
 											)}
-											<button
+											<Button
 												onClick={handleSaveCommentSettings}
 												disabled={commentSettingsSaving}
-												className="px-4 py-2 text-sm bg-primary text-white rounded-sm hover:bg-primary-ink transition disabled:opacity-60"
+												variant="primary"
 											>
-												{commentSettingsSaving
-													? t("保存中")
-													: t("保存配置")}
-											</button>
+												{commentSettingsSaving ? t("保存中") : t("保存配置")}
+											</Button>
 										</div>
 									</div>
 
@@ -3239,8 +3138,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 													</div>
 												</div>
 												<label className="inline-flex items-center gap-2 text-sm text-text-2 cursor-pointer">
-													<input
-														type="checkbox"
+													<CheckboxInput
 														checked={commentSettings.comments_enabled}
 														onChange={(e) =>
 															setCommentSettings((prev) => ({
@@ -3263,7 +3161,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 													<label className="block text-sm text-text-2 mb-1">
 														GitHub Client ID
 													</label>
-													<input
+													<TextInput
 														value={commentSettings.github_client_id}
 														onChange={(e) =>
 															setCommentSettings((prev) => ({
@@ -3272,14 +3170,13 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 															}))
 														}
 														placeholder={t("填写 GitHub OAuth Client ID")}
-														className="w-full h-9 px-3 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
-													/>
+														/>
 												</div>
 												<div>
 													<label className="block text-sm text-text-2 mb-1">
 														GitHub Client Secret
 													</label>
-													<input
+													<TextInput
 														type="password"
 														value={commentSettings.github_client_secret}
 														onChange={(e) =>
@@ -3289,14 +3186,13 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 															}))
 														}
 														placeholder={t("填写 GitHub OAuth Client Secret")}
-														className="w-full h-9 px-3 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
-													/>
+														/>
 												</div>
 												<div>
 													<label className="block text-sm text-text-2 mb-1">
 														Google Client ID
 													</label>
-													<input
+													<TextInput
 														value={commentSettings.google_client_id}
 														onChange={(e) =>
 															setCommentSettings((prev) => ({
@@ -3305,14 +3201,13 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 															}))
 														}
 														placeholder={t("填写 Google OAuth Client ID")}
-														className="w-full h-9 px-3 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
-													/>
+														/>
 												</div>
 												<div>
 													<label className="block text-sm text-text-2 mb-1">
 														Google Client Secret
 													</label>
-													<input
+													<TextInput
 														type="password"
 														value={commentSettings.google_client_secret}
 														onChange={(e) =>
@@ -3322,8 +3217,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 															}))
 														}
 														placeholder={t("填写 Google OAuth Client Secret")}
-														className="w-full h-9 px-3 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
-													/>
+														/>
 												</div>
 											</div>
 
@@ -3332,25 +3226,26 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 													NextAuth Secret
 												</label>
 												<div className="flex gap-2">
-													<input
-														type="password"
-														value={commentSettings.nextauth_secret}
-														onChange={(e) =>
-															setCommentSettings((prev) => ({
-																...prev,
-																nextauth_secret: e.target.value,
-															}))
-														}
-														placeholder={t("用于签名会话的 Secret")}
-														className="flex-1 h-9 px-3 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
-													/>
-													<button
-														type="button"
-														onClick={handleGenerateNextAuthSecret}
-														className="px-3 h-9 text-xs rounded-sm border border-border text-text-2 hover:text-text-1 hover:bg-muted transition"
-													>
-														{t("自动生成")}
-													</button>
+													<TextInput
+													type="password"
+													value={commentSettings.nextauth_secret}
+													onChange={(e) =>
+														setCommentSettings((prev) => ({
+															...prev,
+															nextauth_secret: e.target.value,
+														}))
+													}
+													placeholder={t("用于签名会话的 Secret")}
+													className="flex-1"
+												/>
+												<Button
+													type="button"
+													onClick={handleGenerateNextAuthSecret}
+													variant="secondary"
+													size="sm"
+												>
+													{t("自动生成")}
+												</Button>
 												</div>
 											</div>
 														</>
@@ -3368,8 +3263,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 																	</div>
 																</div>
 																<label className="inline-flex items-center gap-2 text-sm text-text-2 cursor-pointer">
-																	<input
-																		type="checkbox"
+																	<CheckboxInput
 																		checked={commentSettings.sensitive_filter_enabled}
 																		onChange={(e) =>
 																			setCommentSettings((prev) => ({
@@ -3401,7 +3295,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 																		</div>
 																	</div>
 																</div>
-																<textarea
+																<TextArea
 																	value={commentSettings.sensitive_words}
 																	onChange={(e) =>
 																		setCommentSettings((prev) => ({
@@ -3411,8 +3305,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 																	}
 																	rows={4}
 																	placeholder={t("每行一个敏感词，或使用逗号分隔")}
-																	className="w-full px-3 py-2 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
-																/>
+																	/>
 															</div>
 														</>
 													)}
@@ -3474,24 +3367,20 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 										</p>
 									</div>
 									<div className="flex items-center gap-2">
-										<button
-											onClick={handleCleanupMedia}
-											disabled={storageCleanupLoading}
-											className="px-4 py-2 text-sm bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition disabled:opacity-60"
-										>
-											{storageCleanupLoading
-												? t("清理中")
-												: t("深度清理")}
-										</button>
-										<button
-											onClick={handleSaveStorageSettings}
-											disabled={storageSettingsSaving}
-											className="px-4 py-2 text-sm bg-primary text-white rounded-sm hover:bg-primary-ink transition disabled:opacity-60"
-										>
-											{storageSettingsSaving
-												? t("保存中")
-												: t("保存配置")}
-										</button>
+										<Button
+										onClick={handleCleanupMedia}
+										disabled={storageCleanupLoading}
+										variant="secondary"
+									>
+										{storageCleanupLoading ? t("清理中") : t("深度清理")}
+									</Button>
+										<Button
+										onClick={handleSaveStorageSettings}
+										disabled={storageSettingsSaving}
+										variant="primary"
+									>
+										{storageSettingsSaving ? t("保存中") : t("保存配置")}
+									</Button>
 									</div>
 								</div>
 
@@ -3511,8 +3400,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 													</div>
 												</div>
 												<label className="inline-flex items-center gap-2 text-sm text-text-2 cursor-pointer">
-													<input
-														type="checkbox"
+													<CheckboxInput
 														checked={storageSettings.media_storage_enabled}
 														onChange={(e) =>
 															setStorageSettings((prev) => ({
@@ -3534,7 +3422,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 												<label className="block text-sm text-text-2 mb-1">
 													{t("压缩阈值 (KB)")}
 												</label>
-												<input
+												<TextInput
 													type="number"
 													min={256}
 													value={Math.round(storageSettings.media_compress_threshold / 1024)}
@@ -3547,15 +3435,14 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 															) * 1024,
 														}))
 													}
-													className="w-full h-9 px-3 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
-													placeholder={t("超过该大小触发压缩")}
-												/>
+																										placeholder={t("超过该大小触发压缩")}
+											/>
 											</div>
 											<div>
 												<label className="block text-sm text-text-2 mb-1">
 													{t("最长边 (px)")}
 												</label>
-												<input
+												<TextInput
 													type="number"
 													min={600}
 													value={storageSettings.media_max_dim}
@@ -3568,15 +3455,14 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 															),
 														}))
 													}
-													className="w-full h-9 px-3 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
-													placeholder={t("限制图片最长边")}
-												/>
+																										placeholder={t("限制图片最长边")}
+											/>
 											</div>
 											<div>
 												<label className="block text-sm text-text-2 mb-1">
 													{t("WEBP 质量 (30-95)")}
 												</label>
-												<input
+												<TextInput
 													type="number"
 													min={30}
 													max={95}
@@ -3590,9 +3476,8 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 															),
 														}))
 													}
-													className="w-full h-9 px-3 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
-													placeholder={t("WEBP 压缩质量")}
-												/>
+																										placeholder={t("WEBP 压缩质量")}
+											/>
 											</div>
 										</div>
 									</div>
@@ -3601,35 +3486,32 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 						)}
 
 							{activeSection === "monitoring" && monitoringSubSection === "tasks" && (
-								<div className="bg-white rounded-lg shadow-sm p-6">
+								<div className="bg-surface rounded-lg shadow-sm p-6">
 									<div className="flex items-center justify-between mb-6">
 										<div>
-											<h2 className="text-lg font-semibold text-gray-900">
+											<h2 className="text-lg font-semibold text-text-1">
 												{t("AI 任务监控")}
 											</h2>
-											<p className="text-sm text-gray-500">
+											<p className="text-sm text-text-3">
 												{t("查看、重试或取消后台任务")}
 											</p>
 										</div>
 										<div className="flex items-center gap-2">
-											<button
+											<Button
 												onClick={() => {
 													setTaskStatusFilter("");
 													setTaskTypeFilter("");
 													setTaskArticleTitleFilter("");
 													setTaskPage(1);
-												}}
-												className="px-4 py-2 text-sm bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
+											}}
+												variant="secondary"
 												disabled={!hasTaskFilters}
 											>
 												{t("清空筛选")}
-											</button>
-											<button
-												onClick={fetchTasks}
-												className="px-4 py-2 text-sm bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
-											>
-												{t("刷新")}
-											</button>
+											</Button>
+											<Button onClick={fetchTasks} variant="secondary">
+											{t("刷新")}
+										</Button>
 										</div>
 									</div>
 
@@ -3683,17 +3565,17 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 									</div>
 
 									{taskLoading ? (
-										<div className="text-center py-12 text-gray-500">
+										<div className="text-center py-12 text-text-3">
 											{t("加载中")}
 										</div>
 									) : taskItems.length === 0 ? (
-										<div className="text-center py-12 text-gray-500">
+										<div className="text-center py-12 text-text-3">
 											{hasTaskFilters ? t("暂无匹配任务") : t("暂无任务")}
 										</div>
 									) : (
 										<div className="overflow-x-auto">
 											<table className="min-w-full text-sm">
-												<thead className="bg-gray-50 text-gray-600">
+												<thead className="bg-muted text-text-2">
 													<tr>
 														<th className="text-left px-4 py-3">{t("任务")}</th>
 														<th className="text-left px-4 py-3">{t("状态")}</th>
@@ -3705,36 +3587,36 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 												</thead>
 												<tbody className="divide-y divide-gray-100">
 													{taskItems.map((task) => (
-														<tr key={task.id} className="hover:bg-gray-50">
+														<tr key={task.id} className="hover:bg-muted">
 															<td className="px-4 py-3">
-																<div className="font-medium text-gray-900">
+																<div className="font-medium text-text-1">
 																	{getTaskTypeLabel(task)}{t("生成")}
 																</div>
 															</td>
 															<td className="px-4 py-3">
-																<span
-																	className={`px-2 py-1 rounded text-xs ${
-																		task.status === "completed"
-																			? "bg-green-100 text-green-700"
-																			: task.status === "failed"
-																				? "bg-red-100 text-red-700"
-																				: task.status === "processing"
-																					? "bg-blue-100 text-blue-700"
-																					: task.status === "cancelled"
-																						? "bg-gray-200 text-gray-600"
-																						: "bg-yellow-100 text-yellow-700"
-																	}`}
-																>
-																	{task.status === "completed"
-																		? t("已完成")
-																		: task.status === "failed"
-																			? t("失败")
-																			: task.status === "processing"
-																				? t("处理中")
-																				: task.status === "cancelled"
-																					? t("已取消")
-																					: t("待处理")}
-																</span>
+													<StatusTag
+														tone={
+															task.status === "completed"
+																? "success"
+																: task.status === "failed"
+																	? "danger"
+																	: task.status === "processing"
+																		? "info"
+																		: task.status === "cancelled"
+																			? "neutral"
+																			: "warning"
+														}
+													>
+														{task.status === "completed"
+															? t("已完成")
+															: task.status === "failed"
+																? t("失败")
+																: task.status === "processing"
+																	? t("处理中")
+																	: task.status === "cancelled"
+																		? t("已取消")
+																		: t("待处理")}
+													</StatusTag>
 																{task.last_error && (
 																	<div
 																		className="text-xs text-red-500 mt-1 line-clamp-1"
@@ -3744,14 +3626,14 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 																	</div>
 																)}
 															</td>
-															<td className="px-4 py-3 text-gray-600">
+															<td className="px-4 py-3 text-text-2">
 																{task.attempts}/{task.max_attempts}
 															</td>
-															<td className="px-4 py-3 text-gray-600">
+															<td className="px-4 py-3 text-text-2">
 																{task.article_id ? (
 																	<Link
 																		href={`/article/${task.article_slug || task.article_id}`}
-																		className="text-blue-600 hover:underline"
+																		className="text-primary hover:underline"
 																		title={
 																			task.article_title || task.article_id
 																		}
@@ -3772,7 +3654,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 																	"-"
 																)}
 															</td>
-															<td className="px-4 py-3 text-gray-500">
+															<td className="px-4 py-3 text-text-3">
 																<div>
 																	{t("创建")}：
 																	{new Date(task.created_at).toLocaleString(
@@ -3817,15 +3699,15 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 									)}
 
 									<div className="mt-6 flex items-center justify-between">
-										<div className="flex items-center gap-2 text-sm text-gray-600">
+										<div className="flex items-center gap-2 text-sm text-text-2">
 											<span>{t("每页显示")}</span>
-											<Select
+											<SelectField
 												value={taskPageSize}
 												onChange={(value) => {
 													setTaskPageSize(Number(value));
 													setTaskPage(1);
 												}}
-												className="select-modern-antd"
+												className="w-20"
 												popupClassName="select-modern-dropdown"
 												options={[
 													{ value: 10, label: "10" },
@@ -3874,15 +3756,13 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 											</p>
 										</div>
 										<div className="flex items-center gap-2">
-											<button
+											<Button
 												onClick={handleSaveRecommendationSettings}
 												disabled={recommendationSettingsSaving}
-												className="px-4 py-2 text-sm bg-primary text-white rounded-sm hover:bg-primary-ink transition disabled:opacity-60"
+												variant="primary"
 											>
-												{recommendationSettingsSaving
-													? t("保存中")
-													: t("保存配置")}
-											</button>
+												{recommendationSettingsSaving ? t("保存中") : t("保存配置")}
+											</Button>
 										</div>
 									</div>
 
@@ -3902,8 +3782,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 													</div>
 												</div>
 												<label className="inline-flex items-center gap-2 text-sm text-text-2 cursor-pointer">
-													<input
-														type="checkbox"
+													<CheckboxInput
 														checked={recommendationSettings.recommendations_enabled}
 														onChange={(e) =>
 															setRecommendationSettings((prev) => ({
@@ -3932,7 +3811,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 														{t("暂无向量模型配置，请在模型API配置中设置模型类型为向量。")}
 													</div>
 												)}
-												<Select
+												<SelectField
 													value={recommendationSettings.recommendation_model_config_id || ""}
 													onChange={(value) =>
 														setRecommendationSettings((prev) => ({
@@ -3940,7 +3819,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 															recommendation_model_config_id: value,
 														}))
 													}
-													className="select-modern-antd w-full"
+													className="w-full"
 													popupClassName="select-modern-dropdown"
 													options={[
 														{
@@ -3980,19 +3859,16 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 											</p>
 											</div>
 											<div className="flex items-center gap-2">
-												<button
-													onClick={resetCommentFilters}
-													className="px-4 py-2 text-sm bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
-													disabled={!hasCommentFilters}
-												>
-													{t("清空筛选")}
-												</button>
-												<button
-													onClick={fetchCommentList}
-													className="px-4 py-2 text-sm bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
-												>
-													{t("刷新")}
-												</button>
+												<Button
+												onClick={resetCommentFilters}
+												variant="secondary"
+												disabled={!hasCommentFilters}
+											>
+												{t("清空筛选")}
+											</Button>
+												<Button onClick={fetchCommentList} variant="secondary">
+												{t("刷新")}
+											</Button>
 											</div>
 										</div>
 
@@ -4142,20 +4018,14 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 													</Link>
 												</td>
 															<td className="px-4 py-3">
-																<span className="text-xs text-text-2 bg-muted px-2 py-1 rounded-sm">
-																	{comment.reply_to_id ? t("回复") : t("主评论")}
-																</span>
+																<StatusTag tone="neutral">
+															{comment.reply_to_id ? t("回复") : t("主评论")}
+														</StatusTag>
 															</td>
 															<td className="px-4 py-3">
-																<span
-																	className={`text-xs px-2 py-1 rounded-sm ${
-																		comment.is_hidden
-																			? "bg-red-50 text-red-600"
-																			: "bg-green-50 text-green-600"
-																	}`}
-																>
-																	{comment.is_hidden ? t("已隐藏") : t("可见")}
-																</span>
+																<StatusTag tone={comment.is_hidden ? "danger" : "success"}>
+															{comment.is_hidden ? t("已隐藏") : t("可见")}
+														</StatusTag>
 															</td>
 															<td className="px-4 py-3 text-right">
 																			<div className="flex items-center justify-end gap-2">
@@ -4197,13 +4067,13 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 										<div className="mt-6 flex items-center justify-between">
 											<div className="flex items-center gap-2 text-sm text-text-2">
 												<span>{t("每页显示")}</span>
-												<Select
+												<SelectField
 													value={commentListPageSize}
 													onChange={(value) => {
 														setCommentListPageSize(Number(value));
 														setCommentListPage(1);
 													}}
-													className="select-modern-antd"
+													className="w-20"
 													popupClassName="select-modern-dropdown"
 													options={[
 														{ value: 10, label: "10" },
@@ -4256,950 +4126,776 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 				</div>
 
 					{showModelAPIModal && (
-						<div
-							className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-						>
-						<div
-							className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
-							onClick={(event) => event.stopPropagation()}
-						>
-							<div className="flex items-center justify-between p-6 border-b">
-								<h3 className="text-lg font-semibold text-gray-900">
-									{editingModelAPIConfig
-										? t("编辑模型API配置")
-										: t("创建新模型API配置")}
-								</h3>
-												<button
-													onClick={() => {
-													setShowModelAPIModal(false);
-												}}
-												className="text-gray-500 hover:text-gray-700 text-2xl"
-												>
-									×
-								</button>
+					<ModalShell
+						isOpen={showModelAPIModal}
+						onClose={() => setShowModelAPIModal(false)}
+						title={
+							editingModelAPIConfig
+								? t("编辑模型API配置")
+								: t("创建新模型API配置")
+						}
+						widthClassName="max-w-2xl"
+						panelClassName="max-h-[90vh] overflow-y-auto"
+						headerClassName="border-b border-border p-6"
+						bodyClassName="space-y-4 p-6"
+						footerClassName="border-t border-border bg-muted p-6"
+						footer={
+							<div className="flex justify-end gap-2">
+								<Button
+									onClick={() => setShowModelAPIModal(false)}
+									variant="secondary"
+								>
+									{t("取消")}
+								</Button>
+								<Button onClick={handleSaveModelAPI} variant="primary">
+									{editingModelAPIConfig ? t("保存") : t("创建")}
+								</Button>
 							</div>
+						}
+					>
+						<FormField label={t("配置名称")} required>
+							<TextInput
+								type="text"
+								value={modelAPIFormData.name}
+								onChange={(e) =>
+									setModelAPIFormData({
+										...modelAPIFormData,
+										name: e.target.value,
+									})
+								}
+								placeholder={t("OpenAI GPT-4o")}
+								required
+							/>
+						</FormField>
 
-							<div className="p-6 space-y-4">
-								<div>
-									<label className="block text-sm font-medium text-gray-700 mb-2">
-										{t("配置名称")}
-									</label>
-									<input
+						<FormField label={t("API地址（Base URL）")}>
+							<TextInput
+								type="text"
+								value={modelAPIFormData.base_url}
+								onChange={(e) =>
+									setModelAPIFormData({
+										...modelAPIFormData,
+										base_url: e.target.value,
+									})
+								}
+								placeholder={t("https://api.openai.com/v1")}
+							/>
+						</FormField>
+
+						<FormField label={t("服务提供方")}>
+							<SelectField
+								value={modelAPIFormData.provider}
+								onChange={(value) =>
+									setModelAPIFormData({
+										...modelAPIFormData,
+										provider: value,
+									})
+								}
+								className="w-full"
+								popupClassName="select-modern-dropdown"
+								options={[
+									{ value: "openai", label: t("OpenAI 兼容") },
+									{ value: "jina", label: "JinaAI" },
+								]}
+							/>
+						</FormField>
+
+						<FormField label={t("API密钥")} required>
+							<TextInput
+								type="password"
+								value={modelAPIFormData.api_key}
+								onChange={(e) =>
+									setModelAPIFormData({
+										...modelAPIFormData,
+										api_key: e.target.value,
+									})
+								}
+								placeholder={t("sk-...")}
+								required
+							/>
+						</FormField>
+
+						<FormField label={t("模型名称")} required>
+							{modelNameManual ? (
+								<div className="flex items-center gap-2">
+									<TextInput
 										type="text"
-										value={modelAPIFormData.name}
+										value={modelAPIFormData.model_name}
 										onChange={(e) =>
 											setModelAPIFormData({
 												...modelAPIFormData,
-												name: e.target.value,
+												model_name: e.target.value,
 											})
 										}
-										className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-										placeholder={t("OpenAI GPT-4o")}
+										placeholder={t("手动输入模型名称")}
 										required
 									/>
+									<Button
+										type="button"
+										onClick={() => setModelNameManual(false)}
+										variant="secondary"
+										size="sm"
+										title={t("切换为选择")}
+										className="shrink-0"
+									>
+										<IconList className="h-4 w-4" />
+									</Button>
 								</div>
-
-								<div>
-									<label className="block text-sm font-medium text-gray-700 mb-2">
-										{t("API地址（Base URL）")}
-									</label>
-									<input
-										type="text"
-										value={modelAPIFormData.base_url}
-										onChange={(e) =>
-											setModelAPIFormData({
-												...modelAPIFormData,
-												base_url: e.target.value,
-											})
-										}
-										className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-										placeholder={t("https://api.openai.com/v1")}
-									/>
-								</div>
-
-								<div>
-									<label className="block text-sm font-medium text-gray-700 mb-2">
-										{t("服务提供方")}
-									</label>
-									<Select
-										value={modelAPIFormData.provider}
+							) : (
+								<div className="flex items-center gap-2">
+									<SelectField
+										value={modelAPIFormData.model_name || undefined}
 										onChange={(value) =>
 											setModelAPIFormData({
 												...modelAPIFormData,
-												provider: value,
+												model_name: value,
 											})
 										}
-										className="select-modern-antd w-full"
-										popupClassName="select-modern-dropdown"
-										options={[
-											{ value: "openai", label: t("OpenAI 兼容") },
-											{ value: "jina", label: "JinaAI" },
-										]}
+										className="w-full"
+																				popupClassName="select-modern-dropdown"
+										placeholder={t("请选择模型")}
+										options={modelOptions.map((model) => ({
+											value: model,
+											label: model,
+										}))}
+										loading={modelOptionsLoading}
 									/>
+									<Button
+										type="button"
+										onClick={() => setModelNameManual(true)}
+										variant="secondary"
+										size="sm"
+										title={t("手动输入")}
+										className="shrink-0"
+									>
+										<IconEdit className="h-4 w-4" />
+									</Button>
 								</div>
+							)}
+							{modelOptionsError && (
+								<p className="mt-2 text-xs text-red-600">{modelOptionsError}</p>
+							)}
+						</FormField>
 
-								<div>
-									<label className="block text-sm font-medium text-gray-700 mb-2">
-										{t("API密钥")}
-									</label>
-									<input
-										type="password"
-										value={modelAPIFormData.api_key}
-										onChange={(e) =>
-											setModelAPIFormData({
-												...modelAPIFormData,
-												api_key: e.target.value,
-											})
-										}
-										className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-										placeholder={t("sk-...")}
-										required
-									/>
-								</div>
-
-								<div>
-									<label className="block text-sm font-medium text-gray-700 mb-2">
-										{t("模型名称")}
-									</label>
-									{modelNameManual ? (
-										<div className="flex items-center gap-2">
-											<input
-												type="text"
-												value={modelAPIFormData.model_name}
-												onChange={(e) =>
-													setModelAPIFormData({
-														...modelAPIFormData,
-														model_name: e.target.value,
-													})
-												}
-												className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-												placeholder={t("手动输入模型名称")}
-												required
-											/>
-											<button
-												type="button"
-												onClick={() => setModelNameManual(false)}
-												className="px-3 py-2 text-sm bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
-												title={t("切换为选择")}
-											>
-												<IconList className="h-4 w-4" />
-											</button>
+						{modelAPIFormData.model_type !== "vector" && (
+							<div className="rounded-lg border border-border">
+								<SectionToggleButton
+									label={t("计费设置（可选）")}
+									expanded={showModelAPIAdvanced}
+									onToggle={() => setShowModelAPIAdvanced(!showModelAPIAdvanced)}
+									expandedIndicator={t("收起")}
+									collapsedIndicator={t("展开")}
+								/>
+								{showModelAPIAdvanced && (
+									<div className="space-y-4 border-t border-border p-4">
+										<div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+											<FormField label={t("输入单价（每 1K tokens）")}>
+												<TextInput
+													type="number"
+													step="0.00001"
+													value={modelAPIFormData.price_input_per_1k}
+													onChange={(e) =>
+														setModelAPIFormData({
+															...modelAPIFormData,
+															price_input_per_1k: e.target.value,
+														})
+													}
+													placeholder={t("0.00000")}
+												/>
+											</FormField>
+											<FormField label={t("输出单价（每 1K tokens）")}>
+												<TextInput
+													type="number"
+													step="0.00001"
+													value={modelAPIFormData.price_output_per_1k}
+													onChange={(e) =>
+														setModelAPIFormData({
+															...modelAPIFormData,
+															price_output_per_1k: e.target.value,
+														})
+													}
+													placeholder={t("0.00000")}
+												/>
+											</FormField>
 										</div>
-									) : (
-										<div className="flex items-center gap-2">
-											<Select
-												value={modelAPIFormData.model_name || undefined}
+
+										<FormField label={t("币种")}>
+											<SelectField
+												value={modelAPIFormData.currency || ""}
 												onChange={(value) =>
 													setModelAPIFormData({
 														...modelAPIFormData,
-														model_name: value,
+														currency: value,
 													})
 												}
-												className="select-modern-antd w-full h-10"
-												style={{ height: 40 }}
+												className="w-full"
 												popupClassName="select-modern-dropdown"
-												placeholder={t("请选择模型")}
-												options={modelOptions.map((model) => ({
-													value: model,
-													label: model,
+												options={CURRENCY_OPTIONS.map((option) => ({
+													...option,
+													label: t(option.labelKey),
 												}))}
-												loading={modelOptionsLoading}
 											/>
-											<button
-												type="button"
-												onClick={() => setModelNameManual(true)}
-												className="px-3 py-2 text-sm bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
-												title={t("手动输入")}
-											>
-												<IconEdit className="h-4 w-4" />
-											</button>
-										</div>
-									)}
-									{modelOptionsError && (
-										<p className="text-xs text-red-600 mt-2">
-											{modelOptionsError}
-										</p>
-									)}
-								</div>
-
-
-								{modelAPIFormData.model_type !== "vector" && (
-									<div className="border border-gray-200 rounded-lg">
-										<button
-											type="button"
-											onClick={() => setShowModelAPIAdvanced(!showModelAPIAdvanced)}
-											className="w-full flex items-center justify-between px-4 py-3 text-sm text-gray-700 hover:bg-gray-50"
-										>
-											<span>{t("计费设置（可选）")}</span>
-											<span className="text-gray-400">
-												{showModelAPIAdvanced ? t("收起") : t("展开")}
-											</span>
-										</button>
-										{showModelAPIAdvanced && (
-											<div className="border-t border-gray-200 p-4 space-y-4">
-												<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-													<div>
-														<label className="block text-sm font-medium text-gray-700 mb-2">
-															{t("输入单价（每 1K tokens）")}
-														</label>
-														<input
-															type="number"
-															step="0.00001"
-															value={modelAPIFormData.price_input_per_1k}
-															onChange={(e) =>
-																setModelAPIFormData({
-																	...modelAPIFormData,
-																	price_input_per_1k: e.target.value,
-																})
-															}
-															className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-															placeholder={t("0.00000")}
-														/>
-													</div>
-													<div>
-														<label className="block text-sm font-medium text-gray-700 mb-2">
-															{t("输出单价（每 1K tokens）")}
-														</label>
-														<input
-															type="number"
-															step="0.00001"
-															value={modelAPIFormData.price_output_per_1k}
-															onChange={(e) =>
-																setModelAPIFormData({
-																	...modelAPIFormData,
-																	price_output_per_1k: e.target.value,
-																})
-															}
-															className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-															placeholder={t("0.00000")}
-														/>
-													</div>
-												</div>
-
-												<div>
-													<label className="block text-sm font-medium text-gray-700 mb-2">
-														{t("币种")}
-													</label>
-													<Select
-														value={modelAPIFormData.currency || ""}
-														onChange={(value) =>
-															setModelAPIFormData({
-																...modelAPIFormData,
-																currency: value,
-															})
-														}
-														className="select-modern-antd w-full"
-														popupClassName="select-modern-dropdown"
-														options={CURRENCY_OPTIONS.map((option) => ({
-															...option,
-															label: t(option.labelKey),
-														}))}
-													/>
-												</div>
-											</div>
-										)}
+										</FormField>
 									</div>
 								)}
+							</div>
+						)}
 
-								<div className="flex items-center gap-4">
-									<label className="flex items-center gap-2">
-										<input
-											type="checkbox"
-											checked={modelAPIFormData.is_enabled}
-											onChange={(e) =>
-												setModelAPIFormData({
-													...modelAPIFormData,
-													is_enabled: e.target.checked,
-												})
-											}
-											className="w-4 h-4 text-blue-600 rounded"
-										/>
-										<span className="text-sm text-gray-700">
-											{t("启用此配置")}
-										</span>
-									</label>
+						<div className="flex items-center gap-4">
+							<label className="flex items-center gap-2">
+								<CheckboxInput
+									checked={modelAPIFormData.is_enabled}
+									onChange={(e) =>
+										setModelAPIFormData({
+											...modelAPIFormData,
+											is_enabled: e.target.checked,
+										})
+									}
+								/>
+								<span className="text-sm text-text-2">{t("启用此配置")}</span>
+							</label>
 
-									{modelAPIFormData.model_type !== "vector" && (
-										<label className="flex items-center gap-2">
-											<input
-												type="checkbox"
-												checked={modelAPIFormData.is_default}
-												onChange={(e) =>
-													setModelAPIFormData({
-														...modelAPIFormData,
-														is_default: e.target.checked,
+							{modelAPIFormData.model_type !== "vector" && (
+								<label className="flex items-center gap-2">
+									<CheckboxInput
+										checked={modelAPIFormData.is_default}
+										onChange={(e) =>
+											setModelAPIFormData({
+												...modelAPIFormData,
+												is_default: e.target.checked,
+											})
+										}
+									/>
+									<span className="text-sm text-text-2">
+										{t("设为默认配置")}
+									</span>
+								</label>
+							)}
+						</div>
+					</ModalShell>
+				)}
+
+				{showUsagePayloadModal && (
+					<ModalShell
+						isOpen={showUsagePayloadModal}
+						onClose={() => setShowUsagePayloadModal(false)}
+						title={usagePayloadTitle}
+						widthClassName="max-w-3xl"
+						panelClassName="max-h-[90vh] overflow-y-auto"
+						headerClassName="border-b border-border p-6"
+						bodyClassName="p-6"
+						footerClassName="border-t border-border bg-muted p-6"
+						footer={
+							<div className="flex justify-end gap-2">
+								<Button onClick={handleCopyPayload} variant="secondary" size="sm">
+									<IconCopy className="mr-1 h-4 w-4" />
+									{t("复制")}
+								</Button>
+								<Button
+									onClick={() => setShowUsagePayloadModal(false)}
+									variant="secondary"
+								>
+									{t("关闭")}
+								</Button>
+							</div>
+						}
+					>
+						<pre className="rounded-lg border border-border bg-muted p-4 text-xs text-text-1 whitespace-pre-wrap">
+							{usagePayloadContent}
+						</pre>
+					</ModalShell>
+				)}
+
+				{showUsageCostModal && (
+					<ModalShell
+						isOpen={showUsageCostModal}
+						onClose={() => setShowUsageCostModal(false)}
+						title={usageCostTitle}
+						widthClassName="max-w-2xl"
+						panelClassName="max-h-[90vh] overflow-y-auto"
+						headerClassName="border-b border-border p-6"
+						bodyClassName="p-6"
+						footerClassName="border-t border-border bg-muted p-6"
+						footer={
+							<div className="flex justify-end">
+								<Button
+									onClick={() => setShowUsageCostModal(false)}
+									variant="secondary"
+								>
+									{t("关闭")}
+								</Button>
+							</div>
+						}
+					>
+						<pre className="rounded-lg border border-border bg-muted p-4 text-xs text-text-1 whitespace-pre-wrap">
+							{usageCostDetails}
+						</pre>
+					</ModalShell>
+				)}
+
+				{showPromptModal && (
+					<ModalShell
+						isOpen={showPromptModal}
+						onClose={() => setShowPromptModal(false)}
+						title={
+							editingPromptConfig
+								? t("编辑提示词配置")
+								: t("创建新提示词配置")
+						}
+						widthClassName="max-w-2xl"
+						panelClassName="max-h-[90vh] overflow-y-auto"
+						headerClassName="border-b border-border p-6"
+						bodyClassName="space-y-4 p-6"
+						footerClassName="border-t border-border bg-muted p-6"
+						footer={
+							<div className="flex justify-end gap-2">
+								<Button
+									onClick={() => setShowPromptModal(false)}
+									variant="secondary"
+								>
+									{t("取消")}
+								</Button>
+								<Button onClick={handleSavePrompt} variant="primary">
+									{editingPromptConfig ? t("保存") : t("创建")}
+								</Button>
+							</div>
+						}
+					>
+						<FormField label={t("配置名称")} required>
+							<TextInput
+								type="text"
+								value={promptFormData.name}
+								onChange={(e) =>
+									setPromptFormData({
+										...promptFormData,
+										name: e.target.value,
+									})
+								}
+								placeholder={t("文章摘要提示词")}
+								required
+							/>
+						</FormField>
+
+						<FormField label={t("分类")}>
+							<SelectField
+								value={promptFormData.category_id}
+								onChange={(value) =>
+									setPromptFormData({
+										...promptFormData,
+										category_id: value,
+									})
+								}
+								className="w-full"
+								popupClassName="select-modern-dropdown"
+								options={[
+									{ value: "", label: t("通用") },
+									...categories.map((cat) => ({
+										value: cat.id,
+										label: cat.name,
+									})),
+								]}
+							/>
+						</FormField>
+
+						<FormField label={t("系统提示词")} required>
+							<TextArea
+								value={promptFormData.system_prompt}
+								onChange={(e) =>
+									setPromptFormData({
+										...promptFormData,
+										system_prompt: e.target.value,
+									})
+								}
+								rows={4}
+								placeholder={t(
+									"系统级约束，例如：你是一个严谨的内容分析助手...",
+								)}
+								required
+							/>
+						</FormField>
+
+						<FormField label={t("提示词")} required>
+							<TextArea
+								value={promptFormData.prompt}
+								onChange={(e) =>
+									setPromptFormData({
+										...promptFormData,
+										prompt: e.target.value,
+									})
+								}
+								rows={6}
+								placeholder={t("请为以下文章生成摘要...")}
+								required
+							/>
+						</FormField>
+
+						<div className="rounded-lg border border-border">
+							<SectionToggleButton
+								label={t("高级设置（可选）")}
+								expanded={showPromptAdvanced}
+								onToggle={() => setShowPromptAdvanced(!showPromptAdvanced)}
+								expandedIndicator={t("收起")}
+								collapsedIndicator={t("展开")}
+							/>
+							{showPromptAdvanced && (
+								<div className="space-y-4 border-t border-border p-4">
+									<div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+										<FormField label={t("响应格式")}>
+											<SelectField
+												value={promptFormData.response_format}
+												onChange={(value) =>
+													setPromptFormData({
+														...promptFormData,
+														response_format: value,
 													})
 												}
-												className="w-4 h-4 text-blue-600 rounded"
+												className="w-full"
+												popupClassName="select-modern-dropdown"
+												options={[
+													{ value: "", label: t("默认") },
+													{ value: "text", label: "text" },
+													{ value: "json_object", label: "json_object" },
+												]}
 											/>
-											<span className="text-sm text-gray-700">
-												{t("设为默认配置")}
-											</span>
-										</label>
-									)}
-								</div>
-							</div>
+										</FormField>
 
-							<div className="flex justify-end gap-2 p-6 border-t bg-gray-50">
-										<button
-											onClick={() => {
-												setShowModelAPIModal(false);
-											}}
-											className="px-4 py-2 bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
-										>
-									{t("取消")}
-								</button>
-								<button
-									onClick={handleSaveModelAPI}
-									className="px-4 py-2 bg-primary text-white rounded-sm hover:bg-primary-ink transition"
-								>
-									{editingModelAPIConfig ? t("保存") : t("创建")}
-								</button>
-							</div>
-						</div>
-					</div>
-								)}
+										<FormField label={t("温度")}>
+											<TextInput
+												type="number"
+												step="0.1"
+												min="0"
+												max="2"
+												value={promptFormData.temperature}
+												onChange={(e) =>
+													setPromptFormData({
+														...promptFormData,
+														temperature: e.target.value,
+													})
+												}
+												placeholder={t("0.7")}
+											/>
+										</FormField>
 
-									{showUsagePayloadModal && (
-										<div
-											className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-										>
-											<div
-												className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto"
-												onClick={(event) => event.stopPropagation()}
-										>
-											<div className="flex items-center justify-between p-6 border-b">
-												<div className="flex items-center gap-2">
-													<h3 className="text-lg font-semibold text-gray-900">
-														{usagePayloadTitle}
-													</h3>
-													<button
-														onClick={handleCopyPayload}
-														className="p-2 text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
-														aria-label={t("复制")}
-													>
-														<IconCopy className="h-4 w-4" />
-													</button>
-												</div>
-												<button
-													onClick={() => setShowUsagePayloadModal(false)}
-													className="text-gray-500 hover:text-gray-700 text-2xl"
-												>
-													×
-												</button>
-											</div>
-											<div className="p-6">
-												<pre className="text-xs text-gray-800 whitespace-pre-wrap bg-gray-50 border border-gray-200 rounded-lg p-4">
-													{usagePayloadContent}
-												</pre>
-											</div>
-										</div>
+										<FormField label={t("最大 Tokens")}>
+											<TextInput
+												type="number"
+												min="1"
+												value={promptFormData.max_tokens}
+												onChange={(e) =>
+													setPromptFormData({
+														...promptFormData,
+														max_tokens: e.target.value,
+													})
+												}
+												placeholder={t("1200")}
+											/>
+										</FormField>
+
+										<FormField label="Top P">
+											<TextInput
+												type="number"
+												step="0.1"
+												min="0"
+												max="1"
+												value={promptFormData.top_p}
+												onChange={(e) =>
+													setPromptFormData({
+														...promptFormData,
+														top_p: e.target.value,
+													})
+												}
+												placeholder={t("1.0")}
+											/>
+										</FormField>
 									</div>
-								)}
-
-									{showUsageCostModal && (
-										<div
-											className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-										>
-											<div
-												className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
-												onClick={(event) => event.stopPropagation()}
-										>
-											<div className="flex items-center justify-between p-6 border-b">
-												<h3 className="text-lg font-semibold text-gray-900">
-													{usageCostTitle}
-												</h3>
-												<button
-													onClick={() => setShowUsageCostModal(false)}
-													className="text-gray-500 hover:text-gray-700 text-2xl"
-												>
-													×
-												</button>
-											</div>
-											<div className="p-6">
-												<pre className="text-xs text-gray-800 whitespace-pre-wrap bg-gray-50 border border-gray-200 rounded-lg p-4">
-													{usageCostDetails}
-												</pre>
-											</div>
-										</div>
-									</div>
-								)}
-
-									{showPromptModal && (
-										<div
-											className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-						>
-							<div
-								className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
-								onClick={(event) => event.stopPropagation()}
-						>
-							<div className="flex items-center justify-between p-6 border-b">
-								<h3 className="text-lg font-semibold text-gray-900">
-									{editingPromptConfig
-										? t("编辑提示词配置")
-										: t("创建新提示词配置")}
-								</h3>
-								<button
-									onClick={() => setShowPromptModal(false)}
-									className="text-gray-500 hover:text-gray-700 text-2xl"
-								>
-									×
-								</button>
-							</div>
-
-							<div className="p-6 space-y-4">
-								<div>
-									<label className="block text-sm font-medium text-gray-700 mb-2">
-										{t("配置名称")}
-									</label>
-									<input
-										type="text"
-										value={promptFormData.name}
-										onChange={(e) =>
-											setPromptFormData({
-												...promptFormData,
-												name: e.target.value,
-											})
-										}
-										className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-										placeholder={t("文章摘要提示词")}
-										required
-									/>
 								</div>
-
-								<div>
-									<label className="block text-sm font-medium text-gray-700 mb-2">
-										{t("分类")}
-									</label>
-									<Select
-										value={promptFormData.category_id}
-										onChange={(value) =>
-											setPromptFormData({
-												...promptFormData,
-												category_id: value,
-											})
-										}
-										className="select-modern-antd w-full"
-										popupClassName="select-modern-dropdown"
-										options={[
-											{ value: "", label: t("通用") },
-											...categories.map((cat) => ({
-												value: cat.id,
-												label: cat.name,
-											})),
-										]}
-									/>
-								</div>
-
-								<div>
-									<label className="block text-sm font-medium text-gray-700 mb-2">
-										{t("系统提示词")}
-									</label>
-									<textarea
-										value={promptFormData.system_prompt}
-										onChange={(e) =>
-											setPromptFormData({
-												...promptFormData,
-												system_prompt: e.target.value,
-											})
-										}
-										rows={4}
-										className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-										placeholder={t("系统级约束，例如：你是一个严谨的内容分析助手...")}
-										required
-									/>
-								</div>
-
-								<div>
-									<label className="block text-sm font-medium text-gray-700 mb-2">
-										{t("提示词")}
-									</label>
-									<textarea
-										value={promptFormData.prompt}
-										onChange={(e) =>
-											setPromptFormData({
-												...promptFormData,
-												prompt: e.target.value,
-											})
-										}
-										rows={6}
-										className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-										placeholder={t("请为以下文章生成摘要...")}
-										required
-									/>
-								</div>
-
-								<div className="border border-gray-200 rounded-lg">
-									<button
-										type="button"
-										onClick={() => setShowPromptAdvanced(!showPromptAdvanced)}
-										className="w-full flex items-center justify-between px-4 py-3 text-sm text-gray-700 hover:bg-gray-50"
-									>
-										<span>{t("高级设置（可选）")}</span>
-										<span className="text-gray-400">
-											{showPromptAdvanced ? t("收起") : t("展开")}
-										</span>
-									</button>
-									{showPromptAdvanced && (
-										<div className="border-t border-gray-200 p-4 space-y-4">
-											<div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-												<div>
-													<label className="block text-sm font-medium text-gray-700 mb-2">
-														{t("响应格式")}
-													</label>
-													<Select
-														value={promptFormData.response_format}
-														onChange={(value) =>
-															setPromptFormData({
-																...promptFormData,
-																response_format: value,
-															})
-														}
-														className="select-modern-antd w-full"
-														popupClassName="select-modern-dropdown"
-														options={[
-															{ value: "", label: t("默认") },
-															{ value: "text", label: "text" },
-															{ value: "json_object", label: "json_object" },
-														]}
-													/>
-												</div>
-
-												<div>
-													<label className="block text-sm font-medium text-gray-700 mb-2">
-														{t("温度")}
-													</label>
-													<input
-														type="number"
-														step="0.1"
-														min="0"
-														max="2"
-														value={promptFormData.temperature}
-														onChange={(e) =>
-															setPromptFormData({
-																...promptFormData,
-																temperature: e.target.value,
-															})
-														}
-														className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-														placeholder={t("0.7")}
-													/>
-												</div>
-
-												<div>
-													<label className="block text-sm font-medium text-gray-700 mb-2">
-														{t("最大 Tokens")}
-													</label>
-													<input
-														type="number"
-														min="1"
-														value={promptFormData.max_tokens}
-														onChange={(e) =>
-															setPromptFormData({
-																...promptFormData,
-																max_tokens: e.target.value,
-															})
-														}
-														className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-														placeholder={t("1200")}
-													/>
-												</div>
-
-												<div>
-													<label className="block text-sm font-medium text-gray-700 mb-2">
-														Top P
-													</label>
-													<input
-														type="number"
-														step="0.1"
-														min="0"
-														max="1"
-														value={promptFormData.top_p}
-														onChange={(e) =>
-															setPromptFormData({
-																...promptFormData,
-																top_p: e.target.value,
-															})
-														}
-														className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-														placeholder={t("1.0")}
-													/>
-												</div>
-											</div>
-										</div>
-									)}
-								</div>
-
-								<div>
-									<label className="block text-sm font-medium text-gray-700 mb-2">
-										{t("关联模型API配置（可选）")}
-									</label>
-									<Select
-										value={promptFormData.model_api_config_id}
-										onChange={(value) =>
-											setPromptFormData({
-												...promptFormData,
-												model_api_config_id: value,
-											})
-										}
-										className="select-modern-antd w-full"
-										popupClassName="select-modern-dropdown"
-										options={[
-											{ value: "", label: t("使用默认") },
-											...modelAPIConfigs.map((config) => ({
-												value: config.id,
-												label: config.name,
-											})),
-										]}
-									/>
-								</div>
-
-								<div className="flex items-center gap-4">
-									<label className="flex items-center gap-2">
-										<input
-											type="checkbox"
-											checked={promptFormData.is_enabled}
-											onChange={(e) =>
-												setPromptFormData({
-													...promptFormData,
-													is_enabled: e.target.checked,
-												})
-											}
-											className="w-4 h-4 text-blue-600 rounded"
-										/>
-										<span className="text-sm text-gray-700">
-											{t("启用此配置")}
-										</span>
-									</label>
-
-									<label className="flex items-center gap-2">
-										<input
-											type="checkbox"
-											checked={promptFormData.is_default}
-											onChange={(e) =>
-												setPromptFormData({
-													...promptFormData,
-													is_default: e.target.checked,
-												})
-											}
-											className="w-4 h-4 text-blue-600 rounded"
-										/>
-										<span className="text-sm text-gray-700">
-											{t("设为默认配置")}
-										</span>
-									</label>
-								</div>
-							</div>
-
-							<div className="flex justify-end gap-2 p-6 border-t bg-gray-50">
-								<button
-									onClick={() => setShowPromptModal(false)}
-									className="px-4 py-2 bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
-								>
-									{t("取消")}
-								</button>
-								<button
-									onClick={handleSavePrompt}
-									className="px-4 py-2 bg-primary text-white rounded-sm hover:bg-primary-ink transition"
-								>
-									{editingPromptConfig ? t("保存") : t("创建")}
-								</button>
-							</div>
+							)}
 						</div>
-					</div>
+
+						<FormField label={t("关联模型API配置（可选）")}>
+							<SelectField
+								value={promptFormData.model_api_config_id}
+								onChange={(value) =>
+									setPromptFormData({
+										...promptFormData,
+										model_api_config_id: value,
+									})
+								}
+								className="w-full"
+								popupClassName="select-modern-dropdown"
+								options={[
+									{ value: "", label: t("使用默认") },
+									...modelAPIConfigs.map((config) => ({
+										value: config.id,
+										label: config.name,
+									})),
+								]}
+							/>
+						</FormField>
+
+						<div className="flex items-center gap-4">
+							<label className="flex items-center gap-2">
+								<CheckboxInput
+									checked={promptFormData.is_enabled}
+									onChange={(e) =>
+										setPromptFormData({
+											...promptFormData,
+											is_enabled: e.target.checked,
+										})
+									}
+								/>
+								<span className="text-sm text-text-2">{t("启用此配置")}</span>
+							</label>
+
+							<label className="flex items-center gap-2">
+								<CheckboxInput
+									checked={promptFormData.is_default}
+									onChange={(e) =>
+										setPromptFormData({
+											...promptFormData,
+											is_default: e.target.checked,
+										})
+									}
+								/>
+								<span className="text-sm text-text-2">
+									{t("设为默认配置")}
+								</span>
+							</label>
+						</div>
+					</ModalShell>
 				)}
 
 				{/* Category Modal */}
-					{showCategoryModal && (
-						<div
-							className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-						>
-							<div
-								className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto"
-								onClick={(event) => event.stopPropagation()}
-						>
-							<div className="flex items-center justify-between p-6 border-b">
-								<h3 className="text-lg font-semibold text-gray-900">
-									{editingCategory ? t("编辑分类") : t("新增分类")}
-								</h3>
-								<button
+				{showCategoryModal && (
+					<ModalShell
+						isOpen={showCategoryModal}
+						onClose={() => setShowCategoryModal(false)}
+						title={editingCategory ? t("编辑分类") : t("新增分类")}
+						widthClassName="max-w-md"
+						panelClassName="max-h-[90vh] overflow-y-auto"
+						headerClassName="border-b border-border p-6"
+						bodyClassName="space-y-4 p-6"
+						footerClassName="border-t border-border bg-muted p-6"
+						footer={
+							<div className="flex justify-end gap-2">
+								<Button
 									onClick={() => setShowCategoryModal(false)}
-									className="text-gray-500 hover:text-gray-700 text-2xl"
-								>
-									×
-								</button>
-							</div>
-
-							<div className="p-6 space-y-4">
-								<div>
-									<label className="block text-sm font-medium text-gray-700 mb-2">
-										{t("分类名称")}
-									</label>
-									<input
-										type="text"
-										value={categoryFormData.name}
-										onChange={(e) =>
-											setCategoryFormData({
-												...categoryFormData,
-												name: e.target.value,
-											})
-										}
-										className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-										required
-									/>
-								</div>
-
-								<div>
-									<label className="block text-sm font-medium text-gray-700 mb-2">
-										{t("描述")}
-									</label>
-									<textarea
-										value={categoryFormData.description}
-										onChange={(e) =>
-											setCategoryFormData({
-												...categoryFormData,
-												description: e.target.value,
-											})
-										}
-										rows={3}
-										className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-									/>
-								</div>
-
-								<div>
-									<label className="block text-sm font-medium text-gray-700 mb-2">
-										{t("颜色")}
-									</label>
-									<div className="grid grid-cols-10 gap-2">
-										{PRESET_COLORS.map((color) => (
-											<button
-												key={color}
-												type="button"
-												onClick={() =>
-													setCategoryFormData({ ...categoryFormData, color })
-												}
-												className={`w-8 h-8 rounded-lg transition ${
-													categoryFormData.color === color
-														? "ring-2 ring-offset-2 ring-blue-500"
-														: "hover:scale-110"
-												}`}
-												style={{ backgroundColor: color }}
-											/>
-										))}
-									</div>
-								</div>
-							</div>
-
-							<div className="flex justify-end gap-2 p-6 border-t bg-gray-50">
-								<button
-									onClick={() => setShowCategoryModal(false)}
-									className="px-4 py-2 bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
+									variant="secondary"
 								>
 									{t("取消")}
-								</button>
-								<button
-									onClick={handleSaveCategory}
-									className="px-4 py-2 bg-primary text-white rounded-sm hover:bg-primary-ink transition"
-								>
+								</Button>
+								<Button onClick={handleSaveCategory} variant="primary">
 									{editingCategory ? t("保存") : t("创建")}
-								</button>
+								</Button>
 							</div>
-						</div>
-					</div>
+						}
+					>
+						<FormField label={t("分类名称")} required>
+							<TextInput
+								type="text"
+								value={categoryFormData.name}
+								onChange={(e) =>
+									setCategoryFormData({
+										...categoryFormData,
+										name: e.target.value,
+									})
+								}
+								required
+							/>
+						</FormField>
+
+						<FormField label={t("描述")}>
+							<TextArea
+								value={categoryFormData.description}
+								onChange={(e) =>
+									setCategoryFormData({
+										...categoryFormData,
+										description: e.target.value,
+									})
+								}
+								rows={3}
+							/>
+						</FormField>
+
+						<FormField label={t("颜色")}>
+							<div className="grid grid-cols-10 gap-2">
+								{PRESET_COLORS.map((color) => (
+									<button
+										key={color}
+										type="button"
+										onClick={() => setCategoryFormData({ ...categoryFormData, color })}
+										className={`h-8 w-8 rounded-lg transition ${
+											categoryFormData.color === color
+												? "ring-2 ring-blue-500 ring-offset-2"
+												: "hover:scale-110"
+										}`}
+										style={{ backgroundColor: color }}
+									/>
+								))}
+							</div>
+						</FormField>
+					</ModalShell>
 				)}
 
-					{showPromptPreview && (
-						<div
-							className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-						>
-						<div
-							className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
-							onClick={(event) => event.stopPropagation()}
-						>
-							<div className="flex items-center justify-between p-6 border-b">
-								<h3 className="text-lg font-semibold text-gray-900">
-									{t("提示词预览")} - {showPromptPreview.name}
-								</h3>
-								<button
-									onClick={() => setShowPromptPreview(null)}
-									className="text-gray-500 hover:text-gray-700 text-2xl"
-								>
-									×
-								</button>
-							</div>
-
-							<div className="p-6 space-y-4">
-								<div className="flex flex-wrap gap-2">
-									<span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm">
-										{PROMPT_TYPES.find(
-											(t) => t.value === showPromptPreview.type,
-										)?.labelKey
-											? t(
-													PROMPT_TYPES.find(
-														(t) => t.value === showPromptPreview.type,
-													)?.labelKey || "",
-												)
-											: showPromptPreview.type}
-									</span>
-									<span className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-sm">
-										{t("分类")}:{" "}
-										{showPromptPreview.category_name || t("通用")}
-									</span>
-									{showPromptPreview.model_api_config_name && (
-										<span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm">
-											{t("模型")}: {showPromptPreview.model_api_config_name}
-										</span>
-									)}
-								</div>
-
-								<div>
-									<label className="block text-sm font-medium text-gray-700 mb-2">
-										{t("系统提示词")}
-									</label>
-									<pre className="w-full p-4 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-800 whitespace-pre-wrap font-mono">
-										{showPromptPreview.system_prompt || t("未设置（必填）")}
-									</pre>
-								</div>
-
-								<div>
-									<label className="block text-sm font-medium text-gray-700 mb-2">
-										{t("提示词")}
-									</label>
-									<pre className="w-full p-4 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-800 whitespace-pre-wrap font-mono">
-										{showPromptPreview.prompt}
-									</pre>
-								</div>
-
-								<div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-									<div className="p-3 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700">
-										<div className="text-xs text-gray-500">
-											{t("响应格式")}
-										</div>
-										<div>{showPromptPreview.response_format || t("默认")}</div>
-									</div>
-									<div className="p-3 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700">
-										<div className="text-xs text-gray-500">{t("温度")}</div>
-										<div>{showPromptPreview.temperature ?? t("默认")}</div>
-									</div>
-									<div className="p-3 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700">
-										<div className="text-xs text-gray-500">
-											{t("最大 Tokens")}
-										</div>
-										<div>{showPromptPreview.max_tokens ?? t("默认")}</div>
-									</div>
-									<div className="p-3 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700">
-										<div className="text-xs text-gray-500">Top P</div>
-										<div>{showPromptPreview.top_p ?? t("默认")}</div>
-									</div>
-								</div>
-							</div>
-
-							<div className="flex justify-end gap-2 p-6 border-t bg-gray-50">
-								<button
+				{showPromptPreview && (
+					<ModalShell
+						isOpen={Boolean(showPromptPreview)}
+						onClose={() => setShowPromptPreview(null)}
+						title={`${t("提示词预览")} - ${showPromptPreview.name}`}
+						widthClassName="max-w-2xl"
+						panelClassName="max-h-[90vh] overflow-y-auto"
+						headerClassName="border-b border-border p-6"
+						bodyClassName="space-y-4 p-6"
+						footerClassName="border-t border-border bg-muted p-6"
+						footer={
+							<div className="flex justify-end gap-2">
+								<Button
 									onClick={() => {
 										handleEditPrompt(showPromptPreview);
 										setShowPromptPreview(null);
 									}}
-									className="px-4 py-2 bg-primary text-white rounded-sm hover:bg-primary-ink transition"
+									variant="primary"
 								>
 									{t("编辑此配置")}
-								</button>
-								<button
+								</Button>
+								<Button
 									onClick={() => setShowPromptPreview(null)}
-									className="px-4 py-2 bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
+									variant="secondary"
 								>
 									{t("关闭")}
-								</button>
+								</Button>
+							</div>
+						}
+					>
+						<div className="flex flex-wrap gap-2">
+							<StatusTag tone="info" size="sm">
+								{(() => {
+									const promptType = PROMPT_TYPES.find(
+										(item) => item.value === showPromptPreview.type,
+									);
+									return promptType?.labelKey
+										? t(promptType.labelKey)
+										: showPromptPreview.type;
+								})()}
+							</StatusTag>
+							<StatusTag tone="neutral" size="sm">
+								{t("分类")}: {showPromptPreview.category_name || t("通用")}
+							</StatusTag>
+							{showPromptPreview.model_api_config_name && (
+								<StatusTag tone="info" size="sm">
+									{t("模型")}: {showPromptPreview.model_api_config_name}
+								</StatusTag>
+							)}
+						</div>
+
+						<div>
+							<label className="mb-2 block text-sm font-medium text-text-2">
+								{t("系统提示词")}
+							</label>
+							<pre className="w-full rounded-lg border border-border bg-muted p-4 text-sm text-text-1 whitespace-pre-wrap font-mono">
+								{showPromptPreview.system_prompt || t("未设置（必填）")}
+							</pre>
+						</div>
+
+						<div>
+							<label className="mb-2 block text-sm font-medium text-text-2">
+								{t("提示词")}
+							</label>
+							<pre className="w-full rounded-lg border border-border bg-muted p-4 text-sm text-text-1 whitespace-pre-wrap font-mono">
+								{showPromptPreview.prompt}
+							</pre>
+						</div>
+
+						<div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+							<div className="rounded-lg border border-border bg-muted p-3 text-sm text-text-2">
+								<div className="text-xs text-text-3">{t("响应格式")}</div>
+								<div>{showPromptPreview.response_format || t("默认")}</div>
+							</div>
+							<div className="rounded-lg border border-border bg-muted p-3 text-sm text-text-2">
+								<div className="text-xs text-text-3">{t("温度")}</div>
+								<div>{showPromptPreview.temperature ?? t("默认")}</div>
+							</div>
+							<div className="rounded-lg border border-border bg-muted p-3 text-sm text-text-2">
+								<div className="text-xs text-text-3">{t("最大 Tokens")}</div>
+								<div>{showPromptPreview.max_tokens ?? t("默认")}</div>
+							</div>
+							<div className="rounded-lg border border-border bg-muted p-3 text-sm text-text-2">
+								<div className="text-xs text-text-3">Top P</div>
+								<div>{showPromptPreview.top_p ?? t("默认")}</div>
 							</div>
 						</div>
-					</div>
+					</ModalShell>
 				)}
 
-					{showModelAPITestModal && (
-						<div
-							className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-						>
-							<div
-								className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
-								onClick={(event) => event.stopPropagation()}
-						>
-							<div className="flex items-center justify-between p-6 border-b">
-								<div>
-									<h3 className="text-lg font-semibold text-gray-900">
-										{t("模型连接测试")}
-									</h3>
-									{modelAPITestConfig && (
-										<p className="text-sm text-gray-500 mt-1">
-											{modelAPITestConfig.name} ·{" "}
-											{modelAPITestConfig.model_name}
-										</p>
-									)}
-								</div>
-								<button
+				{showModelAPITestModal && (
+					<ModalShell
+						isOpen={showModelAPITestModal}
+						onClose={() => setShowModelAPITestModal(false)}
+						title={t("模型连接测试")}
+						widthClassName="max-w-2xl"
+						panelClassName="max-h-[90vh] overflow-y-auto"
+						headerClassName="border-b border-border p-6"
+						bodyClassName="space-y-4 p-6"
+						footerClassName="border-t border-border bg-muted p-6"
+						footer={
+							<div className="flex justify-end gap-2">
+								<Button
 									onClick={() => setShowModelAPITestModal(false)}
-									className="text-gray-500 hover:text-gray-700 text-2xl"
-								>
-									×
-								</button>
-							</div>
-
-							<div className="p-6 space-y-4">
-								<div>
-									<label className="block text-sm font-medium text-gray-700 mb-2">
-										{t("测试输入")}
-									</label>
-									<textarea
-										value={modelAPITestPrompt}
-										onChange={(e) => setModelAPITestPrompt(e.target.value)}
-										rows={4}
-										className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-										placeholder={t("请输入要发送给模型的内容")}
-									/>
-								</div>
-
-								<div>
-									<label className="block text-sm font-medium text-gray-700 mb-2">
-										{t("返回结果")}
-									</label>
-									<div className="w-full p-4 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-800 whitespace-pre-wrap min-h-[120px]">
-										{modelAPITestLoading
-											? t("调用中...")
-											: modelAPITestError
-												? modelAPITestError
-												: modelAPITestResult || t("暂无返回")}
-									</div>
-								</div>
-
-								{modelAPITestError && (
-									<div>
-										<label className="block text-sm font-medium text-gray-700 mb-2">
-											{t("原始响应")}
-										</label>
-										<pre className="w-full p-4 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-800 whitespace-pre-wrap max-h-64 overflow-y-auto">
-											{modelAPITestRaw || t("暂无原始响应")}
-										</pre>
-									</div>
-								)}
-							</div>
-
-							<div className="flex justify-end gap-2 p-6 border-t bg-gray-50">
-								<button
-									onClick={() => setShowModelAPITestModal(false)}
-									className="px-4 py-2 bg-muted text-text-2 rounded-sm hover:bg-surface hover:text-text-1 transition"
+									variant="secondary"
 								>
 									{t("关闭")}
-								</button>
-								<button
+								</Button>
+								<Button
 									onClick={handleRunModelAPITest}
+									variant="primary"
 									disabled={modelAPITestLoading}
-									className="px-4 py-2 bg-primary text-white rounded-sm hover:bg-primary-ink transition disabled:opacity-50 disabled:cursor-not-allowed"
 								>
 									{modelAPITestLoading ? t("调用中...") : t("开始测试")}
-								</button>
+								</Button>
+							</div>
+						}
+					>
+						{modelAPITestConfig && (
+							<p className="text-sm text-text-3">
+								{modelAPITestConfig.name} · {modelAPITestConfig.model_name}
+							</p>
+						)}
+
+						<FormField label={t("测试输入")}>
+							<TextArea
+								value={modelAPITestPrompt}
+								onChange={(e) => setModelAPITestPrompt(e.target.value)}
+								rows={4}
+								placeholder={t("请输入要发送给模型的内容")}
+							/>
+						</FormField>
+
+						<div>
+							<label className="mb-2 block text-sm font-medium text-text-2">
+								{t("返回结果")}
+							</label>
+							<div className="min-h-[120px] w-full rounded-lg border border-border bg-muted p-4 text-sm text-text-1 whitespace-pre-wrap">
+								{modelAPITestLoading
+									? t("调用中...")
+									: modelAPITestError
+										? modelAPITestError
+										: modelAPITestResult || t("暂无返回")}
 							</div>
 						</div>
-					</div>
+
+						{modelAPITestError && (
+							<div>
+								<label className="mb-2 block text-sm font-medium text-text-2">
+									{t("原始响应")}
+								</label>
+								<pre className="max-h-64 w-full overflow-y-auto rounded-lg border border-border bg-muted p-4 text-xs text-text-1 whitespace-pre-wrap">
+									{modelAPITestRaw || t("暂无原始响应")}
+								</pre>
+							</div>
+						)}
+					</ModalShell>
 				)}
+
 			</div>
 			<ConfirmModal
 				isOpen={confirmState.isOpen}

@@ -1,4 +1,5 @@
 import { Select } from "antd";
+import FormField from "@/components/ui/FormField";
 
 interface FilterSelectOption {
 	value: string;
@@ -25,10 +26,7 @@ export default function FilterSelect({
 	const selectId = id || `filter-select-${label}`;
 
 	return (
-		<div>
-			<label htmlFor={selectId} className="block text-sm text-text-2 mb-1.5">
-				{label}
-			</label>
+		<FormField label={label} htmlFor={selectId}>
 			<Select
 				id={selectId}
 				value={value}
@@ -39,6 +37,6 @@ export default function FilterSelect({
 				popupClassName="select-modern-dropdown"
 				style={{ height: 36 }}
 			/>
-		</div>
+		</FormField>
 	);
 }

@@ -231,15 +231,25 @@ html[data-theme="dark"] .note-panel {
   background-size: 12px;
 }
 
-.select-modern-antd .ant-select-selector {
+.select-modern-antd.ant-select-single {
   height: 36px;
-  padding: 0 12px;
+}
+
+.select-modern-antd.ant-select-single .ant-select-selector {
+  height: 36px !important;
+  min-height: 36px !important;
+  box-sizing: border-box;
+  padding: 0 12px !important;
   border: 1px solid var(--border-strong);
   border-radius: 6px;
   background: var(--bg-surface);
   box-shadow: var(--shadow-sm);
   transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
   align-items: center;
+}
+
+.select-modern-antd.ant-select-single .ant-select-selection-search-input {
+  height: 34px !important;
 }
 
 .select-modern-antd .ant-select-selection-item,
@@ -815,3 +825,4 @@ html[data-theme="dark"]
   .ant-picker-time-panel-cell-inner {
   color: var(--text-1);
 }
+

@@ -28,7 +28,7 @@ export default function FilterSelectInline({
 
 	return (
 		<div className={`flex items-center gap-2 ${className}`}>
-			<label htmlFor={selectId} className="text-sm text-text-2 whitespace-nowrap">
+			<label htmlFor={selectId} className="whitespace-nowrap text-sm text-text-2">
 				{label}
 			</label>
 			<Select

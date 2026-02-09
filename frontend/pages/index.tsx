@@ -7,11 +7,11 @@ import { articleApi, type Article, resolveMediaUrl } from '@/lib/api';
 import AppFooter from '@/components/AppFooter';
 import AppHeader from '@/components/AppHeader';
 import { BackToTop } from '@/components/BackToTop';
+import LinkButton from '@/components/ui/LinkButton';
 import { useBasicSettings } from '@/contexts/BasicSettingsContext';
 import { useI18n } from '@/lib/i18n';
 
 const githubUrl = 'https://github.com/shawnxie94/lumina';
-
 const isExternalUrl = (url: string): boolean => /^(https?:\/\/)/.test(url);
 
 const formatDate = (date: string | null, language: 'zh-CN' | 'en'): string => {
@@ -122,38 +122,42 @@ export default function HomePage() {
               </p>
               <div className="mt-6 flex flex-wrap gap-3 justify-center">
                 {isExternalUrl(primaryButtonUrl) ? (
-                  <a
+                  <LinkButton
                     href={primaryButtonUrl}
+                    variant="primary"
+                    className="rounded-full px-5 py-2.5"
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex items-center justify-center rounded-full bg-primary px-5 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-primary-ink transition"
                   >
                     {primaryButtonText}
-                  </a>
+                  </LinkButton>
                 ) : (
-                  <Link
+                  <LinkButton
                     href={primaryButtonUrl}
-                    className="inline-flex items-center justify-center rounded-full bg-primary px-5 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-primary-ink transition"
+                    variant="primary"
+                    className="rounded-full px-5 py-2.5"
                   >
                     {primaryButtonText}
-                  </Link>
+                  </LinkButton>
                 )}
                 {isExternalUrl(secondaryButtonUrl) ? (
-                  <a
+                  <LinkButton
                     href={secondaryButtonUrl}
+                    variant="secondary"
+                    className="rounded-full px-5 py-2.5"
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex items-center justify-center rounded-full border border-border bg-surface px-5 py-2.5 text-sm font-medium text-text-2 hover:bg-muted hover:text-text-1 transition"
                   >
                     {secondaryButtonText}
-                  </a>
+                  </LinkButton>
                 ) : (
-                  <Link
+                  <LinkButton
                     href={secondaryButtonUrl}
-                    className="inline-flex items-center justify-center rounded-full border border-border bg-surface px-5 py-2.5 text-sm font-medium text-text-2 hover:bg-muted hover:text-text-1 transition"
+                    variant="secondary"
+                    className="rounded-full px-5 py-2.5"
                   >
                     {secondaryButtonText}
-                  </Link>
+                  </LinkButton>
                 )}
               </div>
             </div>
@@ -163,10 +167,10 @@ export default function HomePage() {
             <h2 className="text-2xl sm:text-3xl font-semibold text-text-1">
               {t('最新内容')}
             </h2>
-            <div className="mt-2 text-xs text-text-3">
+            <div className="mt-2 text-sm font-medium text-text-2">
               {t('更新时间')} {latestUpdatedAt ? formatDateTime(latestUpdatedAt, language) : '--'}
             </div>
-            <div className="mx-auto mt-4 h-[2px] w-64 bg-border-strong" />
+            <div className="mx-auto mt-4 h-[4px] w-72 rounded-full bg-gradient-to-r from-primary/25 via-primary to-primary/25" />
           </div>
         </div>
 
@@ -181,9 +185,9 @@ export default function HomePage() {
                 <Link
                   key={article.slug}
                   href={`/article/${article.slug}`}
-                  className="group rounded-2xl bg-surface/80 shadow-md transition hover:shadow-lg hover:shadow-primary/10"
+                  className="group overflow-hidden rounded-2xl border border-border-strong bg-surface/80 shadow-md transition hover:border-primary/40 hover:shadow-lg hover:shadow-primary/10"
                 >
-                  <div className="relative aspect-video overflow-hidden rounded-t-lg bg-muted">
+                  <div className="relative aspect-video overflow-hidden bg-muted">
                     {article.top_image ? (
                       <img
                         src={resolveMediaUrl(article.top_image)}
@@ -228,12 +232,13 @@ export default function HomePage() {
             </div>
           )}
           <div className="mt-8 text-center">
-            <Link
+            <LinkButton
               href="/list"
-              className="inline-flex items-center justify-center rounded-full border border-border bg-surface px-6 py-2.5 text-sm font-medium text-text-2 hover:bg-primary hover:text-white hover:border-primary transition"
+              variant="secondary"
+              className="rounded-full px-6 py-2.5 hover:bg-primary hover:text-white hover:border-primary"
             >
               {t('查看更多...')}
-            </Link>
+            </LinkButton>
           </div>
         </section>
       </main>

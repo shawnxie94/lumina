@@ -10,6 +10,10 @@ import AppFooter from '@/components/AppFooter';
 import AppHeader from '@/components/AppHeader';
 import Button from '@/components/Button';
 import IconButton from '@/components/IconButton';
+import FormField from '@/components/ui/FormField';
+import ModalShell from '@/components/ui/ModalShell';
+import TextArea from '@/components/ui/TextArea';
+import TextInput from '@/components/ui/TextInput';
 import { useToast } from '@/components/Toast';
 import ConfirmModal from '@/components/ConfirmModal';
 import { BackToTop } from '@/components/BackToTop';
@@ -2476,7 +2480,7 @@ export default function ArticleDetailPage() {
                         <div className="flex justify-end mt-2">
                           <button
                             onClick={handleSubmitComment}
-                            className="px-4 py-2 text-sm rounded-lg bg-primary text-white hover:opacity-90 transition"
+                            className="px-4 py-2 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition"
                           >
                             {t('发布评论')}
                           </button>
@@ -2944,79 +2948,56 @@ export default function ArticleDetailPage() {
         </div>
 
       {showConfigModal && (
-        <div
-          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-        >
-          <div
-            className="bg-white rounded-lg shadow-xl max-w-md w-full"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="flex items-center justify-between p-4 border-b">
-              <h3 className="text-lg font-semibold text-gray-900">{t('选择生成配置')}</h3>
-              <button
-                onClick={() => setShowConfigModal(false)}
-                className="text-gray-500 hover:text-gray-700 text-xl"
-              >
-                ×
-              </button>
-            </div>
-
-            <div className="p-4 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  {t('模型配置')}
-                </label>
-                <Select
-                  value={selectedModelConfigId}
-                  onChange={(value) => setSelectedModelConfigId(value)}
-                  className="select-modern-antd w-full"
-                  popupClassName="select-modern-dropdown"
-                  options={[
-                    { value: '', label: t('使用默认配置') },
-                    ...modelConfigs.map((config) => ({
-                      value: config.id,
-                      label: `${config.name} (${config.model_name})`,
-                    })),
-                  ]}
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  {t('提示词配置')}
-                </label>
-                <Select
-                  value={selectedPromptConfigId}
-                  onChange={(value) => setSelectedPromptConfigId(value)}
-                  className="select-modern-antd w-full"
-                  popupClassName="select-modern-dropdown"
-                  options={[
-                    { value: '', label: t('使用默认配置') },
-                    ...promptConfigs.map((config) => ({
-                      value: config.id,
-                      label: config.name,
-                    })),
-                  ]}
-                />
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2 p-4 border-t bg-gray-50 rounded-b-lg">
-              <button
-                onClick={() => setShowConfigModal(false)}
-                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
-              >
+        <ModalShell
+          isOpen={showConfigModal}
+          onClose={() => setShowConfigModal(false)}
+          title={t('选择生成配置')}
+          widthClassName="max-w-md"
+          footer={(
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="secondary" onClick={() => setShowConfigModal(false)}>
                 {t('取消')}
-              </button>
-              <button
-                onClick={handleConfigModalGenerate}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
-              >
+              </Button>
+              <Button type="button" variant="primary" onClick={handleConfigModalGenerate}>
                 {t('生成')}
-              </button>
+              </Button>
             </div>
+          )}
+        >
+          <div className="space-y-4">
+            <FormField label={t('模型配置')}>
+              <Select
+                value={selectedModelConfigId}
+                onChange={(value) => setSelectedModelConfigId(value)}
+                className="select-modern-antd w-full"
+                popupClassName="select-modern-dropdown"
+                options={[
+                  { value: '', label: t('使用默认配置') },
+                  ...modelConfigs.map((config) => ({
+                    value: config.id,
+                    label: `${config.name} (${config.model_name})`,
+                  })),
+                ]}
+              />
+            </FormField>
+
+            <FormField label={t('提示词配置')}>
+              <Select
+                value={selectedPromptConfigId}
+                onChange={(value) => setSelectedPromptConfigId(value)}
+                className="select-modern-antd w-full"
+                popupClassName="select-modern-dropdown"
+                options={[
+                  { value: '', label: t('使用默认配置') },
+                  ...promptConfigs.map((config) => ({
+                    value: config.id,
+                    label: config.name,
+                  })),
+                ]}
+              />
+            </FormField>
           </div>
-        </div>
+        </ModalShell>
       )}
 
       {showEditModal && (
@@ -3024,16 +3005,16 @@ export default function ArticleDetailPage() {
           className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4"
         >
           <div
-            className="bg-white rounded-lg shadow-xl w-full h-[95vh] flex flex-col"
+            className="bg-surface rounded-lg shadow-xl w-full h-[95vh] flex flex-col"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="flex items-center justify-between p-4 border-b flex-shrink-0">
-              <h3 className="text-lg font-semibold text-gray-900">
+            <div className="flex items-center justify-between p-4 border-b border-border flex-shrink-0">
+              <h3 className="text-lg font-semibold text-text-1">
                 {t('编辑文章')}
               </h3>
               <button
                 onClick={() => setShowEditModal(false)}
-                className="text-gray-500 hover:text-gray-700 text-xl"
+                className="text-text-3 hover:text-text-1 text-xl"
               >
                 ×
               </button>
@@ -3042,41 +3023,31 @@ export default function ArticleDetailPage() {
             <div className="flex-1 overflow-hidden">
               <div className="grid grid-cols-1 lg:grid-cols-2 h-full">
                 {/* 左侧编辑区 */}
-                <div className="p-4 flex flex-col h-full border-r border-gray-200">
-                  <div className="space-y-4 flex-shrink-0">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        {t('标题')}
-                      </label>
-                      <input
+                <div className="p-4 flex flex-col h-full border-r border-border">
+                  <div className="space-y-4 flex-1 flex flex-col">
+                    <FormField label={t('标题')}>
+                      <TextInput
                         type="text"
                         value={editTitle}
                         onChange={(e) => setEditTitle(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
-                    </div>
+                    </FormField>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          {t('作者')}
-                        </label>
-                        <input
+                      <FormField label={t('作者')}>
+                        <TextInput
                           type="text"
                           value={editAuthor}
                           onChange={(e) => setEditAuthor(e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          {t('分类')}
-                        </label>
+                      </FormField>
+                      <FormField label={t('分类')}>
                         <Select
                           value={editCategoryId}
                           onChange={(value) => setEditCategoryId(value)}
                           className="select-modern-antd w-full"
                           popupClassName="select-modern-dropdown"
+                          style={{ height: 36 }}
                           loading={categoriesLoading}
                           options={[
                             { value: '', label: t('未分类') },
@@ -3086,20 +3057,20 @@ export default function ArticleDetailPage() {
                             })),
                           ]}
                         />
-                      </div>
+                      </FormField>
                     </div>
 
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        {t('头图 URL')}
-                      </label>
+                    <FormField
+                      label={t('头图 URL')}
+                      hint={!mediaStorageEnabled ? t('未开启本地存储，头图将保持外链') : undefined}
+                    >
                       <div className="flex gap-2">
-                        <input
+                        <TextInput
                           type="text"
                           value={editTopImage}
                           onChange={(e) => setEditTopImage(e.target.value)}
                           onPaste={handleTopImagePaste}
-                          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="flex-1"
                           placeholder={t("输入图片 URL")}
                         />
                         <IconButton
@@ -3117,75 +3088,72 @@ export default function ArticleDetailPage() {
                           <IconLink className="h-4 w-4" />
                         </IconButton>
                       </div>
-                      {!mediaStorageEnabled && (
-                        <div className="text-xs text-gray-500 mt-1">
-                          {t("未开启本地存储，头图将保持外链")}
-                        </div>
-                      )}
-                    </div>
+                    </FormField>
 
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <label className="block text-sm font-medium text-gray-700">
+                    <div className="flex-1 flex flex-col">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="block text-sm text-text-2">
                           {t('内容（Markdown）')}
-                        </label>
+                        </span>
                         <div className="flex items-center gap-2">
-                            <IconButton
-                              onClick={handleBatchConvertMarkdownImages}
-                              disabled={mediaUploading || !mediaStorageEnabled}
-                              title={
-                                mediaStorageEnabled
-                                  ? t('扫描并转存外链图片')
-                                  : t('未开启本地图片存储')
-                              }
-                              variant="ghost"
-                              size="md"
-                              className="hover:bg-muted"
-                            >
-                              <IconLink className="h-4 w-4" />
-                            </IconButton>
+                          <IconButton
+                            onClick={handleBatchConvertMarkdownImages}
+                            disabled={mediaUploading || !mediaStorageEnabled}
+                            title={
+                              mediaStorageEnabled
+                                ? t('扫描并转存外链图片')
+                                : t('未开启本地图片存储')
+                            }
+                            variant="ghost"
+                            size="md"
+                            className="hover:bg-muted"
+                          >
+                            <IconLink className="h-4 w-4" />
+                          </IconButton>
                         </div>
                       </div>
                       {!mediaStorageEnabled && (
-                        <div className="text-xs text-gray-500 mb-2">
+                        <div className="mb-2 text-xs text-text-3">
                           {t('未开启本地存储，外链将保持不变')}
-                          </div>
+                        </div>
                       )}
+
+                      <TextArea
+                        ref={editTextareaRef}
+                        value={editContent}
+                        onChange={(e) => setEditContent(e.target.value)}
+                        onPaste={handleEditPaste}
+                        onScroll={() => {
+                          if (editTextareaRef.current && editPreviewRef.current) {
+                            const textarea = editTextareaRef.current;
+                            const preview = editPreviewRef.current;
+                            const scrollRatio = textarea.scrollTop / (textarea.scrollHeight - textarea.clientHeight);
+                            preview.scrollTop = scrollRatio * (preview.scrollHeight - preview.clientHeight);
+                          }
+                        }}
+                        className="flex-1 font-mono resize-none min-h-[200px]"
+                        placeholder={t('在此输入 Markdown 内容...')}
+                      />
                     </div>
                   </div>
 
-                  <textarea
-                    ref={editTextareaRef}
-                    value={editContent}
-                    onChange={(e) => setEditContent(e.target.value)}
-                    onPaste={handleEditPaste}
-                    onScroll={() => {
-                      if (editTextareaRef.current && editPreviewRef.current) {
-                        const textarea = editTextareaRef.current;
-                        const preview = editPreviewRef.current;
-                        const scrollRatio = textarea.scrollTop / (textarea.scrollHeight - textarea.clientHeight);
-                        preview.scrollTop = scrollRatio * (preview.scrollHeight - preview.clientHeight);
-                      }
-                    }}
-                    className="flex-1 w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm resize-none min-h-[200px]"
-                    placeholder={t('在此输入 Markdown 内容...')}
-                  />
-
                   <div className="flex justify-end gap-2 pt-4 border-t flex-shrink-0">
-                    <button
+                    <Button
+                      type="button"
+                      variant="secondary"
                       onClick={() => setShowEditModal(false)}
-                      className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
                       disabled={saving}
                     >
                       {t('取消')}
-                    </button>
-                    <button
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="primary"
                       onClick={handleSaveEdit}
                       disabled={saving}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
                     >
                       {saving ? t('保存中...') : t('保存')}
-                    </button>
+                    </Button>
                   </div>
                 </div>
 
@@ -3199,9 +3167,9 @@ export default function ArticleDetailPage() {
                       textarea.scrollTop = scrollRatio * (textarea.scrollHeight - textarea.clientHeight);
                     }
                   }}
-                  className="bg-gray-50 overflow-y-auto h-full hidden lg:block"
+                  className="bg-muted overflow-y-auto h-full hidden lg:block"
                 >
-                  <div className="max-w-3xl mx-auto bg-white min-h-full shadow-sm">
+                  <div className="max-w-3xl mx-auto bg-surface min-h-full shadow-sm">
                     {editTopImage && (
                       <div className="relative w-full aspect-[21/9] overflow-hidden">
                         <img
@@ -3276,175 +3244,126 @@ export default function ArticleDetailPage() {
       )}
 
       {showAnnotationView && activeAnnotation && (
-        <div
-          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+        <ModalShell
+          isOpen={showAnnotationView}
+          onClose={() => setShowAnnotationView(false)}
+          title={t('划线批注内容')}
+          widthClassName="max-w-lg"
+          footer={
+            isAdmin ? (
+              <div className="flex justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => {
+                    setActiveAnnotationId(activeAnnotation.id);
+                    setPendingAnnotationRange({
+                      start: activeAnnotation.start,
+                      end: activeAnnotation.end,
+                    });
+                    setPendingAnnotationText(activeAnnotationText || '');
+                    setPendingAnnotationComment(activeAnnotation.comment);
+                    setShowAnnotationView(false);
+                    setShowAnnotationModal(true);
+                  }}
+                >
+                  {t('编辑')}
+                </Button>
+                <Button
+                  type="button"
+                  variant="danger"
+                  onClick={() => {
+                    handleDeleteAnnotation(activeAnnotation.id);
+                    setShowAnnotationView(false);
+                  }}
+                >
+                  {t('删除')}
+                </Button>
+              </div>
+            ) : null
+          }
         >
-          <div
-            className="bg-white rounded-lg shadow-xl max-w-lg w-full overflow-hidden"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="flex items-center justify-between p-4 border-b">
-              <h3 className="text-lg font-semibold text-gray-900">{t('划线批注内容')}</h3>
-              <button
-                onClick={() => setShowAnnotationView(false)}
-                className="text-gray-500 hover:text-gray-700 text-2xl"
-              >
-                ×
-              </button>
-            </div>
-            <div className="p-4 text-sm text-gray-700">
-              {activeAnnotationText && (
-                <div
-                  className="mb-3 p-3 bg-gray-50 border border-gray-200 rounded text-xs text-gray-600"
-                  dangerouslySetInnerHTML={{ __html: activeAnnotationText }}
-                />
-              )}
+          <div className="text-sm text-text-2">
+            {activeAnnotationText && (
               <div
-                className="prose prose-sm max-w-none"
-                style={{ wordBreak: 'break-word', overflowWrap: 'anywhere', whiteSpace: 'normal' }}
-                dangerouslySetInnerHTML={{
-                  __html: renderMarkdown(activeAnnotation.comment),
-                }}
+                className="mb-3 rounded-sm border border-border bg-muted p-3 text-xs text-text-3"
+                dangerouslySetInnerHTML={{ __html: activeAnnotationText }}
               />
-            </div>
-            <div className="flex justify-end gap-2 p-4 border-t bg-gray-50 rounded-b-lg">
-              {isAdmin && (
-                <>
-                  <button
-                    onClick={() => {
-                      setActiveAnnotationId(activeAnnotation.id);
-                      setPendingAnnotationRange({
-                        start: activeAnnotation.start,
-                        end: activeAnnotation.end,
-                      });
-                      setPendingAnnotationText(activeAnnotationText || '');
-                      setPendingAnnotationComment(activeAnnotation.comment);
-                      setShowAnnotationView(false);
-                      setShowAnnotationModal(true);
-                    }}
-                    className="px-4 py-2 text-blue-600 rounded-lg hover:bg-blue-50 transition"
-                  >
-                    {t('编辑')}
-                  </button>
-                  <button
-                    onClick={() => {
-                      handleDeleteAnnotation(activeAnnotation.id);
-                      setShowAnnotationView(false);
-                    }}
-                    className="px-4 py-2 text-red-600 rounded-lg hover:bg-red-50 transition"
-                  >
-                    {t('删除')}
-                  </button>
-                </>
-              )}
-            </div>
+            )}
+            <div
+              className="prose prose-sm max-w-none"
+              style={{ wordBreak: 'break-word', overflowWrap: 'anywhere', whiteSpace: 'normal' }}
+              dangerouslySetInnerHTML={{
+                __html: renderMarkdown(activeAnnotation.comment),
+              }}
+            />
           </div>
-        </div>
+        </ModalShell>
       )}
 
       {showNoteModal && (
-        <div
-          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-        >
-          <div
-            className="bg-white rounded-lg shadow-xl max-w-lg w-full"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="flex items-center justify-between p-4 border-b">
-              <h3 className="text-lg font-semibold text-gray-900">{t('批注内容')}</h3>
-              <button
-                onClick={() => setShowNoteModal(false)}
-                className="text-gray-500 hover:text-gray-700 text-2xl"
-              >
-                ×
-              </button>
-            </div>
-            <div className="p-4">
-              <textarea
-                value={noteDraft}
-                onChange={(e) => setNoteDraft(e.target.value)}
-                rows={6}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder={t('输入批注内容，支持 Markdown')}
-              />
-            </div>
-            <div className="flex justify-end gap-2 p-4 border-t bg-gray-50">
+        <ModalShell
+          isOpen={showNoteModal}
+          onClose={() => setShowNoteModal(false)}
+          title={t('批注内容')}
+          widthClassName="max-w-lg"
+          footer={(
+            <div className="flex justify-end gap-2">
               {isAdmin && noteContent && (
-                <button
-                  onClick={handleDeleteNoteContent}
-                  className="px-4 py-2 text-red-600 rounded-lg hover:bg-red-50 transition"
-                >
+                <Button type="button" variant="danger" onClick={handleDeleteNoteContent}>
                   {t('删除')}
-                </button>
+                </Button>
               )}
-              <button
-                onClick={() => setShowNoteModal(false)}
-                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
-              >
+              <Button type="button" variant="secondary" onClick={() => setShowNoteModal(false)}>
                 {t('取消')}
-              </button>
-              <button
-                onClick={handleSaveNoteContent}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
-              >
+              </Button>
+              <Button type="button" variant="primary" onClick={handleSaveNoteContent}>
                 {t('保存')}
-              </button>
+              </Button>
             </div>
-          </div>
-        </div>
+          )}
+        >
+          <TextArea
+            value={noteDraft}
+            onChange={(e) => setNoteDraft(e.target.value)}
+            rows={6}
+            placeholder={t('输入批注内容，支持 Markdown')}
+          />
+        </ModalShell>
       )}
 
       {showAnnotationModal && (
-        <div
-          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-        >
-          <div
-            className="bg-white rounded-lg shadow-xl max-w-lg w-full"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="flex items-center justify-between p-4 border-b">
-              <h3 className="text-lg font-semibold text-gray-900">{t('添加划线批注')}</h3>
-              <button
-                onClick={() => setShowAnnotationModal(false)}
-                className="text-gray-500 hover:text-gray-700 text-2xl"
-              >
-                ×
-              </button>
-            </div>
-            <div className="p-4 space-y-3">
-              <div className="text-xs text-gray-500">{t('已选内容')}：</div>
-              <div className="p-3 bg-gray-50 border border-gray-200 rounded text-sm text-gray-700">
-                {pendingAnnotationText || t('（无）')}
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  {t('划线批注内容')}
-                </label>
-                <textarea
-                  value={pendingAnnotationComment}
-                  onChange={(e) => setPendingAnnotationComment(e.target.value)}
-                  rows={4}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder={t('输入划线批注内容')}
-                />
-              </div>
-            </div>
-            <div className="flex justify-end gap-2 p-4 border-t bg-gray-50">
-              <button
-                onClick={() => setShowAnnotationModal(false)}
-                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
-              >
+        <ModalShell
+          isOpen={showAnnotationModal}
+          onClose={() => setShowAnnotationModal(false)}
+          title={t('添加划线批注')}
+          widthClassName="max-w-lg"
+          footer={(
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="secondary" onClick={() => setShowAnnotationModal(false)}>
                 {t('取消')}
-              </button>
-              <button
-                onClick={handleConfirmAnnotation}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
-              >
+              </Button>
+              <Button type="button" variant="primary" onClick={handleConfirmAnnotation}>
                 {activeAnnotationId ? t('保存') : t('添加')}
-              </button>
+              </Button>
             </div>
+          )}
+        >
+          <div className="space-y-3">
+            <div className="text-xs text-text-3">{t('已选内容')}：</div>
+            <div className="rounded-sm border border-border bg-muted p-3 text-sm text-text-2">
+              {pendingAnnotationText || t('（无）')}
+            </div>
+            <FormField label={t('划线批注内容')}>
+              <TextArea
+                value={pendingAnnotationComment}
+                onChange={(e) => setPendingAnnotationComment(e.target.value)}
+                rows={4}
+                placeholder={t('输入划线批注内容')}
+              />
+            </FormField>
           </div>
-        </div>
+        </ModalShell>
       )}
 
       <ConfirmModal
@@ -3486,7 +3405,7 @@ export default function ArticleDetailPage() {
           <div className="relative">
             <button
               onClick={() => setLightboxImage(null)}
-              className="absolute -top-3 -right-3 w-8 h-8 rounded-full bg-white text-gray-700 shadow flex items-center justify-center hover:bg-gray-100"
+              className="absolute -top-3 -right-3 w-8 h-8 rounded-full bg-surface text-text-2 shadow flex items-center justify-center hover:bg-muted"
               aria-label={t('关闭')}
             >
               ×
@@ -3514,12 +3433,12 @@ export default function ArticleDetailPage() {
               >
                 <button
                   onClick={() => setMindMapOpen(false)}
-                  className="absolute top-3 right-3 w-8 h-8 rounded-full bg-white text-gray-700 shadow flex items-center justify-center hover:bg-gray-100"
+                  className="absolute top-3 right-3 w-8 h-8 rounded-full bg-surface text-text-2 shadow flex items-center justify-center hover:bg-muted"
                   aria-label={t('关闭')}
                 >
                   ×
                 </button>
-                <div className="w-full h-full rounded-lg bg-white shadow-xl border overflow-auto">
+                <div className="w-full h-full rounded-lg bg-surface shadow-xl border border-border overflow-auto">
                   <div className="p-6">
                     <MindMapTree node={tree} isRoot />
                   </div>

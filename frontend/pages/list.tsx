@@ -17,6 +17,9 @@ import FilterSelect from '@/components/FilterSelect';
 import FilterSelectInline from '@/components/FilterSelectInline';
 import ConfirmModal from '@/components/ConfirmModal';
 import IconButton from '@/components/IconButton';
+import FormField from '@/components/ui/FormField';
+import TextArea from '@/components/ui/TextArea';
+import TextInput from '@/components/ui/TextInput';
 import { useToast } from '@/components/Toast';
 import { BackToTop } from '@/components/BackToTop';
 import { IconEye, IconEyeOff, IconSearch, IconTag, IconTrash, IconPlus } from '@/components/icons';
@@ -901,7 +904,7 @@ export default function Home() {
                           <button
                             type="button"
                             onClick={() => setShowCreateModal(true)}
-                            className="hidden lg:inline-flex px-4 py-1 text-sm rounded-sm bg-primary text-white hover:bg-primary-ink transition"
+                            className="hidden lg:inline-flex px-4 py-1 text-sm rounded-sm bg-blue-600 text-white hover:bg-blue-700 transition"
                           >
                             <span className="inline-flex items-center gap-2">
                               <IconPlus className="h-4 w-4" />
@@ -1120,12 +1123,13 @@ export default function Home() {
                       </Button>
                       <div className="flex items-center gap-1 ml-2">
                         <span className="text-sm text-text-2">{t('跳转')}</span>
-                        <input
+                        <TextInput
                           type="number"
                           value={jumpToPage}
                           onChange={(e) => setJumpToPage(e.target.value)}
                           onKeyDown={(e) => e.key === 'Enter' && handleJumpToPage()}
-                          className="w-16 px-2 py-1.5 text-sm border border-border rounded-sm focus:outline-none focus:ring-2 focus:ring-accent/20 text-center bg-surface"
+                          className="w-16 text-center"
+                          compact
                           min={1}
                           max={Math.ceil(total / pageSize) || 1}
                         />
@@ -1210,16 +1214,16 @@ export default function Home() {
           onClick={() => setShowCreateModal(false)}
         >
           <div
-            className="bg-white rounded-lg shadow-xl w-full h-[95vh] flex flex-col"
+            className="bg-surface rounded-lg shadow-xl w-full h-[95vh] flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between p-4 border-b flex-shrink-0">
-              <h3 className="text-lg font-semibold text-gray-900">
+            <div className="flex items-center justify-between p-4 border-b border-border flex-shrink-0">
+              <h3 className="text-lg font-semibold text-text-1">
                 {t('创建文章')}
               </h3>
               <button
                 onClick={() => setShowCreateModal(false)}
-                className="text-gray-500 hover:text-gray-700 text-xl"
+                className="text-text-3 hover:text-text-1 text-xl"
               >
                 ×
               </button>
@@ -1227,43 +1231,33 @@ export default function Home() {
 
             <div className="flex-1 overflow-hidden">
               <div className="grid grid-cols-1 lg:grid-cols-2 h-full">
-                <div className="p-4 flex flex-col h-full border-r border-gray-200">
-                  <div className="space-y-4 flex-shrink-0">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        {t('标题')} <span className="text-red-500">*</span>
-                      </label>
-                      <input
+                <div className="p-4 flex flex-col h-full border-r border-border">
+                  <div className="space-y-4 flex-1 min-h-0 overflow-y-auto pr-1">
+                    <FormField label={t('标题')} required>
+                      <TextInput
                         type="text"
                         value={createTitle}
                         onChange={(e) => setCreateTitle(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                         placeholder={t('请输入文章标题')}
                       />
-                    </div>
+                    </FormField>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          {t('作者')}
-                        </label>
-                        <input
+                      <FormField label={t('作者')}>
+                        <TextInput
                           type="text"
                           value={createAuthor}
                           onChange={(e) => setCreateAuthor(e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                           placeholder={t('请输入作者')}
                         />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          {t('分类')}
-                        </label>
+                      </FormField>
+                      <FormField label={t('分类')}>
                         <Select
                           value={createCategoryId}
                           onChange={(value) => setCreateCategoryId(value)}
                           className="select-modern-antd w-full"
                           popupClassName="select-modern-dropdown"
+                          style={{ height: 36 }}
                           options={[
                             { value: '', label: t('未分类') },
                             ...categories.map((category) => ({
@@ -1272,73 +1266,63 @@ export default function Home() {
                             })),
                           ]}
                         />
-                      </div>
+                      </FormField>
                     </div>
 
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        {t('来源 URL')}
-                      </label>
-                      <input
+                    <FormField label={t('来源 URL')}>
+                      <TextInput
                         type="text"
                         value={createSourceUrl}
                         onChange={(e) => setCreateSourceUrl(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                         placeholder={t('请输入来源链接')}
                       />
-                    </div>
+                    </FormField>
 
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        {t('头图 URL')}
-                      </label>
-                      <input
+                    <FormField label={t('头图 URL')}>
+                      <TextInput
                         type="text"
                         value={createTopImage}
                         onChange={(e) => setCreateTopImage(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                         placeholder={t('输入图片 URL')}
                       />
-                    </div>
+                    </FormField>
 
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        {t('内容（Markdown）')} <span className="text-red-500">*</span>
-                      </label>
-                    </div>
+                    <FormField label={t('内容（Markdown）')} required className="flex-1 flex flex-col">
+                      <TextArea
+                        ref={createTextareaRef}
+                        value={createContent}
+                        onChange={(e) => setCreateContent(e.target.value)}
+                        onScroll={() => {
+                          if (createTextareaRef.current && createPreviewRef.current) {
+                            const textarea = createTextareaRef.current;
+                            const preview = createPreviewRef.current;
+                            const scrollRatio = textarea.scrollTop / (textarea.scrollHeight - textarea.clientHeight);
+                            preview.scrollTop = scrollRatio * (preview.scrollHeight - preview.clientHeight);
+                          }
+                        }}
+                        className="flex-1 font-mono resize-none min-h-[200px]"
+                        placeholder={t('在此输入 Markdown 内容...')}
+                      />
+                    </FormField>
                   </div>
 
-                  <textarea
-                    ref={createTextareaRef}
-                    value={createContent}
-                    onChange={(e) => setCreateContent(e.target.value)}
-                    onScroll={() => {
-                      if (createTextareaRef.current && createPreviewRef.current) {
-                        const textarea = createTextareaRef.current;
-                        const preview = createPreviewRef.current;
-                        const scrollRatio = textarea.scrollTop / (textarea.scrollHeight - textarea.clientHeight);
-                        preview.scrollTop = scrollRatio * (preview.scrollHeight - preview.clientHeight);
-                      }
-                    }}
-                    className="flex-1 w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm resize-none min-h-[200px]"
-                    placeholder={t('在此输入 Markdown 内容...')}
-                  />
-
                   <div className="flex justify-end gap-2 pt-4 border-t flex-shrink-0">
-                    <button
+                    <Button
+                      type="button"
+                      variant="secondary"
                       onClick={() => setShowCreateModal(false)}
-                      className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
                       disabled={createSaving}
                     >
                       {t('取消')}
-                    </button>
-                    <button
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="primary"
                       onClick={handleCreateArticle}
                       disabled={createSaving}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
                     >
                       {createSaving ? t('保存中...') : t('创建')}
-                    </button>
+                    </Button>
                   </div>
                 </div>
 
@@ -1352,9 +1336,9 @@ export default function Home() {
                       textarea.scrollTop = scrollRatio * (textarea.scrollHeight - textarea.clientHeight);
                     }
                   }}
-                  className="bg-gray-50 overflow-y-auto h-full hidden lg:block"
+                  className="bg-muted overflow-y-auto h-full hidden lg:block"
                 >
-                  <div className="max-w-3xl mx-auto bg-white min-h-full shadow-sm">
+                  <div className="max-w-3xl mx-auto bg-surface min-h-full shadow-sm">
                     {createTopImage && (
                       <div className="relative w-full aspect-[21/9] overflow-hidden">
                         <img

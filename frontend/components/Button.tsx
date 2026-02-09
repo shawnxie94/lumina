@@ -1,8 +1,8 @@
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { useI18n } from "@/lib/i18n";
 
-type ButtonVariant = "primary" | "secondary" | "danger" | "ghost";
-type ButtonSize = "sm" | "md" | "lg";
+export type ButtonVariant = "primary" | "secondary" | "danger" | "ghost";
+export type ButtonSize = "sm" | "md" | "lg";
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 	children: ReactNode;
@@ -11,9 +11,9 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 	loading?: boolean;
 }
 
-const variantStyles: Record<ButtonVariant, string> = {
+export const buttonVariantStyles: Record<ButtonVariant, string> = {
 	primary:
-		"bg-primary text-white hover:bg-primary-ink focus:ring-2 focus:ring-primary/20",
+		"bg-blue-600 text-white hover:bg-blue-700 focus:ring-2 focus:ring-blue-500/20",
 	secondary:
 		"bg-surface text-text-2 border border-border hover:bg-muted hover:text-text-1 focus:ring-2 focus:ring-accent/20",
 	danger:
@@ -22,7 +22,7 @@ const variantStyles: Record<ButtonVariant, string> = {
 		"bg-transparent text-text-2 hover:bg-muted hover:text-text-1 focus:ring-2 focus:ring-accent/20",
 };
 
-const sizeStyles: Record<ButtonSize, string> = {
+export const buttonSizeStyles: Record<ButtonSize, string> = {
 	sm: "px-3 py-1.5 text-sm",
 	md: "px-4 py-2 text-sm",
 	lg: "px-6 py-3 text-base",
@@ -44,7 +44,7 @@ export default function Button({
 	return (
 		<button
 			type="button"
-			className={`${baseStyles} ${variantStyles[variant]} ${sizeStyles[size]} ${className}`}
+			className={`${baseStyles} ${buttonVariantStyles[variant]} ${buttonSizeStyles[size]} ${className}`}
 			disabled={disabled || loading}
 			{...props}
 		>
