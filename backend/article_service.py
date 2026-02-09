@@ -405,13 +405,18 @@ class ArticleService:
         )
         original_language = "en" if is_english_content(content_for_lang) else "zh"
 
+        # 处理 source_url：空字符串转为 None，避免唯一性约束冲突
+        source_url = article_data.get("source_url")
+        if source_url == "":
+            source_url = None
+
         # 先创建文章对象以获取ID
         article = Article(
             title=article_data.get("title"),
             content_html=article_data.get("content_html"),
             content_structured=content_structured,
             content_md=article_data.get("content_md"),
-            source_url=article_data.get("source_url"),
+            source_url=source_url,
             top_image=article_data.get("top_image"),
             author=article_data.get("author"),
             published_at=article_data.get("published_at"),

@@ -7,6 +7,7 @@ import { Select } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
 
 import { articleApi, categoryApi, Article, Category, resolveMediaUrl } from '@/lib/api';
+import { marked } from 'marked';
 import AppFooter from '@/components/AppFooter';
 import AppHeader from '@/components/AppHeader';
 import Button from '@/components/Button';
@@ -18,7 +19,7 @@ import ConfirmModal from '@/components/ConfirmModal';
 import IconButton from '@/components/IconButton';
 import { useToast } from '@/components/Toast';
 import { BackToTop } from '@/components/BackToTop';
-import { IconEye, IconEyeOff, IconSearch, IconTag, IconTrash } from '@/components/icons';
+import { IconEye, IconEyeOff, IconSearch, IconTag, IconTrash, IconPlus } from '@/components/icons';
 import { useAuth } from '@/contexts/AuthContext';
 import { useBasicSettings } from '@/contexts/BasicSettingsContext';
 import { useI18n } from '@/lib/i18n';
@@ -136,6 +137,17 @@ export default function Home() {
     cancelText: t('取消'),
     onConfirm: () => {},
   });
+
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [createTitle, setCreateTitle] = useState('');
+  const [createAuthor, setCreateAuthor] = useState('');
+  const [createCategoryId, setCreateCategoryId] = useState('');
+  const [createTopImage, setCreateTopImage] = useState('');
+  const [createContent, setCreateContent] = useState('');
+  const [createSourceUrl, setCreateSourceUrl] = useState('');
+  const [createSaving, setCreateSaving] = useState(false);
+  const createTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const createPreviewRef = useRef<HTMLDivElement>(null);
 
   const [publishedStartDate, publishedEndDate] = publishedDateRange;
   const [createdStartDate, createdEndDate] = createdDateRange;
@@ -676,6 +688,48 @@ export default function Home() {
     }
   };
 
+  const handleCreateArticle = async () => {
+    if (!createTitle.trim()) {
+      showToast(t('请输入标题'), 'error');
+      return;
+    }
+    if (!createContent.trim()) {
+      showToast(t('请输入内容'), 'error');
+      return;
+    }
+
+    setCreateSaving(true);
+    try {
+      const response = await articleApi.createArticle({
+        title: createTitle.trim(),
+        content_md: createContent.trim(),
+        source_url: createSourceUrl.trim() || undefined,
+        author: createAuthor.trim() || undefined,
+        top_image: createTopImage.trim() || undefined,
+        category_id: createCategoryId || undefined,
+      });
+
+      showToast(t('创建成功'));
+      setShowCreateModal(false);
+      setCreateTitle('');
+      setCreateAuthor('');
+      setCreateCategoryId('');
+      setCreateTopImage('');
+      setCreateContent('');
+      setCreateSourceUrl('');
+      fetchArticles();
+
+      if (response.slug) {
+        router.push(`/article/${response.slug}`);
+      }
+    } catch (error: unknown) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      showToast(t('创建失败') + ': ' + errMsg, 'error');
+    } finally {
+      setCreateSaving(false);
+    }
+  };
+
   const batchActions = (
     <div className="mt-4 pt-4 border-t border-gray-200">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -843,6 +897,18 @@ export default function Home() {
                               <span>{t('高级筛选')}</span>
                             </span>
                           </button>
+                        {isAdmin && (
+                          <button
+                            type="button"
+                            onClick={() => setShowCreateModal(true)}
+                            className="hidden lg:inline-flex px-4 py-1 text-sm rounded-sm bg-primary text-white hover:bg-primary-ink transition"
+                          >
+                            <span className="inline-flex items-center gap-2">
+                              <IconPlus className="h-4 w-4" />
+                              <span>{t('创建文章')}</span>
+                            </span>
+                          </button>
+                        )}
                       </div>
                       <div className="hidden lg:flex flex-wrap items-center gap-4 lg:justify-end">
                         <FilterSelectInline
@@ -1138,6 +1204,183 @@ export default function Home() {
           )}
         </>
       )}
+      {showCreateModal && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4"
+          onClick={() => setShowCreateModal(false)}
+        >
+          <div
+            className="bg-white rounded-lg shadow-xl w-full h-[95vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between p-4 border-b flex-shrink-0">
+              <h3 className="text-lg font-semibold text-gray-900">
+                {t('创建文章')}
+              </h3>
+              <button
+                onClick={() => setShowCreateModal(false)}
+                className="text-gray-500 hover:text-gray-700 text-xl"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-hidden">
+              <div className="grid grid-cols-1 lg:grid-cols-2 h-full">
+                <div className="p-4 flex flex-col h-full border-r border-gray-200">
+                  <div className="space-y-4 flex-shrink-0">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        {t('标题')} <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={createTitle}
+                        onChange={(e) => setCreateTitle(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder={t('请输入文章标题')}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          {t('作者')}
+                        </label>
+                        <input
+                          type="text"
+                          value={createAuthor}
+                          onChange={(e) => setCreateAuthor(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder={t('请输入作者')}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          {t('分类')}
+                        </label>
+                        <Select
+                          value={createCategoryId}
+                          onChange={(value) => setCreateCategoryId(value)}
+                          className="select-modern-antd w-full"
+                          popupClassName="select-modern-dropdown"
+                          options={[
+                            { value: '', label: t('未分类') },
+                            ...categories.map((category) => ({
+                              value: category.id,
+                              label: category.name,
+                            })),
+                          ]}
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        {t('来源 URL')}
+                      </label>
+                      <input
+                        type="text"
+                        value={createSourceUrl}
+                        onChange={(e) => setCreateSourceUrl(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder={t('请输入来源链接')}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        {t('头图 URL')}
+                      </label>
+                      <input
+                        type="text"
+                        value={createTopImage}
+                        onChange={(e) => setCreateTopImage(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder={t('输入图片 URL')}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        {t('内容（Markdown）')} <span className="text-red-500">*</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <textarea
+                    ref={createTextareaRef}
+                    value={createContent}
+                    onChange={(e) => setCreateContent(e.target.value)}
+                    onScroll={() => {
+                      if (createTextareaRef.current && createPreviewRef.current) {
+                        const textarea = createTextareaRef.current;
+                        const preview = createPreviewRef.current;
+                        const scrollRatio = textarea.scrollTop / (textarea.scrollHeight - textarea.clientHeight);
+                        preview.scrollTop = scrollRatio * (preview.scrollHeight - preview.clientHeight);
+                      }
+                    }}
+                    className="flex-1 w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm resize-none min-h-[200px]"
+                    placeholder={t('在此输入 Markdown 内容...')}
+                  />
+
+                  <div className="flex justify-end gap-2 pt-4 border-t flex-shrink-0">
+                    <button
+                      onClick={() => setShowCreateModal(false)}
+                      className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
+                      disabled={createSaving}
+                    >
+                      {t('取消')}
+                    </button>
+                    <button
+                      onClick={handleCreateArticle}
+                      disabled={createSaving}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
+                    >
+                      {createSaving ? t('保存中...') : t('创建')}
+                    </button>
+                  </div>
+                </div>
+
+                <div
+                  ref={createPreviewRef}
+                  onScroll={() => {
+                    if (createTextareaRef.current && createPreviewRef.current) {
+                      const textarea = createTextareaRef.current;
+                      const preview = createPreviewRef.current;
+                      const scrollRatio = preview.scrollTop / (preview.scrollHeight - preview.clientHeight);
+                      textarea.scrollTop = scrollRatio * (textarea.scrollHeight - textarea.clientHeight);
+                    }
+                  }}
+                  className="bg-gray-50 overflow-y-auto h-full hidden lg:block"
+                >
+                  <div className="max-w-3xl mx-auto bg-white min-h-full shadow-sm">
+                    {createTopImage && (
+                      <div className="relative w-full aspect-[21/9] overflow-hidden">
+                        <img
+                          src={resolveMediaUrl(createTopImage)}
+                          alt={createTitle}
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = 'none';
+                          }}
+                        />
+                      </div>
+                    )}
+                    <article className="p-6">
+                      <div
+                        className="prose prose-sm max-w-none"
+                        dangerouslySetInnerHTML={{ __html: marked(createContent || '') }}
+                      />
+                    </article>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <AppFooter />
       <BackToTop />
     </div>

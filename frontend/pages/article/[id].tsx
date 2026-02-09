@@ -1686,7 +1686,7 @@ export default function ArticleDetailPage() {
     try {
       await articleApi.deleteArticle(id as string);
       showToast(t('删除成功'));
-      router.push('/');
+      router.push('/list');
     } catch (error) {
       console.error('Failed to delete article:', error);
       showToast(t('删除失败'), 'error');

@@ -251,7 +251,7 @@ class ArticleCreate(BaseModel):
     content_html: Optional[str] = None
     content_structured: Optional[dict] = None
     content_md: Optional[str] = None
-    source_url: str
+    source_url: Optional[str] = None
     top_image: Optional[str] = None
     author: Optional[str] = None
     published_at: Optional[str] = None

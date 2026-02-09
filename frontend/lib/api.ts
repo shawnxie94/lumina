@@ -411,6 +411,18 @@ export const articleApi = {
 		return response.data;
 	},
 
+	createArticle: async (data: {
+		title: string;
+		content_md: string;
+		source_url?: string;
+		author?: string;
+		top_image?: string;
+		category_id?: string;
+	}) => {
+		const response = await api.post("/api/articles", data);
+		return response.data;
+	},
+
 	getArticle: async (id: string) => {
 		const response = await api.get(`/api/articles/${id}`);
 		return response.data;

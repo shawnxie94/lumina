@@ -71,7 +71,7 @@ class Article(Base):
         String, default=None
     )  # None, pending, processing, completed, failed
     translation_error = Column(Text, nullable=True)  # 翻译失败时的错误信息
-    source_url = Column(String, unique=True, nullable=False)
+    source_url = Column(String, unique=True, nullable=True)
     top_image = Column(String)
     author = Column(String)
     published_at = Column(String)
