@@ -208,9 +208,9 @@ class ArticleService:
 
         if use_local:
             local_model = get_local_embedding_model()
-            embedding_data = (
-                local_model.encode(source_text, normalize_embeddings=True).tolist()
-            )
+            embedding_data = local_model.encode(
+                source_text, normalize_embeddings=True
+            ).tolist()
         else:
             provider = (config.get("provider") or "openai").lower()
             if provider == "jina":
@@ -233,7 +233,9 @@ class ArticleService:
                     )
                     response.raise_for_status()
                     data = response.json()
-                    embedding_data = (data.get("data") or [{}])[0].get("embedding") or []
+                    embedding_data = (data.get("data") or [{}])[0].get(
+                        "embedding"
+                    ) or []
             else:
                 client = ConfigurableAIClient(
                     base_url=config["base_url"],
@@ -397,6 +399,12 @@ class ArticleService:
         if isinstance(content_structured, (dict, list)):
             content_structured = json.dumps(content_structured, ensure_ascii=False)
 
+        # 检测原文语言
+        content_for_lang = (
+            article_data.get("content_html") or article_data.get("content_md") or ""
+        )
+        original_language = "en" if is_english_content(content_for_lang) else "zh"
+
         # 先创建文章对象以获取ID
         article = Article(
             title=article_data.get("title"),
@@ -410,6 +418,7 @@ class ArticleService:
             source_domain=article_data.get("source_domain"),
             category_id=article_data.get("category_id"),
             status="pending",
+            original_language=original_language,
         )
 
         try:
@@ -708,7 +717,9 @@ class ArticleService:
                     if not summary_config:
                         analysis.summary_status = "failed"
                         if not analysis.error_message:
-                            analysis.error_message = "未配置AI服务，请先在配置页面设置AI参数"
+                            analysis.error_message = (
+                                "未配置AI服务，请先在配置页面设置AI参数"
+                            )
                         analysis.updated_at = now_str()
                         task_db.commit()
                         return
@@ -717,7 +728,9 @@ class ArticleService:
                     parameters = summary_config.get("parameters") or {}
                     prompt = summary_config.get("prompt_template")
                     pricing = {
-                        "model_api_config_id": summary_config.get("model_api_config_id"),
+                        "model_api_config_id": summary_config.get(
+                            "model_api_config_id"
+                        ),
                         "price_input_per_1k": summary_config.get("price_input_per_1k"),
                         "price_output_per_1k": summary_config.get(
                             "price_output_per_1k"
@@ -971,7 +984,9 @@ class ArticleService:
                         result = await asyncio.wait_for(
                             self.create_ai_client(
                                 classification_config
-                            ).generate_summary(content, prompt=prompt, parameters=parameters),
+                            ).generate_summary(
+                                content, prompt=prompt, parameters=parameters
+                            ),
                             timeout=300.0,
                         )
                         if isinstance(result, dict):
@@ -1492,9 +1507,7 @@ class ArticleService:
             pricing = {
                 "model_api_config_id": classification_config.get("model_api_config_id"),
                 "price_input_per_1k": classification_config.get("price_input_per_1k"),
-                "price_output_per_1k": classification_config.get(
-                    "price_output_per_1k"
-                ),
+                "price_output_per_1k": classification_config.get("price_output_per_1k"),
                 "currency": classification_config.get("currency"),
             }
 
@@ -1912,9 +1925,7 @@ class ArticleService:
                         .filter(AIAnalysis.article_id == article_id)
                         .first()
                     )
-                    summary_status = (
-                        analysis.summary_status if analysis else None
-                    )
+                    summary_status = analysis.summary_status if analysis else None
                     translation_status = article.translation_status
                     if summary_status in ["completed", "failed"] and (
                         translation_status in ["completed", "failed", "skipped", None]
@@ -2154,9 +2165,7 @@ class ArticleService:
                         .filter(AIAnalysis.article_id == article_id)
                         .first()
                     )
-                    summary_status = (
-                        analysis.summary_status if analysis else None
-                    )
+                    summary_status = analysis.summary_status if analysis else None
                     translation_status = article.translation_status
                     if summary_status in ["completed", "failed"] and (
                         translation_status in ["completed", "failed", "skipped", None]

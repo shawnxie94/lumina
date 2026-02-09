@@ -198,6 +198,7 @@ export interface Article {
 	published_at: string | null;
 	created_at: string;
 	is_visible: boolean;
+	original_language?: string;
 }
 
 export interface ArticleDetail extends Article {

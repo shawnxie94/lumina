@@ -94,9 +94,11 @@ def build_basic_settings(admin: Optional[AdminSettings]) -> dict:
     if admin is None:
         return DEFAULT_BASIC_SETTINGS.copy()
     return {
-        "default_language": admin.default_language or DEFAULT_BASIC_SETTINGS["default_language"],
+        "default_language": admin.default_language
+        or DEFAULT_BASIC_SETTINGS["default_language"],
         "site_name": admin.site_name or DEFAULT_BASIC_SETTINGS["site_name"],
-        "site_description": admin.site_description or DEFAULT_BASIC_SETTINGS["site_description"],
+        "site_description": admin.site_description
+        or DEFAULT_BASIC_SETTINGS["site_description"],
         "site_logo_url": admin.site_logo_url or "",
     }
 
@@ -223,7 +225,9 @@ if allowed_origins_env:
         allow_credentials = False
     else:
         allowed_origins = [
-            origin.strip() for origin in allowed_origins_env.split(",") if origin.strip()
+            origin.strip()
+            for origin in allowed_origins_env.split(",")
+            if origin.strip()
         ]
 else:
     allowed_origins = [
@@ -577,7 +581,9 @@ async def get_storage_settings(
         "media_compress_threshold": admin.media_compress_threshold
         if admin.media_compress_threshold is not None
         else 1536 * 1024,
-        "media_max_dim": admin.media_max_dim if admin.media_max_dim is not None else 2000,
+        "media_max_dim": admin.media_max_dim
+        if admin.media_max_dim is not None
+        else 2000,
         "media_webp_quality": admin.media_webp_quality
         if admin.media_webp_quality is not None
         else 80,
@@ -596,7 +602,9 @@ async def update_storage_settings(
     if payload.media_storage_enabled is not None:
         admin.media_storage_enabled = bool(payload.media_storage_enabled)
     if payload.media_compress_threshold is not None:
-        admin.media_compress_threshold = max(256 * 1024, payload.media_compress_threshold)
+        admin.media_compress_threshold = max(
+            256 * 1024, payload.media_compress_threshold
+        )
     if payload.media_max_dim is not None:
         admin.media_max_dim = max(600, payload.media_max_dim)
     if payload.media_webp_quality is not None:
@@ -802,6 +810,7 @@ async def get_articles(
                 "published_at": a.published_at,
                 "created_at": a.created_at,
                 "is_visible": a.is_visible,
+                "original_language": a.original_language,
             }
             for a in articles
         ],

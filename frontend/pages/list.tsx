@@ -40,6 +40,11 @@ const toDayjsRange = (range: [Date | null, Date | null]): [Dayjs | null, Dayjs |
 ];
 
 const getArticleLanguageTag = (article: Article): string => {
+  // 优先使用 original_language 字段，回退到基于内容的检测
+  if (article.original_language) {
+    return article.original_language === 'zh' ? '中文' : '英文';
+  }
+  // 兼容旧数据：基于内容检测
   const sample = `${article.title || ''} ${article.summary || ''}`;
   const hasChinese = /[\u4e00-\u9fff]/.test(sample);
   return hasChinese ? '中文' : '英文';
@@ -919,13 +924,13 @@ export default function Home() {
                     {articles.map((article) => (
                       <div
                         key={article.slug}
-                        onClick={(event) => handleOpenArticle(event, article)}
-                        className={`bg-white rounded-lg shadow-sm p-4 sm:p-6 hover:shadow-md transition relative cursor-pointer ${!article.is_visible && isAdmin ? 'opacity-60' : ''}`}
+                        onClick={() => handleToggleSelect(article.slug)}
+                        className={`bg-white rounded-lg shadow-sm p-4 sm:p-6 hover:shadow-md transition relative cursor-pointer ${!article.is_visible && isAdmin ? 'opacity-60' : ''} ${selectedArticleSlugs.has(article.slug) ? 'ring-2 ring-primary ring-offset-2' : ''}`}
                       >
                          {isAdmin && !isMobile && (
                            <div className="absolute top-3 right-3 flex items-center gap-1">
                             <IconButton
-                              onClick={() => handleToggleVisibility(article.slug, article.is_visible)}
+                              onClick={(e) => { e.stopPropagation(); handleToggleVisibility(article.slug, article.is_visible); }}
                               variant="default"
                               size="sm"
                               title={article.is_visible ? t('点击隐藏') : t('点击显示')}
@@ -937,7 +942,7 @@ export default function Home() {
                               )}
                             </IconButton>
                             <IconButton
-                              onClick={() => handleDelete(article.slug)}
+                              onClick={(e) => { e.stopPropagation(); handleDelete(article.slug); }}
                               variant="danger"
                               size="sm"
                               title={t('删除')}
@@ -952,59 +957,60 @@ export default function Home() {
                                type="checkbox"
                                checked={selectedArticleSlugs.has(article.slug)}
                                onChange={() => handleToggleSelect(article.slug)}
+                               onClick={(e) => e.stopPropagation()}
                                className="w-4 h-4 text-blue-600 rounded mt-1"
                              />
                            )}
-                          {article.top_image && (
-                            <div className="relative w-full sm:w-40 aspect-video sm:aspect-square overflow-hidden rounded-lg bg-muted">
-                              <img
-                                src={resolveMediaUrl(article.top_image)}
-                                alt={article.title}
-                                className="absolute inset-0 h-full w-full object-cover"
-                              />
-                              <span className="absolute left-2 top-2 rounded-sm bg-black/60 px-2 py-0.5 text-xs text-white">
-                                {getArticleLanguageTag(article)}
-                              </span>
-                            </div>
-                          )}
-                          <div className="flex-1 sm:pr-6">
-                            <Link href={`/article/${article.slug}`}>
-                              <h3 className="text-xl font-semibold text-gray-900 hover:text-blue-600 transition cursor-pointer">
-                                {article.title}
-                              </h3>
-                            </Link>
-                             <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-gray-600">
-                               {article.category && (
-                                 <span 
-                                   className="px-2 py-1 rounded"
-                                   style={{
-                                     backgroundColor: article.category.color ? `${article.category.color}20` : '#f3f4f6',
-                                     color: article.category.color || '#4b5563',
-                                   }}
-                                 >
-                                   {article.category.name}
-                                 </span>
-                               )}
-                               {article.author && <span>{t('作者')}: {article.author}</span>}
-                               <span>
-                                {t('发表时间')}：
-                                 {article.published_at
-                                   ? new Date(article.published_at).toLocaleDateString(
-                                      language === 'en' ? 'en-US' : 'zh-CN',
-                                    )
-                                   : new Date(article.created_at).toLocaleDateString(
-                                      language === 'en' ? 'en-US' : 'zh-CN',
-                                    )}
+                           {article.top_image && (
+                             <div className="relative w-full sm:w-40 aspect-video sm:aspect-square overflow-hidden rounded-lg bg-muted">
+                               <img
+                                 src={resolveMediaUrl(article.top_image)}
+                                 alt={article.title}
+                                 className="absolute inset-0 h-full w-full object-cover"
+                               />
+                               <span className="absolute left-2 top-2 rounded-sm bg-black/60 px-2 py-0.5 text-xs text-white">
+                                 {getArticleLanguageTag(article)}
                                </span>
                              </div>
-                              {article.summary && (
-                                <p className="mt-2 text-gray-600 line-clamp-3">
-                                  {article.summary}
-                                </p>
-                              )}
-                          </div>
-                        </div>
-                      </div>
+                           )}
+                           <div className="flex-1 sm:pr-6">
+                             <Link href={`/article/${article.slug}`} onClick={(e) => e.stopPropagation()}>
+                               <h3 className="text-xl font-semibold text-gray-900 hover:text-blue-600 transition cursor-pointer">
+                                 {article.title}
+                               </h3>
+                             </Link>
+                              <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-gray-600">
+                                {article.category && (
+                                  <span 
+                                    className="px-2 py-1 rounded"
+                                    style={{
+                                      backgroundColor: article.category.color ? `${article.category.color}20` : '#f3f4f6',
+                                      color: article.category.color || '#4b5563',
+                                    }}
+                                  >
+                                    {article.category.name}
+                                  </span>
+                                )}
+                                {article.author && <span>{t('作者')}: {article.author}</span>}
+                                <span>
+                                 {t('发表时间')}：
+                                  {article.published_at
+                                    ? new Date(article.published_at).toLocaleDateString(
+                                       language === 'en' ? 'en-US' : 'zh-CN',
+                                     )
+                                    : new Date(article.created_at).toLocaleDateString(
+                                       language === 'en' ? 'en-US' : 'zh-CN',
+                                     )}
+                                </span>
+                              </div>
+                               {article.summary && (
+                                 <p className="mt-2 text-gray-600 line-clamp-3">
+                                   {article.summary}
+                                 </p>
+                               )}
+                           </div>
+                         </div>
+                       </div>
                     ))}
                   </div>
 
