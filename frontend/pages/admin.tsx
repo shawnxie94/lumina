@@ -3016,7 +3016,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 														placeholder={t("可选，留空使用默认图标")}
 														/>
 												</div>
-												<div className="max-w-xs">
+												<div>
 													<label className="block text-sm text-text-2 mb-1">
 														{t("默认语言")}
 													</label>
@@ -3032,7 +3032,6 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 															{ value: "zh-CN", label: t("中文") },
 															{ value: "en", label: t("英文") },
 														]}
-														style={{ width: "100%" }}
 													/>
 												</div>
 											</div>
@@ -3585,7 +3584,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 														<th className="text-right px-4 py-3">{t("操作")}</th>
 													</tr>
 												</thead>
-												<tbody className="divide-y divide-gray-100">
+												<tbody className="divide-y divide-border">
 													{taskItems.map((task) => (
 														<tr key={task.id} className="hover:bg-muted">
 															<td className="px-4 py-3">
@@ -3619,7 +3618,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 													</StatusTag>
 																{task.last_error && (
 																	<div
-																		className="text-xs text-red-500 mt-1 line-clamp-1"
+																		className="text-xs text-red-600 mt-1 line-clamp-1"
 																		title={task.last_error}
 																	>
 																		{task.last_error}

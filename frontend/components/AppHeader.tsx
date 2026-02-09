@@ -449,7 +449,7 @@ export default function AppHeader() {
             {isAdmin ? (
               <button
                 onClick={logout}
-                className="hidden lg:flex items-center gap-1 px-3 py-1 rounded-sm text-sm text-text-3 hover:text-red-600 hover:bg-red-50 transition"
+                className="hidden lg:flex items-center gap-1 px-3 py-1 rounded-sm text-sm text-text-3 hover:text-red-700 hover:bg-red-100 transition"
                 title={t('退出登录')}
                 type="button"
               >

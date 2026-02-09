@@ -3,7 +3,6 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
-import { Select } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
 
 import { articleApi, categoryApi, Article, Category, resolveMediaUrl } from '@/lib/api';
@@ -17,7 +16,9 @@ import FilterSelect from '@/components/FilterSelect';
 import FilterSelectInline from '@/components/FilterSelectInline';
 import ConfirmModal from '@/components/ConfirmModal';
 import IconButton from '@/components/IconButton';
+import CheckboxInput from '@/components/ui/CheckboxInput';
 import FormField from '@/components/ui/FormField';
+import SelectField from '@/components/ui/SelectField';
 import TextArea from '@/components/ui/TextArea';
 import TextInput from '@/components/ui/TextInput';
 import { useToast } from '@/components/Toast';
@@ -88,6 +89,54 @@ const getDateRangeFromQuickOption = (option: QuickDateOption): [Date | null, Dat
   return [startDate, now];
 };
 
+const quickDateOptions: QuickDateOption[] = ['', '1d', '3d', '1w', '1m', '3m', '6m', '1y'];
+
+const getQueryValue = (value: string | string[] | undefined): string => {
+  if (Array.isArray(value)) return value[0] || '';
+  return value || '';
+};
+
+const parseDateQuery = (value: string): Date | null => {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const serializeQuery = (query: Record<string, string>): string =>
+  Object.entries(query)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, value]) => `${key}=${value}`)
+    .join('&');
+
+const LIST_QUERY_KEYS = [
+  'category_id',
+  'search',
+  'source_domain',
+  'author',
+  'visibility',
+  'quick_date',
+  'sort_by',
+  'published_at_start',
+  'published_at_end',
+  'created_at_start',
+  'created_at_end',
+  'page',
+  'size',
+] as const;
+
+const pickListQuery = (
+  query: Record<string, string | string[] | undefined>,
+): Record<string, string> => {
+  const picked: Record<string, string> = {};
+  LIST_QUERY_KEYS.forEach((key) => {
+    const value = getQueryValue(query[key]);
+    if (value) {
+      picked[key] = value;
+    }
+  });
+  return picked;
+};
+
 export default function Home() {
   const router = useRouter();
   const { showToast } = useToast();
@@ -119,6 +168,7 @@ export default function Home() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [jumpToPage, setJumpToPage] = useState('');
   const [batchCategoryId, setBatchCategoryId] = useState('');
+  const [batchAction, setBatchAction] = useState<'none' | 'export' | 'visibility' | 'category' | 'delete'>('none');
   const [isMobile, setIsMobile] = useState(false);
   const [isAppending, setIsAppending] = useState(false);
   const [hasMore, setHasMore] = useState(true);
@@ -154,6 +204,27 @@ export default function Home() {
 
   const [publishedStartDate, publishedEndDate] = publishedDateRange;
   const [createdStartDate, createdEndDate] = createdDateRange;
+  const batchActionPending = batchAction !== 'none';
+  const hydratedQueryRef = useRef('');
+  const syncedQueryRef = useRef('');
+  const routerQueryState = useMemo(
+    () => pickListQuery(router.query as Record<string, string | string[] | undefined>),
+    [router.query],
+  );
+  const routerQuerySignature = useMemo(
+    () => serializeQuery(routerQueryState),
+    [routerQueryState],
+  );
+
+  const currentListPath = useMemo(() => {
+    const asPath = router.asPath || '/list';
+    return asPath.split('#')[0] || '/list';
+  }, [router.asPath]);
+
+  const buildArticleHref = (slug: string) => {
+    const from = `${currentListPath}#article-${slug}`;
+    return `/article/${slug}?from=${encodeURIComponent(from)}`;
+  };
 
   const fetchArticles = async () => {
     if (isAppending) {
@@ -273,19 +344,137 @@ export default function Home() {
   }, [initialized, page, pageSize]);
 
   useEffect(() => {
-    if (router.isReady) {
-      const { author: authorParam, category_id: categoryParam } = router.query;
-      if (authorParam && typeof authorParam === 'string') {
-        setAuthor(authorParam);
-        setShowFilters(true);
-      }
-      if (categoryParam && typeof categoryParam === 'string') {
-        setSelectedCategory(categoryParam);
-        setShowFilters(true);
-      }
+    if (!router.isReady) return;
+    if (initialized && hydratedQueryRef.current === routerQuerySignature) {
+      return;
+    }
+    hydratedQueryRef.current = routerQuerySignature;
+
+    const categoryParam = routerQueryState.category_id || '';
+    const searchParam = routerQueryState.search || '';
+    const sourceDomainParam = routerQueryState.source_domain || '';
+    const authorParam = routerQueryState.author || '';
+    const visibilityParam = routerQueryState.visibility || '';
+    const quickDateRaw = routerQueryState.quick_date || '';
+    const sortByRaw = routerQueryState.sort_by || '';
+    const publishedStart = parseDateQuery(routerQueryState.published_at_start || '');
+    const publishedEnd = parseDateQuery(routerQueryState.published_at_end || '');
+    const createdStart = parseDateQuery(routerQueryState.created_at_start || '');
+    const createdEnd = parseDateQuery(routerQueryState.created_at_end || '');
+
+    const quickDateParam: QuickDateOption = quickDateOptions.includes(quickDateRaw as QuickDateOption)
+      ? (quickDateRaw as QuickDateOption)
+      : '';
+    const sortByParam = sortByRaw === 'published_at_desc' || sortByRaw === 'created_at_desc'
+      ? sortByRaw
+      : 'created_at_desc';
+
+    const pageParam = Number(routerQueryState.page || '');
+    const sizeParam = Number(routerQueryState.size || '');
+
+    setSelectedCategory(categoryParam);
+    setSearchTerm(searchParam);
+    setSourceDomain(sourceDomainParam);
+    setAuthor(authorParam);
+    setVisibilityFilter(
+      visibilityParam === 'visible' || visibilityParam === 'hidden'
+        ? visibilityParam
+        : '',
+    );
+    setQuickDateFilter(quickDateParam);
+    setSortBy(sortByParam);
+    setPublishedDateRange([publishedStart, publishedEnd]);
+
+    if (createdStart || createdEnd) {
+      setCreatedDateRange([createdStart, createdEnd]);
+    } else if (quickDateParam) {
+      setCreatedDateRange(getDateRangeFromQuickOption(quickDateParam));
+    } else {
+      setCreatedDateRange([null, null]);
+    }
+
+    setPage(Number.isFinite(pageParam) && pageParam > 0 ? Math.floor(pageParam) : 1);
+    setPageSize(
+      Number.isFinite(sizeParam) && [10, 20, 50, 100].includes(sizeParam)
+        ? sizeParam
+        : 10,
+    );
+
+    setShowFilters(
+      Boolean(
+        searchParam ||
+        sourceDomainParam ||
+        authorParam ||
+        visibilityParam ||
+        publishedStart ||
+        publishedEnd ||
+        createdStart ||
+        createdEnd,
+      ),
+    );
+
+    if (!initialized) {
       setInitialized(true);
     }
-  }, [router.isReady, router.query]);
+  }, [initialized, router.isReady, routerQuerySignature, routerQueryState]);
+
+  useEffect(() => {
+    if (!router.isReady || !initialized) return;
+
+    const nextQuery: Record<string, string> = {};
+    if (selectedCategory) nextQuery.category_id = selectedCategory;
+    if (searchTerm) nextQuery.search = searchTerm;
+    if (sourceDomain) nextQuery.source_domain = sourceDomain;
+    if (author) nextQuery.author = author;
+    if (visibilityFilter) nextQuery.visibility = visibilityFilter;
+    if (quickDateFilter) nextQuery.quick_date = quickDateFilter;
+    if (publishedStartDate) nextQuery.published_at_start = formatDate(publishedStartDate);
+    if (publishedEndDate) nextQuery.published_at_end = formatDate(publishedEndDate);
+    if (createdStartDate) nextQuery.created_at_start = formatDate(createdStartDate);
+    if (createdEndDate) nextQuery.created_at_end = formatDate(createdEndDate);
+    if (sortBy !== 'created_at_desc') nextQuery.sort_by = sortBy;
+    if (page > 1) nextQuery.page = String(page);
+    if (pageSize !== 10) nextQuery.size = String(pageSize);
+
+    const nextQuerySignature = serializeQuery(nextQuery);
+
+    if (nextQuerySignature === routerQuerySignature) {
+      syncedQueryRef.current = nextQuerySignature;
+      return;
+    }
+
+    if (syncedQueryRef.current === nextQuerySignature) {
+      return;
+    }
+    syncedQueryRef.current = nextQuerySignature;
+
+    router.replace(
+      {
+        pathname: router.pathname,
+        query: nextQuery,
+      },
+      undefined,
+      { shallow: true, scroll: false },
+    );
+  }, [
+    router.isReady,
+    router.pathname,
+    initialized,
+    routerQuerySignature,
+    selectedCategory,
+    searchTerm,
+    sourceDomain,
+    author,
+    visibilityFilter,
+    quickDateFilter,
+    publishedStartDate,
+    publishedEndDate,
+    createdStartDate,
+    createdEndDate,
+    sortBy,
+    page,
+    pageSize,
+  ]);
 
   useEffect(() => {
     fetchCategories();
@@ -325,6 +514,17 @@ export default function Home() {
     return () => observer.disconnect();
   }, [isMobile, hasMore, loadingMore, loading]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined' || articles.length === 0) return;
+    const hash = window.location.hash || '';
+    if (!hash.startsWith('#article-')) return;
+    const target = document.getElementById(hash.slice(1));
+    if (!target) return;
+    const timer = window.setTimeout(() => {
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 120);
+    return () => window.clearTimeout(timer);
+  }, [articles]);
 
   const handleQuickDateChange = (option: QuickDateOption) => {
     setQuickDateFilter(option);
@@ -346,7 +546,8 @@ export default function Home() {
   };
 
   const handleBatchVisibility = async (isVisible: boolean) => {
-    if (selectedArticleSlugs.size === 0) return;
+    if (selectedArticleSlugs.size === 0 || batchActionPending) return;
+    setBatchAction('visibility');
     try {
       await articleApi.batchUpdateVisibility(Array.from(selectedArticleSlugs), isVisible);
       showToast(isVisible ? t('已批量设为可见') : t('已批量设为隐藏'));
@@ -356,16 +557,19 @@ export default function Home() {
     } catch (error) {
       console.error('Failed to batch update visibility:', error);
       showToast(t('操作失败'), 'error');
+    } finally {
+      setBatchAction('none');
     }
   };
 
   const handleBatchCategory = async () => {
-    if (selectedArticleSlugs.size === 0) return;
+    if (selectedArticleSlugs.size === 0 || batchActionPending) return;
     if (!batchCategoryId) {
       showToast(t('请选择分类'), 'info');
       return;
     }
     const targetCategoryId = batchCategoryId === '__clear__' ? null : batchCategoryId;
+    setBatchAction('category');
     try {
       await articleApi.batchUpdateCategory(Array.from(selectedArticleSlugs), targetCategoryId);
       showToast(t('分类已更新'));
@@ -376,6 +580,8 @@ export default function Home() {
     } catch (error) {
       console.error('Failed to batch update category:', error);
       showToast(t('操作失败'), 'error');
+    } finally {
+      setBatchAction('none');
     }
   };
 
@@ -389,6 +595,7 @@ export default function Home() {
       confirmText: t('删除'),
       cancelText: t('取消'),
       onConfirm: async () => {
+        setBatchAction('delete');
         try {
           await articleApi.batchDeleteArticles(slugs);
           showToast(t('删除成功'));
@@ -398,6 +605,8 @@ export default function Home() {
         } catch (error) {
           console.error('Failed to batch delete articles:', error);
           showToast(t('删除失败'), 'error');
+        } finally {
+          setBatchAction('none');
         }
       },
     });
@@ -550,7 +759,7 @@ export default function Home() {
       <button
         type="button"
         onClick={handleClearFilters}
-        className={`ml-auto px-3 py-1 text-sm rounded-lg transition ${activeFilters.length === 0 ? 'bg-gray-50 text-gray-400 cursor-not-allowed' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+        className={`ml-auto px-3 py-1 text-sm rounded-sm transition ${activeFilters.length === 0 ? 'bg-muted text-text-3 cursor-not-allowed' : 'bg-surface text-text-2 hover:bg-muted hover:text-text-1'}`}
         disabled={activeFilters.length === 0}
       >
         {t('清除筛选')}
@@ -616,8 +825,13 @@ export default function Home() {
     ) {
       return;
     }
+    if (isAdmin && !isMobile) {
+      handleToggleSelect(article.slug);
+      return;
+    }
+
     // 使用 slug 作为 URL，seo 更友好
-    router.push(`/article/${article.slug}`);
+    router.push(buildArticleHref(article.slug));
   };
 
   const handleSelectAll = () => {
@@ -629,6 +843,8 @@ export default function Home() {
   };
 
   const handleExport = async () => {
+    if (batchActionPending) return;
+
     if (!isAdmin) {
       showToast(t('仅管理员可导出文章'), 'info');
       return;
@@ -639,6 +855,7 @@ export default function Home() {
       return;
     }
 
+    setBatchAction('export');
     try {
       const data = await articleApi.exportArticles(Array.from(selectedArticleSlugs));
       const blob = new Blob([data.content], { type: 'text/markdown' });
@@ -671,6 +888,8 @@ export default function Home() {
     } catch (error) {
       console.error('Failed to export articles:', error);
       showToast(t('导出失败'), 'error');
+    } finally {
+      setBatchAction('none');
     }
   };
 
@@ -723,7 +942,7 @@ export default function Home() {
       fetchArticles();
 
       if (response.slug) {
-        router.push(`/article/${response.slug}`);
+        router.push(buildArticleHref(response.slug));
       }
     } catch (error: unknown) {
       const errMsg = error instanceof Error ? error.message : String(error);
@@ -734,15 +953,17 @@ export default function Home() {
   };
 
   const batchActions = (
-    <div className="mt-4 pt-4 border-t border-gray-200">
+    <div className="mt-4 pt-4 border-t border-border">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div className="flex flex-wrap items-center gap-3">
-          <span className="text-sm text-gray-600">{t('已选')} {selectedArticleSlugs.size} {t('篇')}</span>
+          <span className="text-sm text-text-2">{t('已选')} {selectedArticleSlugs.size} {t('篇')}</span>
           <button
+            type="button"
             onClick={handleExport}
-            className="px-3 py-1 text-sm rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition"
+            disabled={batchActionPending}
+            className="px-3 py-1 text-sm rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {t('导出选中')} ({selectedArticleSlugs.size})
+            {batchAction === 'export' ? t('导出中...') : `${t('导出选中')} (${selectedArticleSlugs.size})`}
           </button>
         </div>
         {isAdmin && (
@@ -750,23 +971,25 @@ export default function Home() {
             <button
               type="button"
               onClick={() => handleBatchVisibility(true)}
-              className="px-3 py-1 text-sm rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition"
+              disabled={batchActionPending}
+              className="px-3 py-1 text-sm rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {t('设为可见')}
+              {batchAction === 'visibility' ? t('处理中...') : t('设为可见')}
             </button>
             <button
               type="button"
               onClick={() => handleBatchVisibility(false)}
-              className="px-3 py-1 text-sm rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition"
+              disabled={batchActionPending}
+              className="px-3 py-1 text-sm rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {t('设为隐藏')}
+              {batchAction === 'visibility' ? t('处理中...') : t('设为隐藏')}
             </button>
             <div className="flex items-center gap-2">
-              <Select
+              <SelectField
                 value={batchCategoryId}
                 onChange={(value) => setBatchCategoryId(value)}
-                className="select-modern-antd"
-                popupClassName="select-modern-dropdown"
+                className="w-36"
+                disabled={batchActionPending}
                 options={[
                   { value: '', label: t('选择分类') },
                   { value: '__clear__', label: t('清空分类') },
@@ -776,17 +999,19 @@ export default function Home() {
               <button
                 type="button"
                 onClick={handleBatchCategory}
-                className="px-3 py-1 text-sm rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition"
+                disabled={batchActionPending}
+                className="px-3 py-1 text-sm rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {t('应用分类')}
+                {batchAction === 'category' ? t('处理中...') : t('应用分类')}
               </button>
             </div>
             <button
               type="button"
               onClick={handleBatchDelete}
-              className="px-3 py-1 text-sm rounded-sm text-text-2 hover:text-red-600 hover:bg-red-50 transition"
+              disabled={batchActionPending}
+              className="px-3 py-1 text-sm rounded-sm text-text-2 hover:text-red-700 hover:bg-red-100 transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {t('批量删除')}
+              {batchAction === 'delete' ? t('删除中...') : t('批量删除')}
             </button>
           </div>
         )}
@@ -901,16 +1126,18 @@ export default function Home() {
                             </span>
                           </button>
                         {isAdmin && (
-                          <button
+                          <Button
                             type="button"
                             onClick={() => setShowCreateModal(true)}
-                            className="hidden lg:inline-flex px-4 py-1 text-sm rounded-sm bg-blue-600 text-white hover:bg-blue-700 transition"
+                            variant="primary"
+                            size="sm"
+                            className="hidden lg:inline-flex"
                           >
                             <span className="inline-flex items-center gap-2">
                               <IconPlus className="h-4 w-4" />
                               <span>{t('创建文章')}</span>
                             </span>
-                          </button>
+                          </Button>
                         )}
                       </div>
                       <div className="hidden lg:flex flex-wrap items-center gap-4 lg:justify-end">
@@ -969,21 +1196,19 @@ export default function Home() {
             )}
 
             {loading ? (
-              <div className="text-center py-12 text-gray-500">{t('加载中')}</div>
+              <div className="text-center py-12 text-text-3">{t('加载中')}</div>
             ) : articles.length === 0 ? (
-              <div className="text-center py-12 text-gray-500">{t('暂无文章')}</div>
+              <div className="text-center py-12 text-text-3">{t('暂无文章')}</div>
              ) : (
                 <> 
                   {isAdmin && !isMobile && (
                     <div className="mb-4">
                       <div className="flex flex-wrap items-center gap-2">
-                        <input
-                          type="checkbox"
+                        <CheckboxInput
                           checked={selectedArticleSlugs.size === articles.length}
                           onChange={handleSelectAll}
-                          className="w-4 h-4 text-blue-600 rounded"
                         />
-                        <span className="text-sm text-gray-600">
+                        <span className="text-sm text-text-2">
                           {t('全选')} ({selectedArticleSlugs.size}/{articles.length})
                         </span>
                       </div>
@@ -993,8 +1218,9 @@ export default function Home() {
                     {articles.map((article) => (
                       <div
                         key={article.slug}
-                        onClick={() => handleToggleSelect(article.slug)}
-                        className={`bg-white rounded-lg shadow-sm p-4 sm:p-6 hover:shadow-md transition relative cursor-pointer ${!article.is_visible && isAdmin ? 'opacity-60' : ''} ${selectedArticleSlugs.has(article.slug) ? 'ring-2 ring-primary ring-offset-2' : ''}`}
+                        id={`article-${article.slug}`}
+                        onClick={(event) => handleOpenArticle(event, article)}
+                        className={`bg-surface rounded-lg shadow-sm p-4 sm:p-6 hover:shadow-md transition relative cursor-pointer scroll-mt-24 ${!article.is_visible && isAdmin ? 'opacity-60' : ''} ${selectedArticleSlugs.has(article.slug) ? 'ring-2 ring-primary ring-offset-2' : ''}`}
                       >
                          {isAdmin && !isMobile && (
                            <div className="absolute top-3 right-3 flex items-center gap-1">
@@ -1022,12 +1248,11 @@ export default function Home() {
                         )}
                          <div className="flex flex-col sm:flex-row gap-4">
                            {isAdmin && !isMobile && (
-                             <input
-                               type="checkbox"
+                             <CheckboxInput
                                checked={selectedArticleSlugs.has(article.slug)}
                                onChange={() => handleToggleSelect(article.slug)}
                                onClick={(e) => e.stopPropagation()}
-                               className="w-4 h-4 text-blue-600 rounded mt-1"
+                               className="mt-1"
                              />
                            )}
                            {article.top_image && (
@@ -1043,18 +1268,18 @@ export default function Home() {
                              </div>
                            )}
                            <div className="flex-1 sm:pr-6">
-                             <Link href={`/article/${article.slug}`} onClick={(e) => e.stopPropagation()}>
-                               <h3 className="text-xl font-semibold text-gray-900 hover:text-blue-600 transition cursor-pointer">
+                             <Link href={buildArticleHref(article.slug)} onClick={(e) => e.stopPropagation()}>
+                               <h3 className="text-xl font-semibold text-text-1 hover:text-primary transition cursor-pointer">
                                  {article.title}
                                </h3>
                              </Link>
-                              <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-gray-600">
+                              <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-text-2">
                                 {article.category && (
                                   <span 
                                     className="px-2 py-1 rounded"
                                     style={{
-                                      backgroundColor: article.category.color ? `${article.category.color}20` : '#f3f4f6',
-                                      color: article.category.color || '#4b5563',
+                                      backgroundColor: article.category.color ? `${article.category.color}20` : 'var(--bg-muted)',
+                                      color: article.category.color || 'var(--text-2)',
                                     }}
                                   >
                                     {article.category.name}
@@ -1073,7 +1298,7 @@ export default function Home() {
                                 </span>
                               </div>
                                {article.summary && (
-                                 <p className="mt-2 text-gray-600 line-clamp-3">
+                                 <p className="mt-2 text-text-2 line-clamp-3">
                                    {article.summary}
                                  </p>
                                )}
@@ -1085,13 +1310,12 @@ export default function Home() {
 
                 {!isMobile && (
                   <div className="mt-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                    <div className="flex flex-wrap items-center gap-2 text-sm text-gray-600">
+                    <div className="flex flex-wrap items-center gap-2 text-sm text-text-2">
                       <span>{t('每页显示')}</span>
-                      <Select
+                      <SelectField
                         value={pageSize}
                         onChange={(value) => { setPageSize(Number(value)); setPage(1); }}
-                        className="select-modern-antd"
-                        popupClassName="select-modern-dropdown"
+                        className="w-20"
                         options={[
                           { value: 10, label: '10' },
                           { value: 20, label: '20' },
@@ -1121,8 +1345,8 @@ export default function Home() {
                       >
                         {t('下一页')}
                       </Button>
-                      <div className="flex items-center gap-1 ml-2">
-                        <span className="text-sm text-text-2">{t('跳转')}</span>
+                      <div className="ml-2 flex flex-none items-center gap-1 whitespace-nowrap">
+                        <span className="text-sm text-text-2 whitespace-nowrap">{t('跳转')}</span>
                         <TextInput
                           type="number"
                           value={jumpToPage}
@@ -1137,6 +1361,7 @@ export default function Home() {
                           onClick={handleJumpToPage}
                           variant="primary"
                           size="sm"
+                          className="whitespace-nowrap"
                         >
                           {t('跳转')}
                         </Button>
@@ -1252,12 +1477,10 @@ export default function Home() {
                         />
                       </FormField>
                       <FormField label={t('分类')}>
-                        <Select
+                        <SelectField
                           value={createCategoryId}
                           onChange={(value) => setCreateCategoryId(value)}
-                          className="select-modern-antd w-full"
-                          popupClassName="select-modern-dropdown"
-                          style={{ height: 36 }}
+                          className="w-full"
                           options={[
                             { value: '', label: t('未分类') },
                             ...categories.map((category) => ({

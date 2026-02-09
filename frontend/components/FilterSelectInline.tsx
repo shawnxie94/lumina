@@ -1,4 +1,4 @@
-import { Select } from "antd";
+import SelectField from "@/components/ui/SelectField";
 
 interface FilterSelectInlineOption {
 	value: string;
@@ -31,15 +31,13 @@ export default function FilterSelectInline({
 			<label htmlFor={selectId} className="whitespace-nowrap text-sm text-text-2">
 				{label}
 			</label>
-			<Select
+			<SelectField
 				id={selectId}
 				value={value}
 				onChange={onChange}
 				options={options}
 				placeholder={placeholder}
-				className="select-modern-antd"
-				popupClassName="select-modern-dropdown"
-				style={{ height: 36 }}
+				className="w-28"
 			/>
 		</div>
 	);

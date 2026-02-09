@@ -128,7 +128,7 @@ export default function ExtensionAuthPage() {
               <IconLock className="h-8 w-8" />
             </div>
             <h1 className="text-xl font-semibold text-text-1 mb-2">{t('正在授权扩展...')}</h1>
-            {error && <p className="text-red-500 mb-4">{error}</p>}
+            {error && <p className="text-red-600 mb-4">{error}</p>}
             {!error && <p className="text-text-3">{t('请稍候')}</p>}
           </div>
         </div>
@@ -172,7 +172,7 @@ export default function ExtensionAuthPage() {
             </div>
 
             {error && (
-              <div className="text-red-500 text-sm text-center">{error}</div>
+              <div className="text-red-600 text-sm text-center">{error}</div>
             )}
 
             <div>

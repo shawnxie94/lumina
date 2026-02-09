@@ -12,6 +12,7 @@ import Button from '@/components/Button';
 import IconButton from '@/components/IconButton';
 import FormField from '@/components/ui/FormField';
 import ModalShell from '@/components/ui/ModalShell';
+import SelectField from '@/components/ui/SelectField';
 import TextArea from '@/components/ui/TextArea';
 import TextInput from '@/components/ui/TextInput';
 import { useToast } from '@/components/Toast';
@@ -22,7 +23,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useBasicSettings } from '@/contexts/BasicSettingsContext';
 import { useReading } from '@/contexts/ReadingContext';
 import { useI18n } from '@/lib/i18n';
-import { Select } from 'antd';
 import { signIn, signOut, useSession } from 'next-auth/react';
 
 // 轮询间隔（毫秒）
@@ -220,8 +220,8 @@ function MindMapTree({ node, isRoot = false, compact = false, depth = 0 }: { nod
       ? 'space-y-2'
       : 'space-y-4'
     : compact
-      ? 'pl-3 border-l border-gray-200/70 space-y-2'
-      : 'pl-5 border-l border-gray-200/70 space-y-4';
+      ? 'pl-3 border-l border-border space-y-2'
+      : 'pl-5 border-l border-border space-y-4';
 
   const palette = [
     'border-blue-200 bg-blue-50/60 text-blue-800',
@@ -239,8 +239,8 @@ function MindMapTree({ node, isRoot = false, compact = false, depth = 0 }: { nod
             <span
               className={
                 compact
-                  ? 'mt-2 h-1.5 w-1.5 rounded-full bg-gray-300'
-                  : 'mt-2 h-2 w-2 rounded-full bg-gray-300'
+                  ? 'mt-2 h-1.5 w-1.5 rounded-full bg-border'
+                  : 'mt-2 h-2 w-2 rounded-full bg-border'
               }
             />
           )}
@@ -284,7 +284,7 @@ function AIContentSection({
   const getStatusBadge = () => {
     if (!status) return null;
     const statusConfig: Record<string, { bg: string; text: string; label: string }> = {
-      pending: { bg: 'bg-gray-100', text: 'text-gray-600', label: t('等待处理') },
+      pending: { bg: 'bg-muted', text: 'text-text-2', label: t('等待处理') },
       processing: { bg: 'bg-blue-100', text: 'text-blue-700', label: t('生成中...') },
       completed: { bg: 'bg-green-100', text: 'text-green-700', label: t('已完成') },
       failed: { bg: 'bg-red-100', text: 'text-red-700', label: t('失败') },
@@ -306,7 +306,7 @@ function AIContentSection({
       {showHeader && (
         <div className="flex items-center justify-between gap-4 mb-2">
           <div className="flex items-center gap-2 pr-2">
-            <h3 className="font-semibold text-gray-900">{title}</h3>
+            <h3 className="font-semibold text-text-1">{title}</h3>
           </div>
           <div className="flex items-center gap-2">
             {statusBadge && statusLink ? (
@@ -344,7 +344,7 @@ function AIContentSection({
           (() => {
             const tree = parseMindMapOutline(content);
             return tree ? (
-              <div className="rounded-lg border border-gray-200 bg-gray-50 p-2">
+              <div className="rounded-lg border border-border bg-muted p-2">
                 <div
                   onClick={onMindMapOpen}
                   className="cursor-zoom-in"
@@ -360,26 +360,26 @@ function AIContentSection({
                     <div className="inline-block">
                       <MindMapTree node={tree} isRoot compact />
                     </div>
-                    <div className="absolute top-1 right-1 text-xs text-gray-400 bg-white/80 px-2 py-0.5 rounded">
+                    <div className="absolute top-1 right-1 text-xs text-text-3 bg-surface/80 px-2 py-0.5 rounded">
                       {t("点击放大")}
                     </div>
                   </div>
                 </div>
               </div>
             ) : (
-              <div className="text-gray-700 text-sm whitespace-pre-wrap">{content}</div>
+              <div className="text-text-2 text-sm whitespace-pre-wrap">{content}</div>
             );
           })()
         ) : renderMarkdown ? (
           <div
-            className="prose prose-sm max-w-none rounded-lg border border-gray-200 bg-gray-50 p-3 text-gray-700"
+            className="prose prose-sm max-w-none rounded-lg border border-border bg-muted p-3 text-text-2"
             dangerouslySetInnerHTML={{ __html: marked(content) }}
           />
         ) : (
-          <div className="text-gray-700 text-sm whitespace-pre-wrap">{content}</div>
+          <div className="text-text-2 text-sm whitespace-pre-wrap">{content}</div>
         )
       ) : showStatus ? (
-        <p className="text-gray-400 text-sm">
+        <p className="text-text-3 text-sm">
           {status === 'processing' ? t('正在生成...') : t('未生成')}
         </p>
       ) : null}
@@ -397,7 +397,7 @@ function TableOfContents({ items, activeId, onSelect }: { items: TocItem[]; acti
   if (items.length === 0) return null;
 
   return (
-    <nav className="border-l-2 border-gray-200 pl-2 space-y-1">
+    <nav className="border-l-2 border-border pl-2 space-y-1">
       {items.map((item) => (
         <a
           key={item.id}
@@ -405,8 +405,8 @@ function TableOfContents({ items, activeId, onSelect }: { items: TocItem[]; acti
           onClick={() => onSelect(item.id)}
           className={`block text-xs truncate rounded px-2 py-1 transition ${
             activeId === item.id
-              ? 'text-blue-700 font-semibold bg-blue-50'
-              : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+              ? 'text-primary-ink font-semibold bg-primary-soft'
+              : 'text-text-2 hover:text-text-1 hover:bg-muted'
           }`}
           style={{ paddingLeft: `${(item.level - 1) * 8 + 8}px` }}
         >
@@ -434,9 +434,9 @@ function ReadingProgress() {
   }, []);
 
   return (
-    <div className="fixed top-0 left-0 right-0 h-1 bg-gray-200 z-50">
+    <div className="fixed top-0 left-0 right-0 h-1 bg-muted z-50">
       <div
-        className="h-full bg-blue-600 transition-all duration-150"
+        className="h-full bg-primary transition-all duration-150"
         style={{ width: `${progress}%` }}
       />
     </div>
@@ -564,6 +564,65 @@ interface ArticleAnnotation {
   comment: string;
 }
 
+interface CommentLocation {
+  topCommentId: string;
+  page: number;
+}
+
+const getQueryValue = (value: string | string[] | undefined): string => {
+  if (Array.isArray(value)) return value[0] || '';
+  return value || '';
+};
+
+const decodeQueryValue = (value: string): string => {
+  if (!value) return '';
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+};
+
+const resolveCommentLocation = (
+  commentId: string,
+  items: ArticleComment[],
+  pageSize: number,
+): CommentLocation | null => {
+  if (!commentId || items.length === 0) return null;
+
+  const byId = new Map(items.map((item) => [item.id, item]));
+  const target = byId.get(commentId);
+  if (!target) return null;
+
+  let topCommentId = target.id;
+  let current: ArticleComment | undefined = target;
+  const visited = new Set<string>();
+
+  while (current?.reply_to_id) {
+    if (visited.has(current.id)) break;
+    visited.add(current.id);
+    const parent = byId.get(current.reply_to_id);
+    if (!parent) break;
+    topCommentId = parent.id;
+    current = parent;
+  }
+
+  const topComments = [...items]
+    .filter((comment) => !comment.reply_to_id)
+    .sort(
+      (a, b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+    );
+
+  const topIndex = topComments.findIndex((comment) => comment.id === topCommentId);
+  if (topIndex < 0) return null;
+
+  return {
+    topCommentId,
+    page: Math.floor(topIndex / pageSize) + 1,
+  };
+};
+
 export default function ArticleDetailPage() {
   const router = useRouter();
   const { showToast } = useToast();
@@ -573,6 +632,20 @@ export default function ArticleDetailPage() {
   const { addArticle, setIsHidden } = useReading();
   const { data: session } = useSession();
   const { id } = router.query;
+  const listReturnHref = useMemo(() => {
+    const rawFrom = getQueryValue(router.query.from);
+    const decodedFrom = decodeQueryValue(rawFrom);
+    if (!decodedFrom || !decodedFrom.startsWith('/list')) {
+      return '/list';
+    }
+    return decodedFrom;
+  }, [router.query.from]);
+
+  const buildArticleHref = useCallback(
+    (slug: string) => `/article/${slug}?from=${encodeURIComponent(listReturnHref)}`,
+    [listReturnHref],
+  );
+
   const [article, setArticle] = useState<ArticleDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [showTranslation, setShowTranslation] = useState(true);
@@ -713,6 +786,36 @@ export default function ArticleDetailPage() {
     const start = (commentPage - 1) * commentPageSize;
     return sortedTopComments.slice(start, start + commentPageSize);
   }, [sortedTopComments, commentPage]);
+
+  const focusCommentById = useCallback(
+    (
+      commentId: string,
+      sourceComments: ArticleComment[] = comments,
+      notifyMissing = false,
+    ): boolean => {
+      const location = resolveCommentLocation(commentId, sourceComments, commentPageSize);
+      if (!location) {
+        if (notifyMissing) {
+          showToast(t('原评论不存在'), 'info');
+        }
+        return false;
+      }
+
+      if (commentPage !== location.page) {
+        setCommentPage(location.page);
+      }
+      if (location.topCommentId !== commentId) {
+        setExpandedReplies((prev) =>
+          prev[location.topCommentId]
+            ? prev
+            : { ...prev, [location.topCommentId]: true },
+        );
+      }
+      setPendingScrollId(commentId);
+      return true;
+    },
+    [comments, commentPage, showToast, t],
+  );
 
   useEffect(() => {
     if (commentPage > totalCommentPages) {
@@ -961,15 +1064,13 @@ export default function ArticleDetailPage() {
       const hash = window.location.hash || '';
       if (!hash.startsWith('#comment-')) return;
       const commentId = hash.slice('#comment-'.length);
-      const commentExists = comments.some(c => c.id === commentId);
-      if (commentExists) {
-        setPendingScrollId(commentId);
-      }
+      focusCommentById(commentId);
     };
 
+    handleHashChange();
     window.addEventListener('hashchange', handleHashChange);
     return () => window.removeEventListener('hashchange', handleHashChange);
-  }, [comments]);
+  }, [focusCommentById]);
 
   useEffect(() => {
     if (!replyTargetId) return;
@@ -988,14 +1089,13 @@ export default function ArticleDetailPage() {
     if (!pendingScrollId) return;
     const handleScroll = () => {
       const target = document.getElementById(`comment-${pendingScrollId}`);
-      if (target) {
-        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        setPendingScrollId(null);
-      }
+      if (!target) return;
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setPendingScrollId(null);
     };
-    const timer = window.setTimeout(handleScroll, 100);
+    const timer = window.setTimeout(handleScroll, 120);
     return () => window.clearTimeout(timer);
-  }, [pendingScrollId]);
+  }, [pendingScrollId, commentPage, comments, expandedReplies]);
 
 
   useEffect(() => {
@@ -1193,12 +1293,7 @@ export default function ArticleDetailPage() {
       const hash = typeof window !== 'undefined' ? window.location.hash : '';
       if (hash.startsWith('#comment-')) {
         const commentId = hash.slice('#comment-'.length);
-        const commentExists = data.some((c: ArticleComment) => c.id === commentId);
-        if (!commentExists) {
-          showToast(t('原评论不存在'), 'info');
-        } else {
-          setPendingScrollId(commentId);
-        }
+        focusCommentById(commentId, data, true);
       }
     } catch (error) {
       console.error('Failed to fetch comments:', error);
@@ -1345,11 +1440,11 @@ export default function ArticleDetailPage() {
   const showActiveCopyButton = Boolean(activeTabConfig?.content);
 
   const aiPanelContent = (
-    <div className="bg-white rounded-lg shadow-sm p-4">
+    <div className="bg-surface rounded-lg shadow-sm border border-border p-4">
       <div className="flex items-center justify-between mb-4">
         {tocItems.length > 0 && (
           <>
-            <h2 className="text-lg font-semibold text-gray-900 inline-flex items-center gap-2">
+            <h2 className="text-lg font-semibold text-text-1 inline-flex items-center gap-2">
               <IconList className="h-4 w-4" />
               <span>{t("目录")}</span>
             </h2>
@@ -1379,18 +1474,18 @@ export default function ArticleDetailPage() {
 
         <div>
           <div className="flex items-center justify-between mb-2">
-            <h2 className="text-lg font-semibold text-gray-900 inline-flex items-center gap-2">
+            <h2 className="text-lg font-semibold text-text-1 inline-flex items-center gap-2">
               <IconRobot className="h-4 w-4" />
               <span>{t("AI解读")}</span>
             </h2>
             {aiUpdatedAt && (
-              <span className="text-xs text-gray-500">{aiUpdatedAt}</span>
+              <span className="text-xs text-text-3">{aiUpdatedAt}</span>
             )}
           </div>
         </div>
 
         {isAdmin && article?.ai_analysis?.error_message && (
-          <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+          <div className="p-3 bg-red-100 border border-red-200 rounded-lg">
             <p className="text-red-700 text-sm">
               {article.ai_analysis.error_message}
             </p>
@@ -1500,7 +1595,7 @@ export default function ArticleDetailPage() {
           similarArticles.length > 0) && (
           <div className="pt-4 border-t border-border">
             <div className="flex items-center justify-between mb-2">
-              <h2 className="text-lg font-semibold text-gray-900 inline-flex items-center gap-2">
+              <h2 className="text-lg font-semibold text-text-1 inline-flex items-center gap-2">
                 <IconTag className="h-4 w-4" />
                 <span>{t("推荐阅读")}</span>
               </h2>
@@ -1530,7 +1625,7 @@ export default function ArticleDetailPage() {
                   <div key={item.id} className="flex items-start gap-2 truncate">
                     <span className="text-text-3">·</span>
                     <Link
-                      href={`/article/${item.slug}`}
+                      href={buildArticleHref(item.slug)}
                       className="hover:text-text-1 transition truncate"
                       title={item.title}
                     >
@@ -1580,7 +1675,7 @@ export default function ArticleDetailPage() {
   function getAiTabStatusBadge(status?: string | null) {
     if (!status) return null;
     const statusConfig: Record<string, { bg: string; text: string; label: string }> = {
-      pending: { bg: 'bg-gray-100', text: 'text-gray-600', label: t('等待处理') },
+      pending: { bg: 'bg-muted', text: 'text-text-2', label: t('等待处理') },
       processing: { bg: 'bg-blue-100', text: 'text-blue-700', label: t('生成中...') },
       completed: { bg: 'bg-green-100', text: 'text-green-700', label: t('已完成') },
       failed: { bg: 'bg-red-100', text: 'text-red-700', label: t('失败') },
@@ -1690,7 +1785,7 @@ export default function ArticleDetailPage() {
     try {
       await articleApi.deleteArticle(id as string);
       showToast(t('删除成功'));
-      router.push('/list');
+      router.push(listReturnHref);
     } catch (error) {
       console.error('Failed to delete article:', error);
       showToast(t('删除失败'), 'error');
@@ -2182,7 +2277,7 @@ export default function ArticleDetailPage() {
               <div>
                 <span className="font-medium text-text-2">{t('分类')}：</span>
                 <Link
-                  href={`/?category_id=${article.category.id}`}
+                  href={`/list?category_id=${article.category.id}`}
                   className="inline-flex items-center gap-1"
                 >
                   <span className="text-primary hover:underline">{article.category.name}</span>
@@ -2193,7 +2288,7 @@ export default function ArticleDetailPage() {
               <div>
                 <span className="font-medium text-text-2">{t('作者')}：</span>
                 <Link
-                  href={`/?author=${encodeURIComponent(article.author)}`}
+                  href={`/list?author=${encodeURIComponent(article.author)}`}
                   className="text-primary hover:underline"
                 >
                   {article.author}
@@ -2288,7 +2383,7 @@ export default function ArticleDetailPage() {
                         </button>
                         <button
                           onClick={() => setShowDeleteModal(true)}
-                          className="flex items-center justify-center w-8 h-8 rounded-sm text-text-2 hover:text-red-600 hover:bg-red-50 transition"
+                          className="flex items-center justify-center w-8 h-8 rounded-sm text-text-2 hover:text-red-700 hover:bg-red-100 transition"
                         >
                           <IconTrash className="h-4 w-4" />
                         </button>
@@ -2340,7 +2435,7 @@ export default function ArticleDetailPage() {
                 onClick={handleContentClick}
                 onMouseOver={handleContentMouseOver}
                 onMouseOut={handleContentMouseOut}
-                className={`prose prose-sm max-w-none break-words overflow-x-auto prose-img:cursor-zoom-in prose-img:rounded-lg prose-img:border prose-img:border-gray-200 prose-img:bg-white prose-img:shadow-sm ${
+                className={`prose prose-sm max-w-none break-words overflow-x-auto prose-img:cursor-zoom-in prose-img:rounded-lg prose-img:border prose-img:border-border prose-img:bg-surface prose-img:shadow-sm ${
                   immersiveMode
                     ? 'immersive-content'
                     : 'prose-img:max-w-full lg:prose-img:max-w-[420px]'
@@ -2350,35 +2445,35 @@ export default function ArticleDetailPage() {
 
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-6 text-sm">
                 <button
-                  onClick={() => prevArticle && router.push(`/article/${prevArticle.slug}`)}
+                  onClick={() => prevArticle && router.push(buildArticleHref(prevArticle.slug))}
                   disabled={!prevArticle}
                   className={`px-3 py-2 rounded-lg transition text-left ${
                     prevArticle
-                      ? 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                      : 'bg-gray-50 text-gray-400 cursor-not-allowed'
+                      ? 'bg-muted text-text-2 hover:bg-surface hover:text-text-1'
+                      : 'bg-muted text-text-3 cursor-not-allowed'
                   }`}
                   title={prevArticle ? prevArticle.title : t('无上一篇')}
                 >
                   <span className="block">← {t('上一篇')}</span>
                   {prevArticle && (
-                    <span className="block text-xs text-gray-500">
+                    <span className="block text-xs text-text-3">
                       {prevArticle.title.length > 20 ? `${prevArticle.title.slice(0, 20)}...` : prevArticle.title}
                     </span>
                   )}
                 </button>
                 <button
-                  onClick={() => nextArticle && router.push(`/article/${nextArticle.slug}`)}
+                  onClick={() => nextArticle && router.push(buildArticleHref(nextArticle.slug))}
                   disabled={!nextArticle}
                   className={`px-3 py-2 rounded-lg transition text-right ${
                     nextArticle
-                      ? 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                      : 'bg-gray-50 text-gray-400 cursor-not-allowed'
+                      ? 'bg-muted text-text-2 hover:bg-surface hover:text-text-1'
+                      : 'bg-muted text-text-3 cursor-not-allowed'
                   }`}
                   title={nextArticle ? nextArticle.title : t('无下一篇')}
                 >
                   <span className="block">{t('下一篇')} →</span>
                   {nextArticle && (
-                    <span className="block text-xs text-gray-500">
+                    <span className="block text-xs text-text-3">
                       {nextArticle.title.length > 20 ? `${nextArticle.title.slice(0, 20)}...` : nextArticle.title}
                     </span>
                   )}
@@ -2450,7 +2545,7 @@ export default function ArticleDetailPage() {
                       )}
                     </div>
 
-                    {session && !replyToId && (
+                    {session && (
                       <div className="mb-5">
                         {replyToId && (
                           <div className="mb-2 flex items-center justify-between rounded-sm border border-border bg-muted px-3 py-2 text-xs text-text-2">
@@ -2469,21 +2564,23 @@ export default function ArticleDetailPage() {
                             </button>
                           </div>
                         )}
-                        <textarea
+                        <TextArea
                           ref={commentInputRef}
                           value={commentDraft}
                           onChange={(e) => setCommentDraft(e.target.value)}
                           rows={4}
-                          className="w-full px-3 py-2 border border-border rounded-lg bg-surface text-text-1 focus:outline-none focus:ring-2 focus:ring-primary"
+                          className="rounded-lg"
                           placeholder={t('写下你的评论，支持 Markdown')}
                         />
-                        <div className="flex justify-end mt-2">
-                          <button
+                        <div className="mt-2 flex justify-end">
+                          <Button
+                            type="button"
                             onClick={handleSubmitComment}
-                            className="px-4 py-2 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition"
+                            variant="primary"
+                            size="sm"
                           >
                             {t('发布评论')}
-                          </button>
+                          </Button>
                         </div>
                       </div>
                     )}
@@ -2608,11 +2705,11 @@ export default function ArticleDetailPage() {
                               </div>
                               {isEditing ? (
                                 <div>
-                                  <textarea
+                                  <TextArea
                                     value={editingCommentDraft}
                                     onChange={(e) => setEditingCommentDraft(e.target.value)}
                                     rows={4}
-                                    className="w-full px-3 py-2 border border-border rounded-lg bg-surface text-text-1 focus:outline-none focus:ring-2 focus:ring-primary"
+                                    className="rounded-lg"
                                   />
                                 </div>
                               ) : (
@@ -2652,12 +2749,12 @@ export default function ArticleDetailPage() {
                                   <div className="mb-2 text-xs text-text-2">
                                     {t("回复")} {replyToUser ? `@${replyToUser}` : ''}
                                   </div>
-                                  <textarea
+                                  <TextArea
                                     ref={commentInputRef}
                                     value={commentDraft}
                                     onChange={(e) => setCommentDraft(e.target.value)}
                                     rows={3}
-                                    className="w-full px-3 py-2 border border-border rounded-lg bg-surface text-text-1 focus:outline-none focus:ring-2 focus:ring-primary"
+                                    className="rounded-lg"
                                     placeholder={t("写下你的回复，支持 Markdown")}
                                   />
                                   <div className="flex justify-end gap-1.5 mt-2">
@@ -2812,11 +2909,11 @@ export default function ArticleDetailPage() {
                                           </div>
                                           {editingCommentId === reply.id ? (
                                             <div>
-                                              <textarea
+                                              <TextArea
                                                 value={editingCommentDraft}
                                                 onChange={(e) => setEditingCommentDraft(e.target.value)}
                                                 rows={3}
-                                                className="w-full px-3 py-2 border border-border rounded-lg bg-surface text-text-1 focus:outline-none focus:ring-2 focus:ring-primary"
+                                                className="rounded-lg"
                                               />
                                             </div>
                                           ) : (
@@ -2856,12 +2953,12 @@ export default function ArticleDetailPage() {
                                               <div className="mb-2 text-xs text-text-2">
                                                 {t("回复")} {replyToUser ? `@${replyToUser}` : ''}
                                               </div>
-                                              <textarea
+                                              <TextArea
                                                 ref={commentInputRef}
                                                 value={commentDraft}
                                                 onChange={(e) => setCommentDraft(e.target.value)}
                                                 rows={3}
-                                                className="w-full px-3 py-2 border border-border rounded-lg bg-surface text-text-1 focus:outline-none focus:ring-2 focus:ring-primary"
+                                                className="rounded-lg"
                                                 placeholder={t("写下你的回复，支持 Markdown")}
                                               />
                                               <div className="flex justify-end gap-1.5 mt-2">
@@ -2966,11 +3063,10 @@ export default function ArticleDetailPage() {
         >
           <div className="space-y-4">
             <FormField label={t('模型配置')}>
-              <Select
+              <SelectField
                 value={selectedModelConfigId}
                 onChange={(value) => setSelectedModelConfigId(value)}
-                className="select-modern-antd w-full"
-                popupClassName="select-modern-dropdown"
+                className="w-full"
                 options={[
                   { value: '', label: t('使用默认配置') },
                   ...modelConfigs.map((config) => ({
@@ -2982,11 +3078,10 @@ export default function ArticleDetailPage() {
             </FormField>
 
             <FormField label={t('提示词配置')}>
-              <Select
+              <SelectField
                 value={selectedPromptConfigId}
                 onChange={(value) => setSelectedPromptConfigId(value)}
-                className="select-modern-antd w-full"
-                popupClassName="select-modern-dropdown"
+                className="w-full"
                 options={[
                   { value: '', label: t('使用默认配置') },
                   ...promptConfigs.map((config) => ({
@@ -3042,12 +3137,10 @@ export default function ArticleDetailPage() {
                         />
                       </FormField>
                       <FormField label={t('分类')}>
-                        <Select
+                        <SelectField
                           value={editCategoryId}
                           onChange={(value) => setEditCategoryId(value)}
-                          className="select-modern-antd w-full"
-                          popupClassName="select-modern-dropdown"
-                          style={{ height: 36 }}
+                          className="w-full"
                           loading={categoriesLoading}
                           options={[
                             { value: '', label: t('未分类') },
@@ -3203,7 +3296,7 @@ export default function ArticleDetailPage() {
         >
           <button
             onClick={handleStartAnnotation}
-            className="w-7 h-7 flex items-center justify-center border border-blue-400 text-blue-600 rounded-full bg-white/80 hover:bg-blue-50 transition"
+            className="w-7 h-7 flex items-center justify-center border border-border text-primary rounded-full bg-surface/80 hover:bg-primary-soft transition"
           >
             <IconEdit className="h-3.5 w-3.5" />
           </button>
@@ -3221,7 +3314,7 @@ export default function ArticleDetailPage() {
           >
             <div className="max-h-[4.5rem] overflow-hidden">
               <div
-                className="prose prose-sm max-w-none text-gray-800"
+                className="prose prose-sm max-w-none text-text-1"
                 style={{
                   display: '-webkit-box',
                   WebkitLineClamp: 3,

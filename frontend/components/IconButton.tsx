@@ -18,7 +18,7 @@ const variantStyles: Record<IconButtonVariant, string> = {
 	secondary:
 		"text-text-2 bg-surface border border-border hover:bg-muted hover:text-text-1 focus:outline-none",
 	danger:
-		"text-text-3 hover:text-red-600 hover:bg-red-50 focus:outline-none",
+		"text-text-3 hover:text-red-700 hover:bg-red-100 focus:outline-none",
 	ghost:
 		"text-text-2 hover:text-text-1 hover:bg-muted/50 focus:outline-none",
 };

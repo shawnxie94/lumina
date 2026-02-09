@@ -58,7 +58,7 @@ export function ContinueReadingBanner() {
             <button
               type="button"
               onClick={clearArticles}
-              className="text-text-3 hover:text-red-500 transition"
+              className="text-text-3 hover:text-red-600 transition"
               title={t('清空全部')}
             >
               <IconBroom className="h-4 w-4" />
@@ -105,7 +105,7 @@ export function ContinueReadingBanner() {
                     e.stopPropagation();
                     removeArticle(article.id);
                   }}
-                  className="text-text-3 hover:text-red-500 transition ml-2 flex-shrink-0"
+                  className="text-text-3 hover:text-red-600 transition ml-2 flex-shrink-0"
                   title={t('删除')}
                 >
                   <IconTrash className="h-3.5 w-3.5" />
