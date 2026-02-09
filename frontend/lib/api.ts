@@ -284,6 +284,12 @@ export interface BasicSettings {
 	site_name: string;
 	site_description: string;
 	site_logo_url: string;
+	home_badge_text: string;
+	home_tagline_text: string;
+	home_primary_button_text: string;
+	home_primary_button_url: string;
+	home_secondary_button_text: string;
+	home_secondary_button_url: string;
 }
 
 export interface CommentListResponse {

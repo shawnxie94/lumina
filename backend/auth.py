@@ -146,6 +146,12 @@ def create_admin_settings(db: Session, password: str) -> AdminSettings:
         site_name="Lumina",
         site_description="信息灯塔",
         site_logo_url="",
+        home_badge_text="",
+        home_tagline_text="",
+        home_primary_button_text="",
+        home_primary_button_url="",
+        home_secondary_button_text="",
+        home_secondary_button_url="",
     )
     db.add(admin)
     db.commit()

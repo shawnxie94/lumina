@@ -66,6 +66,12 @@ DEFAULT_BASIC_SETTINGS = {
     "site_name": "Lumina",
     "site_description": "信息灯塔",
     "site_logo_url": "",
+    "home_badge_text": "",
+    "home_tagline_text": "",
+    "home_primary_button_text": "",
+    "home_primary_button_url": "",
+    "home_secondary_button_text": "",
+    "home_secondary_button_url": "",
 }
 
 
@@ -100,7 +106,27 @@ def build_basic_settings(admin: Optional[AdminSettings]) -> dict:
         "site_description": admin.site_description
         or DEFAULT_BASIC_SETTINGS["site_description"],
         "site_logo_url": admin.site_logo_url or "",
+        "home_badge_text": admin.home_badge_text or "",
+        "home_tagline_text": admin.home_tagline_text or "",
+        "home_primary_button_text": admin.home_primary_button_text or "",
+        "home_primary_button_url": admin.home_primary_button_url or "",
+        "home_secondary_button_text": admin.home_secondary_button_text or "",
+        "home_secondary_button_url": admin.home_secondary_button_url or "",
     }
+
+
+def validate_home_button_url(value: str, field_name: str) -> str:
+    normalized = value.strip()
+    if not normalized:
+        return ""
+    if normalized.startswith("/"):
+        return normalized
+    if normalized.startswith("http://") or normalized.startswith("https://"):
+        return normalized
+    raise HTTPException(
+        status_code=400,
+        detail=f"{field_name}仅支持以 / 开头的站内路径或 http/https 外链地址",
+    )
 
 
 def comments_enabled(db: Session) -> bool:
@@ -389,6 +415,12 @@ class BasicSettingsUpdate(BaseModel):
     site_name: Optional[str] = None
     site_description: Optional[str] = None
     site_logo_url: Optional[str] = None
+    home_badge_text: Optional[str] = None
+    home_tagline_text: Optional[str] = None
+    home_primary_button_text: Optional[str] = None
+    home_primary_button_url: Optional[str] = None
+    home_secondary_button_text: Optional[str] = None
+    home_secondary_button_url: Optional[str] = None
 
 
 class MediaIngestRequest(BaseModel):
@@ -484,6 +516,24 @@ async def update_basic_settings(
         )
     if payload.site_logo_url is not None:
         admin.site_logo_url = payload.site_logo_url or ""
+    if payload.home_badge_text is not None:
+        admin.home_badge_text = payload.home_badge_text or ""
+    if payload.home_tagline_text is not None:
+        admin.home_tagline_text = payload.home_tagline_text or ""
+    if payload.home_primary_button_text is not None:
+        admin.home_primary_button_text = payload.home_primary_button_text or ""
+    if payload.home_primary_button_url is not None:
+        admin.home_primary_button_url = validate_home_button_url(
+            payload.home_primary_button_url,
+            "首页主按钮链接",
+        )
+    if payload.home_secondary_button_text is not None:
+        admin.home_secondary_button_text = payload.home_secondary_button_text or ""
+    if payload.home_secondary_button_url is not None:
+        admin.home_secondary_button_url = validate_home_button_url(
+            payload.home_secondary_button_url,
+            "首页副按钮链接",
+        )
     admin.updated_at = now_str()
     db.commit()
     db.refresh(admin)

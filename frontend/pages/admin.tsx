@@ -356,6 +356,12 @@ export default function AdminPage() {
 		site_name: "Lumina",
 		site_description: "信息灯塔",
 		site_logo_url: "",
+		home_badge_text: "",
+		home_tagline_text: "",
+		home_primary_button_text: "",
+		home_primary_button_url: "",
+		home_secondary_button_text: "",
+		home_secondary_button_url: "",
 	});
 	const [storageSettings, setStorageSettings] = useState<StorageSettings>({
 		media_storage_enabled: false,
@@ -2951,33 +2957,33 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 											<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 												<div>
 													<label className="block text-sm text-text-2 mb-1">
+														{t("首页顶部标语")}
+													</label>
+													<input
+														value={basicSettingsForm.home_badge_text}
+														onChange={(e) =>
+															setBasicSettingsForm((prev) => ({
+																...prev,
+																home_badge_text: e.target.value,
+															}))
+														}
+														placeholder={t("请输入首页顶部标语（留空使用默认）")}
+														className="w-full h-9 px-3 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
+													/>
+												</div>
+												<div>
+													<label className="block text-sm text-text-2 mb-1">
 														{t("站点名称")}
 													</label>
 													<input
-													value={basicSettingsForm.site_name}
-													onChange={(e) =>
+														value={basicSettingsForm.site_name}
+														onChange={(e) =>
 															setBasicSettingsForm((prev) => ({
 																...prev,
 																site_name: e.target.value,
 															}))
 														}
 														placeholder={t("请输入站点名称")}
-														className="w-full h-9 px-3 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
-													/>
-												</div>
-												<div>
-													<label className="block text-sm text-text-2 mb-1">
-														{t("站点Logo地址")}
-													</label>
-													<input
-													value={basicSettingsForm.site_logo_url}
-													onChange={(e) =>
-															setBasicSettingsForm((prev) => ({
-																...prev,
-																site_logo_url: e.target.value,
-															}))
-														}
-														placeholder={t("可选，留空使用默认图标")}
 														className="w-full h-9 px-3 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
 													/>
 												</div>
@@ -2989,34 +2995,136 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 												<textarea
 													value={basicSettingsForm.site_description}
 													onChange={(e) =>
-															setBasicSettingsForm((prev) => ({
-																...prev,
-																site_description: e.target.value,
-															}))
-														}
+														setBasicSettingsForm((prev) => ({
+															...prev,
+															site_description: e.target.value,
+														}))
+													}
 													rows={3}
 													placeholder={t("请输入站点描述")}
 													className="w-full px-3 py-2 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
 												/>
 											</div>
-											<div className="max-w-xs">
+											<div>
 												<label className="block text-sm text-text-2 mb-1">
-													{t("默认语言")}
+													{t("首页补充文案")}
 												</label>
-												<Select
-													value={basicSettingsForm.default_language}
-													onChange={(value) =>
+												<input
+													value={basicSettingsForm.home_tagline_text}
+													onChange={(e) =>
+														setBasicSettingsForm((prev) => ({
+															...prev,
+															home_tagline_text: e.target.value,
+														}))
+													}
+													placeholder={t("请输入首页补充文案（留空使用默认）")}
+													className="w-full h-9 px-3 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
+												/>
+											</div>
+											<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+												<div>
+													<label className="block text-sm text-text-2 mb-1">
+														{t("首页主按钮文案")}
+													</label>
+													<input
+														value={basicSettingsForm.home_primary_button_text}
+														onChange={(e) =>
+															setBasicSettingsForm((prev) => ({
+																...prev,
+																home_primary_button_text: e.target.value,
+															}))
+														}
+														placeholder={t("请输入按钮文案（留空使用默认）")}
+														className="w-full h-9 px-3 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
+													/>
+												</div>
+												<div>
+													<label className="block text-sm text-text-2 mb-1">
+														{t("首页主按钮链接")}
+													</label>
+													<input
+														value={basicSettingsForm.home_primary_button_url}
+														onChange={(e) =>
+															setBasicSettingsForm((prev) => ({
+																...prev,
+																home_primary_button_url: e.target.value,
+															}))
+														}
+														placeholder={t("请输入按钮链接（支持 /path 或 https://，留空使用默认）")}
+														className="w-full h-9 px-3 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
+													/>
+												</div>
+											</div>
+											<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+												<div>
+													<label className="block text-sm text-text-2 mb-1">
+														{t("首页副按钮文案")}
+													</label>
+													<input
+														value={basicSettingsForm.home_secondary_button_text}
+														onChange={(e) =>
+															setBasicSettingsForm((prev) => ({
+																...prev,
+																home_secondary_button_text: e.target.value,
+															}))
+														}
+														placeholder={t("请输入按钮文案（留空使用默认）")}
+														className="w-full h-9 px-3 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
+													/>
+												</div>
+												<div>
+													<label className="block text-sm text-text-2 mb-1">
+														{t("首页副按钮链接")}
+													</label>
+													<input
+														value={basicSettingsForm.home_secondary_button_url}
+														onChange={(e) =>
+															setBasicSettingsForm((prev) => ({
+																...prev,
+																home_secondary_button_url: e.target.value,
+															}))
+														}
+														placeholder={t("请输入按钮链接（支持 /path 或 https://，留空使用默认）")}
+														className="w-full h-9 px-3 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
+													/>
+												</div>
+											</div>
+											<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+												<div>
+													<label className="block text-sm text-text-2 mb-1">
+														{t("站点Logo地址")}
+													</label>
+													<input
+														value={basicSettingsForm.site_logo_url}
+														onChange={(e) =>
+															setBasicSettingsForm((prev) => ({
+																...prev,
+																site_logo_url: e.target.value,
+															}))
+														}
+														placeholder={t("可选，留空使用默认图标")}
+														className="w-full h-9 px-3 border border-border rounded-sm bg-surface text-text-2 text-sm placeholder:text-xs placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
+													/>
+												</div>
+												<div className="max-w-xs">
+													<label className="block text-sm text-text-2 mb-1">
+														{t("默认语言")}
+													</label>
+													<Select
+														value={basicSettingsForm.default_language}
+														onChange={(value) =>
 															setBasicSettingsForm((prev) => ({
 																...prev,
 																default_language: value as "zh-CN" | "en",
 															}))
 														}
-													options={[
-														{ value: "zh-CN", label: t("中文") },
-														{ value: "en", label: t("英文") },
-													]}
-													style={{ width: "100%" }}
-												/>
+														options={[
+															{ value: "zh-CN", label: t("中文") },
+															{ value: "en", label: t("英文") },
+														]}
+														style={{ width: "100%" }}
+													/>
+												</div>
 											</div>
 										</div>
 									)}

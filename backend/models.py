@@ -302,6 +302,12 @@ class AdminSettings(Base):
     site_name = Column(String, default="Lumina")
     site_description = Column(Text, default="信息灯塔")
     site_logo_url = Column(String, nullable=True)
+    home_badge_text = Column(Text, default="")
+    home_tagline_text = Column(Text, default="")
+    home_primary_button_text = Column(String, default="")
+    home_primary_button_url = Column(String, default="")
+    home_secondary_button_text = Column(String, default="")
+    home_secondary_button_url = Column(String, default="")
     created_at = Column(String, default=now_str)
     updated_at = Column(String, default=now_str)
 
@@ -414,6 +420,12 @@ def init_db():
                     ("site_name", "TEXT"),
                     ("site_description", "TEXT"),
                     ("site_logo_url", "TEXT"),
+                    ("home_badge_text", "TEXT"),
+                    ("home_tagline_text", "TEXT"),
+                    ("home_primary_button_text", "TEXT"),
+                    ("home_primary_button_url", "TEXT"),
+                    ("home_secondary_button_text", "TEXT"),
+                    ("home_secondary_button_url", "TEXT"),
                 ],
             )
             ensure_columns(

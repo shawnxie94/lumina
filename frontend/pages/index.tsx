@@ -12,6 +12,8 @@ import { useI18n } from '@/lib/i18n';
 
 const githubUrl = 'https://github.com/shawnxie94/lumina';
 
+const isExternalUrl = (url: string): boolean => /^(https?:\/\/)/.test(url);
+
 const formatDate = (date: string | null, language: 'zh-CN' | 'en'): string => {
   if (!date) return '';
   return new Date(date).toLocaleDateString(language === 'en' ? 'en-US' : 'zh-CN');
@@ -78,6 +80,12 @@ export default function HomePage() {
   const siteName = basicSettings.site_name || 'Lumina';
   const siteDescription = basicSettings.site_description || t('信息灯塔');
   const logoUrl = basicSettings.site_logo_url || '/logo.png';
+  const heroBadgeText = basicSettings.home_badge_text || t('信息灯塔');
+  const heroTaglineText = basicSettings.home_tagline_text || t('汇流万象，智能提纯，沉淀真知。');
+  const primaryButtonText = basicSettings.home_primary_button_text || t('浏览内容');
+  const primaryButtonUrl = basicSettings.home_primary_button_url || '/list';
+  const secondaryButtonText = basicSettings.home_secondary_button_text || t('了解更多');
+  const secondaryButtonUrl = basicSettings.home_secondary_button_url || githubUrl;
 
   return (
     <div className="min-h-screen bg-app flex flex-col">
@@ -104,29 +112,49 @@ export default function HomePage() {
 
           <section className="relative px-4 sm:px-6 lg:px-10 py-8 sm:py-12 min-h-[420px] flex items-center justify-center">
             <div className="max-w-md mx-auto text-center">
-              <div className="text-base text-text-3">{t('信息灯塔')}</div>
+              <div className="text-base text-text-3">{heroBadgeText}</div>
               <h1 className="mt-2 text-4xl sm:text-5xl font-semibold text-text-1">
                 {siteName}
               </h1>
               <p className="mt-3 text-xl text-text-2">{siteDescription}</p>
               <p className="mt-3 text-base text-text-3 leading-relaxed">
-                {t('汇流万象，智能提纯，沉淀真知。')}
+                {heroTaglineText}
               </p>
               <div className="mt-6 flex flex-wrap gap-3 justify-center">
-                <Link
-                  href="/list"
-                  className="inline-flex items-center justify-center rounded-full bg-primary px-5 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-primary-ink transition"
-                >
-                  {t('浏览内容')}
-                </Link>
-                <a
-                  href={githubUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center justify-center rounded-full border border-border bg-surface px-5 py-2.5 text-sm font-medium text-text-2 hover:bg-muted hover:text-text-1 transition"
-                >
-                  {t('了解更多')}
-                </a>
+                {isExternalUrl(primaryButtonUrl) ? (
+                  <a
+                    href={primaryButtonUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center justify-center rounded-full bg-primary px-5 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-primary-ink transition"
+                  >
+                    {primaryButtonText}
+                  </a>
+                ) : (
+                  <Link
+                    href={primaryButtonUrl}
+                    className="inline-flex items-center justify-center rounded-full bg-primary px-5 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-primary-ink transition"
+                  >
+                    {primaryButtonText}
+                  </Link>
+                )}
+                {isExternalUrl(secondaryButtonUrl) ? (
+                  <a
+                    href={secondaryButtonUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center justify-center rounded-full border border-border bg-surface px-5 py-2.5 text-sm font-medium text-text-2 hover:bg-muted hover:text-text-1 transition"
+                  >
+                    {secondaryButtonText}
+                  </a>
+                ) : (
+                  <Link
+                    href={secondaryButtonUrl}
+                    className="inline-flex items-center justify-center rounded-full border border-border bg-surface px-5 py-2.5 text-sm font-medium text-text-2 hover:bg-muted hover:text-text-1 transition"
+                  >
+                    {secondaryButtonText}
+                  </Link>
+                )}
               </div>
             </div>
           </section>
