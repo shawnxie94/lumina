@@ -592,6 +592,8 @@ export default function ArticleDetailPage() {
   const [editTopImage, setEditTopImage] = useState('');
   const [editContent, setEditContent] = useState('');
   const [saving, setSaving] = useState(false);
+  const editTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const editPreviewRef = useRef<HTMLDivElement>(null);
   const [mediaStorageEnabled, setMediaStorageEnabled] = useState(false);
   const [mediaStorageLoading, setMediaStorageLoading] = useState(false);
   const [mediaUploading, setMediaUploading] = useState(false);
@@ -810,6 +812,81 @@ export default function ArticleDetailPage() {
       media.removeEventListener('change', handleChange);
     };
   }, []);
+
+  useEffect(() => {
+    if (!article) return;
+    const detectImageLayout = () => {
+      if (!contentRef.current) return;
+      
+      const markPortraitImages = (images: Element[]) => {
+        images.forEach((img) => {
+          const htmlImg = img as HTMLImageElement;
+          const markAsPortrait = () => {
+            const aspectRatio = htmlImg.naturalWidth / htmlImg.naturalHeight;
+            if (aspectRatio < 1) {
+              htmlImg.setAttribute('data-aspect-ratio', 'portrait');
+            }
+          };
+          
+          if (htmlImg.complete) {
+            markAsPortrait();
+          } else {
+            htmlImg.addEventListener('load', markAsPortrait);
+          }
+        });
+      };
+      
+      const paragraphs = contentRef.current.querySelectorAll('p');
+      paragraphs.forEach((p) => {
+        const images = p.querySelectorAll('img');
+        if (images.length > 1) {
+          markPortraitImages(Array.from(images));
+        }
+      });
+      
+      const allImages = contentRef.current.querySelectorAll('img');
+      allImages.forEach((img, index) => {
+        const prevImg = allImages[index - 1];
+        const nextImg = allImages[index + 1];
+        
+        const isConsecutive = (a: Element, b: Element) => {
+          if (!a || !b) return false;
+          const aParent = a.parentElement;
+          const bParent = b.parentElement;
+          if (aParent === bParent && aParent?.tagName === 'P') return false;
+          
+          let current = aParent?.nextElementSibling;
+          while (current) {
+            if (current === bParent) return true;
+            if (current.tagName !== 'P') break;
+            const hasImg = current.querySelector('img');
+            if (!hasImg) break;
+            current = current.nextElementSibling;
+          }
+          return false;
+        };
+        
+        const hasConsecutiveNeighbor = isConsecutive(img, nextImg) || isConsecutive(prevImg, img);
+        
+        if (hasConsecutiveNeighbor) {
+          const htmlImg = img as HTMLImageElement;
+          const markAsPortrait = () => {
+            const aspectRatio = htmlImg.naturalWidth / htmlImg.naturalHeight;
+            if (aspectRatio < 1) {
+              htmlImg.setAttribute('data-aspect-ratio', 'portrait');
+            }
+          };
+          
+          if (htmlImg.complete) {
+            markAsPortrait();
+          } else {
+            htmlImg.addEventListener('load', markAsPortrait);
+          }
+        }
+      });
+    };
+    setTimeout(detectImageLayout, 300);
+  }, [article, renderedHtml]);
 
   useEffect(() => {
     if (id) {
@@ -2152,7 +2229,7 @@ export default function ArticleDetailPage() {
 				} flex-1`}
 			>
           <div className="flex flex-col lg:flex-row gap-6">
-            <div className={`flex-1 w-full bg-surface ${immersiveMode ? '' : 'rounded-sm shadow-sm border border-border p-4 sm:p-6'}`}>
+            <div className={`flex-1 w-full bg-surface ${immersiveMode ? '' : 'rounded-sm shadow-sm border border-border p-4 sm:p-6 max-w-4xl mx-auto lg:mx-0'}`}>
               {!immersiveMode && (
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
                   <div className="flex flex-wrap items-center gap-2">
@@ -2259,7 +2336,7 @@ export default function ArticleDetailPage() {
                 onClick={handleContentClick}
                 onMouseOver={handleContentMouseOver}
                 onMouseOut={handleContentMouseOut}
-                className={`prose prose-sm max-w-none prose-img:cursor-zoom-in prose-img:rounded-lg prose-img:border prose-img:border-gray-200 prose-img:bg-white prose-img:shadow-sm ${
+                className={`prose prose-sm max-w-none break-words overflow-x-auto prose-img:cursor-zoom-in prose-img:rounded-lg prose-img:border prose-img:border-gray-200 prose-img:bg-white prose-img:shadow-sm ${
                   immersiveMode
                     ? 'immersive-content'
                     : 'prose-img:max-w-full lg:prose-img:max-w-[420px]'
@@ -2944,13 +3021,13 @@ export default function ArticleDetailPage() {
 
       {showEditModal && (
         <div
-          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4"
         >
           <div
-            className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] flex flex-col"
+            className="bg-white rounded-lg shadow-xl w-full h-[95vh] flex flex-col"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="flex items-center justify-between p-4 border-b">
+            <div className="flex items-center justify-between p-4 border-b flex-shrink-0">
               <h3 className="text-lg font-semibold text-gray-900">
                 {t('编辑文章')}
               </h3>
@@ -2962,151 +3039,190 @@ export default function ArticleDetailPage() {
               </button>
             </div>
 
-            <div className="p-4 space-y-4 overflow-y-auto flex-1">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  {t('标题')}
-                </label>
-                <input
-                  type="text"
-                  value={editTitle}
-                  onChange={(e) => setEditTitle(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
+            <div className="flex-1 overflow-hidden">
+              <div className="grid grid-cols-1 lg:grid-cols-2 h-full">
+                {/* 左侧编辑区 */}
+                <div className="p-4 flex flex-col h-full border-r border-gray-200">
+                  <div className="space-y-4 flex-shrink-0">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        {t('标题')}
+                      </label>
+                      <input
+                        type="text"
+                        value={editTitle}
+                        onChange={(e) => setEditTitle(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    {t('作者')}
-                  </label>
-                  <input
-                    type="text"
-                    value={editAuthor}
-                    onChange={(e) => setEditAuthor(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    {t('分类')}
-                  </label>
-                  <Select
-                    value={editCategoryId}
-                    onChange={(value) => setEditCategoryId(value)}
-                    className="select-modern-antd w-full"
-                    popupClassName="select-modern-dropdown"
-                    loading={categoriesLoading}
-                    options={[
-                      { value: '', label: t('未分类') },
-                      ...categories.map((category) => ({
-                        value: category.id,
-                        label: category.name,
-                      })),
-                    ]}
-                  />
-                </div>
-              </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          {t('作者')}
+                        </label>
+                        <input
+                          type="text"
+                          value={editAuthor}
+                          onChange={(e) => setEditAuthor(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          {t('分类')}
+                        </label>
+                        <Select
+                          value={editCategoryId}
+                          onChange={(value) => setEditCategoryId(value)}
+                          className="select-modern-antd w-full"
+                          popupClassName="select-modern-dropdown"
+                          loading={categoriesLoading}
+                          options={[
+                            { value: '', label: t('未分类') },
+                            ...categories.map((category) => ({
+                              value: category.id,
+                              label: category.name,
+                            })),
+                          ]}
+                        />
+                      </div>
+                    </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  {t('头图 URL')}
-                </label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={editTopImage}
-                    onChange={(e) => setEditTopImage(e.target.value)}
-                    onPaste={handleTopImagePaste}
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder={t("输入图片 URL")}
-                  />
-                  <IconButton
-                    onClick={handleConvertTopImage}
-                    disabled={mediaStorageLoading || mediaUploading || !mediaStorageEnabled}
-                    title={
-                      mediaStorageEnabled
-                        ? t("转存为本地文件")
-                        : t("未开启本地图片存储")
-                    }
-                    variant="ghost"
-                    size="md"
-                    className="hover:bg-muted"
-                  >
-                    <IconLink className="h-4 w-4" />
-                  </IconButton>
-                </div>
-                {!mediaStorageEnabled && (
-                  <div className="text-xs text-gray-500 mt-1">
-                    {t("未开启本地存储，头图将保持外链")}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        {t('头图 URL')}
+                      </label>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={editTopImage}
+                          onChange={(e) => setEditTopImage(e.target.value)}
+                          onPaste={handleTopImagePaste}
+                          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder={t("输入图片 URL")}
+                        />
+                        <IconButton
+                          onClick={handleConvertTopImage}
+                          disabled={mediaStorageLoading || mediaUploading || !mediaStorageEnabled}
+                          title={
+                            mediaStorageEnabled
+                              ? t("转存为本地文件")
+                              : t("未开启本地图片存储")
+                          }
+                          variant="ghost"
+                          size="md"
+                          className="hover:bg-muted"
+                        >
+                          <IconLink className="h-4 w-4" />
+                        </IconButton>
+                      </div>
+                      {!mediaStorageEnabled && (
+                        <div className="text-xs text-gray-500 mt-1">
+                          {t("未开启本地存储，头图将保持外链")}
+                        </div>
+                      )}
+                    </div>
+
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="block text-sm font-medium text-gray-700">
+                          {t('内容（Markdown）')}
+                        </label>
+                        <div className="flex items-center gap-2">
+                            <IconButton
+                              onClick={handleBatchConvertMarkdownImages}
+                              disabled={mediaUploading || !mediaStorageEnabled}
+                              title={
+                                mediaStorageEnabled
+                                  ? t('扫描并转存外链图片')
+                                  : t('未开启本地图片存储')
+                              }
+                              variant="ghost"
+                              size="md"
+                              className="hover:bg-muted"
+                            >
+                              <IconLink className="h-4 w-4" />
+                            </IconButton>
+                        </div>
+                      </div>
+                      {!mediaStorageEnabled && (
+                        <div className="text-xs text-gray-500 mb-2">
+                          {t('未开启本地存储，外链将保持不变')}
+                          </div>
+                      )}
+                    </div>
                   </div>
-                )}
-                {editTopImage && (
-                  <div className="mt-2">
-                    <img
-                      src={resolveMediaUrl(editTopImage)}
-                      alt={t("头图预览")}
-                      className="max-h-32 rounded-lg object-cover"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).style.display = 'none';
-                      }}
-                    />
-                  </div>
-                )}
-              </div>
 
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="block text-sm font-medium text-gray-700">
-                    {t('内容（Markdown）')}
-                  </label>
-                  <div className="flex items-center gap-2">
-                      <IconButton
-                        onClick={handleBatchConvertMarkdownImages}
-                        disabled={mediaUploading || !mediaStorageEnabled}
-                        title={
-                          mediaStorageEnabled
-                          ? t('扫描并转存外链图片')
-                          : t('未开启本地图片存储')
+                  <textarea
+                    ref={editTextareaRef}
+                    value={editContent}
+                    onChange={(e) => setEditContent(e.target.value)}
+                    onPaste={handleEditPaste}
+                    onScroll={() => {
+                      if (editTextareaRef.current && editPreviewRef.current) {
+                        const textarea = editTextareaRef.current;
+                        const preview = editPreviewRef.current;
+                        const scrollRatio = textarea.scrollTop / (textarea.scrollHeight - textarea.clientHeight);
+                        preview.scrollTop = scrollRatio * (preview.scrollHeight - preview.clientHeight);
                       }
-                      variant="ghost"
-                      size="md"
-                      className="hover:bg-muted"
+                    }}
+                    className="flex-1 w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm resize-none min-h-[200px]"
+                    placeholder={t('在此输入 Markdown 内容...')}
+                  />
+
+                  <div className="flex justify-end gap-2 pt-4 border-t flex-shrink-0">
+                    <button
+                      onClick={() => setShowEditModal(false)}
+                      className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
+                      disabled={saving}
                     >
-                      <IconLink className="h-4 w-4" />
-                    </IconButton>
+                      {t('取消')}
+                    </button>
+                    <button
+                      onClick={handleSaveEdit}
+                      disabled={saving}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
+                    >
+                      {saving ? t('保存中...') : t('保存')}
+                    </button>
                   </div>
                 </div>
-                {!mediaStorageEnabled && (
-                  <div className="text-xs text-gray-500 mb-2">
-                    {t('未开启本地存储，外链将保持不变')}
-                  </div>
-                )}
-                <textarea
-                  value={editContent}
-                  onChange={(e) => setEditContent(e.target.value)}
-                  onPaste={handleEditPaste}
-                  rows={15}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
-                />
-              </div>
-            </div>
 
-            <div className="flex justify-end gap-2 p-4 border-t bg-gray-50 rounded-b-lg">
-              <button
-                onClick={() => setShowEditModal(false)}
-                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
-                disabled={saving}
-              >
-                {t('取消')}
-              </button>
-              <button
-                onClick={handleSaveEdit}
-                disabled={saving}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
-              >
-                {saving ? t('保存中...') : t('保存')}
-              </button>
+                <div
+                  ref={editPreviewRef}
+                  onScroll={() => {
+                    if (editTextareaRef.current && editPreviewRef.current) {
+                      const textarea = editTextareaRef.current;
+                      const preview = editPreviewRef.current;
+                      const scrollRatio = preview.scrollTop / (preview.scrollHeight - preview.clientHeight);
+                      textarea.scrollTop = scrollRatio * (textarea.scrollHeight - textarea.clientHeight);
+                    }
+                  }}
+                  className="bg-gray-50 overflow-y-auto h-full hidden lg:block"
+                >
+                  <div className="max-w-3xl mx-auto bg-white min-h-full shadow-sm">
+                    {editTopImage && (
+                      <div className="relative w-full aspect-[21/9] overflow-hidden">
+                        <img
+                          src={resolveMediaUrl(editTopImage)}
+                          alt={editTitle}
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = 'none';
+                          }}
+                        />
+                      </div>
+                    )}
+                    <article className="p-6">
+                      <div
+                        className="prose prose-sm max-w-none"
+                        dangerouslySetInnerHTML={{ __html: marked(editContent || '') }}
+                      />
+                    </article>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>

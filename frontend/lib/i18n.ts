@@ -342,7 +342,7 @@ const translations: Record<Language, Record<string | number, string>> = {
 		关闭: "Close",
 		回复: "Reply",
 		清空筛选: "Clear filters",
-		查看更多: "View more",
+		查看更多: "View more...",
 		语言: "Language",
 		跟随系统默认: "Follow system default",
 		中文: "Chinese",

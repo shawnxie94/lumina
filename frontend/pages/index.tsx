@@ -204,7 +204,7 @@ export default function HomePage() {
               href="/list"
               className="inline-flex items-center justify-center rounded-full border border-border bg-surface px-6 py-2.5 text-sm font-medium text-text-2 hover:bg-primary hover:text-white hover:border-primary transition"
             >
-              {t('查看更多')}
+              {t('查看更多...')}
             </Link>
           </div>
         </section>

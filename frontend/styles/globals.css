@@ -2,6 +2,13 @@
 @tailwind components;
 @tailwind utilities;
 
+/* 竖图（宽高比小于1）最大宽度限制为一半 - 仅在 LG 及以上屏幕 */
+@media (min-width: 1024px) {
+  .prose img[data-aspect-ratio="portrait"] {
+    max-width: 210px;
+  }
+}
+
 :root {
   --bg-app: #f7f7f8;
   --bg-surface: #ffffff;
