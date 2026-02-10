@@ -1,0 +1,225 @@
+import uuid
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+
+from app.core.dependencies import (
+    build_basic_settings,
+    ensure_nextauth_secret,
+    get_admin_or_internal,
+    validate_home_button_url,
+)
+from app.schemas import (
+    BasicSettingsUpdate,
+    CommentSettingsUpdate,
+    RecommendationSettingsUpdate,
+    StorageSettingsUpdate,
+)
+from auth import get_admin_settings, get_current_admin
+from models import get_db, now_str
+
+router = APIRouter()
+
+
+@router.get("/api/settings/basic")
+async def get_basic_settings(
+    _: bool = Depends(get_admin_or_internal),
+    db: Session = Depends(get_db),
+):
+    admin = get_admin_settings(db)
+    if admin is None:
+        raise HTTPException(status_code=404, detail="未初始化管理员设置")
+    return build_basic_settings(admin)
+
+
+@router.put("/api/settings/basic")
+async def update_basic_settings(
+    payload: BasicSettingsUpdate,
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
+    admin = get_admin_settings(db)
+    if admin is None:
+        raise HTTPException(status_code=404, detail="未初始化管理员设置")
+    if payload.default_language is not None:
+        if payload.default_language not in ("zh-CN", "en"):
+            raise HTTPException(status_code=400, detail="默认语言仅支持 zh-CN 或 en")
+        admin.default_language = payload.default_language
+    if payload.site_name is not None:
+        admin.site_name = payload.site_name or "Lumina"
+    if payload.site_description is not None:
+        admin.site_description = payload.site_description or "信息灯塔"
+    if payload.site_logo_url is not None:
+        admin.site_logo_url = payload.site_logo_url or ""
+    if payload.home_badge_text is not None:
+        admin.home_badge_text = payload.home_badge_text or ""
+    if payload.home_tagline_text is not None:
+        admin.home_tagline_text = payload.home_tagline_text or ""
+    if payload.home_primary_button_text is not None:
+        admin.home_primary_button_text = payload.home_primary_button_text or ""
+    if payload.home_primary_button_url is not None:
+        admin.home_primary_button_url = validate_home_button_url(
+            payload.home_primary_button_url,
+            "首页主按钮链接",
+        )
+    if payload.home_secondary_button_text is not None:
+        admin.home_secondary_button_text = payload.home_secondary_button_text or ""
+    if payload.home_secondary_button_url is not None:
+        admin.home_secondary_button_url = validate_home_button_url(
+            payload.home_secondary_button_url,
+            "首页副按钮链接",
+        )
+    admin.updated_at = now_str()
+    db.commit()
+    db.refresh(admin)
+    return {"success": True}
+
+
+@router.get("/api/settings/basic/public")
+async def get_basic_settings_public(db: Session = Depends(get_db)):
+    admin = get_admin_settings(db)
+    return build_basic_settings(admin)
+
+
+@router.get("/api/settings/comments")
+async def get_comment_settings(
+    _: bool = Depends(get_admin_or_internal),
+    db: Session = Depends(get_db),
+):
+    admin = get_admin_settings(db)
+    if admin is None:
+        raise HTTPException(status_code=404, detail="未初始化管理员设置")
+    secret = ensure_nextauth_secret(db, admin)
+    return {
+        "comments_enabled": bool(admin.comments_enabled),
+        "github_client_id": admin.github_client_id or "",
+        "github_client_secret": admin.github_client_secret or "",
+        "google_client_id": admin.google_client_id or "",
+        "google_client_secret": admin.google_client_secret or "",
+        "nextauth_secret": secret or "",
+        "sensitive_filter_enabled": bool(admin.sensitive_filter_enabled),
+        "sensitive_words": admin.sensitive_words or "",
+    }
+
+
+@router.put("/api/settings/comments")
+async def update_comment_settings(
+    payload: CommentSettingsUpdate,
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
+    admin = get_admin_settings(db)
+    if admin is None:
+        raise HTTPException(status_code=404, detail="未初始化管理员设置")
+    if payload.comments_enabled is not None:
+        admin.comments_enabled = bool(payload.comments_enabled)
+    if payload.github_client_id is not None:
+        admin.github_client_id = payload.github_client_id or ""
+    if payload.github_client_secret is not None:
+        admin.github_client_secret = payload.github_client_secret or ""
+    if payload.google_client_id is not None:
+        admin.google_client_id = payload.google_client_id or ""
+    if payload.google_client_secret is not None:
+        admin.google_client_secret = payload.google_client_secret or ""
+    if payload.nextauth_secret is not None:
+        admin.nextauth_secret = payload.nextauth_secret or ""
+    if payload.sensitive_filter_enabled is not None:
+        admin.sensitive_filter_enabled = bool(payload.sensitive_filter_enabled)
+    if payload.sensitive_words is not None:
+        admin.sensitive_words = payload.sensitive_words or ""
+    if not admin.nextauth_secret:
+        admin.nextauth_secret = uuid.uuid4().hex + uuid.uuid4().hex
+    admin.updated_at = now_str()
+    db.commit()
+    db.refresh(admin)
+    return {"success": True}
+
+
+@router.get("/api/settings/comments/public")
+async def get_comment_settings_public(db: Session = Depends(get_db)):
+    admin = get_admin_settings(db)
+    return {
+        "comments_enabled": bool(admin.comments_enabled) if admin else True,
+        "providers": {
+            "github": bool(admin.github_client_id) if admin else False,
+            "google": bool(admin.google_client_id) if admin else False,
+        },
+    }
+
+
+@router.get("/api/settings/storage")
+async def get_storage_settings(
+    _: bool = Depends(get_admin_or_internal),
+    db: Session = Depends(get_db),
+):
+    admin = get_admin_settings(db)
+    if admin is None:
+        raise HTTPException(status_code=404, detail="未初始化管理员设置")
+    return {
+        "media_storage_enabled": bool(admin.media_storage_enabled),
+        "media_compress_threshold": admin.media_compress_threshold
+        if admin.media_compress_threshold is not None
+        else 1536 * 1024,
+        "media_max_dim": admin.media_max_dim if admin.media_max_dim is not None else 2000,
+        "media_webp_quality": admin.media_webp_quality
+        if admin.media_webp_quality is not None
+        else 80,
+    }
+
+
+@router.put("/api/settings/storage")
+async def update_storage_settings(
+    payload: StorageSettingsUpdate,
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
+    admin = get_admin_settings(db)
+    if admin is None:
+        raise HTTPException(status_code=404, detail="未初始化管理员设置")
+    if payload.media_storage_enabled is not None:
+        admin.media_storage_enabled = bool(payload.media_storage_enabled)
+    if payload.media_compress_threshold is not None:
+        admin.media_compress_threshold = max(
+            256 * 1024, payload.media_compress_threshold
+        )
+    if payload.media_max_dim is not None:
+        admin.media_max_dim = max(600, payload.media_max_dim)
+    if payload.media_webp_quality is not None:
+        admin.media_webp_quality = min(95, max(30, payload.media_webp_quality))
+    admin.updated_at = now_str()
+    db.commit()
+    db.refresh(admin)
+    return {"success": True}
+
+
+@router.get("/api/settings/recommendations")
+async def get_recommendation_settings(
+    _: bool = Depends(get_admin_or_internal),
+    db: Session = Depends(get_db),
+):
+    admin = get_admin_settings(db)
+    if admin is None:
+        raise HTTPException(status_code=404, detail="未初始化管理员设置")
+    return {
+        "recommendations_enabled": bool(admin.recommendations_enabled),
+        "recommendation_model_config_id": admin.recommendation_model_config_id or "",
+    }
+
+
+@router.put("/api/settings/recommendations")
+async def update_recommendation_settings(
+    payload: RecommendationSettingsUpdate,
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
+    admin = get_admin_settings(db)
+    if admin is None:
+        raise HTTPException(status_code=404, detail="未初始化管理员设置")
+    if payload.recommendations_enabled is not None:
+        admin.recommendations_enabled = bool(payload.recommendations_enabled)
+    if payload.recommendation_model_config_id is not None:
+        admin.recommendation_model_config_id = payload.recommendation_model_config_id or ""
+    admin.updated_at = now_str()
+    db.commit()
+    db.refresh(admin)
+    return {"success": True}
