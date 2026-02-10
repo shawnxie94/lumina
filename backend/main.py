@@ -1345,9 +1345,33 @@ async def delete_comment(comment_id: str, db: Session = Depends(get_db)):
     comment = db.query(ArticleComment).filter(ArticleComment.id == comment_id).first()
     if not comment:
         raise HTTPException(status_code=404, detail="评论不存在")
+
+    deleted = 1
+    if comment.reply_to_id is None:
+        pending_parent_ids = [comment.id]
+        descendant_ids: list[str] = []
+        while pending_parent_ids:
+            child_rows = (
+                db.query(ArticleComment.id)
+                .filter(ArticleComment.reply_to_id.in_(pending_parent_ids))
+                .all()
+            )
+            child_ids = [row[0] for row in child_rows]
+            if not child_ids:
+                break
+            descendant_ids.extend(child_ids)
+            pending_parent_ids = child_ids
+
+        if descendant_ids:
+            deleted += (
+                db.query(ArticleComment)
+                .filter(ArticleComment.id.in_(descendant_ids))
+                .delete(synchronize_session=False)
+            )
+
     db.delete(comment)
     db.commit()
-    return {"success": True}
+    return {"success": True, "deleted": deleted}
 
 
 @app.put("/api/comments/{comment_id}/visibility")
@@ -1511,6 +1535,13 @@ async def batch_delete_articles(
         .all()
     ]
     cleanup_media_assets(db, article_ids)
+    if article_ids:
+        db.query(ArticleComment).filter(
+            ArticleComment.article_id.in_(article_ids)
+        ).delete(synchronize_session=False)
+        db.query(ArticleEmbedding).filter(
+            ArticleEmbedding.article_id.in_(article_ids)
+        ).delete(synchronize_session=False)
     deleted = (
         db.query(Article)
         .filter(Article.slug.in_(request.article_slugs))
