@@ -24,7 +24,7 @@ Article Database System: Next.js 14 frontend (pages router) + FastAPI backend + 
 | Backend API routers | `backend/app/api/routers/` | Routers split by domain, URLs unchanged |
 | Backend dependencies/middleware | `backend/app/core/dependencies.py` `backend/app/core/http.py` | Shared auth/internal/cors/request-id logic |
 | Backend domain services | `backend/app/domain/` | Query/command/AI/task split |
-| Legacy compatibility layer | `backend/app/legacy/` | Transitional old route/service modules |
+| Route contract baseline | `backend/scripts/route_contract_baseline.json` | API signature regression baseline for modular routers |
 | DB models + init | `backend/models.py` | Models + DB setup + defaults |
 | AI worker loop | `backend/worker.py` | Background task processor |
 | Frontend list page | `frontend/pages/index.tsx` | Filters, batch ops, pagination |

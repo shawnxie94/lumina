@@ -26,6 +26,10 @@ class ArticleUpdate(BaseModel):
     category_id: Optional[str] = None
 
 
+class ArticleVisibilityUpdate(BaseModel):
+    is_visible: bool
+
+
 class ArticleBatchVisibility(BaseModel):
     article_slugs: list[str]
     is_visible: bool

@@ -13,6 +13,7 @@ from app.schemas.article import (
     ArticleCreate,
     ArticleNotesUpdate,
     ArticleUpdate,
+    ArticleVisibilityUpdate,
     ExportRequest,
 )
 from app.schemas.category import CategoryCreate, CategorySortItem, CategorySortRequest
@@ -34,6 +35,7 @@ __all__ = [
     "ArticleCreate",
     "ArticleNotesUpdate",
     "ArticleUpdate",
+    "ArticleVisibilityUpdate",
     "BasicSettingsUpdate",
     "CategoryCreate",
     "CategorySortItem",

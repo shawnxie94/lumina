@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check route coverage between modular app routers and legacy routes.
+"""Check route coverage between modular app routers and route contract baseline.
 
 Usage:
   cd backend
@@ -9,6 +9,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from collections import Counter
 from dataclasses import dataclass
@@ -20,8 +21,9 @@ BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-from app.legacy.legacy_main import app as legacy_app
 from app.main import app as modular_app
+
+BASELINE_DEFAULT_PATH = BACKEND_DIR / "scripts" / "route_contract_baseline.json"
 
 
 @dataclass(frozen=True, order=True)
@@ -47,6 +49,18 @@ def collect_routes(app) -> tuple[set[RouteKey], Counter[RouteKey]]:
     return set(keys), Counter(keys)
 
 
+def load_baseline_routes(baseline_path: Path) -> tuple[set[RouteKey], Counter[RouteKey]]:
+    raw = json.loads(baseline_path.read_text(encoding="utf-8"))
+    keys: list[RouteKey] = []
+    for item in raw:
+        path = item.get("path")
+        methods = tuple(item.get("methods") or [])
+        if not isinstance(path, str):
+            raise ValueError("route baseline item missing path")
+        keys.append(RouteKey(path=path, methods=methods))
+    return set(keys), Counter(keys)
+
+
 def print_routes(title: str, keys: list[RouteKey]) -> None:
     print(title)
     for key in keys:
@@ -61,23 +75,33 @@ def main() -> int:
         action="store_true",
         help="Print all missing/extra/duplicate route signatures",
     )
+    parser.add_argument(
+        "--baseline",
+        default=str(BASELINE_DEFAULT_PATH),
+        help="Route contract baseline json file path",
+    )
     args = parser.parse_args()
 
-    legacy_routes, legacy_counter = collect_routes(legacy_app)
+    baseline_path = Path(args.baseline)
+    if not baseline_path.exists():
+        print(f"FAIL: baseline file not found: {baseline_path}")
+        return 1
+
+    baseline_routes, baseline_counter = load_baseline_routes(baseline_path)
     modular_routes, modular_counter = collect_routes(modular_app)
 
-    missing = sorted(legacy_routes - modular_routes)
-    extra = sorted(modular_routes - legacy_routes)
-    legacy_dupes = sorted([key for key, count in legacy_counter.items() if count > 1])
+    missing = sorted(baseline_routes - modular_routes)
+    extra = sorted(modular_routes - baseline_routes)
+    baseline_dupes = sorted([key for key, count in baseline_counter.items() if count > 1])
     modular_dupes = sorted([key for key, count in modular_counter.items() if count > 1])
 
     print("Route coverage check")
-    print(f"  legacy routes : {len(legacy_routes)}")
-    print(f"  modular routes: {len(modular_routes)}")
-    print(f"  missing       : {len(missing)}")
-    print(f"  extra         : {len(extra)}")
-    print(f"  legacy dupes  : {len(legacy_dupes)}")
-    print(f"  modular dupes : {len(modular_dupes)}")
+    print(f"  baseline routes: {len(baseline_routes)}")
+    print(f"  modular routes : {len(modular_routes)}")
+    print(f"  missing        : {len(missing)}")
+    print(f"  extra          : {len(extra)}")
+    print(f"  baseline dupes : {len(baseline_dupes)}")
+    print(f"  modular dupes  : {len(modular_dupes)}")
 
     if args.verbose and missing:
         print_routes("Missing routes in modular app:", missing)
@@ -86,13 +110,13 @@ def main() -> int:
     if args.verbose and modular_dupes:
         print_routes("Duplicate signatures in modular app:", modular_dupes)
 
-    has_error = bool(missing or extra or modular_dupes or legacy_dupes)
+    has_error = bool(missing or extra or modular_dupes or baseline_dupes)
     if has_error:
         print("\nFAIL: route coverage mismatch detected.")
         print("Tip: run with --verbose to inspect route signatures.")
         return 1
 
-    print("\nPASS: modular routes fully cover legacy API signatures.")
+    print("\nPASS: modular routes fully cover route contract baseline.")
     return 0
 
 

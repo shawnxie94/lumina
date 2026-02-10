@@ -2,7 +2,6 @@ import json
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.schemas import (
@@ -12,6 +11,7 @@ from app.schemas import (
     ArticleCreate,
     ArticleNotesUpdate,
     ArticleUpdate,
+    ArticleVisibilityUpdate,
 )
 from app.domain.ai_task_service import AITaskService
 from app.domain.article_command_service import ArticleCommandService
@@ -29,10 +29,6 @@ article_embedding_service = ArticleEmbeddingService()
 
 SIMILAR_ARTICLE_CANDIDATE_LIMIT = 500
 CATEGORY_SIMILARITY_BOOST = 0.05
-
-
-class VisibilityUpdate(BaseModel):
-    is_visible: bool
 
 
 @router.post("/api/articles")
@@ -481,7 +477,7 @@ async def batch_delete_articles(
 @router.put("/api/articles/{article_slug}/visibility")
 async def update_article_visibility(
     article_slug: str,
-    data: VisibilityUpdate,
+    data: ArticleVisibilityUpdate,
     db: Session = Depends(get_db),
     _: bool = Depends(get_current_admin),
 ):

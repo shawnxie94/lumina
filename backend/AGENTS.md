@@ -14,10 +14,9 @@ backend/
 │   │   └── routers/             # Domain routers (auth/settings/articles/...)
 │   ├── core/                    # Shared dependencies and HTTP middleware setup
 │   ├── domain/                  # Split service layer (query/command/ai/task)
-│   ├── schemas/                 # Shared Pydantic request models
-│   └── legacy/                  # Temporary compatibility modules
+│   └── schemas/                 # Shared Pydantic request models
 ├── models.py                    # ORM models + DB init + defaults
-├── article_service.py           # Compatibility facade to legacy service
+├── article_service.py           # Compatibility facade to split domain services
 ├── auth.py                      # JWT auth helpers
 ├── worker.py                    # Background AI task loop
 └── ai_client.py                 # OpenAI client wrapper
@@ -31,8 +30,8 @@ backend/
 | Shared dependency helpers | `backend/app/core/dependencies.py` | Auth/internal access/date helpers |
 | Middleware/CORS setup | `backend/app/core/http.py` | Request-id logging and CORS config |
 | Domain business logic | `backend/app/domain/` | Query/command/AI pipeline/task split |
-| DB schema or defaults | `backend/models.py` | Models + seed defaults |
-| Legacy compatibility | `backend/app/legacy/` | Transitional source of old routes/services |
+| Request/response schemas | `backend/app/schemas/` | Reuse schema types across routers |
+| Route contract baseline | `backend/scripts/route_contract_baseline.json` | Guard for API signature coverage |
 | Worker orchestration | `backend/worker.py` | Uses `app.domain.ai_task_service` |
 
 ## CONVENTIONS
@@ -42,11 +41,12 @@ backend/
 - Keep `main.py` entrypoint stable for `uvicorn main:app` and Docker.
 
 ## ANTI-PATTERNS
-- Do not add new routes directly into `backend/app/legacy/legacy_main.py`.
+- Do not add new routes outside `backend/app/api/routers/`.
+- Do not reintroduce duplicated request models in router files.
 
 ## COMMANDS
 ```bash
-# Route coverage guard (modular routers vs legacy routes)
+# Route coverage guard (modular routers vs route contract baseline)
 cd backend
 python scripts/check_route_coverage.py --verbose
 

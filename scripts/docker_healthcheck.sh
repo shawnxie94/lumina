@@ -45,7 +45,7 @@ log "检查列表页筛选依赖接口"
 curl -fsS "$API_URL/api/sources" >/dev/null
 curl -fsS "$API_URL/api/authors" >/dev/null
 
-log "执行路由覆盖检查（modular vs legacy）"
+log "执行路由覆盖检查（modular vs baseline）"
 "$COMPOSE_CMD" exec -T api python /app/scripts/check_route_coverage.py --verbose
 
 log "健康检查通过"

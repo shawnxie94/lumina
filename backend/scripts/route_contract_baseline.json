@@ -1,0 +1,422 @@
+[
+  {
+    "path": "/",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/ai-tasks",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/ai-tasks/cancel",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/ai-tasks/retry",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/ai-tasks/{task_id}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/ai-tasks/{task_id}/timeline",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/ai-usage",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/ai-usage/summary",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/articles",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/articles",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/articles/batch/category",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/articles/batch/delete",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/articles/batch/visibility",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/articles/search",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/articles/{article_slug}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/articles/{article_slug}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/articles/{article_slug}",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/articles/{article_slug}/comments",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/articles/{article_slug}/comments",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/articles/{article_slug}/embedding",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/articles/{article_slug}/generate/{content_type}",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/articles/{article_slug}/notes",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/articles/{article_slug}/retry",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/articles/{article_slug}/retry-translation",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/articles/{article_slug}/similar",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/articles/{article_slug}/visibility",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/auth/login",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/auth/password",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/auth/setup",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/auth/status",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/auth/verify",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/authors",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/categories",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/categories",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/categories/sort",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/categories/stats",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/categories/{category_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/categories/{category_id}",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/comments",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/comments/{comment_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/comments/{comment_id}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/comments/{comment_id}",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/comments/{comment_id}/visibility",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/export",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/media/cleanup",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/media/ingest",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/media/upload",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/model-api-configs",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/model-api-configs",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/model-api-configs/models",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/model-api-configs/{config_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/model-api-configs/{config_id}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/model-api-configs/{config_id}",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/model-api-configs/{config_id}/test",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/prompt-configs",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/prompt-configs",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/prompt-configs/{config_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/prompt-configs/{config_id}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/prompt-configs/{config_id}",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/settings/basic",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/settings/basic",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/settings/basic/public",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/settings/comments",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/settings/comments",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/settings/comments/public",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/settings/recommendations",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/settings/recommendations",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/settings/storage",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/settings/storage",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/sources",
+    "methods": [
+      "GET"
+    ]
+  }
+]

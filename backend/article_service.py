@@ -1,3 +1,7 @@
+from app.domain.article_ai_pipeline_service import (
+    ArticleAIPipelineService,
+    build_parameters,
+)
 from app.domain.article_embedding_service import (
     EMBEDDING_TEXT_LIMIT,
     LOCAL_EMBEDDING_MODEL_NAME,
@@ -5,22 +9,19 @@ from app.domain.article_embedding_service import (
     get_local_embedding_model,
 )
 from app.domain.article_query_service import ArticleQueryService
-from app.legacy.legacy_article_service import (
-    ArticleService as LegacyArticleService,
-    build_parameters,
-)
 from sqlalchemy.orm import Session
 
 
 class ArticleService:
-    """兼容门面：对外保留原 ArticleService 接口，已迁移能力优先走新领域服务。"""
+    """兼容门面：对外保留原 ArticleService 接口，内部委托新领域服务。"""
 
     def __init__(self, current_task_id: str | None = None):
-        self._legacy = LegacyArticleService(current_task_id=current_task_id)
+        self.current_task_id = current_task_id
         self._query_service = ArticleQueryService()
         self._embedding_service = ArticleEmbeddingService()
         self._task_service = None
         self._command_service = None
+        self._ai_pipeline_service = None
 
     def _get_task_service(self):
         if self._task_service is None:
@@ -37,6 +38,14 @@ class ArticleService:
                 ai_task_service=self._get_task_service()
             )
         return self._command_service
+
+    def _get_ai_pipeline_service(self):
+        if self._ai_pipeline_service is None:
+            self._ai_pipeline_service = ArticleAIPipelineService(
+                current_task_id=self.current_task_id,
+                enqueue_task_func=self._get_task_service().enqueue_task,
+            )
+        return self._ai_pipeline_service
 
     def get_articles(self, db: Session, **kwargs):
         return self._query_service.get_articles(db=db, **kwargs)
@@ -101,7 +110,17 @@ class ArticleService:
         return self._embedding_service.cosine_similarity(vector_a, vector_b)
 
     def __getattr__(self, item):
-        return getattr(self._legacy, item)
+        services = (
+            self._query_service,
+            self._embedding_service,
+            self._get_task_service(),
+            self._get_command_service(),
+            self._get_ai_pipeline_service(),
+        )
+        for service in services:
+            if hasattr(service, item):
+                return getattr(service, item)
+        raise AttributeError(f"{self.__class__.__name__!s} object has no attribute {item!r}")
 
 
 __all__ = [
