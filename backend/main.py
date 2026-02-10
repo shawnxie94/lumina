@@ -8,7 +8,7 @@ import ipaddress
 from fastapi import FastAPI, HTTPException, Depends, Request, UploadFile, File, Form
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, validator
 from typing import Optional, List
 from datetime import datetime, timezone
 from models import (
@@ -358,6 +358,13 @@ class ModelAPIConfigBase(BaseModel):
     currency: Optional[str] = None
     is_enabled: bool = True
     is_default: bool = False
+
+    @validator("name")
+    def validate_name(cls, value: str) -> str:
+        trimmed = value.strip()
+        if not trimmed:
+            raise ValueError("模型API配置名称不能为空")
+        return trimmed
 
 
 class PromptConfigBase(BaseModel):

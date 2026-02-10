@@ -98,6 +98,160 @@ type SettingSection =
 type AISubSection = "model-api" | "prompt" | "recommendations";
 type MonitoringSubSection = "tasks" | "ai-usage" | "comments";
 type CommentSubSection = "keys" | "filters";
+
+type AdminRouteState = {
+	section: SettingSection;
+	aiSubSection: AISubSection;
+	monitoringSubSection: MonitoringSubSection;
+	commentSubSection: CommentSubSection;
+};
+
+const AI_SUB_SECTIONS: AISubSection[] = [
+	"model-api",
+	"prompt",
+	"recommendations",
+];
+const MONITORING_SUB_SECTIONS: MonitoringSubSection[] = [
+	"tasks",
+	"ai-usage",
+	"comments",
+];
+const COMMENT_SUB_SECTIONS: CommentSubSection[] = ["keys", "filters"];
+
+const isAISubSection = (value: string): value is AISubSection =>
+	AI_SUB_SECTIONS.includes(value as AISubSection);
+const isMonitoringSubSection = (value: string): value is MonitoringSubSection =>
+	MONITORING_SUB_SECTIONS.includes(value as MonitoringSubSection);
+const isCommentSubSection = (value: string): value is CommentSubSection =>
+	COMMENT_SUB_SECTIONS.includes(value as CommentSubSection);
+
+const normalizePathname = (asPath: string) => {
+	const pathname = asPath.split("?")[0]?.split("#")[0] || "/";
+	if (pathname.length > 1 && pathname.endsWith("/")) {
+		return pathname.slice(0, -1);
+	}
+	return pathname;
+};
+
+const resolveAdminRoutePath = (
+	asPath: string,
+	rewritePath?: string | string[],
+) => {
+	const normalized = normalizePathname(asPath);
+	if (normalized !== "/admin") {
+		return normalized;
+	}
+	if (!rewritePath) {
+		return normalized;
+	}
+	const segments = Array.isArray(rewritePath)
+		? rewritePath.filter(Boolean)
+		: [rewritePath];
+	if (segments.length === 0) {
+		return normalized;
+	}
+	return `/admin/${segments.join("/")}`;
+};
+
+const parseAdminRouteState = (
+	asPath: string,
+	legacySection?: string,
+	legacySubSection?: string,
+): AdminRouteState => {
+	const pathname = normalizePathname(asPath);
+	const segments = pathname.split("/").filter(Boolean);
+	if (segments[0] === "admin") {
+		segments.shift();
+	}
+
+	let section: SettingSection = "monitoring";
+	let aiSubSection: AISubSection = "model-api";
+	let monitoringSubSection: MonitoringSubSection = "ai-usage";
+	let commentSubSection: CommentSubSection = "keys";
+
+	if (segments[0] === "monitoring") {
+		section = "monitoring";
+		const monitoringCandidate = segments[1] || "";
+		if (isMonitoringSubSection(monitoringCandidate)) {
+			monitoringSubSection = monitoringCandidate;
+		}
+		return { section, aiSubSection, monitoringSubSection, commentSubSection };
+	}
+
+	if (segments[0] === "settings") {
+		const settingsSection = segments[1];
+		if (settingsSection === "basic") {
+			section = "basic";
+		} else if (settingsSection === "categories") {
+			section = "categories";
+		} else if (settingsSection === "storage") {
+			section = "storage";
+		} else if (settingsSection === "ai") {
+			section = "ai";
+			const aiCandidate = segments[2] || "";
+			if (isAISubSection(aiCandidate)) {
+				aiSubSection = aiCandidate;
+			}
+		} else if (settingsSection === "comments") {
+			section = "comments";
+			const commentCandidate = segments[2] || "";
+			if (isCommentSubSection(commentCandidate)) {
+				commentSubSection = commentCandidate;
+			}
+		}
+		return { section, aiSubSection, monitoringSubSection, commentSubSection };
+	}
+
+	if (legacySection === "monitoring") {
+		section = "monitoring";
+		if (legacySubSection && isMonitoringSubSection(legacySubSection)) {
+			monitoringSubSection = legacySubSection;
+		}
+	} else if (legacySection === "ai") {
+		section = "ai";
+		if (legacySubSection && isAISubSection(legacySubSection)) {
+			aiSubSection = legacySubSection;
+		}
+	} else if (legacySection === "comments") {
+		section = "comments";
+		if (legacySubSection && isCommentSubSection(legacySubSection)) {
+			commentSubSection = legacySubSection;
+		}
+	} else if (
+		legacySection === "basic" ||
+		legacySection === "categories" ||
+		legacySection === "storage"
+	) {
+		section = legacySection;
+	}
+
+	return { section, aiSubSection, monitoringSubSection, commentSubSection };
+};
+
+const buildAdminPath = (
+	section: SettingSection,
+	aiSubSection: AISubSection,
+	monitoringSubSection: MonitoringSubSection,
+	commentSubSection: CommentSubSection,
+) => {
+	if (section === "monitoring") {
+		return `/admin/monitoring/${monitoringSubSection}`;
+	}
+	if (section === "ai") {
+		return `/admin/settings/ai/${aiSubSection}`;
+	}
+	if (section === "comments") {
+		return `/admin/settings/comments/${commentSubSection}`;
+	}
+	if (section === "categories") {
+		return "/admin/settings/categories";
+	}
+	if (section === "storage") {
+		return "/admin/settings/storage";
+	}
+	return "/admin/settings/basic";
+};
+
 type PromptType =
 	| "summary"
 	| "translation"
@@ -304,6 +458,7 @@ export default function AdminPage() {
 		useState<MonitoringSubSection>("ai-usage");
 	const [commentSubSection, setCommentSubSection] =
 		useState<CommentSubSection>("keys");
+	const [routeInitialized, setRouteInitialized] = useState(false);
 	const [modelAPIConfigs, setModelAPIConfigs] = useState<ModelAPIConfig[]>([]);
 	const [promptConfigs, setPromptConfigs] = useState<PromptConfig[]>([]);
 	const [categories, setCategories] = useState<Category[]>([]);
@@ -537,18 +692,49 @@ export default function AdminPage() {
 
 	useEffect(() => {
 		if (!router.isReady) return;
-		const { section, article_title: articleTitleParam } = router.query;
-		if (section && typeof section === "string") {
-			setActiveSection(section as SettingSection);
-			setPrimaryTab(section === "monitoring" ? "monitoring" : "settings");
-		}
-		if (articleTitleParam && typeof articleTitleParam === "string") {
+		const legacySection =
+			typeof router.query.section === "string"
+				? router.query.section
+				: undefined;
+		const legacySubSection =
+			typeof router.query.sub === "string" ? router.query.sub : undefined;
+		const resolvedPath = resolveAdminRoutePath(
+			router.asPath,
+			router.query.path,
+		);
+		const routeState = parseAdminRouteState(
+			resolvedPath,
+			legacySection,
+			legacySubSection,
+		);
+		setActiveSection(routeState.section);
+		setAISubSection(routeState.aiSubSection);
+		setMonitoringSubSection(routeState.monitoringSubSection);
+		setCommentSubSection(routeState.commentSubSection);
+		setPrimaryTab(
+			routeState.section === "monitoring" ? "monitoring" : "settings",
+		);
+
+		const articleTitleParam =
+			typeof router.query.article_title === "string"
+				? router.query.article_title
+				: undefined;
+		if (articleTitleParam) {
 			setActiveSection("monitoring");
 			setMonitoringSubSection("tasks");
+			setPrimaryTab("monitoring");
 			setTaskArticleTitleFilter(articleTitleParam);
 			setTaskPage(1);
 		}
-	}, [router.isReady, router.query]);
+		setRouteInitialized(true);
+	}, [
+		router.asPath,
+		router.isReady,
+		router.query.article_title,
+		router.query.path,
+		router.query.section,
+		router.query.sub,
+	]);
 
 	useEffect(() => {
 		if (settingsSections.has(activeSection)) {
@@ -557,6 +743,31 @@ export default function AdminPage() {
 		}
 		setPrimaryTab("monitoring");
 	}, [activeSection, settingsSections]);
+
+	useEffect(() => {
+		if (!router.isReady || !routeInitialized) return;
+		const nextPath = buildAdminPath(
+			activeSection,
+			aiSubSection,
+			monitoringSubSection,
+			commentSubSection,
+		);
+		const currentPath = resolveAdminRoutePath(router.asPath, router.query.path);
+		if (currentPath === nextPath) {
+			return;
+		}
+		void router.replace(nextPath, undefined, { shallow: true });
+	}, [
+		activeSection,
+		aiSubSection,
+		commentSubSection,
+		monitoringSubSection,
+		routeInitialized,
+		router.asPath,
+		router.isReady,
+		router.query.path,
+		router.replace,
+	]);
 
 	useEffect(() => {
 		const handleKeyDown = (event: KeyboardEvent) => {
@@ -1153,6 +1364,7 @@ export default function AdminPage() {
 	};
 
 	useEffect(() => {
+		if (!routeInitialized) return;
 		if (activeSection === "categories") {
 			fetchCategories();
 			return;
@@ -1195,7 +1407,13 @@ export default function AdminPage() {
 			fetchStorageSettings();
 			return;
 		}
-	}, [activeSection, aiSubSection, monitoringSubSection, commentSubSection]);
+	}, [
+		activeSection,
+		aiSubSection,
+		commentSubSection,
+		monitoringSubSection,
+		routeInitialized,
+	]);
 
 	useEffect(() => {
 		setCommentValidationResult(null);
@@ -1238,6 +1456,7 @@ export default function AdminPage() {
 	}, [activeSection, monitoringSubSection]);
 
 	useEffect(() => {
+		if (!routeInitialized) return;
 		if (activeSection !== "monitoring" || monitoringSubSection !== "tasks")
 			return;
 		fetchTasks();
@@ -1252,6 +1471,7 @@ export default function AdminPage() {
 	]);
 
 	useEffect(() => {
+		if (!routeInitialized) return;
 		if (activeSection !== "monitoring" || monitoringSubSection !== "ai-usage") {
 			return;
 		}
@@ -1270,6 +1490,7 @@ export default function AdminPage() {
 	]);
 
 	useEffect(() => {
+		if (!routeInitialized) return;
 		if (activeSection !== "monitoring" || monitoringSubSection !== "comments") {
 			return;
 		}
@@ -1338,8 +1559,14 @@ export default function AdminPage() {
 
 	const handleSaveModelAPI = async () => {
 		if (modelAPISaving) return;
+		const modelApiName = modelAPIFormData.name.trim();
+		if (!modelApiName) {
+			showToast(t("请填写配置名称"), "error");
+			return;
+		}
 		const payload = {
 			...modelAPIFormData,
+			name: modelApiName,
 			price_input_per_1k: modelAPIFormData.price_input_per_1k
 				? Number(modelAPIFormData.price_input_per_1k)
 				: undefined,
@@ -1579,12 +1806,16 @@ export default function AdminPage() {
 		if (pendingTaskActionIds.has(taskId)) return;
 		setTaskActionPending(taskId, true);
 		try {
-			await articleApi.retryAITasks([taskId]);
-			showToast(t("任务已重试"));
+			const result = await articleApi.retryAITasks([taskId]);
+			if ((result?.updated || 0) > 0) {
+				showToast(t("任务已重试"));
+			} else {
+				showToast(t("当前任务状态不支持重试"), "info");
+			}
 			await fetchTasks();
-		} catch (error) {
+		} catch (error: any) {
 			console.error("Failed to retry task:", error);
-			showToast(t("重试失败"), "error");
+			showToast(error?.response?.data?.detail || t("重试失败"), "error");
 		} finally {
 			setTaskActionPending(taskId, false);
 		}
