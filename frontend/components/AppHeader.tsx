@@ -35,7 +35,7 @@ type ErrorTaskItem = {
 };
 
 export default function AppHeader() {
-  const { isAdmin, logout } = useAuth();
+  const { isAdmin, isLoading: authLoading, logout } = useAuth();
   const { t, language } = useI18n();
   const { basicSettings, languagePreference, setLanguagePreference } =
     useBasicSettings();
@@ -52,11 +52,6 @@ export default function AppHeader() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const stored = localStorage.getItem('theme');
-    const preferred =
-      window.matchMedia &&
-      window.matchMedia('(prefers-color-scheme: dark)').matches
-        ? 'dark'
-        : 'light';
     const initial =
       stored === 'light' || stored === 'dark' || stored === 'system'
         ? stored
@@ -203,7 +198,6 @@ export default function AppHeader() {
       }
     }
   };
-
   const themeOptions = useMemo(
     () => [
       { value: 'light' as const, label: t('明亮'), icon: IconSun },
@@ -252,6 +246,8 @@ export default function AppHeader() {
 
   const siteName = basicSettings.site_name || 'Lumina';
   const siteLogo = basicSettings.site_logo_url || '/favicon.png';
+  const resolvedAdmin = !authLoading && isAdmin;
+  const resolvedGuest = !authLoading && !isAdmin;
 
   return (
     <header className="bg-surface border-b border-border shadow-sm">
@@ -263,6 +259,9 @@ export default function AppHeader() {
                 src={siteLogo}
                 alt={siteName}
                 className="h-7 w-7 logo-mark"
+                width={28}
+                height={28}
+                decoding="async"
               />
               <span className="text-2xl font-bold">{siteName}</span>
             </Link>
@@ -276,13 +275,14 @@ export default function AppHeader() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {isAdmin && (
+            {resolvedAdmin && (
               <div className="relative hidden lg:block" ref={errorMenuRef}>
                 <button
                   type="button"
                   onClick={() => setErrorMenuOpen((prev) => !prev)}
                   className="relative flex items-center justify-center h-9 w-9 rounded-sm text-text-3 hover:text-text-1 hover:bg-muted transition"
                   title={t('通知中心')}
+                  aria-label={t('通知中心')}
                 >
                   <IconBell className="h-4 w-4" />
                   {notificationCount > 0 && (
@@ -302,6 +302,7 @@ export default function AppHeader() {
                         onClick={handleClearAllNotifications}
                         className="flex items-center gap-1 text-xs text-text-3 hover:text-text-1 transition"
                         title={t('清理全部')}
+                        aria-label={t('清理全部')}
                       >
                         <IconTrash className="h-3.5 w-3.5" />
                         {t('清理')}
@@ -354,6 +355,7 @@ export default function AppHeader() {
                               onClick={() => handleDismissNotification(item.id)}
                               className="text-text-3 hover:text-text-1 transition"
                               title={t('清理')}
+                              aria-label={t('清理')}
                             >
                               <IconTrash className="h-3.5 w-3.5" />
                             </button>
@@ -370,6 +372,7 @@ export default function AppHeader() {
                 onClick={() => setThemeMenuOpen((prev) => !prev)}
                 className="flex items-center gap-1 px-3 py-1 rounded-sm text-sm text-text-3 hover:text-text-1 hover:bg-muted transition"
                 title={t('切换主题')}
+                aria-label={t('切换主题')}
               >
                 {activeTheme && <activeTheme.icon className="h-4 w-4" />}
               </button>
@@ -406,6 +409,7 @@ export default function AppHeader() {
                 onClick={() => setLanguageMenuOpen((prev) => !prev)}
                 className="flex items-center justify-center w-8 h-8 rounded-sm text-text-3 hover:text-text-1 hover:bg-muted transition"
                 title={t('语言')}
+                aria-label={t('语言')}
               >
                 <IconGlobe className="h-4 w-4" />
               </button>
@@ -437,32 +441,37 @@ export default function AppHeader() {
                 </div>
               )}
             </div>
-            {isAdmin && (
+            {resolvedAdmin && (
               <Link
                 href="/admin"
                 className="hidden lg:flex items-center gap-1 px-3 py-1 rounded-sm text-sm text-text-3 hover:text-text-1 hover:bg-muted transition"
                 title={t('管理')}
+                aria-label={t('管理')}
               >
                 <IconSettings className="h-4 w-4" />
               </Link>
             )}
-            {isAdmin ? (
+            {resolvedAdmin ? (
               <button
                 onClick={logout}
                 className="hidden lg:flex items-center gap-1 px-3 py-1 rounded-sm text-sm text-text-3 hover:text-red-700 hover:bg-red-100 transition"
                 title={t('退出登录')}
+                aria-label={t('退出登录')}
                 type="button"
               >
                 <IconLogout className="h-4 w-4" />
               </button>
-            ) : (
+            ) : resolvedGuest ? (
               <Link
                 href="/login"
                 className="hidden lg:flex items-center gap-1 px-3 py-1 rounded-sm text-sm text-text-3 hover:text-primary hover:bg-primary-soft transition"
                 title={t('管理员登录')}
+                aria-label={t('管理员登录')}
               >
                 <IconLock className="h-4 w-4" />
               </Link>
+            ) : (
+              <div className="hidden lg:block h-8 w-8" aria-hidden="true" />
             )}
           </div>
         </div>

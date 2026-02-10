@@ -23,7 +23,7 @@ import TextArea from '@/components/ui/TextArea';
 import TextInput from '@/components/ui/TextInput';
 import { useToast } from '@/components/Toast';
 import { BackToTop } from '@/components/BackToTop';
-import { IconEye, IconEyeOff, IconSearch, IconTag, IconTrash, IconPlus } from '@/components/icons';
+import { IconEye, IconEyeOff, IconSearch, IconTag, IconTrash, IconPlus, IconRefresh } from '@/components/icons';
 import { useAuth } from '@/contexts/AuthContext';
 import { useBasicSettings } from '@/contexts/BasicSettingsContext';
 import { useI18n } from '@/lib/i18n';
@@ -140,7 +140,7 @@ const pickListQuery = (
 export default function Home() {
   const router = useRouter();
   const { showToast } = useToast();
-  const { isAdmin } = useAuth();
+  const { isAdmin, isLoading: authLoading } = useAuth();
   const { t, language } = useI18n();
   const { basicSettings } = useBasicSettings();
   const [articles, setArticles] = useState<Article[]>([]);
@@ -204,9 +204,17 @@ export default function Home() {
 
   const [publishedStartDate, publishedEndDate] = publishedDateRange;
   const [createdStartDate, createdEndDate] = createdDateRange;
+  const isBootstrapping = authLoading || !router.isReady || !initialized;
+  const showAdminDesktop = isAdmin && !isMobile;
+  const listLoading = loading || authLoading;
+  const shouldHoldListView = isBootstrapping || listLoading;
+  const [listContentReady, setListContentReady] = useState(false);
   const batchActionPending = batchAction !== 'none';
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const hydratedQueryRef = useRef('');
   const syncedQueryRef = useRef('');
+  const articleRequestIdRef = useRef(0);
+  const categoryStatsRequestIdRef = useRef(0);
   const routerQueryState = useMemo(
     () => pickListQuery(router.query as Record<string, string | string[] | undefined>),
     [router.query],
@@ -227,7 +235,10 @@ export default function Home() {
   };
 
   const fetchArticles = async () => {
-    if (isAppending) {
+    const requestId = articleRequestIdRef.current + 1;
+    articleRequestIdRef.current = requestId;
+    const appendMode = isAppending;
+    if (appendMode) {
       setLoadingMore(true);
     } else {
       setLoading(true);
@@ -249,15 +260,24 @@ export default function Home() {
         created_at_end: formatDate(createdEndDate) || undefined,
         sort_by: sortBy,
       });
+      if (requestId !== articleRequestIdRef.current) {
+        return;
+      }
       setTotal(response.pagination.total);
       setArticles((prev) => {
-        const next = isAppending ? [...prev, ...response.data] : response.data;
+        const next = appendMode ? [...prev, ...response.data] : response.data;
         setHasMore(next.length < response.pagination.total);
         return next;
       });
     } catch (error) {
+      if (requestId !== articleRequestIdRef.current) {
+        return;
+      }
       console.error('Failed to fetch articles:', error);
     } finally {
+      if (requestId !== articleRequestIdRef.current) {
+        return;
+      }
       setLoading(false);
       setLoadingMore(false);
       setIsAppending(false);
@@ -274,6 +294,8 @@ export default function Home() {
   };
 
   const fetchCategoryStats = async () => {
+    const requestId = categoryStatsRequestIdRef.current + 1;
+    categoryStatsRequestIdRef.current = requestId;
     try {
       const data = await categoryApi.getCategoryStats({
         search: searchTerm || undefined,
@@ -284,8 +306,14 @@ export default function Home() {
         created_at_start: formatDate(createdStartDate) || undefined,
         created_at_end: formatDate(createdEndDate) || undefined,
       });
+      if (requestId !== categoryStatsRequestIdRef.current) {
+        return;
+      }
       setCategoryStats(data);
     } catch (error) {
+      if (requestId !== categoryStatsRequestIdRef.current) {
+        return;
+      }
       console.error('Failed to fetch category stats:', error);
     }
   };
@@ -309,7 +337,24 @@ export default function Home() {
   };
 
   useEffect(() => {
-    if (!initialized) return;
+    if (shouldHoldListView) {
+      setListContentReady(false);
+      return;
+    }
+    if (typeof window === 'undefined') {
+      setListContentReady(true);
+      return;
+    }
+    const frameId = window.requestAnimationFrame(() => {
+      setListContentReady(true);
+    });
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [shouldHoldListView, articles.length, total, page, pageSize]);
+
+  useEffect(() => {
+    if (!initialized || authLoading) return;
     setHasMore(true);
     setIsAppending(false);
     if (debounceRef.current) {
@@ -326,6 +371,7 @@ export default function Home() {
     };
   }, [
     initialized,
+    authLoading,
     selectedCategory,
     searchTerm,
     sourceDomain,
@@ -339,9 +385,9 @@ export default function Home() {
   ]);
 
   useEffect(() => {
-    if (!initialized) return;
+    if (!initialized || authLoading) return;
     fetchArticles();
-  }, [initialized, page, pageSize]);
+  }, [initialized, authLoading, page, pageSize]);
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -501,7 +547,7 @@ export default function Home() {
     if (!isMobile) return;
     const node = loadMoreRef.current;
     if (!node) return;
-    if (!hasMore || loadingMore || loading) return;
+    if (!hasMore || loadingMore || listLoading) return;
     const observer = new IntersectionObserver(
       (entries) => {
         if (!entries[0]?.isIntersecting) return;
@@ -512,7 +558,7 @@ export default function Home() {
     );
     observer.observe(node);
     return () => observer.disconnect();
-  }, [isMobile, hasMore, loadingMore, loading]);
+  }, [isMobile, hasMore, loadingMore, listLoading]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || articles.length === 0) return;
@@ -814,7 +860,7 @@ export default function Home() {
   };
 
   const handleOpenArticle = (
-    event: React.MouseEvent<HTMLDivElement>,
+    event: React.MouseEvent<HTMLElement>,
     article: Article,
   ) => {
     const target = event.target as HTMLElement | null;
@@ -825,12 +871,35 @@ export default function Home() {
     ) {
       return;
     }
-    if (isAdmin && !isMobile) {
+    if (showAdminDesktop) {
       handleToggleSelect(article.slug);
       return;
     }
 
     // 使用 slug 作为 URL，seo 更友好
+    router.push(buildArticleHref(article.slug));
+  };
+
+  const handleArticleCardKeyDown = (
+    event: React.KeyboardEvent<HTMLElement>,
+    article: Article,
+  ) => {
+    if (event.key !== 'Enter' && event.key !== ' ') {
+      return;
+    }
+    const target = event.target as HTMLElement | null;
+    if (
+      target?.closest(
+        "button, a, input, textarea, select, option, label, svg",
+      )
+    ) {
+      return;
+    }
+    event.preventDefault();
+    if (showAdminDesktop) {
+      handleToggleSelect(article.slug);
+      return;
+    }
     router.push(buildArticleHref(article.slug));
   };
 
@@ -895,7 +964,7 @@ export default function Home() {
 
   const handleJumpToPage = () => {
     const pageNum = parseInt(jumpToPage);
-    const totalPages = Math.ceil(total / pageSize) || 1;
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
     if (pageNum >= 1 && pageNum <= totalPages) {
       setPage(pageNum);
       setJumpToPage('');
@@ -951,6 +1020,7 @@ export default function Home() {
       setCreateSaving(false);
     }
   };
+
 
   const batchActions = (
     <div className="mt-4 pt-4 border-t border-border">
@@ -1031,7 +1101,7 @@ export default function Home() {
       <div className="lg:hidden border-b border-border bg-surface">
         <div className="max-w-7xl mx-auto px-4 py-3">
           <div className="flex items-center gap-2 overflow-x-auto">
-            <button
+            <button type="button"
               onClick={() => { setSelectedCategory(''); setPage(1); }}
               className={`whitespace-nowrap px-3 py-1.5 text-sm rounded-full transition ${
                 selectedCategory === '' ? 'bg-primary-soft text-primary-ink' : 'bg-muted text-text-2'
@@ -1040,7 +1110,7 @@ export default function Home() {
               {t('全部')} ({categoryStats.reduce((sum, c) => sum + c.article_count, 0)})
             </button>
             {categoryStats.map((category) => (
-              <button
+              <button type="button"
                 key={category.id}
                 onClick={() => { setSelectedCategory(category.id); setPage(1); }}
                 className={`whitespace-nowrap px-3 py-1.5 text-sm rounded-full transition ${
@@ -1054,7 +1124,7 @@ export default function Home() {
           <div className="pt-3">
             {filterSummary}
           </div>
-          {isAdmin && !isMobile && selectedArticleSlugs.size > 0 && (
+          {showAdminDesktop && selectedArticleSlugs.size > 0 && (
             <div className="pt-3">
               {batchActions}
             </div>
@@ -1075,16 +1145,18 @@ export default function Home() {
                   </h2>
                 )}
                 <button
+                  type="button"
                   onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-                  className="text-text-3 hover:text-text-2 transition"
+                  className="text-text-3 hover:text-text-2 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
                   title={sidebarCollapsed ? t('展开') : t('收起')}
+                  aria-label={sidebarCollapsed ? t('展开分类筛选') : t('收起分类筛选')}
                 >
                   {sidebarCollapsed ? '»' : '«'}
                 </button>
               </div>
               {!sidebarCollapsed && (
                 <div className="space-y-2">
-                  <button
+                  <button type="button"
                     onClick={() => { setSelectedCategory(''); setPage(1); }}
                     className={`w-full text-left px-3 py-2 rounded-sm transition ${
                       selectedCategory === '' ? 'bg-primary-soft text-primary-ink' : 'hover:bg-muted'
@@ -1093,7 +1165,7 @@ export default function Home() {
                     {t('全部内容')} ({categoryStats.reduce((sum, c) => sum + c.article_count, 0)})
                   </button>
                   {categoryStats.map((category) => (
-                    <button
+                    <button type="button"
                       key={category.id}
                       onClick={() => { setSelectedCategory(category.id); setPage(1); }}
                       className={`w-full text-left px-3 py-2 rounded-sm transition ${
@@ -1108,7 +1180,7 @@ export default function Home() {
             </div>
           </aside>
 
-          <main className="flex-1">
+          <main className="flex-1" aria-busy={!listContentReady}>
             {!isMobile && (
               <div className="bg-surface rounded-sm shadow-sm border border-border p-4 sm:p-6 mb-6">
                 {!isMobile && (
@@ -1191,17 +1263,26 @@ export default function Home() {
                     </div>
                   </>
                 )}
-                {isAdmin && !isMobile && selectedArticleSlugs.size > 0 && batchActions}
+                {showAdminDesktop && selectedArticleSlugs.size > 0 && batchActions}
               </div>
             )}
 
-            {loading ? (
-              <div className="text-center py-12 text-text-3">{t('加载中')}</div>
+            {!listContentReady ? (
+              <div
+                className="rounded-sm border border-border bg-surface min-h-[420px] flex items-center justify-center"
+                aria-live="polite"
+                aria-busy="true"
+              >
+                <div className="inline-flex items-center gap-2 text-text-3">
+                  <IconRefresh className="h-5 w-5 animate-spin" />
+                  <span>{t('加载中...')}</span>
+                </div>
+              </div>
             ) : articles.length === 0 ? (
               <div className="text-center py-12 text-text-3">{t('暂无文章')}</div>
              ) : (
                 <> 
-                  {isAdmin && !isMobile && (
+                  {showAdminDesktop && (
                     <div className="mb-4">
                       <div className="flex flex-wrap items-center gap-2">
                         <CheckboxInput
@@ -1220,9 +1301,14 @@ export default function Home() {
                         key={article.slug}
                         id={`article-${article.slug}`}
                         onClick={(event) => handleOpenArticle(event, article)}
-                        className={`bg-surface rounded-lg shadow-sm p-4 sm:p-6 hover:shadow-md transition relative cursor-pointer scroll-mt-24 ${!article.is_visible && isAdmin ? 'opacity-60' : ''} ${selectedArticleSlugs.has(article.slug) ? 'ring-2 ring-primary ring-offset-2' : ''}`}
+                        onKeyDown={(event) => handleArticleCardKeyDown(event, article)}
+                        role="button"
+                        tabIndex={0}
+                        aria-label={showAdminDesktop ? t('选择文章') : t('查看文章')}
+                        aria-pressed={showAdminDesktop ? selectedArticleSlugs.has(article.slug) : undefined}
+                        className={`bg-surface rounded-lg shadow-sm p-4 sm:p-6 min-h-[184px] hover:shadow-md transition relative cursor-pointer scroll-mt-24 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${!article.is_visible && isAdmin ? 'opacity-60' : ''} ${selectedArticleSlugs.has(article.slug) ? 'ring-2 ring-primary ring-offset-2' : ''}`}
                       >
-                         {isAdmin && !isMobile && (
+                         {showAdminDesktop && (
                            <div className="absolute top-3 right-3 flex items-center gap-1">
                             <IconButton
                               onClick={(e) => { e.stopPropagation(); handleToggleVisibility(article.slug, article.is_visible); }}
@@ -1247,7 +1333,7 @@ export default function Home() {
                           </div>
                         )}
                          <div className="flex flex-col sm:flex-row gap-4">
-                           {isAdmin && !isMobile && (
+                           {showAdminDesktop && (
                              <CheckboxInput
                                checked={selectedArticleSlugs.has(article.slug)}
                                onChange={() => handleToggleSelect(article.slug)}
@@ -1261,6 +1347,8 @@ export default function Home() {
                                  src={resolveMediaUrl(article.top_image)}
                                  alt={article.title}
                                  className="absolute inset-0 h-full w-full object-cover"
+                                 loading="lazy"
+                                 decoding="async"
                                />
                                <span className="absolute left-2 top-2 rounded-sm bg-black/60 px-2 py-0.5 text-xs text-white">
                                  {getArticleLanguageTag(article)}
@@ -1335,11 +1423,11 @@ export default function Home() {
                         {t('上一页')}
                       </Button>
                       <span className="px-4 py-2 text-sm bg-surface border border-border rounded-sm text-text-2">
-                        {t('第')} {page} / {Math.ceil(total / pageSize) || 1} {t('页')}
+                        {t('第')} {page} / {totalPages} {t('页')}
                       </span>
                       <Button
                         onClick={() => setPage((p) => p + 1)}
-                        disabled={articles.length < pageSize}
+                        disabled={page >= totalPages}
                         variant="secondary"
                         size="sm"
                       >
@@ -1355,7 +1443,7 @@ export default function Home() {
                           className="w-16 text-center"
                           compact
                           min={1}
-                          max={Math.ceil(total / pageSize) || 1}
+                          max={totalPages}
                         />
                         <Button
                           onClick={handleJumpToPage}
@@ -1389,20 +1477,22 @@ export default function Home() {
         cancelText={confirmState.cancelText}
         onConfirm={async () => {
           const action = confirmState.onConfirm;
-          setConfirmState((prev) => ({ ...prev, isOpen: false }));
           await action();
+          setConfirmState((prev) => ({ ...prev, isOpen: false }));
         }}
         onCancel={() => setConfirmState((prev) => ({ ...prev, isOpen: false }))}
       />
       {isMobile && (
         <>
           <button
+            type="button"
             onClick={() => {
               setShowFilters(true);
               setShowMobileFilters(true);
             }}
-            className="fixed right-4 top-24 flex items-center justify-center w-10 h-10 rounded-full bg-surface border border-border shadow-lg text-text-2 hover:text-text-1 hover:bg-muted transition z-50"
+            className="fixed right-4 top-24 flex items-center justify-center w-10 h-10 rounded-full bg-surface border border-border shadow-lg text-text-2 hover:text-text-1 hover:bg-muted transition z-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
             title={t('高级筛选')}
+            aria-label={t('打开高级筛选')}
           >
             <IconSearch className="h-4 w-4" />
           </button>
@@ -1420,8 +1510,9 @@ export default function Home() {
                     {t('高级筛选')}
                   </span>
                   <button
+                    type="button"
                     onClick={() => setShowMobileFilters(false)}
-                    className="text-text-3 hover:text-text-1 transition text-lg"
+                    className="text-text-3 hover:text-text-1 transition text-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
                     aria-label={t('关闭')}
                   >
                     ×
@@ -1447,8 +1538,10 @@ export default function Home() {
                 {t('创建文章')}
               </h3>
               <button
+                type="button"
                 onClick={() => setShowCreateModal(false)}
-                className="text-text-3 hover:text-text-1 text-xl"
+                className="text-text-3 hover:text-text-1 text-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
+                aria-label={t('关闭创建文章弹窗')}
               >
                 ×
               </button>
@@ -1568,6 +1661,8 @@ export default function Home() {
                           src={resolveMediaUrl(createTopImage)}
                           alt={createTitle}
                           className="w-full h-full object-cover"
+                          loading="lazy"
+                          decoding="async"
                           onError={(e) => {
                             (e.target as HTMLImageElement).style.display = 'none';
                           }}

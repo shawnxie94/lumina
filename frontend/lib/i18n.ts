@@ -353,6 +353,8 @@ const translations: Record<Language, Record<string | number, string>> = {
 		回复: "Reply",
 		清空筛选: "Clear filters",
 		查看更多: "View more...",
+		查看文章: "View article",
+		选择文章: "Select article",
 		语言: "Language",
 		跟随系统默认: "Follow system default",
 		中文: "Chinese",

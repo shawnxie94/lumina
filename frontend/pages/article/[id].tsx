@@ -319,8 +319,9 @@ function AIContentSection({
             {showGenerateButton && (
               <button
                 onClick={onGenerate}
-                className="text-text-3 hover:text-primary transition"
+                className="text-text-3 hover:text-primary transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
                 title={content ? t("重新生成") : t("生成")}
+                aria-label={content ? t('重新生成') : t('生成')}
                 type="button"
               >
               {content ? <IconRefresh className="h-4 w-4" /> : <IconBolt className="h-4 w-4" />}
@@ -329,8 +330,9 @@ function AIContentSection({
             {content && (
               <button
                 onClick={onCopy}
-                className="text-text-3 hover:text-primary transition"
+                className="text-text-3 hover:text-primary transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
                 title={t("复制内容")}
+                aria-label={t('复制内容')}
                 type="button"
               >
                 <IconCopy className="h-4 w-4" />
@@ -710,6 +712,11 @@ export default function ArticleDetailPage() {
   const [replyTargetId, setReplyTargetId] = useState<string | null>(null);
   const [replyPrefix, setReplyPrefix] = useState<string>('');
   const [pendingScrollId, setPendingScrollId] = useState<string | null>(null);
+  const [highlightedCommentId, setHighlightedCommentId] = useState<string | null>(null);
+  const [commentSubmitting, setCommentSubmitting] = useState(false);
+  const [commentUpdatingIds, setCommentUpdatingIds] = useState<Set<string>>(new Set());
+  const [commentDeletingIds, setCommentDeletingIds] = useState<Set<string>>(new Set());
+  const [commentTogglingIds, setCommentTogglingIds] = useState<Set<string>>(new Set());
   const [commentPage, setCommentPage] = useState(1);
   const commentPageSize = 5;
   const [pendingDeleteCommentId, setPendingDeleteCommentId] = useState<string | null>(null);
@@ -724,7 +731,6 @@ export default function ArticleDetailPage() {
   const [immersiveMode, setImmersiveMode] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [showAiPanel, setShowAiPanel] = useState(false);
-  const aiPanelTouchStartX = useRef<number | null>(null);
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
   const [mindMapOpen, setMindMapOpen] = useState(false);
   const [prevArticle, setPrevArticle] = useState<ArticleNeighbor | null>(null);
@@ -774,6 +780,24 @@ export default function ArticleDetailPage() {
         (a, b) =>
           new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
       );
+  }, [comments]);
+
+  const sortedRepliesByParent = useMemo<Record<string, ArticleComment[]>>(() => {
+    const grouped: Record<string, ArticleComment[]> = {};
+    comments.forEach((comment) => {
+      if (!comment.reply_to_id) return;
+      if (!grouped[comment.reply_to_id]) {
+        grouped[comment.reply_to_id] = [];
+      }
+      grouped[comment.reply_to_id].push(comment);
+    });
+    Object.values(grouped).forEach((replyList) => {
+      replyList.sort(
+        (a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      );
+    });
+    return grouped;
   }, [comments]);
 
   const totalTopComments = sortedTopComments.length;
@@ -1087,15 +1111,27 @@ export default function ArticleDetailPage() {
 
   useEffect(() => {
     if (!pendingScrollId) return;
+    const targetCommentId = pendingScrollId;
     const handleScroll = () => {
-      const target = document.getElementById(`comment-${pendingScrollId}`);
+      const target = document.getElementById(`comment-${targetCommentId}`);
       if (!target) return;
       target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setHighlightedCommentId(targetCommentId);
       setPendingScrollId(null);
     };
     const timer = window.setTimeout(handleScroll, 120);
     return () => window.clearTimeout(timer);
   }, [pendingScrollId, commentPage, comments, expandedReplies]);
+
+  useEffect(() => {
+    if (!highlightedCommentId) return;
+    const timer = window.setTimeout(() => {
+      setHighlightedCommentId((prev) =>
+        prev === highlightedCommentId ? null : prev,
+      );
+    }, 1800);
+    return () => window.clearTimeout(timer);
+  }, [highlightedCommentId]);
 
 
   useEffect(() => {
@@ -1278,7 +1314,7 @@ export default function ArticleDetailPage() {
       showToast(t('已提交向量化任务'));
     } catch (error: any) {
       console.error('Failed to refresh embedding:', error);
-      showToast(error?.response?.data?.detail || '提交向量化失败', 'error');
+      showToast(error?.response?.data?.detail || t('提交向量化失败'), 'error');
     } finally {
       setEmbeddingRefreshing(false);
     }
@@ -1401,7 +1437,7 @@ export default function ArticleDetailPage() {
       renderMindMap: false,
       onMindMapOpen: undefined,
       onGenerate: () => handleGenerateContent('key_points'),
-      onCopy: () => handleCopyContent(article?.ai_analysis?.key_points, t('总结')),
+      onCopy: () => handleCopyContent(article?.ai_analysis?.key_points),
     },
     {
       key: 'outline' as const,
@@ -1413,7 +1449,7 @@ export default function ArticleDetailPage() {
       renderMindMap: true,
       onMindMapOpen: openMindMap,
       onGenerate: () => handleGenerateContent('outline'),
-      onCopy: () => handleCopyContent(article?.ai_analysis?.outline, t('大纲')),
+      onCopy: () => handleCopyContent(article?.ai_analysis?.outline),
     },
     {
       key: 'quotes' as const,
@@ -1425,7 +1461,7 @@ export default function ArticleDetailPage() {
       renderMindMap: false,
       onMindMapOpen: undefined,
       onGenerate: () => handleGenerateContent('quotes'),
-      onCopy: () => handleCopyContent(article?.ai_analysis?.quotes, t('金句')),
+      onCopy: () => handleCopyContent(article?.ai_analysis?.quotes),
     },
   ];
 
@@ -1448,10 +1484,11 @@ export default function ArticleDetailPage() {
               <IconList className="h-4 w-4" />
               <span>{t("目录")}</span>
             </h2>
-            <button
+            <button type="button"
               onClick={() => setTocCollapsed(!tocCollapsed)}
               className="text-text-3 hover:text-primary transition"
               title={tocCollapsed ? t("展开目录") : t("收起目录")}
+              aria-label={tocCollapsed ? t("展开目录") : t("收起目录")}
             >
               <IconChevronDown
                 className={`h-4 w-4 transition-transform duration-200 ${
@@ -1501,7 +1538,7 @@ export default function ArticleDetailPage() {
               (article?.status === 'completed' ? 'completed' : article?.status)
             }
             onGenerate={() => handleGenerateContent('summary')}
-            onCopy={() => handleCopyContent(article?.ai_analysis?.summary, '摘要')}
+            onCopy={() => handleCopyContent(article?.ai_analysis?.summary)}
             canEdit={isAdmin}
             showStatus={isAdmin}
             statusLink={aiStatusLink}
@@ -1547,6 +1584,7 @@ export default function ArticleDetailPage() {
                     title={
                       activeTabConfig.content ? t("重新生成") : t("生成")
                     }
+                    aria-label={activeTabConfig.content ? t("重新生成") : t("生成")}
                     type="button"
                   >
                     {activeTabConfig.content ? (
@@ -1561,6 +1599,7 @@ export default function ArticleDetailPage() {
                     onClick={activeTabConfig.onCopy}
                     className="text-text-3 hover:text-primary transition"
                     title={t('复制内容')}
+                    aria-label={t('复制内容')}
                     type="button"
                   >
                     <IconCopy className="h-4 w-4" />
@@ -1604,6 +1643,7 @@ export default function ArticleDetailPage() {
                   onClick={handleRefreshEmbedding}
                   className="text-text-3 hover:text-primary transition disabled:opacity-50"
                   title={t("重新生成向量")}
+                  aria-label={t("重新生成向量")}
                   type="button"
                   disabled={embeddingRefreshing}
                 >
@@ -1612,13 +1652,13 @@ export default function ArticleDetailPage() {
               )}
             </div>
             {similarLoading ? (
-              <div className="text-sm text-text-3">{t("文章加载中...")}</div>
+              <div className="inline-flex items-center gap-2 text-sm text-text-3" aria-live="polite"><IconRefresh className="h-3.5 w-3.5 animate-spin" /><span>{t("文章加载中...")}</span></div>
             ) : similarStatus === 'pending' ? (
-              <div className="text-sm text-text-3">{t("文章生成中...")}</div>
+              <div className="text-sm text-text-3" aria-live="polite">{t("文章生成中...")}</div>
             ) : similarStatus === 'disabled' ? (
-              <div className="text-sm text-text-3">{t("文章推荐已关闭")}</div>
+              <div className="text-sm text-text-3" aria-live="polite">{t("文章推荐已关闭")}</div>
             ) : similarArticles.length === 0 ? (
-              <div className="text-sm text-text-3">{t("暂无推荐文章")}</div>
+              <div className="text-sm text-text-3" aria-live="polite">{t("暂无推荐文章")}</div>
             ) : (
               <div className="space-y-2 text-sm text-text-2">
                 {similarArticles.map((item) => (
@@ -1744,7 +1784,7 @@ export default function ArticleDetailPage() {
       showToast(t('已提交生成请求'));
     } catch (error: any) {
       console.error('Failed to generate:', error);
-      showToast(error.response?.data?.detail || '生成失败', 'error');
+      showToast(error.response?.data?.detail || t('生成失败'), 'error');
     }
   };
 
@@ -1757,7 +1797,7 @@ export default function ArticleDetailPage() {
       showToast(t('已重新提交翻译请求'));
     } catch (error: any) {
       console.error('Failed to retry translation:', error);
-      showToast(error.response?.data?.detail || '重试翻译失败', 'error');
+      showToast(error.response?.data?.detail || t('重试翻译失败'), 'error');
     }
   };
 
@@ -1770,7 +1810,7 @@ export default function ArticleDetailPage() {
       showToast(t('已重新提交清洗任务'));
     } catch (error: any) {
       console.error('Failed to retry cleaning:', error);
-      showToast(error.response?.data?.detail || '重试清洗失败', 'error');
+      showToast(error.response?.data?.detail || t('重试清洗失败'), 'error');
     }
   };
 
@@ -1798,18 +1838,18 @@ export default function ArticleDetailPage() {
     try {
       await articleApi.updateArticleVisibility(id as string, !article.is_visible);
       setArticle({ ...article, is_visible: !article.is_visible });
-      showToast(article.is_visible ? '已设为不可见' : '已设为可见');
+      showToast(article.is_visible ? t('已设为不可见') : t('已设为可见'));
     } catch (error) {
       console.error('Failed to toggle visibility:', error);
       showToast(t('操作失败'), 'error');
     }
   };
 
-  const handleCopyContent = async (content: string | null | undefined, label: string) => {
+  const handleCopyContent = async (content: string | null | undefined) => {
     if (!content) return;
     try {
       await navigator.clipboard.writeText(content);
-      showToast(`${label}已复制`);
+      showToast(t('已复制'));
     } catch (error) {
       console.error('Failed to copy:', error);
       showToast(t('复制失败'), 'error');
@@ -1888,7 +1928,7 @@ export default function ArticleDetailPage() {
     setPendingAnnotationRange(null);
     setActiveAnnotationId('');
     await saveNotes(noteContent, next);
-    showToast(existingId ? '已更新划线批注' : '已添加划线批注');
+    showToast(existingId ? t('已更新划线批注') : t('已添加划线批注'));
   };
 
   const handleDeleteAnnotation = async (id: string) => {
@@ -1914,11 +1954,13 @@ export default function ArticleDetailPage() {
   };
 
   const handleSubmitComment = async () => {
+    if (commentSubmitting) return;
     const content = replyPrefix ? `${replyPrefix}\n${commentDraft}` : commentDraft;
     if (!content.trim()) {
       showToast(t('请输入评论内容'), 'info');
       return;
     }
+    setCommentSubmitting(true);
     try {
       const data = await commentApi.createArticleComment(
         id as string,
@@ -1936,6 +1978,8 @@ export default function ArticleDetailPage() {
       showToast(t('评论已发布'));
     } catch (error: any) {
       showToast(error?.message || t('发布评论失败'), 'error');
+    } finally {
+      setCommentSubmitting(false);
     }
   };
 
@@ -1952,11 +1996,14 @@ export default function ArticleDetailPage() {
       showToast(t('请输入评论内容'), 'info');
       return;
     }
+    const currentEditingId = editingCommentId;
+    if (commentUpdatingIds.has(currentEditingId)) return;
+    setCommentUpdatingIds((prev) => new Set(prev).add(currentEditingId));
     try {
       const nextContent = editingCommentPrefix
         ? `${editingCommentPrefix}\n${editingCommentDraft.trim()}`
         : editingCommentDraft.trim();
-      const data = await commentApi.updateComment(editingCommentId, nextContent);
+      const data = await commentApi.updateComment(currentEditingId, nextContent);
       setComments((prev) =>
         prev.map((item) =>
           item.id === data.id
@@ -1970,20 +2017,36 @@ export default function ArticleDetailPage() {
       showToast(t('评论已更新'));
     } catch (error: any) {
       showToast(error?.message || t('更新评论失败'), 'error');
+    } finally {
+      setCommentUpdatingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(currentEditingId);
+        return next;
+      });
     }
   };
 
   const handleDeleteComment = async (commentId: string) => {
+    if (commentDeletingIds.has(commentId)) return;
+    setCommentDeletingIds((prev) => new Set(prev).add(commentId));
     try {
       await commentApi.deleteComment(commentId);
       setComments((prev) => prev.filter((item) => item.id !== commentId));
       showToast(t('评论已删除'));
     } catch (error: any) {
       showToast(error?.message || t('删除评论失败'), 'error');
+    } finally {
+      setCommentDeletingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(commentId);
+        return next;
+      });
     }
   };
 
   const handleToggleCommentHidden = async (comment: ArticleComment) => {
+    if (commentTogglingIds.has(comment.id)) return;
+    setCommentTogglingIds((prev) => new Set(prev).add(comment.id));
     try {
       const data = await commentApi.toggleHidden(comment.id, !comment.is_hidden);
       setComments((prev) =>
@@ -1995,11 +2058,18 @@ export default function ArticleDetailPage() {
       );
       showToast(data.is_hidden ? t('评论已隐藏') : t('评论已显示'));
     } catch (error: any) {
-      showToast(error?.message || '操作失败', 'error');
+      showToast(error?.message || t('操作失败'), 'error');
+    } finally {
+      setCommentTogglingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(comment.id);
+        return next;
+      });
     }
   };
 
   const openDeleteCommentModal = (commentId: string) => {
+    if (commentDeletingIds.has(commentId)) return;
     setPendingDeleteCommentId(commentId);
     setShowDeleteCommentModal(true);
   };
@@ -2066,7 +2136,7 @@ export default function ArticleDetailPage() {
         showToast(t('图片已上传'));
       } catch (error: any) {
         console.error('Failed to upload image:', error);
-        showToast(error?.response?.data?.detail || '图片上传失败', 'error');
+        showToast(error?.response?.data?.detail || t('图片上传失败'), 'error');
       } finally {
         setMediaUploading(false);
       }
@@ -2095,7 +2165,7 @@ export default function ArticleDetailPage() {
       showToast(t('图片已转存'));
     } catch (error: any) {
       console.error('Failed to ingest image:', error);
-      showToast(error?.response?.data?.detail || '图片转存失败', 'error');
+      showToast(error?.response?.data?.detail || t('图片转存失败'), 'error');
     } finally {
       setMediaUploading(false);
     }
@@ -2118,7 +2188,7 @@ export default function ArticleDetailPage() {
       showToast(t('头图已转存'));
     } catch (error: any) {
       console.error('Failed to ingest top image:', error);
-      showToast(error?.response?.data?.detail || '头图转存失败', 'error');
+      showToast(error?.response?.data?.detail || t('头图转存失败'), 'error');
     } finally {
       setMediaUploading(false);
     }
@@ -2237,7 +2307,7 @@ export default function ArticleDetailPage() {
       <div className="min-h-screen bg-app flex flex-col">
         <AppHeader />
         <div className="flex-1 flex items-center justify-center">
-          <div className="text-text-3">{t('加载中...')}</div>
+          <div className="inline-flex items-center gap-2 text-text-3" aria-live="polite"><IconRefresh className="h-4 w-4 animate-spin" /><span>{t('加载中...')}</span></div>
         </div>
         <AppFooter />
       </div>
@@ -2337,20 +2407,22 @@ export default function ArticleDetailPage() {
                       <span>{t('内容')}</span>
                     </h2>
                     {isAdmin && article.status === 'failed' && (
-                      <button
+                      <button type="button"
                         onClick={handleRetryCleaning}
                         className="flex items-center gap-1 px-2 py-0.5 rounded text-xs text-red-700 bg-red-100 hover:bg-red-200 transition"
                         title={article.ai_analysis?.error_message || t('重新清洗')}
+                        aria-label={t('重试清洗')}
                       >
                         <IconRefresh className="h-3.5 w-3.5" />
                         {t('重试清洗')}
                       </button>
                     )}
                     {isAdmin && article.translation_status === 'failed' && (
-                      <button
+                      <button type="button"
                         onClick={handleRetryTranslation}
                         className="flex items-center gap-1 px-2 py-0.5 rounded text-xs text-orange-700 bg-orange-100 hover:bg-orange-200 transition"
                         title={article.translation_error || t('重新翻译')}
+                        aria-label={t('翻译失败')}
                       >
                         <IconRefresh className="h-3.5 w-3.5" />
                         {t('翻译失败')}
@@ -2361,29 +2433,41 @@ export default function ArticleDetailPage() {
                     {isAdmin && (
                       <>
                         <button
+                          type="button"
                           onClick={() => {
                             setNoteDraft(noteContent);
                             setShowNoteModal(true);
                           }}
-                          className="flex items-center justify-center w-8 h-8 rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition"
+                          className="flex items-center justify-center w-8 h-8 rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
+                          title={t('编辑批注')}
+                          aria-label={t('编辑批注')}
                         >
                           <IconNote className="h-4 w-4" />
                         </button>
                         <button
+                          type="button"
                           onClick={handleToggleVisibility}
-                          className="flex items-center justify-center w-8 h-8 rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition"
+                          className="flex items-center justify-center w-8 h-8 rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
+                          title={article.is_visible ? t('设为隐藏') : t('设为显示')}
+                          aria-label={article.is_visible ? t('设为隐藏') : t('设为显示')}
                         >
                           {article.is_visible ? <IconEye className="h-4 w-4" /> : <IconEyeOff className="h-4 w-4" />}
                         </button>
                         <button
+                          type="button"
                           onClick={() => openEditModal(showTranslation && article.content_trans ? 'translation' : 'original')}
-                          className="flex items-center justify-center w-8 h-8 rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition"
+                          className="flex items-center justify-center w-8 h-8 rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
+                          title={t('编辑文章')}
+                          aria-label={t('编辑文章')}
                         >
                           <IconEdit className="h-4 w-4" />
                         </button>
                         <button
+                          type="button"
                           onClick={() => setShowDeleteModal(true)}
-                          className="flex items-center justify-center w-8 h-8 rounded-sm text-text-2 hover:text-red-700 hover:bg-red-100 transition"
+                          className="flex items-center justify-center w-8 h-8 rounded-sm text-text-2 hover:text-red-700 hover:bg-red-100 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400/40"
+                          title={t('删除文章')}
+                          aria-label={t('删除文章')}
                         >
                           <IconTrash className="h-4 w-4" />
                         </button>
@@ -2391,16 +2475,21 @@ export default function ArticleDetailPage() {
                     )}
                     {article.content_trans && (
                       <button
+                        type="button"
                         onClick={() => setShowTranslation(!showTranslation)}
-                        className="flex items-center justify-center w-8 h-8 rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition"
-                        title={showTranslation ? t('原') : t('译')}
+                        className="flex items-center justify-center w-8 h-8 rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
+                        title={showTranslation ? t('显示原文') : t('显示译文')}
+                        aria-label={showTranslation ? t('显示原文') : t('显示译文')}
                       >
                         <IconGlobe className="h-4 w-4" />
                       </button>
                     )}
                     <button
+                      type="button"
                       onClick={() => setImmersiveMode(!immersiveMode)}
-                      className="flex items-center justify-center w-8 h-8 rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition"
+                      className="flex items-center justify-center w-8 h-8 rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
+                      title={immersiveMode ? t('退出沉浸模式') : t('进入沉浸模式')}
+                      aria-label={immersiveMode ? t('退出沉浸模式') : t('进入沉浸模式')}
                     >
                       <IconBook className="h-4 w-4" />
                     </button>
@@ -2444,7 +2533,7 @@ export default function ArticleDetailPage() {
               />
 
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-6 text-sm">
-                <button
+                <button type="button"
                   onClick={() => prevArticle && router.push(buildArticleHref(prevArticle.slug))}
                   disabled={!prevArticle}
                   className={`px-3 py-2 rounded-lg transition text-left ${
@@ -2461,7 +2550,7 @@ export default function ArticleDetailPage() {
                     </span>
                   )}
                 </button>
-                <button
+                <button type="button"
                   onClick={() => nextArticle && router.push(buildArticleHref(nextArticle.slug))}
                   disabled={!nextArticle}
                   className={`px-3 py-2 rounded-lg transition text-right ${
@@ -2502,12 +2591,16 @@ export default function ArticleDetailPage() {
                                   src={session.user.image}
                                   alt={session.user.name || t('访客')}
                                   className="h-6 w-6 rounded-full object-cover cursor-pointer"
+                                  width={24}
+                                  height={24}
+                                  loading="lazy"
+                                  decoding="async"
                                 />
                               </button>
                             )}
                             {showUserMenu && (
                               <div className="absolute right-0 mt-2 min-w-[120px] rounded-sm border border-border bg-surface shadow-sm text-xs text-text-2 z-10">
-                                <button
+                                <button type="button"
                                   onClick={() => {
                                     signOut();
                                     setShowUserMenu(false);
@@ -2523,7 +2616,7 @@ export default function ArticleDetailPage() {
                       ) : (
                         <div className="flex items-center gap-2">
                           {commentProviders.github && (
-                            <button
+                            <button type="button"
                               onClick={() => signIn('github')}
                               className="px-3 py-1 text-xs rounded-full border border-border text-text-2 hover:text-text-1 hover:bg-muted transition"
                             >
@@ -2531,7 +2624,7 @@ export default function ArticleDetailPage() {
                             </button>
                           )}
                           {commentProviders.google && (
-                            <button
+                            <button type="button"
                               onClick={() => signIn('google')}
                               className="px-3 py-1 text-xs rounded-full border border-border text-text-2 hover:text-text-1 hover:bg-muted transition"
                             >
@@ -2553,12 +2646,15 @@ export default function ArticleDetailPage() {
                               {t("回复")} {replyToUser ? `@${replyToUser}` : ''}
                             </span>
                             <button
+                              type="button"
                               onClick={() => {
                                 setReplyToId(null);
                                 setReplyToUser('');
                                 setReplyTargetId(null);
+                                setReplyPrefix('');
                               }}
-                              className="text-text-3 hover:text-text-1 transition"
+                              disabled={commentSubmitting}
+                              className="text-text-3 hover:text-text-1 transition disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                               {t("取消回复")}
                             </button>
@@ -2571,6 +2667,7 @@ export default function ArticleDetailPage() {
                           rows={4}
                           className="rounded-lg"
                           placeholder={t('写下你的评论，支持 Markdown')}
+                          disabled={commentSubmitting}
                         />
                         <div className="mt-2 flex justify-end">
                           <Button
@@ -2578,6 +2675,8 @@ export default function ArticleDetailPage() {
                             onClick={handleSubmitComment}
                             variant="primary"
                             size="sm"
+                            loading={commentSubmitting}
+                            disabled={commentSubmitting}
                           >
                             {t('发布评论')}
                           </Button>
@@ -2586,7 +2685,7 @@ export default function ArticleDetailPage() {
                     )}
 
                     {commentsLoading ? (
-                      <div className="text-sm text-text-3">{t('评论加载中...')}</div>
+                      <div className="inline-flex items-center gap-2 text-sm text-text-3" aria-live="polite"><IconRefresh className="h-3.5 w-3.5 animate-spin" /><span>{t('评论加载中...')}</span></div>
                     ) : totalTopComments === 0 ? (
                       <div className="text-sm text-text-3">{t('暂无评论')}</div>
                     ) : (
@@ -2594,19 +2693,20 @@ export default function ArticleDetailPage() {
                         {pagedTopComments.map((comment) => {
                           const isOwner = session?.user?.id === comment.user_id;
                           const isEditing = editingCommentId === comment.id;
-                          const replies = [...comments]
-                            .filter((item) => item.reply_to_id === comment.id)
-                            .sort(
-                              (a, b) =>
-                                new Date(b.created_at).getTime() -
-                                new Date(a.created_at).getTime(),
-                            );
+                          const replies = sortedRepliesByParent[comment.id] || [];
                           const isExpanded = expandedReplies[comment.id] ?? false;
+                          const isUpdatingComment = commentUpdatingIds.has(comment.id);
+                          const isDeletingComment = commentDeletingIds.has(comment.id);
+                          const isTogglingComment = commentTogglingIds.has(comment.id);
                           return (
                             <div
                               key={comment.id}
                               id={`comment-${comment.id}`}
-                              className="border border-border rounded-lg p-4 bg-surface scroll-mt-24"
+                              className={`border border-border rounded-lg p-4 bg-surface scroll-mt-24 transition-colors duration-700 ${
+                                highlightedCommentId === comment.id
+                                  ? 'ring-2 ring-primary/40 bg-primary-soft/35'
+                                  : ''
+                              }`}
                             >
                               <div className="flex items-start justify-between gap-2 mb-2">
                                 <div className="flex items-center gap-2">
@@ -2615,6 +2715,10 @@ export default function ArticleDetailPage() {
                                       src={comment.user_avatar}
                                       alt={comment.user_name}
                                       className="h-6 w-6 rounded-full object-cover"
+                                      width={24}
+                                      height={24}
+                                      loading="lazy"
+                                      decoding="async"
                                     />
                                   )}
                                   <div className="text-sm text-text-1">{comment.user_name}</div>
@@ -2637,6 +2741,7 @@ export default function ArticleDetailPage() {
                                         variant="danger"
                                         size="sm"
                                         title={t("取消")}
+                                        disabled={isUpdatingComment}
                                         className="rounded-full"
                                       >
                                         ×
@@ -2645,7 +2750,9 @@ export default function ArticleDetailPage() {
                                         onClick={handleSaveEditComment}
                                         variant="primary"
                                         size="sm"
-                                        title={t("保存")}
+                                        title={isUpdatingComment ? t('保存中...') : t('保存')}
+                                        loading={isUpdatingComment}
+                                        disabled={isUpdatingComment}
                                         className="rounded-full"
                                       >
                                         <IconCheck className="h-3.5 w-3.5" />
@@ -2658,6 +2765,7 @@ export default function ArticleDetailPage() {
                                         variant="ghost"
                                         size="sm"
                                         title={t("回复")}
+                                        disabled={commentSubmitting || isUpdatingComment || isDeletingComment}
                                         className="rounded-full"
                                       >
                                         <IconReply className="h-3.5 w-3.5" />
@@ -2667,7 +2775,9 @@ export default function ArticleDetailPage() {
                                               onClick={() => handleToggleCommentHidden(comment)}
                                               variant="ghost"
                                               size="sm"
-                                              title={comment.is_hidden ? t("显示") : t("隐藏")}
+                                              title={isTogglingComment ? t('处理中...') : comment.is_hidden ? t('显示') : t('隐藏')}
+                                              loading={isTogglingComment}
+                                              disabled={isTogglingComment || isDeletingComment}
                                               className="rounded-full"
                                             >
                                               {comment.is_hidden ? (
@@ -2684,6 +2794,7 @@ export default function ArticleDetailPage() {
                                                 variant="ghost"
                                                 size="sm"
                                                 title={t("编辑")}
+                                                disabled={isDeletingComment || isTogglingComment || isUpdatingComment}
                                                 className="rounded-full"
                                               >
                                                 <IconEdit className="h-3.5 w-3.5" />
@@ -2692,7 +2803,9 @@ export default function ArticleDetailPage() {
                                                 onClick={() => openDeleteCommentModal(comment.id)}
                                                 variant="danger"
                                                 size="sm"
-                                                title={t("删除")}
+                                                title={isDeletingComment ? t('删除中...') : t("删除")}
+                                                loading={isDeletingComment}
+                                                disabled={isDeletingComment || isUpdatingComment || isTogglingComment}
                                                 className="rounded-full"
                                               >
                                                 <IconTrash className="h-3.5 w-3.5" />
@@ -2710,6 +2823,7 @@ export default function ArticleDetailPage() {
                                     onChange={(e) => setEditingCommentDraft(e.target.value)}
                                     rows={4}
                                     className="rounded-lg"
+                                    disabled={isUpdatingComment}
                                   />
                                 </div>
                               ) : (
@@ -2756,6 +2870,7 @@ export default function ArticleDetailPage() {
                                     rows={3}
                                     className="rounded-lg"
                                     placeholder={t("写下你的回复，支持 Markdown")}
+                                    disabled={commentSubmitting}
                                   />
                                   <div className="flex justify-end gap-1.5 mt-2">
                                     <IconButton
@@ -2768,6 +2883,7 @@ export default function ArticleDetailPage() {
                                       variant="ghost"
                                       size="sm"
                                       title={t("取消")}
+                                      disabled={commentSubmitting}
                                       className="rounded-full"
                                     >
                                       ×
@@ -2776,7 +2892,9 @@ export default function ArticleDetailPage() {
                                       onClick={handleSubmitComment}
                                       variant="primary"
                                       size="sm"
-                                      title={t("发布")}
+                                      title={commentSubmitting ? t('发布中...') : t("发布")}
+                                      loading={commentSubmitting}
+                                      disabled={commentSubmitting}
                                       className="rounded-full"
                                     >
                                       <IconCheck className="h-3.5 w-3.5" />
@@ -2788,6 +2906,7 @@ export default function ArticleDetailPage() {
                               {replies.length > 0 && (
                                 <div className="mt-4 border-t border-border pt-3">
                                   <button
+                                    type="button"
                                     onClick={() =>
                                       setExpandedReplies((prev) => ({
                                         ...prev,
@@ -2796,6 +2915,7 @@ export default function ArticleDetailPage() {
                                     }
                                     className="inline-flex items-center gap-1 text-xs text-text-3 hover:text-text-1 transition"
                                     title={isExpanded ? t("收起回复") : t("查看回复")}
+                                    aria-label={isExpanded ? t('收起回复') : t('查看回复')}
                                   >
                                     {isExpanded ? (
                                       <IconChevronUp className="h-3.5 w-3.5" />
@@ -2806,11 +2926,19 @@ export default function ArticleDetailPage() {
                                   </button>
                                   {isExpanded && (
                                     <div className="mt-3 space-y-3">
-                                      {replies.map((reply) => (
+                                      {replies.map((reply) => {
+                                        const isReplyUpdating = commentUpdatingIds.has(reply.id);
+                                        const isReplyDeleting = commentDeletingIds.has(reply.id);
+                                        const isReplyToggling = commentTogglingIds.has(reply.id);
+                                        return (
                                         <div
                                           key={reply.id}
                                           id={`comment-${reply.id}`}
-                                          className="border border-border rounded-lg p-3 bg-muted"
+                                          className={`border border-border rounded-lg p-3 bg-muted transition-colors duration-700 ${
+                                            highlightedCommentId === reply.id
+                                              ? 'ring-2 ring-primary/35 bg-primary-soft/30'
+                                              : ''
+                                          }`}
                                         >
                                           <div className="flex items-start justify-between gap-2 mb-2">
                                             <div className="flex items-center gap-2">
@@ -2819,6 +2947,10 @@ export default function ArticleDetailPage() {
                                                   src={reply.user_avatar}
                                                   alt={reply.user_name}
                                                   className="h-5 w-5 rounded-full object-cover"
+                                                  width={20}
+                                                  height={20}
+                                                  loading="lazy"
+                                                  decoding="async"
                                                 />
                                               )}
                                               <div className="text-xs text-text-1">{reply.user_name}</div>
@@ -2841,6 +2973,7 @@ export default function ArticleDetailPage() {
                                                     variant="ghost"
                                                     size="sm"
                                                     title={t('取消')}
+                                                    disabled={isReplyUpdating}
                                                     className="rounded-full"
                                                   >
                                                     ×
@@ -2849,7 +2982,9 @@ export default function ArticleDetailPage() {
                                                     onClick={handleSaveEditComment}
                                                     variant="primary"
                                                     size="sm"
-                                                    title={t('保存')}
+                                                    title={isReplyUpdating ? t('保存中...') : t('保存')}
+                                                    loading={isReplyUpdating}
+                                                    disabled={isReplyUpdating}
                                                     className="rounded-full"
                                                   >
                                                     <IconCheck className="h-3.5 w-3.5" />
@@ -2862,6 +2997,7 @@ export default function ArticleDetailPage() {
                                                     variant="ghost"
                                                     size="sm"
                                                     title={t('回复')}
+                                                    disabled={commentSubmitting || isReplyUpdating || isReplyDeleting}
                                                     className="rounded-full"
                                                   >
                                                     <IconReply className="h-3.5 w-3.5" />
@@ -2871,7 +3007,9 @@ export default function ArticleDetailPage() {
                                                     onClick={() => handleToggleCommentHidden(reply)}
                                                     variant="ghost"
                                                     size="sm"
-                                                    title={reply.is_hidden ? t('显示') : t('隐藏')}
+                                                    title={isReplyToggling ? t('处理中...') : reply.is_hidden ? t('显示') : t('隐藏')}
+                                                    loading={isReplyToggling}
+                                                    disabled={isReplyToggling || isReplyDeleting}
                                                     className="rounded-full"
                                                   >
                                                     {reply.is_hidden ? (
@@ -2888,6 +3026,7 @@ export default function ArticleDetailPage() {
                                                       variant="ghost"
                                                       size="sm"
                                                       title={t('编辑')}
+                                                      disabled={isReplyDeleting || isReplyToggling || isReplyUpdating}
                                                       className="rounded-full"
                                                     >
                                                       <IconEdit className="h-3.5 w-3.5" />
@@ -2896,7 +3035,9 @@ export default function ArticleDetailPage() {
                                                       onClick={() => openDeleteCommentModal(reply.id)}
                                                       variant="danger"
                                                       size="sm"
-                                                      title={t('删除')}
+                                                      title={isReplyDeleting ? t('删除中...') : t('删除')}
+                                                      loading={isReplyDeleting}
+                                                      disabled={isReplyDeleting || isReplyUpdating || isReplyToggling}
                                                       className="rounded-full"
                                                     >
                                                       <IconTrash className="h-3.5 w-3.5" />
@@ -2914,6 +3055,7 @@ export default function ArticleDetailPage() {
                                                 onChange={(e) => setEditingCommentDraft(e.target.value)}
                                                 rows={3}
                                                 className="rounded-lg"
+                                                disabled={isReplyUpdating}
                                               />
                                             </div>
                                           ) : (
@@ -2960,6 +3102,7 @@ export default function ArticleDetailPage() {
                                                 rows={3}
                                                 className="rounded-lg"
                                                 placeholder={t("写下你的回复，支持 Markdown")}
+                                                disabled={commentSubmitting}
                                               />
                                               <div className="flex justify-end gap-1.5 mt-2">
                                                 <IconButton
@@ -2972,6 +3115,7 @@ export default function ArticleDetailPage() {
                                                   variant="ghost"
                                                   size="sm"
                                                   title={t('取消')}
+                                                  disabled={commentSubmitting}
                                                   className="rounded-full"
                                                 >
                                                   ×
@@ -2980,7 +3124,9 @@ export default function ArticleDetailPage() {
                                                   onClick={handleSubmitComment}
                                                   variant="primary"
                                                   size="sm"
-                                                  title={t('发布')}
+                                                  title={commentSubmitting ? t('发布中...') : t('发布')}
+                                                  loading={commentSubmitting}
+                                                  disabled={commentSubmitting}
                                                   className="rounded-full"
                                                 >
                                                   <IconCheck className="h-3.5 w-3.5" />
@@ -2989,7 +3135,8 @@ export default function ArticleDetailPage() {
                                             </div>
                                           )}
                                         </div>
-                                      ))}
+                                        );
+                                      })}
                                     </div>
                                   )}
                                 </div>
@@ -3108,8 +3255,10 @@ export default function ArticleDetailPage() {
                 {t('编辑文章')}
               </h3>
               <button
+                type="button"
                 onClick={() => setShowEditModal(false)}
-                className="text-text-3 hover:text-text-1 text-xl"
+                className="text-text-3 hover:text-text-1 text-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
+                aria-label={t('关闭编辑弹窗')}
               >
                 ×
               </button>
@@ -3269,6 +3418,8 @@ export default function ArticleDetailPage() {
                           src={resolveMediaUrl(editTopImage)}
                           alt={editTitle}
                           className="w-full h-full object-cover"
+                          loading="lazy"
+                          decoding="async"
                           onError={(e) => {
                             (e.target as HTMLImageElement).style.display = 'none';
                           }}
@@ -3294,7 +3445,7 @@ export default function ArticleDetailPage() {
           className="fixed z-40"
           style={{ left: selectionToolbarPos.x, top: selectionToolbarPos.y }}
         >
-          <button
+          <button type="button"
             onClick={handleStartAnnotation}
             className="w-7 h-7 flex items-center justify-center border border-border text-primary rounded-full bg-surface/80 hover:bg-primary-soft transition"
           >
@@ -3465,9 +3616,9 @@ export default function ArticleDetailPage() {
         message={t('确定要删除这条评论吗？此操作不可撤销。')}
         confirmText={t('删除')}
         cancelText={t('取消')}
-        onConfirm={() => {
+        onConfirm={async () => {
           if (pendingDeleteCommentId) {
-            handleDeleteComment(pendingDeleteCommentId);
+            await handleDeleteComment(pendingDeleteCommentId);
           }
           setShowDeleteCommentModal(false);
           setPendingDeleteCommentId(null);
@@ -3484,60 +3635,50 @@ export default function ArticleDetailPage() {
         message={t('确定要删除这篇文章吗？此操作不可撤销。')}
         confirmText={t('删除')}
         cancelText={t('取消')}
-        onConfirm={() => {
+        onConfirm={async () => {
+          await handleDelete();
           setShowDeleteModal(false);
-          handleDelete();
         }}
         onCancel={() => setShowDeleteModal(false)}
       />
 
-      {lightboxImage && (
-        <div
-          className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4"
-        >
-          <div className="relative">
-            <button
-              onClick={() => setLightboxImage(null)}
-              className="absolute -top-3 -right-3 w-8 h-8 rounded-full bg-surface text-text-2 shadow flex items-center justify-center hover:bg-muted"
-              aria-label={t('关闭')}
-            >
-              ×
-            </button>
+      <ModalShell
+        isOpen={Boolean(lightboxImage)}
+        onClose={() => setLightboxImage(null)}
+        title={t('预览')}
+        widthClassName="max-w-5xl"
+        panelClassName="max-h-[90vh]"
+        bodyClassName="p-4"
+      >
+        {lightboxImage ? (
+          <div className="flex items-center justify-center">
             <img
               src={lightboxImage}
               alt={t('预览')}
-              className="max-h-[80vh] max-w-[90vw] rounded-lg shadow-xl"
+              className="max-h-[78vh] max-w-full rounded-lg shadow-xl"
+              decoding="async"
             />
           </div>
-        </div>
-      )}
+        ) : null}
+      </ModalShell>
 
       {mindMapOpen && article?.ai_analysis?.outline && (
         (() => {
           const tree = parseMindMapOutline(article.ai_analysis?.outline || '');
           if (!tree) return null;
           return (
-            <div
-              className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4"
+            <ModalShell
+              isOpen={mindMapOpen}
+              onClose={() => setMindMapOpen(false)}
+              title={t('大纲')}
+              widthClassName="max-w-6xl"
+              panelClassName="max-h-[90vh]"
+              bodyClassName="p-0"
             >
-              <div
-                className="relative w-full max-w-6xl h-[80vh]"
-                onClick={(event) => event.stopPropagation()}
-              >
-                <button
-                  onClick={() => setMindMapOpen(false)}
-                  className="absolute top-3 right-3 w-8 h-8 rounded-full bg-surface text-text-2 shadow flex items-center justify-center hover:bg-muted"
-                  aria-label={t('关闭')}
-                >
-                  ×
-                </button>
-                <div className="w-full h-full rounded-lg bg-surface shadow-xl border border-border overflow-auto">
-                  <div className="p-6">
-                    <MindMapTree node={tree} isRoot />
-                  </div>
-                </div>
+              <div className="h-[80vh] overflow-auto p-6">
+                <MindMapTree node={tree} isRoot />
               </div>
-            </div>
+            </ModalShell>
           );
         })()
       )}
@@ -3547,55 +3688,30 @@ export default function ArticleDetailPage() {
 
       {isMobile && (
         <>
-          <button
+          <button type="button"
             onClick={() => setShowAiPanel(true)}
             className="fixed right-4 top-24 flex items-center justify-center w-10 h-10 rounded-full bg-surface border border-border shadow-lg text-text-2 hover:text-text-1 hover:bg-muted transition z-50"
             title={t('AI')}
           >
             AI
           </button>
-          {showAiPanel && (
-            <div
-              className="fixed inset-0 z-50 bg-black/40 flex justify-end"
-              onClick={() => setShowAiPanel(false)}
-            >
-              <div
-                className="h-full w-[86vw] max-w-sm bg-surface shadow-xl overflow-y-auto"
-                onClick={(event) => event.stopPropagation()}
-                onTouchStart={(event) => {
-                  aiPanelTouchStartX.current = event.touches[0]?.clientX ?? null;
-                }}
-                onTouchEnd={(event) => {
-                  const startX = aiPanelTouchStartX.current;
-                  const endX = event.changedTouches[0]?.clientX ?? null;
-                  aiPanelTouchStartX.current = null;
-                  if (startX === null || endX === null) return;
-                  if (endX - startX > 60) {
-                    setShowAiPanel(false);
-                  }
-                }}
-              >
-                <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-surface">
-                  <span className="text-sm font-semibold text-text-1">
-                    {t('AI')}
-                  </span>
-                  <button
-                    onClick={() => setShowAiPanel(false)}
-                    className="text-text-3 hover:text-text-1 transition text-lg"
-                    aria-label={t('关闭')}
-                  >
-                    ×
-                  </button>
-                </div>
-                <div className="p-4">{aiPanelContent}</div>
-              </div>
-            </div>
-          )}
+          <ModalShell
+            isOpen={showAiPanel}
+            onClose={() => setShowAiPanel(false)}
+            title={t('AI')}
+            widthClassName="max-w-sm"
+            overlayClassName="items-stretch justify-end bg-black/40 p-0"
+            panelClassName="h-full w-[86vw] max-w-sm rounded-none border-l border-border shadow-xl"
+            headerClassName="border-b border-border px-4 py-3"
+            bodyClassName="overflow-y-auto p-4"
+          >
+            {aiPanelContent}
+          </ModalShell>
         </>
       )}
 
       {immersiveMode && !isMobile && (
-        <button
+        <button type="button"
           onClick={() => setImmersiveMode(false)}
           className="fixed right-6 top-1/2 -translate-y-1/2 flex items-center justify-center w-10 h-10 rounded-full bg-surface border border-border shadow-lg text-text-2 hover:text-text-1 hover:bg-muted transition z-50"
           title={`${t('退出沉浸模式')} (Esc)`}
