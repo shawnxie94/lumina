@@ -1,5 +1,4 @@
 import ipaddress
-import os
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
@@ -8,10 +7,11 @@ from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 
+from app.core.settings import get_settings
 from auth import get_admin_settings, get_current_admin, security
 from models import AdminSettings, get_db, now_str
 
-INTERNAL_API_TOKEN = os.getenv("INTERNAL_API_TOKEN", "")
+settings = get_settings()
 
 DEFAULT_BASIC_SETTINGS = {
     "default_language": "zh-CN",
@@ -28,9 +28,9 @@ DEFAULT_BASIC_SETTINGS = {
 
 
 def is_internal_request(request: Request) -> bool:
-    if not INTERNAL_API_TOKEN:
+    if not settings.internal_api_token:
         return False
-    return request.headers.get("X-Internal-Token") == INTERNAL_API_TOKEN
+    return request.headers.get("X-Internal-Token") == settings.internal_api_token
 
 
 def is_private_request(request: Request) -> bool:
@@ -50,7 +50,7 @@ def get_admin_or_internal(
 ) -> bool:
     if is_internal_request(request):
         return True
-    if not INTERNAL_API_TOKEN and is_private_request(request):
+    if not settings.internal_api_token and is_private_request(request):
         return True
     return get_current_admin(credentials=credentials, db=db)
 

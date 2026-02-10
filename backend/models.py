@@ -13,13 +13,13 @@ from sqlalchemy.orm import relationship, sessionmaker
 from datetime import date, datetime, timezone
 import json
 import uuid
-import os
-
 from app.core.db_migrations import run_db_migrations
+from app.core.settings import get_settings
 
 Base = declarative_base()
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./data/articles.db")
+settings = get_settings()
+DATABASE_URL = settings.database_url
 
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

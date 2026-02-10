@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
 
-DEFAULT_DATABASE_URL = "sqlite:///./data/articles.db"
+from app.core.settings import get_settings
 
 
 def run_db_migrations(database_url: str | None = None) -> None:
@@ -14,6 +13,6 @@ def run_db_migrations(database_url: str | None = None) -> None:
     config = Config(str(backend_dir / "alembic.ini"))
     config.set_main_option(
         "sqlalchemy.url",
-        database_url or os.getenv("DATABASE_URL", DEFAULT_DATABASE_URL),
+        database_url or get_settings().database_url,
     )
     command.upgrade(config, "head")

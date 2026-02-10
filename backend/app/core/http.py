@@ -1,11 +1,12 @@
 import json
 import logging
-import os
 import time
 import uuid
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+
+from app.core.settings import get_settings
 
 logger = logging.getLogger("article_api")
 if not logger.handlers:
@@ -18,23 +19,9 @@ def log_event(event: str, request_id: str, **fields) -> None:
 
 
 def configure_cors(app: FastAPI) -> None:
-    allowed_origins_env = os.getenv("ALLOWED_ORIGINS", "")
-    allow_credentials = True
-    if allowed_origins_env:
-        if allowed_origins_env.strip() == "*":
-            allowed_origins = ["*"]
-            allow_credentials = False
-        else:
-            allowed_origins = [
-                origin.strip()
-                for origin in allowed_origins_env.split(",")
-                if origin.strip()
-            ]
-    else:
-        allowed_origins = [
-            "http://localhost:3000",
-            "http://127.0.0.1:3000",
-        ]
+    settings = get_settings()
+    allowed_origins = settings.cors_allow_origins
+    allow_credentials = "*" not in allowed_origins
 
     app.add_middleware(
         CORSMiddleware,

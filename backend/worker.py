@@ -1,17 +1,20 @@
 import asyncio
 import time
 
-from app.domain.ai_task_service import (
-    AITaskService,
-    POLL_INTERVAL,
-    TASK_TIMEOUT_SECONDS,
-)
-from models import SessionLocal
+from app.core.settings import get_settings, validate_startup_settings
 from task_errors import normalize_task_error
 
 
 def main() -> None:
-    task_service = AITaskService()
+    settings = get_settings()
+    validate_startup_settings(settings)
+
+    from app.domain.ai_task_service import AITaskService
+    from models import SessionLocal
+
+    task_service = AITaskService(worker_id=settings.ai_worker_id)
+    poll_interval = settings.ai_worker_poll_interval
+    task_timeout_seconds = settings.ai_task_timeout
 
     while True:
         db = SessionLocal()
@@ -19,12 +22,12 @@ def main() -> None:
             task_service.cleanup_stale_tasks(db)
             task = task_service.claim_task(db)
             if not task:
-                time.sleep(POLL_INTERVAL)
+                time.sleep(poll_interval)
                 continue
             try:
                 asyncio.run(
                     asyncio.wait_for(
-                        task_service.run_task_async(task), timeout=TASK_TIMEOUT_SECONDS
+                        task_service.run_task_async(task), timeout=task_timeout_seconds
                     )
                 )
                 task_service.finish_task(db, task, success=True)

@@ -1,21 +1,21 @@
 import json
-import os
-import uuid
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 
+from app.core.settings import get_settings
 from app.domain.article_ai_pipeline_service import ArticleAIPipelineService
 from app.domain.article_embedding_service import ArticleEmbeddingService
 from models import AITask, now_str
 from task_errors import TaskDataError
 from task_state import append_task_event, ensure_task_status_transition
 
-POLL_INTERVAL = float(os.getenv("AI_WORKER_POLL_INTERVAL", "3"))
-LOCK_TIMEOUT_SECONDS = int(os.getenv("AI_TASK_LOCK_TIMEOUT", "300"))
-TASK_TIMEOUT_SECONDS = int(os.getenv("AI_TASK_TIMEOUT", "900"))
-WORKER_ID = os.getenv("AI_WORKER_ID", str(uuid.uuid4()))
+settings = get_settings()
+POLL_INTERVAL = settings.ai_worker_poll_interval
+LOCK_TIMEOUT_SECONDS = settings.ai_task_lock_timeout
+TASK_TIMEOUT_SECONDS = settings.ai_task_timeout
+WORKER_ID = settings.ai_worker_id
 
 
 def get_now_iso() -> str:

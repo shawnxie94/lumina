@@ -1,18 +1,24 @@
+import os
+
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from app.api.router_registry import register_routers
 from app.core.http import configure_cors, configure_request_middleware
-from media_service import MEDIA_BASE_URL, MEDIA_ROOT, ensure_media_root
-from models import init_db
+from app.core.settings import get_settings, validate_startup_settings
 
 
 def create_app() -> FastAPI:
+    settings = get_settings()
+    validate_startup_settings(settings)
+
+    from app.api.router_registry import register_routers
+    from models import init_db
+
     app = FastAPI(title="文章知识库API", version="1.0.0")
 
     app.mount(
-        MEDIA_BASE_URL,
-        StaticFiles(directory=MEDIA_ROOT, check_dir=False),
+        settings.normalized_media_base_url,
+        StaticFiles(directory=settings.media_root, check_dir=False),
         name="media",
     )
 
@@ -22,7 +28,7 @@ def create_app() -> FastAPI:
     @app.on_event("startup")
     async def startup_event():
         init_db()
-        ensure_media_root()
+        os.makedirs(settings.media_root, exist_ok=True)
 
     register_routers(app)
     return app

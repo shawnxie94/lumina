@@ -12,14 +12,15 @@ from io import BytesIO
 from fastapi import HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
+from app.core.settings import get_settings
 from models import AdminSettings, MediaAsset, Article, now_str
 
 logger = logging.getLogger("media_service")
 
-BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-MEDIA_ROOT = os.getenv("MEDIA_ROOT", os.path.join(BASE_DIR, "data", "media"))
-MEDIA_BASE_URL = os.getenv("MEDIA_BASE_URL", "/media").rstrip("/")
-MAX_MEDIA_SIZE = int(os.getenv("MAX_MEDIA_SIZE", str(8 * 1024 * 1024)))
+settings = get_settings()
+MEDIA_ROOT = settings.media_root
+MEDIA_BASE_URL = settings.normalized_media_base_url
+MAX_MEDIA_SIZE = settings.max_media_size
 DEFAULT_COMPRESS_THRESHOLD = 1536 * 1024
 DEFAULT_MAX_DIM = 2000
 DEFAULT_WEBP_QUALITY = 80
@@ -94,7 +95,7 @@ def _create_asset(
 
 
 def _build_media_url(storage_path: str) -> str:
-    public_base = os.getenv("MEDIA_PUBLIC_BASE_URL", "").rstrip("/")
+    public_base = settings.media_public_base_url.rstrip("/")
     normalized = storage_path.replace("\\", "/")
     relative = f"{MEDIA_BASE_URL}/{normalized.lstrip('/')}"
     if public_base:
