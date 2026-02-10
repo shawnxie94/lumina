@@ -143,7 +143,6 @@ export default function AppHeader() {
         if (task.content_type === 'quotes') return t('金句');
         return t('AI内容');
       }
-      if (task.task_type === 'process_article_ai') return t('旧流程');
       return t('其他');
     },
     [t],

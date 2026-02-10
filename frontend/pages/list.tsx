@@ -44,16 +44,8 @@ const toDayjsRange = (range: [Date | null, Date | null]): [Dayjs | null, Dayjs |
   range[1] ? dayjs(range[1]) : null,
 ];
 
-const getArticleLanguageTag = (article: Article): string => {
-  // 优先使用 original_language 字段，回退到基于内容的检测
-  if (article.original_language) {
-    return article.original_language === 'zh' ? '中文' : '英文';
-  }
-  // 兼容旧数据：基于内容检测
-  const sample = `${article.title || ''} ${article.summary || ''}`;
-  const hasChinese = /[\u4e00-\u9fff]/.test(sample);
-  return hasChinese ? '中文' : '英文';
-};
+const getArticleLanguageTag = (article: Article): string =>
+  article.original_language === 'zh' ? '中文' : '英文';
 
 
 const getDateRangeFromQuickOption = (option: QuickDateOption): [Date | null, Date | null] => {

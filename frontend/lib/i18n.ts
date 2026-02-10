@@ -297,7 +297,6 @@ const translations: Record<Language, Record<string | number, string>> = {
 		"登录中...": "Logging in...",
 		登录并授权: "Login and authorize",
 		AI内容: "AI content",
-		旧流程: "Legacy",
 		"由 Lumina 驱动": "Powered by Lumina",
 		清洗: "Clean",
 		校验: "Validate",

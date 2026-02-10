@@ -246,9 +246,6 @@ class AITaskService:
             raise TaskDataError("缺少文章ID")
         return article_id
 
-    async def _handle_process_article_ai(self, pipeline, article_id: str, category_id):
-        await pipeline.process_article_ai(article_id, category_id)
-
     async def _handle_process_article_cleaning(self, pipeline, article_id: str, category_id):
         await pipeline.process_article_cleaning(article_id, category_id)
 
@@ -305,11 +302,6 @@ class AITaskService:
         )
 
         handlers = {
-            "process_article_ai": lambda: self._handle_process_article_ai(
-                pipeline,
-                self._require_article_id(article_id),
-                category_id,
-            ),
             "process_article_cleaning": lambda: self._handle_process_article_cleaning(
                 pipeline,
                 self._require_article_id(article_id),

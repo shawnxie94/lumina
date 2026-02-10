@@ -44,5 +44,3 @@ networks:
   app-network:
     driver: bridge
 
-volumes:
-  data:

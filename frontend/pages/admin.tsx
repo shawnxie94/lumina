@@ -155,8 +155,6 @@ const resolveAdminRoutePath = (
 
 const parseAdminRouteState = (
 	asPath: string,
-	legacySection?: string,
-	legacySubSection?: string,
 ): AdminRouteState => {
 	const pathname = normalizePathname(asPath);
 	const segments = pathname.split("/").filter(Boolean);
@@ -200,29 +198,6 @@ const parseAdminRouteState = (
 			}
 		}
 		return { section, aiSubSection, monitoringSubSection, commentSubSection };
-	}
-
-	if (legacySection === "monitoring") {
-		section = "monitoring";
-		if (legacySubSection && isMonitoringSubSection(legacySubSection)) {
-			monitoringSubSection = legacySubSection;
-		}
-	} else if (legacySection === "ai") {
-		section = "ai";
-		if (legacySubSection && isAISubSection(legacySubSection)) {
-			aiSubSection = legacySubSection;
-		}
-	} else if (legacySection === "comments") {
-		section = "comments";
-		if (legacySubSection && isCommentSubSection(legacySubSection)) {
-			commentSubSection = legacySubSection;
-		}
-	} else if (
-		legacySection === "basic" ||
-		legacySection === "categories" ||
-		legacySection === "storage"
-	) {
-		section = legacySection;
 	}
 
 	return { section, aiSubSection, monitoringSubSection, commentSubSection };
@@ -680,33 +655,12 @@ export default function AdminPage() {
 	}, [authLoading, isAdmin, router]);
 
 	useEffect(() => {
-		if (typeof window === "undefined") return;
-		return () => {
-			localStorage.removeItem("settings_active_section");
-			localStorage.removeItem("settings_ai_sub_section");
-			localStorage.removeItem("settings_monitoring_sub_section");
-			localStorage.removeItem("settings_comment_sub_section");
-			localStorage.removeItem("settings_prompt_type");
-		};
-	}, []);
-
-	useEffect(() => {
 		if (!router.isReady) return;
-		const legacySection =
-			typeof router.query.section === "string"
-				? router.query.section
-				: undefined;
-		const legacySubSection =
-			typeof router.query.sub === "string" ? router.query.sub : undefined;
 		const resolvedPath = resolveAdminRoutePath(
 			router.asPath,
 			router.query.path,
 		);
-		const routeState = parseAdminRouteState(
-			resolvedPath,
-			legacySection,
-			legacySubSection,
-		);
+		const routeState = parseAdminRouteState(resolvedPath);
 		setActiveSection(routeState.section);
 		setAISubSection(routeState.aiSubSection);
 		setMonitoringSubSection(routeState.monitoringSubSection);
@@ -732,8 +686,6 @@ export default function AdminPage() {
 		router.isReady,
 		router.query.article_title,
 		router.query.path,
-		router.query.section,
-		router.query.sub,
 	]);
 
 	useEffect(() => {
@@ -1902,7 +1854,6 @@ export default function AdminPage() {
 			if (contentType === "quotes") return t("金句");
 			return t("AI内容");
 		}
-		if (taskType === "process_article_ai") return t("旧流程");
 		return t("其他");
 	};
 
@@ -4209,13 +4160,12 @@ export default function AdminPage() {
 														value: "process_ai_content:quotes",
 														label: t("金句"),
 													},
-													{
-														value: "process_ai_content:key_points",
-														label: t("总结"),
-													},
-													{ value: "process_article_ai", label: t("旧流程") },
-												]}
-											/>
+														{
+															value: "process_ai_content:key_points",
+															label: t("总结"),
+														},
+													]}
+												/>
 											<ArticleSearchSelect
 												label={t("文章名称")}
 												value={taskArticleTitleFilter}

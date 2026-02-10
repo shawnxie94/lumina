@@ -6,18 +6,18 @@ Next.js pages router; page files hold most UI state and API calls.
 ## STRUCTURE
 ```
 frontend/pages/
-├── index.tsx           # Article list + filters + batch ops
+├── list.tsx            # Article list + filters + batch ops
 ├── article/[id].tsx    # Article detail + AI panels
-├── settings.tsx        # Model/prompt config UI
+├── admin.tsx           # Admin settings + monitoring + model/prompt config UI
 └── auth/extension.tsx  # Extension auth handoff
 ```
 
 ## WHERE TO LOOK
 | Task | Location | Notes |
 |------|----------|-------|
-| List filters/batch actions | `frontend/pages/index.tsx` | Large, state-heavy page |
+| List filters/batch actions | `frontend/pages/list.tsx` | Large, state-heavy page |
 | Article detail + AI results | `frontend/pages/article/[id].tsx` | Polling + panels |
-| Model/prompt config | `frontend/pages/settings.tsx` | Admin config flows |
+| Model/prompt config | `frontend/pages/admin.tsx` | Admin config flows |
 | Extension auth flow | `frontend/pages/auth/extension.tsx` | Token handoff |
 
 ## CONVENTIONS
@@ -28,4 +28,4 @@ frontend/pages/
 - None documented in code comments.
 
 ## NOTES
-- `index.tsx` and `article/[id].tsx` are >500 lines; keep edits minimal and scoped.
+- `list.tsx` and `article/[id].tsx` are >500 lines; keep edits minimal and scoped.

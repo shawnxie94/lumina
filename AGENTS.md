@@ -31,9 +31,9 @@ Article Database System: Next.js 14 frontend (pages router) + FastAPI backend + 
 | Response contract baseline | `backend/scripts/response_contract_baseline.json` | Key API response shape regression baseline |
 | DB models + init | `backend/models.py` | Models + DB setup + defaults |
 | AI worker loop | `backend/worker.py` | Background task processor |
-| Frontend list page | `frontend/pages/index.tsx` | Filters, batch ops, pagination |
+| Frontend list page | `frontend/pages/list.tsx` | Filters, batch ops, pagination |
 | Frontend detail page | `frontend/pages/article/[id].tsx` | AI panels, polling, TOC |
-| Frontend settings | `frontend/pages/settings.tsx` | Model/prompt config UI |
+| Frontend admin settings | `frontend/pages/admin.tsx` | Model/prompt/admin config UI |
 | Frontend API client | `frontend/lib/api.ts` | Axios base + typed exports |
 | Extension API client | `extension/utils/api.ts` | Fetch wrapper + auth headers |
 | Extension popup UI | `extension/entrypoints/popup/main.js` | Main capture flow |
@@ -43,7 +43,7 @@ Article Database System: Next.js 14 frontend (pages router) + FastAPI backend + 
 ## CODE MAP
 | Symbol | Type | Location | Role |
 |--------|------|----------|------|
-| Home | Function | `frontend/pages/index.tsx` | Article list page controller |
+| Home | Function | `frontend/pages/list.tsx` | Article list page controller |
 | PopupController | Class | `extension/entrypoints/popup/main.js` | Extension popup UI logic |
 
 ## CONVENTIONS

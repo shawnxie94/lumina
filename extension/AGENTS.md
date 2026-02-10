@@ -6,7 +6,7 @@ WXT-based browser extension with multi-entrypoint UI pages and script-driven ext
 ## STRUCTURE
 ```
 extension/
-├── entrypoints/       # popup/editor/settings/history pages + background/content
+├── entrypoints/       # popup page + background/content scripts
 ├── utils/             # API client + site adapters
 ├── public/icon/       # Extension icons
 └── wxt.config.ts      # Manifest + build config
