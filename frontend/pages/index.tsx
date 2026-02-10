@@ -170,7 +170,7 @@ export default function HomePage() {
             <div className="mt-2 text-sm font-medium text-text-2">
               {t('更新时间')} {latestUpdatedAt ? formatDateTime(latestUpdatedAt, language) : '--'}
             </div>
-            <div className="mx-auto mt-4 h-[4px] w-72 rounded-full bg-gradient-to-r from-primary/25 via-primary to-primary/25" />
+            <div className="mx-auto mt-4 w-full max-w-3xl border-b border-border-strong" />
           </div>
         </div>
 

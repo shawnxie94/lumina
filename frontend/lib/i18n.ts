@@ -7,6 +7,7 @@ export type Language = "zh-CN" | "en";
 const translations: Record<Language, Record<string | number, string>> = {
 	"zh-CN": {},
 	en: {
+		主页: "Home",
 		信息流: "Feed",
 		通知中心: "Notifications",
 		清理: "Clear",
@@ -116,6 +117,8 @@ const translations: Record<Language, Record<string | number, string>> = {
 		输入划线批注内容: "Enter highlight annotation",
 		删除评论: "Delete comment",
 		"确定要删除这条评论吗？此操作不可撤销。": "Are you sure you want to delete this comment? This action cannot be undone.",
+		"确定要删除这条划线批注吗？此操作不可撤销。": "Are you sure you want to delete this highlight note? This action cannot be undone.",
+		"确定要删除文章开头批注吗？此操作不可撤销。": "Are you sure you want to delete the article note? This action cannot be undone.",
 		目录: "Table of contents",
 		展开目录: "Expand TOC",
 		收起目录: "Collapse TOC",

@@ -20,7 +20,7 @@ import dayjs from "dayjs";
 import Head from "next/head";
 import Link from "next/link";
 import { useRouter } from "next/router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AppFooter from "@/components/AppFooter";
 import AppHeader from "@/components/AppHeader";
 import ConfirmModal from "@/components/ConfirmModal";
@@ -339,9 +339,33 @@ export default function AdminPage() {
 		ai: boolean;
 		comments: boolean;
 	}>({
-		ai: false,
-		comments: false,
+		ai: true,
+		comments: true,
 	});
+
+	const handleToggleAISection = useCallback(() => {
+		const nextCollapsed = !collapsedSettings.ai;
+		setCollapsedSettings((prev) => ({
+			...prev,
+			ai: nextCollapsed,
+		}));
+		if (!nextCollapsed) {
+			setActiveSection("ai");
+			setAISubSection("model-api");
+		}
+	}, [collapsedSettings.ai]);
+
+	const handleToggleCommentSection = useCallback(() => {
+		const nextCollapsed = !collapsedSettings.comments;
+		setCollapsedSettings((prev) => ({
+			...prev,
+			comments: nextCollapsed,
+		}));
+		if (!nextCollapsed) {
+			setActiveSection("comments");
+			setCommentSubSection("keys");
+		}
+	}, [collapsedSettings.comments]);
 
 	const [showModelAPIModal, setShowModelAPIModal] = useState(false);
 	const [showModelAPITestModal, setShowModelAPITestModal] = useState(false);
@@ -1848,7 +1872,10 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 				<div className="flex-1 flex items-center justify-center">
 					<div className="text-center">
 						<div className="text-text-3 mb-4">{t("无权限访问此页面")}</div>
-						<Link href="/login" className="text-primary hover:underline">
+						<Link
+							href={`/login?redirect=${encodeURIComponent(router.asPath || '/admin')}`}
+							className="text-primary hover:underline"
+						>
 							{t("去登录")}
 						</Link>
 					</div>
@@ -1982,20 +2009,8 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 													label={t("AI配置")}
 													active={activeSection === "ai"}
 													expanded={!collapsedSettings.ai}
-													onMainClick={() => {
-														setActiveSection("ai");
-														setAISubSection("model-api");
-														setCollapsedSettings((prev) => ({
-															...prev,
-															ai: false,
-														}));
-													}}
-													onToggle={() => {
-														setCollapsedSettings((prev) => ({
-															...prev,
-															ai: !prev.ai,
-														}));
-													}}
+													onMainClick={handleToggleAISection}
+													onToggle={handleToggleAISection}
 													toggleAriaLabel={collapsedSettings.ai ? t("展开") : t("收起")}
 													icon={<IconRobot className="h-4 w-4" />}
 													expandedIndicator={<IconArrowUp className="h-4 w-4" />}
@@ -2054,20 +2069,8 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 													label={t("评论配置")}
 													active={activeSection === "comments"}
 													expanded={!collapsedSettings.comments}
-													onMainClick={() => {
-														setActiveSection("comments");
-														setCommentSubSection("keys");
-														setCollapsedSettings((prev) => ({
-															...prev,
-															comments: false,
-														}));
-													}}
-													onToggle={() => {
-														setCollapsedSettings((prev) => ({
-															...prev,
-															comments: !prev.comments,
-														}));
-													}}
+													onMainClick={handleToggleCommentSection}
+													onToggle={handleToggleCommentSection}
 													toggleAriaLabel={
 														collapsedSettings.comments ? t("展开") : t("收起")
 													}

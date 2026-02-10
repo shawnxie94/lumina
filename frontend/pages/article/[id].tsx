@@ -721,6 +721,9 @@ export default function ArticleDetailPage() {
   const commentPageSize = 5;
   const [pendingDeleteCommentId, setPendingDeleteCommentId] = useState<string | null>(null);
   const [showDeleteCommentModal, setShowDeleteCommentModal] = useState(false);
+  const [pendingDeleteAnnotationId, setPendingDeleteAnnotationId] = useState<string | null>(null);
+  const [showDeleteAnnotationModal, setShowDeleteAnnotationModal] = useState(false);
+  const [showDeleteNoteModal, setShowDeleteNoteModal] = useState(false);
   const [expandedReplies, setExpandedReplies] = useState<Record<string, boolean>>({});
 
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -875,6 +878,10 @@ export default function ArticleDetailPage() {
         setShowAnnotationModal(false);
         return;
       }
+      if (showDeleteNoteModal) {
+        setShowDeleteNoteModal(false);
+        return;
+      }
       if (showNoteModal) {
         setShowNoteModal(false);
         return;
@@ -896,6 +903,11 @@ export default function ArticleDetailPage() {
         setPendingDeleteCommentId(null);
         return;
       }
+      if (showDeleteAnnotationModal) {
+        setShowDeleteAnnotationModal(false);
+        setPendingDeleteAnnotationId(null);
+        return;
+      }
       if (showDeleteModal) {
         setShowDeleteModal(false);
         return;
@@ -911,11 +923,13 @@ export default function ArticleDetailPage() {
   }, [
     immersiveMode,
     showAnnotationModal,
+    showDeleteNoteModal,
     showNoteModal,
     showEditModal,
     showConfigModal,
     showAnnotationView,
     showDeleteCommentModal,
+    showDeleteAnnotationModal,
     showDeleteModal,
   ]);
 
@@ -2503,7 +2517,7 @@ export default function ArticleDetailPage() {
                     <div className="note-panel-title text-sm">{t('批注')}</div>
                     {isAdmin && (
                       <IconButton
-                        onClick={handleDeleteNoteContent}
+                        onClick={() => setShowDeleteNoteModal(true)}
                         variant="ghost"
                         size="sm"
                         title={t('删除批注')}
@@ -3303,8 +3317,16 @@ export default function ArticleDetailPage() {
                     </div>
 
                     <FormField
-                      label={t('头图 URL')}
-                      hint={!mediaStorageEnabled ? t('未开启本地存储，头图将保持外链') : undefined}
+                      label={(
+                        <span className="flex w-full items-center justify-between gap-2">
+                          <span>{t('头图 URL')}</span>
+                          {!mediaStorageEnabled && (
+                            <span className="text-xs font-normal text-text-3">
+                              {t('未开启本地存储，头图将保持外链')}
+                            </span>
+                          )}
+                        </span>
+                      )}
                     >
                       <div className="flex gap-2">
                         <TextInput
@@ -3333,9 +3355,14 @@ export default function ArticleDetailPage() {
                     </FormField>
 
                     <div className="flex-1 flex flex-col">
-                      <div className="flex items-center justify-between mb-1.5">
-                        <span className="block text-sm text-text-2">
-                          {t('内容（Markdown）')}
+                      <div className="mb-1.5 flex items-center justify-between gap-2">
+                        <span className="flex min-w-0 items-center gap-2 text-sm text-text-2">
+                          <span>{t('内容（Markdown）')}</span>
+                          {!mediaStorageEnabled && (
+                            <span className="text-xs font-normal text-text-3">
+                              {t('未开启本地存储，外链将保持不变')}
+                            </span>
+                          )}
                         </span>
                         <div className="flex items-center gap-2">
                           <IconButton
@@ -3354,11 +3381,6 @@ export default function ArticleDetailPage() {
                           </IconButton>
                         </div>
                       </div>
-                      {!mediaStorageEnabled && (
-                        <div className="mb-2 text-xs text-text-3">
-                          {t('未开启本地存储，外链将保持不变')}
-                        </div>
-                      )}
 
                       <TextArea
                         ref={editTextareaRef}
@@ -3517,7 +3539,8 @@ export default function ArticleDetailPage() {
                   type="button"
                   variant="danger"
                   onClick={() => {
-                    handleDeleteAnnotation(activeAnnotation.id);
+                    setPendingDeleteAnnotationId(activeAnnotation.id);
+                    setShowDeleteAnnotationModal(true);
                     setShowAnnotationView(false);
                   }}
                 >
@@ -3554,7 +3577,7 @@ export default function ArticleDetailPage() {
           footer={(
             <div className="flex justify-end gap-2">
               {isAdmin && noteContent && (
-                <Button type="button" variant="danger" onClick={handleDeleteNoteContent}>
+                <Button type="button" variant="danger" onClick={() => setShowDeleteNoteModal(true)}>
                   {t('删除')}
                 </Button>
               )}
@@ -3609,6 +3632,38 @@ export default function ArticleDetailPage() {
           </div>
         </ModalShell>
       )}
+
+      <ConfirmModal
+        isOpen={showDeleteNoteModal}
+        title={t('删除批注')}
+        message={t('确定要删除文章开头批注吗？此操作不可撤销。')}
+        confirmText={t('删除')}
+        cancelText={t('取消')}
+        onConfirm={async () => {
+          await handleDeleteNoteContent();
+          setShowDeleteNoteModal(false);
+        }}
+        onCancel={() => setShowDeleteNoteModal(false)}
+      />
+
+      <ConfirmModal
+        isOpen={showDeleteAnnotationModal}
+        title={t('删除批注')}
+        message={t('确定要删除这条划线批注吗？此操作不可撤销。')}
+        confirmText={t('删除')}
+        cancelText={t('取消')}
+        onConfirm={async () => {
+          if (pendingDeleteAnnotationId) {
+            await handleDeleteAnnotation(pendingDeleteAnnotationId);
+          }
+          setShowDeleteAnnotationModal(false);
+          setPendingDeleteAnnotationId(null);
+        }}
+        onCancel={() => {
+          setShowDeleteAnnotationModal(false);
+          setPendingDeleteAnnotationId(null);
+        }}
+      />
 
       <ConfirmModal
         isOpen={showDeleteCommentModal}

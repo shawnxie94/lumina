@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { useRouter } from 'next/router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useAuth } from '@/contexts/AuthContext';
@@ -35,6 +36,7 @@ type ErrorTaskItem = {
 };
 
 export default function AppHeader() {
+  const router = useRouter();
   const { isAdmin, isLoading: authLoading, logout } = useAuth();
   const { t, language } = useI18n();
   const { basicSettings, languagePreference, setLanguagePreference } =
@@ -248,6 +250,15 @@ export default function AppHeader() {
   const siteLogo = basicSettings.site_logo_url || '/favicon.png';
   const resolvedAdmin = !authLoading && isAdmin;
   const resolvedGuest = !authLoading && !isAdmin;
+  const loginHref = useMemo(() => {
+    const currentPath = router.asPath || '/';
+    if (currentPath.startsWith('/login')) {
+      return '/login';
+    }
+    return `/login?redirect=${encodeURIComponent(currentPath)}`;
+  }, [router.asPath]);
+  const isHomeRoute = router.pathname === '/';
+  const isFeedRoute = router.pathname === '/list';
 
   return (
     <header className="bg-surface border-b border-border shadow-sm">
@@ -267,8 +278,18 @@ export default function AppHeader() {
             </Link>
             <div className="hidden lg:flex items-center gap-2 text-base font-medium">
               <Link
+                href="/"
+                className={`px-3 py-1 rounded-sm transition ${
+                  isHomeRoute ? 'bg-muted text-text-1' : 'text-text-2 hover:bg-muted hover:text-text-1'
+                }`}
+              >
+                {t('主页')}
+              </Link>
+              <Link
                 href="/list"
-                className="px-3 py-1 rounded-sm transition text-text-1 hover:bg-muted"
+                className={`px-3 py-1 rounded-sm transition ${
+                  isFeedRoute ? 'bg-muted text-text-1' : 'text-text-2 hover:bg-muted hover:text-text-1'
+                }`}
               >
                 {t('信息流')}
               </Link>
@@ -463,7 +484,7 @@ export default function AppHeader() {
               </button>
             ) : resolvedGuest ? (
               <Link
-                href="/login"
+                href={loginHref}
                 className="hidden lg:flex items-center gap-1 px-3 py-1 rounded-sm text-sm text-text-3 hover:text-primary hover:bg-primary-soft transition"
                 title={t('管理员登录')}
                 aria-label={t('管理员登录')}

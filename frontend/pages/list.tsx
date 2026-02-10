@@ -234,6 +234,15 @@ export default function Home() {
     return `/article/${slug}?from=${encodeURIComponent(from)}`;
   };
 
+  const openArticleInNewTab = (slug: string) => {
+    const href = buildArticleHref(slug);
+    if (typeof window !== 'undefined') {
+      window.open(href, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    router.push(href);
+  };
+
   const fetchArticles = async () => {
     const requestId = articleRequestIdRef.current + 1;
     articleRequestIdRef.current = requestId;
@@ -877,7 +886,7 @@ export default function Home() {
     }
 
     // 使用 slug 作为 URL，seo 更友好
-    router.push(buildArticleHref(article.slug));
+    openArticleInNewTab(article.slug);
   };
 
   const handleArticleCardKeyDown = (
@@ -900,7 +909,7 @@ export default function Home() {
       handleToggleSelect(article.slug);
       return;
     }
-    router.push(buildArticleHref(article.slug));
+    openArticleInNewTab(article.slug);
   };
 
   const handleSelectAll = () => {
@@ -1356,7 +1365,7 @@ export default function Home() {
                              </div>
                            )}
                            <div className="flex-1 sm:pr-6">
-                             <Link href={buildArticleHref(article.slug)} onClick={(e) => e.stopPropagation()}>
+                             <Link href={buildArticleHref(article.slug)} onClick={(e) => e.stopPropagation()} target="_blank" rel="noopener noreferrer">
                                <h3 className="text-xl font-semibold text-text-1 hover:text-primary transition cursor-pointer">
                                  {article.title}
                                </h3>
@@ -1549,8 +1558,8 @@ export default function Home() {
 
             <div className="flex-1 overflow-hidden">
               <div className="grid grid-cols-1 lg:grid-cols-2 h-full">
-                <div className="p-4 flex flex-col h-full border-r border-border">
-                  <div className="space-y-4 flex-1 min-h-0 overflow-y-auto pr-1">
+                <div className="p-4 flex flex-col h-full border-r border-border min-h-0">
+                  <div className="space-y-4">
                     <FormField label={t('标题')} required>
                       <TextInput
                         type="text"
@@ -1602,25 +1611,25 @@ export default function Home() {
                         placeholder={t('输入图片 URL')}
                       />
                     </FormField>
-
-                    <FormField label={t('内容（Markdown）')} required className="flex-1 flex flex-col">
-                      <TextArea
-                        ref={createTextareaRef}
-                        value={createContent}
-                        onChange={(e) => setCreateContent(e.target.value)}
-                        onScroll={() => {
-                          if (createTextareaRef.current && createPreviewRef.current) {
-                            const textarea = createTextareaRef.current;
-                            const preview = createPreviewRef.current;
-                            const scrollRatio = textarea.scrollTop / (textarea.scrollHeight - textarea.clientHeight);
-                            preview.scrollTop = scrollRatio * (preview.scrollHeight - preview.clientHeight);
-                          }
-                        }}
-                        className="flex-1 font-mono resize-none min-h-[200px]"
-                        placeholder={t('在此输入 Markdown 内容...')}
-                      />
-                    </FormField>
                   </div>
+
+                  <FormField label={t('内容（Markdown）')} required className="mt-4 flex-1 min-h-0 flex flex-col">
+                    <TextArea
+                      ref={createTextareaRef}
+                      value={createContent}
+                      onChange={(e) => setCreateContent(e.target.value)}
+                      onScroll={() => {
+                        if (createTextareaRef.current && createPreviewRef.current) {
+                          const textarea = createTextareaRef.current;
+                          const preview = createPreviewRef.current;
+                          const scrollRatio = textarea.scrollTop / (textarea.scrollHeight - textarea.clientHeight);
+                          preview.scrollTop = scrollRatio * (preview.scrollHeight - preview.clientHeight);
+                        }
+                      }}
+                      className="flex-1 min-h-0 font-mono resize-none"
+                      placeholder={t('在此输入 Markdown 内容...')}
+                    />
+                  </FormField>
 
                   <div className="flex justify-end gap-2 pt-4 border-t flex-shrink-0">
                     <Button

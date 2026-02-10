@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 
 import { useRouter } from 'next/router';
 import Head from 'next/head';
@@ -22,12 +22,22 @@ export default function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
 
   const isSetupMode = !isInitialized;
+  const redirectTarget = useMemo(() => {
+    const redirectQuery = Array.isArray(router.query.redirect)
+      ? router.query.redirect[0]
+      : router.query.redirect;
+    if (typeof redirectQuery !== 'string') return '/';
+    if (!redirectQuery.startsWith('/')) return '/';
+    if (redirectQuery.startsWith('//')) return '/';
+    return redirectQuery;
+  }, [router.query.redirect]);
 
   useEffect(() => {
+    if (!router.isReady) return;
     if (!isLoading && isAdmin) {
-      router.push('/');
+      router.push(redirectTarget);
     }
-  }, [isLoading, isAdmin, router]);
+  }, [isLoading, isAdmin, router, redirectTarget]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -56,7 +66,7 @@ export default function LoginPage() {
       } else {
         await login(password);
       }
-      router.push('/');
+      router.push(redirectTarget);
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : t('操作失败');
       const axiosError = err as { response?: { data?: { detail?: string } } };
