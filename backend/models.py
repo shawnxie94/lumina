@@ -62,7 +62,7 @@ class Article(Base):
 
     id = Column(String, primary_key=True, default=generate_uuid)
     title = Column(String, nullable=False)
-    slug = Column(String, nullable=True, index=True)  # SEO友好的URL slug
+    slug = Column(String, unique=True, nullable=False, index=True)  # SEO友好的URL slug
     content_html = Column(Text, nullable=True)
     content_structured = Column(Text, nullable=True)
     content_md = Column(Text)
@@ -183,6 +183,32 @@ class AITask(Base):
     created_at = Column(String, default=now_str)
     updated_at = Column(String, default=now_str)
     finished_at = Column(String, nullable=True)
+
+    events = relationship(
+        "AITaskEvent",
+        back_populates="task",
+        cascade="all, delete-orphan",
+    )
+
+
+class AITaskEvent(Base):
+    __tablename__ = "ai_task_events"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    task_id = Column(
+        String,
+        ForeignKey("ai_tasks.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    event_type = Column(String, nullable=False)
+    from_status = Column(String, nullable=True)
+    to_status = Column(String, nullable=True)
+    message = Column(Text, nullable=True)
+    error_type = Column(String, nullable=True)
+    details = Column(Text, nullable=True)
+    created_at = Column(String, default=now_str)
+
+    task = relationship("AITask", back_populates="events")
 
 
 class AIUsageLog(Base):
@@ -452,6 +478,38 @@ def init_db():
                 ],
             )
 
+            rows = conn.execute(
+                text(
+                    "SELECT id, slug FROM articles ORDER BY created_at ASC, id ASC"
+                )
+            ).mappings().all()
+            seen_slugs: set[str] = set()
+            for row in rows:
+                article_id = row["id"]
+                current_slug = (row.get("slug") or "").strip()
+                base_slug = current_slug or f"article-{article_id.split('-')[0]}"
+                candidate = base_slug
+                sequence = 1
+                while candidate in seen_slugs:
+                    suffix = article_id.replace("-", "")[:8]
+                    if sequence == 1:
+                        candidate = f"{base_slug}-{suffix}"
+                    else:
+                        candidate = f"{base_slug}-{suffix}-{sequence}"
+                    sequence += 1
+                seen_slugs.add(candidate)
+                if candidate != row.get("slug"):
+                    conn.execute(
+                        text("UPDATE articles SET slug = :slug WHERE id = :id"),
+                        {"slug": candidate, "id": article_id},
+                    )
+
+            conn.execute(
+                text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS idx_articles_slug_unique ON articles (slug)"
+                )
+            )
+
             conn.execute(
                 text(
                     "CREATE INDEX IF NOT EXISTS idx_ai_tasks_status_run_at ON ai_tasks (status, run_at)"
@@ -462,9 +520,43 @@ def init_db():
                     "CREATE INDEX IF NOT EXISTS idx_ai_tasks_article_id ON ai_tasks (article_id)"
                 )
             )
+
+            active_task_rows = conn.execute(
+                text(
+                    "SELECT id, article_id, task_type, content_type, ifnull(payload, '') AS payload FROM ai_tasks WHERE status IN ('pending', 'processing') ORDER BY created_at ASC, id ASC"
+                )
+            ).mappings().all()
+            seen_active_keys: set[tuple[str, str, str, str]] = set()
+            dedupe_now = now_str()
+            for row in active_task_rows:
+                key = (
+                    row.get("article_id") or "",
+                    row.get("task_type") or "",
+                    row.get("content_type") or "",
+                    row.get("payload") or "",
+                )
+                if key in seen_active_keys:
+                    conn.execute(
+                        text(
+                            "UPDATE ai_tasks SET status = 'cancelled', finished_at = :now, updated_at = :now, locked_at = NULL, locked_by = NULL, last_error = :error, last_error_type = 'data' WHERE id = :id"
+                        ),
+                        {
+                            "id": row["id"],
+                            "now": dedupe_now,
+                            "error": "重复任务已在迁移时自动取消",
+                        },
+                    )
+                else:
+                    seen_active_keys.add(key)
+
             conn.execute(
                 text(
-                    "CREATE INDEX IF NOT EXISTS idx_ai_tasks_dedupe ON ai_tasks (article_id, task_type, content_type, status)"
+                    "CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_tasks_active_dedupe_unique ON ai_tasks (ifnull(article_id, ''), task_type, ifnull(content_type, ''), ifnull(payload, '')) WHERE status IN ('pending', 'processing')"
+                )
+            )
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_ai_task_events_task_created_at ON ai_task_events (task_id, created_at)"
                 )
             )
 

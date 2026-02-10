@@ -17,11 +17,14 @@ from models import (
     ModelAPIConfig,
     PromptConfig,
     now_str,
+    generate_uuid,
 )
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from slug_utils import generate_article_slug
 from media_service import maybe_ingest_top_image, maybe_ingest_article_images
+from task_errors import TaskConfigError, TaskDataError, TaskTimeoutError
+from task_state import append_task_event
 
 logger = logging.getLogger("article_service")
 
@@ -209,12 +212,12 @@ class ArticleService:
     ) -> ArticleEmbedding | None:
         config = self.get_embedding_config(db)
         if not config:
-            raise Exception("未配置AI服务，请先在配置页面设置AI参数")
+            raise TaskConfigError("未配置AI服务，请先在配置页面设置AI参数")
         if config.get("disabled"):
             return None
         source_text = self.get_embedding_source_text(article)
         if not source_text:
-            raise Exception("文章内容为空，无法生成向量")
+            raise TaskDataError("文章内容为空，无法生成向量")
         use_local = bool(config.get("use_local"))
         model_name = LOCAL_EMBEDDING_MODEL_NAME if use_local else config["model_name"]
         model_label = f"local:{model_name}" if use_local else model_name
@@ -378,25 +381,27 @@ class ArticleService:
         payload_json = json.dumps(
             payload or {}, ensure_ascii=False, sort_keys=True, separators=(",", ":")
         )
-        existing_query = db.query(AITask).filter(
-            AITask.task_type == task_type,
-            AITask.status.in_(["pending", "processing"]),
-            AITask.payload == payload_json,
-        )
 
-        if article_id is None:
-            existing_query = existing_query.filter(AITask.article_id.is_(None))
-        else:
-            existing_query = existing_query.filter(AITask.article_id == article_id)
+        def find_existing_task() -> AITask | None:
+            existing_query = db.query(AITask).filter(
+                AITask.task_type == task_type,
+                AITask.status.in_(["pending", "processing"]),
+                AITask.payload == payload_json,
+            )
 
-        if content_type is None:
-            existing_query = existing_query.filter(AITask.content_type.is_(None))
-        else:
-            existing_query = existing_query.filter(AITask.content_type == content_type)
+            if article_id is None:
+                existing_query = existing_query.filter(AITask.article_id.is_(None))
+            else:
+                existing_query = existing_query.filter(AITask.article_id == article_id)
 
-        existing_task = (
-            existing_query.order_by(AITask.created_at.desc(), AITask.id.desc()).first()
-        )
+            if content_type is None:
+                existing_query = existing_query.filter(AITask.content_type.is_(None))
+            else:
+                existing_query = existing_query.filter(AITask.content_type == content_type)
+
+            return existing_query.order_by(AITask.created_at.desc(), AITask.id.desc()).first()
+
+        existing_task = find_existing_task()
         if existing_task:
             return existing_task.id
 
@@ -412,7 +417,28 @@ class ArticleService:
             updated_at=now_iso,
         )
         db.add(task)
-        db.commit()
+        try:
+            db.flush()
+            append_task_event(
+                db,
+                task_id=task.id,
+                event_type="enqueued",
+                from_status=None,
+                to_status="pending",
+                message="任务已加入队列",
+                details={
+                    "task_type": task_type,
+                    "content_type": content_type,
+                },
+            )
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            existing_task = find_existing_task()
+            if existing_task:
+                return existing_task.id
+            raise
+
         db.refresh(task)
         return task.id
 
@@ -466,9 +492,11 @@ class ArticleService:
         if source_url == "":
             source_url = None
 
-        # 先创建文章对象以获取ID
+        article_id = generate_uuid()
         article = Article(
+            id=article_id,
             title=article_data.get("title"),
+            slug=generate_article_slug(article_data.get("title"), article_id),
             content_html=article_data.get("content_html"),
             content_structured=content_structured,
             content_md=article_data.get("content_md"),
@@ -486,10 +514,6 @@ class ArticleService:
             db.add(article)
             db.commit()
             db.refresh(article)
-
-            # 生成并保存slug
-            article.slug = generate_article_slug(article.title, article.id)
-            db.commit()
 
         except IntegrityError as e:
             db.rollback()
@@ -550,14 +574,14 @@ class ArticleService:
                 ai_analysis.error_message = "文章内容为空，无法处理"
                 ai_analysis.updated_at = now_str()
                 db.commit()
-                raise ValueError("文章内容为空，无法处理")
+                raise TaskDataError("文章内容为空，无法处理")
 
             async def run_cleaning(content: str) -> str:
                 cleaning_config = self.get_ai_config(
                     db, category_id, prompt_type="content_cleaning"
                 )
                 if not cleaning_config:
-                    raise Exception("未配置AI服务，请先在配置页面设置AI参数")
+                    raise TaskConfigError("未配置AI服务，请先在配置页面设置AI参数")
                 cleaning_client = self.create_ai_client(cleaning_config)
                 parameters = cleaning_config.get("parameters") or {}
                 prompt = cleaning_config.get("prompt_template")
@@ -608,7 +632,7 @@ class ArticleService:
                         price_output_per_1k=pricing.get("price_output_per_1k"),
                         currency=pricing.get("currency"),
                     )
-                    raise Exception("内容清洗超时，请稍后重试")
+                    raise TaskTimeoutError("内容清洗超时，请稍后重试")
                 except Exception as e:
                     self._log_ai_usage(
                         db,
@@ -631,7 +655,7 @@ class ArticleService:
                     db, category_id, prompt_type="content_validation"
                 )
                 if not validation_config:
-                    raise Exception("未配置AI服务，请先在配置页面设置AI参数")
+                    raise TaskConfigError("未配置AI服务，请先在配置页面设置AI参数")
                 validation_client = self.create_ai_client(validation_config)
                 parameters = validation_config.get("parameters") or {}
                 prompt = validation_config.get("prompt_template")
@@ -691,7 +715,7 @@ class ArticleService:
                         price_output_per_1k=pricing.get("price_output_per_1k"),
                         currency=pricing.get("currency"),
                     )
-                    raise Exception("内容校验超时，请稍后重试")
+                    raise TaskTimeoutError("内容校验超时，请稍后重试")
                 except Exception as e:
                     self._log_ai_usage(
                         db,
@@ -1232,7 +1256,7 @@ class ArticleService:
                 ai_analysis.error_message = "未配置AI服务，请先在配置页面设置AI参数"
                 ai_analysis.updated_at = now_str()
                 db.commit()
-                raise ValueError("未配置AI服务，请先在配置页面设置AI参数")
+                raise TaskConfigError("未配置AI服务，请先在配置页面设置AI参数")
 
             cleaning_client = self.create_ai_client(cleaning_config)
             parameters = cleaning_config.get("parameters") or {}
@@ -1271,7 +1295,7 @@ class ArticleService:
                     result = result.get("content")
                 cleaned_md = (result or "").strip()
                 if not cleaned_md:
-                    raise Exception("内容清洗失败：输出为空")
+                    raise TaskDataError("内容清洗失败：输出为空")
             except asyncio.TimeoutError:
                 self._log_ai_usage(
                     db,
@@ -1287,7 +1311,7 @@ class ArticleService:
                     price_output_per_1k=pricing.get("price_output_per_1k"),
                     currency=pricing.get("currency"),
                 )
-                raise Exception("内容清洗超时，请稍后重试")
+                raise TaskTimeoutError("内容清洗超时，请稍后重试")
             except Exception as e:
                 self._log_ai_usage(
                     db,
@@ -1374,7 +1398,7 @@ class ArticleService:
             if not cleaned_md_candidate and ai_analysis.cleaned_md_draft:
                 cleaned_md_candidate = (ai_analysis.cleaned_md_draft or "").strip()
             if not cleaned_md_candidate:
-                raise ValueError("缺少待校验内容，请先执行内容清洗")
+                raise TaskDataError("缺少待校验内容，请先执行内容清洗")
 
             validation_config = self.get_ai_config(
                 db, category_id, prompt_type="content_validation"
@@ -1384,7 +1408,7 @@ class ArticleService:
                 ai_analysis.error_message = "未配置AI服务，请先在配置页面设置AI参数"
                 ai_analysis.updated_at = now_str()
                 db.commit()
-                raise ValueError("未配置AI服务，请先在配置页面设置AI参数")
+                raise TaskConfigError("未配置AI服务，请先在配置页面设置AI参数")
 
             validation_client = self.create_ai_client(validation_config)
             parameters = validation_config.get("parameters") or {}
@@ -1455,7 +1479,7 @@ class ArticleService:
                     price_output_per_1k=pricing.get("price_output_per_1k"),
                     currency=pricing.get("currency"),
                 )
-                raise Exception("内容校验超时，请稍后重试")
+                raise TaskTimeoutError("内容校验超时，请稍后重试")
             except Exception as e:
                 self._log_ai_usage(
                     db,
@@ -1481,7 +1505,7 @@ class ArticleService:
                 )
                 ai_analysis.updated_at = now_str()
                 db.commit()
-                raise ValueError(ai_analysis.error_message or "内容校验未通过")
+                raise TaskDataError(ai_analysis.error_message or "内容校验未通过")
 
             final_md = cleaned_md_candidate
             if not final_md:
@@ -1489,7 +1513,7 @@ class ArticleService:
                 ai_analysis.error_message = "内容校验未通过：内容为空"
                 ai_analysis.updated_at = now_str()
                 db.commit()
-                raise ValueError("内容校验未通过：内容为空")
+                raise TaskDataError("内容校验未通过：内容为空")
 
             article.content_md = final_md
             article.updated_at = now_str()
@@ -1564,7 +1588,7 @@ class ArticleService:
                     analysis.error_message = "未配置AI服务，请先在配置页面设置AI参数"
                 analysis.updated_at = now_str()
                 db.commit()
-                raise ValueError("未配置AI服务，请先在配置页面设置AI参数")
+                raise TaskConfigError("未配置AI服务，请先在配置页面设置AI参数")
 
             categories = db.query(Category).order_by(Category.sort_order).all()
             categories_payload = "\n".join(
@@ -1624,9 +1648,9 @@ class ArticleService:
                         article.updated_at = now_str()
                         db.commit()
                     else:
-                        raise ValueError("分类未命中：返回ID不存在")
+                        raise TaskDataError("分类未命中：返回ID不存在")
                 else:
-                    raise ValueError("分类未命中：未返回分类ID")
+                    raise TaskDataError("分类未命中：未返回分类ID")
                 analysis.classification_status = "completed"
                 analysis.error_message = None
                 analysis.updated_at = now_str()
@@ -1651,7 +1675,7 @@ class ArticleService:
                     analysis.error_message = "AI生成超时，请稍后重试"
                 analysis.updated_at = now_str()
                 db.commit()
-                raise Exception("分类任务超时")
+                raise TaskTimeoutError("分类任务超时")
             except Exception as e:
                 self._log_ai_usage(
                     db,
@@ -2074,7 +2098,7 @@ class ArticleService:
                     .first()
                 )
                 if not model_config:
-                    raise ValueError("指定模型配置不存在或已禁用")
+                    raise TaskConfigError("指定模型配置不存在或已禁用")
                 ai_config = {
                     "base_url": model_config.base_url,
                     "api_key": model_config.api_key,
@@ -2095,7 +2119,7 @@ class ArticleService:
                     .first()
                 )
                 if not prompt_config:
-                    raise ValueError("指定提示词不存在或已禁用")
+                    raise TaskConfigError("指定提示词不存在或已禁用")
                 prompt = prompt_config.prompt
                 prompt_parameters = build_parameters(prompt_config)
                 if not ai_config and prompt_config.model_api_config_id:
@@ -2108,7 +2132,7 @@ class ArticleService:
                         .first()
                     )
                     if not model_config:
-                        raise ValueError("提示词绑定的模型不存在或已禁用")
+                        raise TaskConfigError("提示词绑定的模型不存在或已禁用")
                     ai_config = {
                         "base_url": model_config.base_url,
                         "api_key": model_config.api_key,

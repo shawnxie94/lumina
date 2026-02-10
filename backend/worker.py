@@ -9,13 +9,14 @@ from sqlalchemy import or_
 
 from article_service import ArticleService
 from models import AITask, SessionLocal, now_str
+from task_errors import TaskDataError, normalize_task_error
+from task_state import append_task_event, ensure_task_status_transition
 
 
 POLL_INTERVAL = float(os.getenv("AI_WORKER_POLL_INTERVAL", "3"))
 LOCK_TIMEOUT_SECONDS = int(os.getenv("AI_TASK_LOCK_TIMEOUT", "300"))
 TASK_TIMEOUT_SECONDS = int(os.getenv("AI_TASK_TIMEOUT", "900"))
 WORKER_ID = os.getenv("AI_WORKER_ID", str(uuid.uuid4()))
-NON_RETRYABLE_ERROR_TYPES = {"config", "data"}
 
 
 def get_now_iso() -> str:
@@ -44,6 +45,8 @@ def claim_task(db) -> AITask | None:
     if not task:
         return None
 
+    ensure_task_status_transition("pending", "processing")
+
     next_attempts = (task.attempts or 0) + 1
     updated = (
         db.query(AITask)
@@ -64,6 +67,18 @@ def claim_task(db) -> AITask | None:
         db.commit()
         return None
 
+    append_task_event(
+        db,
+        task_id=task.id,
+        event_type="claimed",
+        from_status="pending",
+        to_status="processing",
+        message="任务已被 worker 领取",
+        details={
+            "worker_id": WORKER_ID,
+            "attempts": next_attempts,
+        },
+    )
     db.commit()
     return db.query(AITask).filter(AITask.id == task.id).first()
 
@@ -74,6 +89,7 @@ def finish_task(
     success: bool,
     error: str | None = None,
     error_type: str | None = None,
+    retryable: bool = True,
 ) -> None:
     now_iso = get_now_iso()
     updates: dict[str, str | None] = {
@@ -81,6 +97,10 @@ def finish_task(
         "locked_at": None,
         "locked_by": None,
     }
+
+    event_type = "completed"
+    target_status = "completed"
+
     if success:
         updates.update(
             {
@@ -91,9 +111,10 @@ def finish_task(
             }
         )
     else:
-        is_non_retryable_error = (error_type or "") in NON_RETRYABLE_ERROR_TYPES
         max_attempts = task.max_attempts or 3
-        if is_non_retryable_error or task.attempts >= max_attempts:
+        if (not retryable) or task.attempts >= max_attempts:
+            target_status = "failed"
+            event_type = "failed"
             updates.update(
                 {
                     "status": "failed",
@@ -101,6 +122,8 @@ def finish_task(
                 }
             )
         else:
+            target_status = "pending"
+            event_type = "retry_scheduled"
             backoff_seconds = min(60 * task.attempts, 300)
             updates.update(
                 {
@@ -111,40 +134,34 @@ def finish_task(
         updates["last_error"] = error
         updates["last_error_type"] = error_type
 
-    (
+    ensure_task_status_transition("processing", target_status)
+
+    affected = (
         db.query(AITask)
         .filter(AITask.id == task.id)
         .filter(AITask.status == "processing")
         .filter(AITask.locked_by == WORKER_ID)
         .update(updates, synchronize_session=False)
     )
+
+    if affected:
+        append_task_event(
+            db,
+            task_id=task.id,
+            event_type=event_type,
+            from_status="processing",
+            to_status=target_status,
+            message=error,
+            error_type=error_type,
+            details={
+                "worker_id": WORKER_ID,
+                "attempts": task.attempts,
+                "max_attempts": task.max_attempts,
+                "retryable": retryable,
+                "run_at": updates.get("run_at"),
+            },
+        )
     db.commit()
-
-
-def classify_error(exc: Exception) -> str:
-    message = str(exc).lower()
-    if (
-        isinstance(exc, asyncio.TimeoutError)
-        or "timeout" in message
-        or "超时" in message
-    ):
-        return "timeout"
-    if (
-        "未配置ai服务" in message
-        or "ai服务" in message
-        or "config" in message
-        or "禁用" in message
-        or "disabled" in message
-    ):
-        return "config"
-    if (
-        "文章不存在" in message
-        or "缺少" in message
-        or "未通过" in message
-        or "格式异常" in message
-    ):
-        return "data"
-    return "unknown"
 
 
 async def run_task_async(task: AITask) -> None:
@@ -155,41 +172,41 @@ async def run_task_async(task: AITask) -> None:
 
     if task.task_type == "process_article_ai":
         if not article_id:
-            raise ValueError("缺少文章ID")
+            raise TaskDataError("缺少文章ID")
         await service.process_article_ai(article_id, category_id)
         return
 
     if task.task_type == "process_article_cleaning":
         if not article_id:
-            raise ValueError("缺少文章ID")
+            raise TaskDataError("缺少文章ID")
         await service.process_article_cleaning(article_id, category_id)
         return
 
     if task.task_type == "process_article_validation":
         if not article_id:
-            raise ValueError("缺少文章ID")
-        cleaned_md = payload.get("cleaned_md") or ""
+            raise TaskDataError("缺少文章ID")
+        cleaned_md = payload.get("cleaned_md")
         await service.process_article_validation(article_id, category_id, cleaned_md)
         return
 
     if task.task_type == "process_article_classification":
         if not article_id:
-            raise ValueError("缺少文章ID")
+            raise TaskDataError("缺少文章ID")
         await service.process_article_classification(article_id, category_id)
         return
 
     if task.task_type == "process_article_translation":
         if not article_id:
-            raise ValueError("缺少文章ID")
+            raise TaskDataError("缺少文章ID")
         await service.process_article_translation(article_id, category_id)
         return
 
     if task.task_type == "process_ai_content":
         if not article_id:
-            raise ValueError("缺少文章ID")
+            raise TaskDataError("缺少文章ID")
         content_type = task.content_type or payload.get("content_type")
         if not content_type:
-            raise ValueError("缺少内容类型")
+            raise TaskDataError("缺少内容类型")
         await service.process_ai_content(
             article_id,
             category_id,
@@ -201,11 +218,11 @@ async def run_task_async(task: AITask) -> None:
 
     if task.task_type == "process_article_embedding":
         if not article_id:
-            raise ValueError("缺少文章ID")
+            raise TaskDataError("缺少文章ID")
         await service.process_article_embedding(article_id)
         return
 
-    raise ValueError(f"未知任务类型: {task.task_type}")
+    raise TaskDataError(f"未知任务类型: {task.task_type}")
 
 
 def cleanup_stale_tasks(db) -> int:
@@ -220,17 +237,34 @@ def cleanup_stale_tasks(db) -> int:
     )
     cleaned = 0
     for task in stale_tasks:
+        from_status = task.status
         task.locked_at = None
         task.locked_by = None
         if task.attempts >= (task.max_attempts or 3):
-            task.status = "failed"
+            target_status = "failed"
+            ensure_task_status_transition(from_status, target_status)
+            task.status = target_status
             task.finished_at = now_iso
+            event_type = "stale_lock_failed"
         else:
-            task.status = "pending"
+            target_status = "pending"
+            ensure_task_status_transition(from_status, target_status)
+            task.status = target_status
             task.run_at = now_iso
+            event_type = "stale_lock_requeued"
         task.last_error = "任务超时或锁过期已重置"
         task.last_error_type = "timeout"
         task.updated_at = now_iso
+        append_task_event(
+            db,
+            task_id=task.id,
+            event_type=event_type,
+            from_status=from_status,
+            to_status=target_status,
+            message="任务超时或锁过期已重置",
+            error_type="timeout",
+            details={"worker_id": WORKER_ID},
+        )
         cleaned += 1
     if cleaned:
         db.commit()
@@ -252,9 +286,14 @@ def main() -> None:
                 )
                 finish_task(db, task, success=True)
             except Exception as exc:
-                error_type = classify_error(exc)
+                task_error = normalize_task_error(exc)
                 finish_task(
-                    db, task, success=False, error=str(exc), error_type=error_type
+                    db,
+                    task,
+                    success=False,
+                    error=task_error.message,
+                    error_type=task_error.error_type,
+                    retryable=task_error.retryable,
                 )
         finally:
             db.close()

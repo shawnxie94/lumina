@@ -378,6 +378,58 @@ export interface AIUsageSummaryResponse {
 	}>;
 }
 
+export interface AITaskTimelineEvent {
+	id: string;
+	event_type: string;
+	from_status: string | null;
+	to_status: string | null;
+	message: string | null;
+	error_type: string | null;
+	details: Record<string, unknown> | string | null;
+	created_at: string;
+}
+
+export interface AITaskTimelineUsage {
+	id: string;
+	model_api_config_id: string | null;
+	model_api_config_name: string | null;
+	task_type: string | null;
+	content_type: string | null;
+	status: string;
+	prompt_tokens: number | null;
+	completion_tokens: number | null;
+	total_tokens: number | null;
+	cost_total: number | null;
+	currency: string | null;
+	latency_ms: number | null;
+	error_message: string | null;
+	created_at: string;
+}
+
+export interface AITaskTimelineResponse {
+	task: {
+		id: string;
+		article_id: string | null;
+		article_title: string | null;
+		article_slug: string | null;
+		task_type: string;
+		content_type: string | null;
+		status: string;
+		attempts: number;
+		max_attempts: number;
+		run_at: string | null;
+		locked_at: string | null;
+		locked_by: string | null;
+		last_error: string | null;
+		last_error_type: string | null;
+		created_at: string;
+		updated_at: string;
+		finished_at: string | null;
+	};
+	events: AITaskTimelineEvent[];
+	usage: AITaskTimelineUsage[];
+}
+
 export interface PromptConfig {
 	id: string;
 	name: string;
@@ -536,6 +588,11 @@ export const articleApi = {
 
 	getAITask: async (taskId: string) => {
 		const response = await api.get(`/api/ai-tasks/${taskId}`);
+		return response.data;
+	},
+
+	getAITaskTimeline: async (taskId: string): Promise<AITaskTimelineResponse> => {
+		const response = await api.get(`/api/ai-tasks/${taskId}/timeline`);
 		return response.data;
 	},
 

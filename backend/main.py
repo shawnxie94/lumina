@@ -18,6 +18,7 @@ from models import (
     Category,
     Article,
     AITask,
+    AITaskEvent,
     AIUsageLog,
     ArticleEmbedding,
     ModelAPIConfig,
@@ -53,6 +54,7 @@ from media_service import (
     MEDIA_ROOT,
     MEDIA_BASE_URL,
 )
+from task_state import append_task_event, ensure_task_status_transition
 
 logger = logging.getLogger("article_api")
 if not logger.handlers:
@@ -1637,6 +1639,106 @@ async def get_ai_task(
     }
 
 
+@app.get("/api/ai-tasks/{task_id}/timeline")
+async def get_ai_task_timeline(
+    task_id: str,
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
+    task = db.query(AITask).filter(AITask.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="任务不存在")
+
+    article = None
+    if task.article_id:
+        article = (
+            db.query(Article.id, Article.title, Article.slug)
+            .filter(Article.id == task.article_id)
+            .first()
+        )
+
+    events = (
+        db.query(AITaskEvent)
+        .filter(AITaskEvent.task_id == task_id)
+        .order_by(AITaskEvent.created_at.asc())
+        .all()
+    )
+
+    usage_rows = (
+        db.query(AIUsageLog, ModelAPIConfig.name)
+        .outerjoin(ModelAPIConfig, AIUsageLog.model_api_config_id == ModelAPIConfig.id)
+        .filter(AIUsageLog.task_id == task_id)
+        .order_by(AIUsageLog.created_at.asc())
+        .all()
+    )
+
+    event_items = []
+    for event in events:
+        details = None
+        if event.details:
+            try:
+                details = json.loads(event.details)
+            except Exception:
+                details = event.details
+        event_items.append(
+            {
+                "id": event.id,
+                "event_type": event.event_type,
+                "from_status": event.from_status,
+                "to_status": event.to_status,
+                "message": event.message,
+                "error_type": event.error_type,
+                "details": details,
+                "created_at": event.created_at,
+            }
+        )
+
+    usage_items = []
+    for log, model_name in usage_rows:
+        usage_items.append(
+            {
+                "id": log.id,
+                "model_api_config_id": log.model_api_config_id,
+                "model_api_config_name": model_name,
+                "task_type": log.task_type,
+                "content_type": log.content_type,
+                "status": log.status,
+                "prompt_tokens": log.prompt_tokens,
+                "completion_tokens": log.completion_tokens,
+                "total_tokens": log.total_tokens,
+                "cost_total": log.cost_total,
+                "currency": log.currency,
+                "latency_ms": log.latency_ms,
+                "error_message": log.error_message,
+                "created_at": log.created_at,
+            }
+        )
+
+    return {
+        "task": {
+            "id": task.id,
+            "article_id": task.article_id,
+            "article_title": article.title if article else None,
+            "article_slug": article.slug if article else None,
+            "task_type": task.task_type,
+            "content_type": task.content_type,
+            "status": task.status,
+            "attempts": task.attempts,
+            "max_attempts": task.max_attempts,
+            "run_at": task.run_at,
+            "locked_at": task.locked_at,
+            "locked_by": task.locked_by,
+            "last_error": task.last_error,
+            "last_error_type": task.last_error_type,
+            "created_at": task.created_at,
+            "updated_at": task.updated_at,
+            "finished_at": task.finished_at,
+        },
+        "events": event_items,
+        "usage": usage_items,
+    }
+
+
 @app.post("/api/ai-tasks/retry")
 async def retry_ai_tasks(
     request: AITaskRetryRequest,
@@ -1654,15 +1756,55 @@ async def retry_ai_tasks(
     updated_ids: list[str] = []
     skipped_ids: list[str] = []
 
+    def find_active_duplicate(task: AITask) -> str | None:
+        duplicate_query = db.query(AITask.id).filter(
+            AITask.id != task.id,
+            AITask.status.in_(["pending", "processing"]),
+            AITask.task_type == task.task_type,
+        )
+        if task.article_id is None:
+            duplicate_query = duplicate_query.filter(AITask.article_id.is_(None))
+        else:
+            duplicate_query = duplicate_query.filter(AITask.article_id == task.article_id)
+
+        if task.content_type is None:
+            duplicate_query = duplicate_query.filter(AITask.content_type.is_(None))
+        else:
+            duplicate_query = duplicate_query.filter(AITask.content_type == task.content_type)
+
+        if task.payload is None:
+            duplicate_query = duplicate_query.filter(AITask.payload.is_(None))
+        else:
+            duplicate_query = duplicate_query.filter(AITask.payload == task.payload)
+
+        duplicate = duplicate_query.order_by(AITask.created_at.desc(), AITask.id.desc()).first()
+        return duplicate.id if duplicate else None
+
     for task_id in task_ids:
         task = task_map.get(task_id)
         if not task:
             skipped_ids.append(task_id)
             continue
-        if task.status not in ["failed", "cancelled"]:
+        duplicate_id = find_active_duplicate(task)
+        if duplicate_id:
+            append_task_event(
+                db,
+                task_id=task.id,
+                event_type="retry_skipped_duplicate",
+                from_status=task.status,
+                to_status=task.status,
+                message="重试被跳过：存在活跃重复任务",
+                details={"source": "api", "duplicate_task_id": duplicate_id},
+            )
+            skipped_ids.append(task_id)
+            continue
+        try:
+            ensure_task_status_transition(task.status, "pending")
+        except ValueError:
             skipped_ids.append(task_id)
             continue
 
+        from_status = task.status
         task.status = "pending"
         task.attempts = 0
         task.run_at = now_iso
@@ -1672,6 +1814,15 @@ async def retry_ai_tasks(
         task.last_error_type = None
         task.finished_at = None
         task.updated_at = now_iso
+        append_task_event(
+            db,
+            task_id=task.id,
+            event_type="retried",
+            from_status=from_status,
+            to_status="pending",
+            message="任务已重试",
+            details={"source": "api", "attempts_reset": True},
+        )
         updated_ids.append(task_id)
 
     db.commit()
@@ -1705,15 +1856,27 @@ async def cancel_ai_tasks(
         if not task:
             skipped_ids.append(task_id)
             continue
-        if task.status != "pending":
+        try:
+            ensure_task_status_transition(task.status, "cancelled")
+        except ValueError:
             skipped_ids.append(task_id)
             continue
 
+        from_status = task.status
         task.status = "cancelled"
         task.locked_at = None
         task.locked_by = None
         task.updated_at = now_iso
         task.finished_at = now_iso
+        append_task_event(
+            db,
+            task_id=task.id,
+            event_type="cancelled_by_api",
+            from_status=from_status,
+            to_status="cancelled",
+            message="任务已取消",
+            details={"source": "api"},
+        )
         updated_ids.append(task_id)
 
     db.commit()
