@@ -137,7 +137,7 @@ async def run_task_async(task: AITask) -> None:
     payload = json.loads(task.payload or "{}")
     article_id = task.article_id
     category_id = payload.get("category_id")
-    service = ArticleService()
+    service = ArticleService(current_task_id=task.id)
 
     if task.task_type == "process_article_ai":
         if not article_id:

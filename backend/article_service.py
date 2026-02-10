@@ -320,6 +320,7 @@ class ArticleService:
         currency: str | None,
         request_payload: dict | str | None = None,
         response_payload: dict | str | None = None,
+        task_id: str | None = None,
     ) -> None:
         def normalize_payload(payload: dict | str | None) -> str | None:
             if payload is None:
@@ -346,7 +347,7 @@ class ArticleService:
         db.add(
             AIUsageLog(
                 model_api_config_id=model_config_id,
-                task_id=None,
+                task_id=task_id or self.current_task_id,
                 article_id=article_id,
                 task_type=task_type,
                 content_type=content_type,
