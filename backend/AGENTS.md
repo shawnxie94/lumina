@@ -30,6 +30,7 @@ backend/
 | Shared dependency helpers | `backend/app/core/dependencies.py` | Auth/internal access/date helpers |
 | Middleware/CORS setup | `backend/app/core/http.py` | Request-id logging and CORS config |
 | Runtime settings + startup validation | `backend/app/core/settings.py` | Centralized env loading and fail-fast checks |
+| Runtime settings defaults doc | `backend/docs/runtime-settings.md` | Env var defaults, grouping, and validation rules |
 | Domain business logic | `backend/app/domain/` | Query/command/AI pipeline/task split |
 | Request/response schemas | `backend/app/schemas/` | Reuse schema types across routers |
 | DB migrations | `backend/alembic/` `backend/scripts/migrate_db.py` | Alembic revision + upgrade entrypoint |

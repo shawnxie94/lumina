@@ -12,10 +12,11 @@ from task_errors import TaskDataError
 from task_state import append_task_event, ensure_task_status_transition
 
 settings = get_settings()
-POLL_INTERVAL = settings.ai_worker_poll_interval
-LOCK_TIMEOUT_SECONDS = settings.ai_task_lock_timeout
-TASK_TIMEOUT_SECONDS = settings.ai_task_timeout
-WORKER_ID = settings.ai_worker_id
+ai_worker = settings.ai_worker
+POLL_INTERVAL = ai_worker.poll_interval
+LOCK_TIMEOUT_SECONDS = ai_worker.lock_timeout
+TASK_TIMEOUT_SECONDS = ai_worker.task_timeout
+WORKER_ID = ai_worker.worker_id
 
 
 def get_now_iso() -> str:

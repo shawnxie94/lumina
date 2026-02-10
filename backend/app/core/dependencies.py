@@ -12,6 +12,7 @@ from auth import get_admin_settings, get_current_admin, security
 from models import AdminSettings, get_db, now_str
 
 settings = get_settings()
+security_settings = settings.security
 
 DEFAULT_BASIC_SETTINGS = {
     "default_language": "zh-CN",
@@ -28,9 +29,9 @@ DEFAULT_BASIC_SETTINGS = {
 
 
 def is_internal_request(request: Request) -> bool:
-    if not settings.internal_api_token:
+    if not security_settings.internal_api_token:
         return False
-    return request.headers.get("X-Internal-Token") == settings.internal_api_token
+    return request.headers.get("X-Internal-Token") == security_settings.internal_api_token
 
 
 def is_private_request(request: Request) -> bool:
@@ -50,7 +51,7 @@ def get_admin_or_internal(
 ) -> bool:
     if is_internal_request(request):
         return True
-    if not settings.internal_api_token and is_private_request(request):
+    if not security_settings.internal_api_token and is_private_request(request):
         return True
     return get_current_admin(credentials=credentials, db=db)
 

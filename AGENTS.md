@@ -24,6 +24,7 @@ Article Database System: Next.js 14 frontend (pages router) + FastAPI backend + 
 | Backend API routers | `backend/app/api/routers/` | Routers split by domain, URLs unchanged |
 | Backend dependencies/middleware | `backend/app/core/dependencies.py` `backend/app/core/http.py` | Shared auth/internal/cors/request-id logic |
 | Backend runtime settings | `backend/app/core/settings.py` | Central env loading + startup fail-fast validation |
+| Backend settings reference | `backend/docs/runtime-settings.md` | Runtime env defaults and validation constraints |
 | Backend domain services | `backend/app/domain/` | Query/command/AI/task split |
 | Backend DB migrations | `backend/alembic/` `backend/scripts/migrate_db.py` | Alembic-based schema/index upgrade path |
 | Route contract baseline | `backend/scripts/route_contract_baseline.json` | API signature regression baseline for modular routers |

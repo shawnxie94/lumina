@@ -14,11 +14,13 @@ def create_app() -> FastAPI:
     from app.api.router_registry import register_routers
     from models import init_db
 
+    media = settings.media
+
     app = FastAPI(title="文章知识库API", version="1.0.0")
 
     app.mount(
-        settings.normalized_media_base_url,
-        StaticFiles(directory=settings.media_root, check_dir=False),
+        media.normalized_base_url,
+        StaticFiles(directory=media.root, check_dir=False),
         name="media",
     )
 
@@ -28,7 +30,7 @@ def create_app() -> FastAPI:
     @app.on_event("startup")
     async def startup_event():
         init_db()
-        os.makedirs(settings.media_root, exist_ok=True)
+        os.makedirs(media.root, exist_ok=True)
 
     register_routers(app)
     return app

@@ -12,9 +12,10 @@ def main() -> None:
     from app.domain.ai_task_service import AITaskService
     from models import SessionLocal
 
-    task_service = AITaskService(worker_id=settings.ai_worker_id)
-    poll_interval = settings.ai_worker_poll_interval
-    task_timeout_seconds = settings.ai_task_timeout
+    ai_worker = settings.ai_worker
+    task_service = AITaskService(worker_id=ai_worker.worker_id)
+    poll_interval = ai_worker.poll_interval
+    task_timeout_seconds = ai_worker.task_timeout
 
     while True:
         db = SessionLocal()

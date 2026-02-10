@@ -18,9 +18,10 @@ from models import AdminSettings, MediaAsset, Article, now_str
 logger = logging.getLogger("media_service")
 
 settings = get_settings()
-MEDIA_ROOT = settings.media_root
-MEDIA_BASE_URL = settings.normalized_media_base_url
-MAX_MEDIA_SIZE = settings.max_media_size
+media_settings = settings.media
+MEDIA_ROOT = media_settings.root
+MEDIA_BASE_URL = media_settings.normalized_base_url
+MAX_MEDIA_SIZE = media_settings.max_size
 DEFAULT_COMPRESS_THRESHOLD = 1536 * 1024
 DEFAULT_MAX_DIM = 2000
 DEFAULT_WEBP_QUALITY = 80
@@ -95,7 +96,7 @@ def _create_asset(
 
 
 def _build_media_url(storage_path: str) -> str:
-    public_base = settings.media_public_base_url.rstrip("/")
+    public_base = media_settings.public_base_url.rstrip("/")
     normalized = storage_path.replace("\\", "/")
     relative = f"{MEDIA_BASE_URL}/{normalized.lstrip('/')}"
     if public_base:
