@@ -4,6 +4,7 @@
 Usage:
   cd backend
   python scripts/check_route_coverage.py
+  python scripts/check_route_coverage.py --write-baseline
 """
 
 from __future__ import annotations
@@ -61,6 +62,15 @@ def load_baseline_routes(baseline_path: Path) -> tuple[set[RouteKey], Counter[Ro
     return set(keys), Counter(keys)
 
 
+def write_baseline_routes(baseline_path: Path, routes: set[RouteKey]) -> None:
+    payload = [{"path": route.path, "methods": list(route.methods)} for route in sorted(routes)]
+    baseline_path.parent.mkdir(parents=True, exist_ok=True)
+    baseline_path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+
 def print_routes(title: str, keys: list[RouteKey]) -> None:
     print(title)
     for key in keys:
@@ -80,15 +90,25 @@ def main() -> int:
         default=str(BASELINE_DEFAULT_PATH),
         help="Route contract baseline json file path",
     )
+    parser.add_argument(
+        "--write-baseline",
+        action="store_true",
+        help="Refresh route contract baseline from current modular routes",
+    )
     args = parser.parse_args()
 
     baseline_path = Path(args.baseline)
+    modular_routes, modular_counter = collect_routes(modular_app)
+
+    if args.write_baseline:
+        write_baseline_routes(baseline_path, modular_routes)
+        print(f"Baseline refreshed from modular routes: {baseline_path}")
+
     if not baseline_path.exists():
         print(f"FAIL: baseline file not found: {baseline_path}")
         return 1
 
     baseline_routes, baseline_counter = load_baseline_routes(baseline_path)
-    modular_routes, modular_counter = collect_routes(modular_app)
 
     missing = sorted(baseline_routes - modular_routes)
     extra = sorted(modular_routes - baseline_routes)

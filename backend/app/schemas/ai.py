@@ -1,6 +1,6 @@
 from typing import Optional
 
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, ConfigDict, validator
 
 
 class AITaskRetryRequest(BaseModel):
@@ -23,6 +23,8 @@ class ModelAPIModelsRequest(BaseModel):
 
 
 class ModelAPIConfigBase(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
     name: str
     base_url: str
     api_key: str
@@ -44,6 +46,8 @@ class ModelAPIConfigBase(BaseModel):
 
 
 class PromptConfigBase(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
     name: str
     category_id: Optional[str] = None
     type: str

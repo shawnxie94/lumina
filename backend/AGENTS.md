@@ -16,7 +16,6 @@ backend/
 │   ├── domain/                  # Split service layer (query/command/ai/task)
 │   └── schemas/                 # Shared Pydantic request models
 ├── models.py                    # ORM models + DB init + defaults
-├── article_service.py           # Compatibility facade to split domain services
 ├── auth.py                      # JWT auth helpers
 ├── worker.py                    # Background AI task loop
 └── ai_client.py                 # OpenAI client wrapper
@@ -49,6 +48,8 @@ backend/
 # Route coverage guard (modular routers vs route contract baseline)
 cd backend
 python scripts/check_route_coverage.py --verbose
+# (Intentional API contract update only)
+python scripts/check_route_coverage.py --write-baseline
 
 # One-click docker startup + healthcheck (run from repo root)
 ../scripts/docker_healthcheck.sh
@@ -56,4 +57,4 @@ python scripts/check_route_coverage.py --verbose
 
 ## NOTES
 - `docker-compose.yml` runs `worker.py` directly from the venv.
-- `pyproject.toml` now includes both legacy `py-modules` and `app.*` packages.
+- `pyproject.toml` now includes both flat `py-modules` and `app.*` packages.
