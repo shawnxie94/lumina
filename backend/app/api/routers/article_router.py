@@ -13,19 +13,19 @@ from app.schemas import (
     ArticleNotesUpdate,
     ArticleUpdate,
 )
+from app.domain.ai_task_service import AITaskService
 from app.domain.article_command_service import ArticleCommandService
 from app.domain.article_embedding_service import ArticleEmbeddingService
 from app.domain.article_query_service import ArticleQueryService
-from article_service import ArticleService
 from auth import check_is_admin, get_admin_settings, get_current_admin
 from media_service import cleanup_media_assets
 from models import Article, ArticleComment, ArticleEmbedding, Category, get_db, now_str
 
 router = APIRouter()
 article_query_service = ArticleQueryService()
-article_command_service = ArticleCommandService()
+ai_task_service = AITaskService()
+article_command_service = ArticleCommandService(ai_task_service=ai_task_service)
 article_embedding_service = ArticleEmbeddingService()
-article_service = ArticleService()
 
 SIMILAR_ARTICLE_CANDIDATE_LIMIT = 500
 CATEGORY_SIMILARITY_BOOST = 0.05
@@ -244,7 +244,7 @@ async def get_similar_articles(
         .first()
     )
     if not embedding:
-        article_service.enqueue_task(
+        ai_task_service.enqueue_task(
             db,
             task_type="process_article_embedding",
             article_id=article.id,
@@ -317,7 +317,7 @@ async def regenerate_article_embedding(
     if not article:
         raise HTTPException(status_code=404, detail="文章不存在")
 
-    task_id = article_service.enqueue_task(
+    task_id = ai_task_service.enqueue_task(
         db,
         task_type="process_article_embedding",
         article_id=article.id,

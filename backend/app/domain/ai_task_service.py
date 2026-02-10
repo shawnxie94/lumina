@@ -4,8 +4,10 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import or_
+from sqlalchemy.exc import IntegrityError
 
 from app.domain.article_ai_pipeline_service import ArticleAIPipelineService
+from app.domain.article_embedding_service import ArticleEmbeddingService
 from models import AITask, now_str
 from task_errors import TaskDataError
 from task_state import append_task_event, ensure_task_status_transition
@@ -31,6 +33,80 @@ def get_stale_lock_iso() -> str:
 class AITaskService:
     def __init__(self, worker_id: str = WORKER_ID):
         self.worker_id = worker_id
+        self.embedding_service = ArticleEmbeddingService()
+
+    def enqueue_task(
+        self,
+        db,
+        task_type: str,
+        article_id: str | None = None,
+        content_type: str | None = None,
+        payload: dict | None = None,
+    ) -> str:
+        payload_json = json.dumps(
+            payload or {}, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        )
+
+        def find_existing_task() -> AITask | None:
+            existing_query = db.query(AITask).filter(
+                AITask.task_type == task_type,
+                AITask.status.in_(["pending", "processing"]),
+                AITask.payload == payload_json,
+            )
+
+            if article_id is None:
+                existing_query = existing_query.filter(AITask.article_id.is_(None))
+            else:
+                existing_query = existing_query.filter(AITask.article_id == article_id)
+
+            if content_type is None:
+                existing_query = existing_query.filter(AITask.content_type.is_(None))
+            else:
+                existing_query = existing_query.filter(AITask.content_type == content_type)
+
+            return existing_query.order_by(AITask.created_at.desc(), AITask.id.desc()).first()
+
+        existing_task = find_existing_task()
+        if existing_task:
+            return existing_task.id
+
+        now_iso = get_now_iso()
+        task = AITask(
+            article_id=article_id,
+            task_type=task_type,
+            content_type=content_type,
+            payload=payload_json,
+            status="pending",
+            attempts=0,
+            run_at=now_iso,
+            updated_at=now_iso,
+        )
+        db.add(task)
+
+        try:
+            db.flush()
+            append_task_event(
+                db,
+                task_id=task.id,
+                event_type="enqueued",
+                from_status=None,
+                to_status="pending",
+                message="任务已加入队列",
+                details={
+                    "task_type": task_type,
+                    "content_type": content_type,
+                },
+            )
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            existing_task = find_existing_task()
+            if existing_task:
+                return existing_task.id
+            raise
+
+        db.refresh(task)
+        return task.id
 
     def claim_task(self, db) -> AITask | None:
         now_iso = get_now_iso()
@@ -168,7 +244,10 @@ class AITaskService:
         payload = json.loads(task.payload or "{}")
         article_id = task.article_id
         category_id = payload.get("category_id")
-        pipeline = ArticleAIPipelineService(current_task_id=task.id)
+        pipeline = ArticleAIPipelineService(
+            current_task_id=task.id,
+            enqueue_task_func=self.enqueue_task,
+        )
 
         if task.task_type == "process_article_ai":
             if not article_id:
@@ -219,7 +298,7 @@ class AITaskService:
         if task.task_type == "process_article_embedding":
             if not article_id:
                 raise TaskDataError("缺少文章ID")
-            await pipeline.facade.process_article_embedding(article_id)
+            await self.embedding_service.process_article_embedding(article_id)
             return
 
         raise TaskDataError(f"未知任务类型: {task.task_type}")
