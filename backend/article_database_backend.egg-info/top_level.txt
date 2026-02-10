@@ -1,5 +1,4 @@
 ai_client
-article_service
 auth
 main
 models

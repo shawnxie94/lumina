@@ -15,6 +15,7 @@ backend/
 │   ├── core/                    # Shared dependencies and HTTP middleware setup
 │   ├── domain/                  # Split service layer (query/command/ai/task)
 │   └── schemas/                 # Shared Pydantic request models
+├── alembic/                    # Alembic migrations (schema/index governance)
 ├── models.py                    # ORM models + DB init + defaults
 ├── auth.py                      # JWT auth helpers
 ├── worker.py                    # Background AI task loop
@@ -30,6 +31,7 @@ backend/
 | Middleware/CORS setup | `backend/app/core/http.py` | Request-id logging and CORS config |
 | Domain business logic | `backend/app/domain/` | Query/command/AI pipeline/task split |
 | Request/response schemas | `backend/app/schemas/` | Reuse schema types across routers |
+| DB migrations | `backend/alembic/` `backend/scripts/migrate_db.py` | Alembic revision + upgrade entrypoint |
 | Route contract baseline | `backend/scripts/route_contract_baseline.json` | Guard for API signature coverage |
 | Worker orchestration | `backend/worker.py` | Uses `app.domain.ai_task_service` |
 
@@ -45,8 +47,11 @@ backend/
 
 ## COMMANDS
 ```bash
-# Route coverage guard (modular routers vs route contract baseline)
+# DB migration
 cd backend
+python scripts/migrate_db.py
+
+# Route coverage guard (modular routers vs route contract baseline)
 python scripts/check_route_coverage.py --verbose
 # (Intentional API contract update only)
 python scripts/check_route_coverage.py --write-baseline

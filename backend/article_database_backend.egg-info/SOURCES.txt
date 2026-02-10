@@ -1,5 +1,4 @@
 ai_client.py
-article_service.py
 auth.py
 main.py
 models.py

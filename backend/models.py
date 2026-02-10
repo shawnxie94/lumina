@@ -15,6 +15,8 @@ import json
 import uuid
 import os
 
+from app.core.db_migrations import run_db_migrations
+
 Base = declarative_base()
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./data/articles.db")
@@ -342,6 +344,7 @@ class AdminSettings(Base):
 
 def init_db():
     Base.metadata.create_all(bind=engine)
+    run_db_migrations(DATABASE_URL)
 
     from sqlalchemy import text
 
