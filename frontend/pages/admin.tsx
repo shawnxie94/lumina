@@ -67,6 +67,7 @@ import {
 	type AIUsageListResponse,
 	type AIUsageLogItem,
 	type AIUsageSummaryResponse,
+	type AITaskTimelineResponse,
 	type ArticleComment,
 	aiUsageApi,
 	articleApi,
@@ -305,7 +306,11 @@ export default function AdminPage() {
 	const hasTaskFilters = Boolean(
 		taskStatusFilter || taskTypeFilter || taskArticleTitleFilter,
 	);
-
+	const [showTaskTimelineModal, setShowTaskTimelineModal] = useState(false);
+	const [taskTimelineLoading, setTaskTimelineLoading] = useState(false);
+	const [taskTimelineError, setTaskTimelineError] = useState("");
+	const [selectedTaskTimeline, setSelectedTaskTimeline] =
+		useState<AITaskTimelineResponse | null>(null);
 
 	const [usageLogs, setUsageLogs] = useState<AIUsageLogItem[]>([]);
 	const [usageSummary, setUsageSummary] = useState<
@@ -1490,21 +1495,65 @@ const { section, article_title: articleTitleParam } = router.query;
 		});
 	};
 
-	const getTaskTypeLabel = (task: AITaskItem) => {
-		if (task.task_type === "process_article_cleaning") return t("清洗");
-		if (task.task_type === "process_article_validation") return t("校验");
-		if (task.task_type === "process_article_classification") return t("分类");
-		if (task.task_type === "process_article_translation") return t("翻译");
-		if (task.task_type === "process_article_embedding") return t("向量化");
-		if (task.task_type === "process_ai_content") {
-			if (task.content_type === "summary") return t("摘要");
-			if (task.content_type === "key_points") return t("总结");
-			if (task.content_type === "outline") return t("大纲");
-			if (task.content_type === "quotes") return t("金句");
+	const handleOpenTaskTimeline = async (taskId: string) => {
+		setShowTaskTimelineModal(true);
+		setTaskTimelineLoading(true);
+		setTaskTimelineError("");
+		try {
+			const data = await articleApi.getAITaskTimeline(taskId);
+			setSelectedTaskTimeline(data);
+		} catch (error: any) {
+			console.error("Failed to fetch task timeline:", error);
+			setSelectedTaskTimeline(null);
+			setTaskTimelineError(error?.response?.data?.detail || t("任务详情加载失败"));
+		} finally {
+			setTaskTimelineLoading(false);
+		}
+	};
+
+	const closeTaskTimelineModal = () => {
+		setShowTaskTimelineModal(false);
+		setSelectedTaskTimeline(null);
+		setTaskTimelineError("");
+	};
+
+	const getTaskTypeLabel = (taskType: string, contentType?: string | null) => {
+		if (taskType === "process_article_cleaning") return t("清洗");
+		if (taskType === "process_article_validation") return t("校验");
+		if (taskType === "process_article_classification") return t("分类");
+		if (taskType === "process_article_translation") return t("翻译");
+		if (taskType === "process_article_embedding") return t("向量化");
+		if (taskType === "process_ai_content") {
+			if (contentType === "summary") return t("摘要");
+			if (contentType === "key_points") return t("总结");
+			if (contentType === "outline") return t("大纲");
+			if (contentType === "quotes") return t("金句");
 			return t("AI内容");
 		}
-		if (task.task_type === "process_article_ai") return t("旧流程");
+		if (taskType === "process_article_ai") return t("旧流程");
 		return t("其他");
+	};
+
+	const getTaskStatusLabel = (status: string) => {
+		if (status === "completed") return t("已完成");
+		if (status === "failed") return t("失败");
+		if (status === "processing") return t("处理中");
+		if (status === "cancelled") return t("已取消");
+		return t("待处理");
+	};
+
+	const getTaskEventLabel = (eventType: string) => {
+		if (eventType === "enqueued") return t("入队");
+		if (eventType === "claimed") return t("领取");
+		if (eventType === "retry_scheduled") return t("安排重试");
+		if (eventType === "retried") return t("手动重试");
+		if (eventType === "retry_skipped_duplicate") return t("重试跳过（重复任务）");
+		if (eventType === "completed") return t("完成");
+		if (eventType === "failed") return t("失败");
+		if (eventType === "cancelled_by_api") return t("手动取消");
+		if (eventType === "stale_lock_requeued") return t("锁过期重排");
+		if (eventType === "stale_lock_failed") return t("锁过期失败");
+		return eventType;
 	};
 
 	const getUsageStatusLabel = (status: string) => {
@@ -3591,10 +3640,17 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 													{taskItems.map((task) => (
 														<tr key={task.id} className="hover:bg-muted">
 															<td className="px-4 py-3">
-																<div className="font-medium text-text-1">
-																	{getTaskTypeLabel(task)}{t("生成")}
-																</div>
-															</td>
+												<button
+													type="button"
+													onClick={() => handleOpenTaskTimeline(task.id)}
+													className="text-left text-primary hover:underline"
+												>
+													<div className="font-medium text-text-1">
+														{getTaskTypeLabel(task.task_type, task.content_type)}{t("生成")}
+													</div>
+													<div className="text-xs text-text-3">#{task.id.slice(0, 8)}</div>
+												</button>
+											</td>
 															<td className="px-4 py-3">
 													<StatusTag
 														tone={
@@ -3609,15 +3665,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 																			: "warning"
 														}
 													>
-														{task.status === "completed"
-															? t("已完成")
-															: task.status === "failed"
-																? t("失败")
-																: task.status === "processing"
-																	? t("处理中")
-																	: task.status === "cancelled"
-																		? t("已取消")
-																		: t("待处理")}
+														{getTaskStatusLabel(task.status)}
 													</StatusTag>
 																{task.last_error && (
 																	<div
@@ -4374,6 +4422,92 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 								</label>
 							)}
 						</div>
+					</ModalShell>
+				)}
+
+				{showTaskTimelineModal && (
+					<ModalShell
+						isOpen={showTaskTimelineModal}
+						onClose={closeTaskTimelineModal}
+						title={t("任务链路详情")}
+						widthClassName="max-w-4xl"
+						panelClassName="max-h-[90vh] overflow-y-auto"
+						headerClassName="border-b border-border p-6"
+						bodyClassName="space-y-4 p-6"
+						footerClassName="border-t border-border bg-muted p-6"
+						footer={
+							<div className="flex justify-end">
+								<Button onClick={closeTaskTimelineModal} variant="secondary">
+									{t("关闭")}
+								</Button>
+							</div>
+						}
+					>
+						{taskTimelineLoading ? (
+							<div className="py-10 text-center text-text-3">{t("加载中")}</div>
+						) : taskTimelineError ? (
+							<div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+								{taskTimelineError}
+							</div>
+						) : selectedTaskTimeline ? (
+							<div className="space-y-4">
+								<div className="rounded-lg border border-border bg-muted p-4 text-sm text-text-2">
+									<div className="font-medium text-text-1 mb-2">{getTaskTypeLabel(selectedTaskTimeline.task.task_type, selectedTaskTimeline.task.content_type)}</div>
+									<div>{t("任务ID")}: {selectedTaskTimeline.task.id}</div>
+									<div>{t("状态")}: {getTaskStatusLabel(selectedTaskTimeline.task.status)}</div>
+									<div>{t("尝试")}: {selectedTaskTimeline.task.attempts}/{selectedTaskTimeline.task.max_attempts}</div>
+									{selectedTaskTimeline.task.article_slug && (
+										<div>
+											{t("文章")}:
+											<Link href={`/article/${selectedTaskTimeline.task.article_slug}`} className="text-primary hover:underline">
+												{selectedTaskTimeline.task.article_title || selectedTaskTimeline.task.article_slug}
+											</Link>
+										</div>
+									)}
+								</div>
+
+								<div>
+									<h4 className="mb-2 text-sm font-semibold text-text-1">{t("状态时间线")}</h4>
+									{selectedTaskTimeline.events.length === 0 ? (
+										<div className="text-sm text-text-3">{t("暂无事件")}</div>
+									) : (
+										<div className="space-y-2">
+											{selectedTaskTimeline.events.map((event) => (
+												<div key={event.id} className="rounded-md border border-border p-3 text-xs text-text-2">
+													<div className="font-medium text-text-1">{getTaskEventLabel(event.event_type)}</div>
+													<div>{new Date(event.created_at).toLocaleString("zh-CN")}</div>
+													{event.from_status && event.to_status && <div>{event.from_status} → {event.to_status}</div>}
+													{event.message && <div>{event.message}</div>}
+													{event.details && (
+														<pre className="mt-1 whitespace-pre-wrap rounded bg-surface p-2 text-[11px]">{typeof event.details === "string" ? event.details : JSON.stringify(event.details, null, 2)}</pre>
+													)}
+												</div>
+											))}
+										</div>
+									)}
+								</div>
+
+								<div>
+									<h4 className="mb-2 text-sm font-semibold text-text-1">{t("AI调用记录")}</h4>
+									{selectedTaskTimeline.usage.length === 0 ? (
+										<div className="text-sm text-text-3">{t("暂无调用记录")}</div>
+									) : (
+										<div className="space-y-2">
+											{selectedTaskTimeline.usage.map((usage) => (
+												<div key={usage.id} className="rounded-md border border-border p-3 text-xs text-text-2">
+													<div className="font-medium text-text-1">{usage.model_api_config_name || t("未知模型")}</div>
+													<div>{new Date(usage.created_at).toLocaleString("zh-CN")}</div>
+													<div>{t("状态")}: {getUsageStatusLabel(usage.status)}</div>
+													<div>{t("tokens")}: {usage.total_tokens ?? 0}</div>
+													{usage.latency_ms != null && <div>{t("耗时")}: {usage.latency_ms}ms</div>}
+													{usage.error_message && <div className="text-red-600">{usage.error_message}</div>}
+												</div>
+											))}
+										</div>
+									)}
+								</div>
+							</div>
+						) : null}
 					</ModalShell>
 				)}
 
