@@ -13,12 +13,18 @@ from app.schemas import (
     ArticleNotesUpdate,
     ArticleUpdate,
 )
+from app.domain.article_command_service import ArticleCommandService
+from app.domain.article_embedding_service import ArticleEmbeddingService
+from app.domain.article_query_service import ArticleQueryService
 from article_service import ArticleService
 from auth import check_is_admin, get_admin_settings, get_current_admin
 from media_service import cleanup_media_assets
 from models import Article, ArticleComment, ArticleEmbedding, Category, get_db, now_str
 
 router = APIRouter()
+article_query_service = ArticleQueryService()
+article_command_service = ArticleCommandService()
+article_embedding_service = ArticleEmbeddingService()
 article_service = ArticleService()
 
 SIMILAR_ARTICLE_CANDIDATE_LIMIT = 500
@@ -36,7 +42,7 @@ async def create_article(
     _: bool = Depends(get_current_admin),
 ):
     try:
-        article_id = await article_service.create_article(article.dict(), db)
+        article_id = await article_command_service.create_article(article.dict(), db)
         article_obj = db.query(Article).filter(Article.id == article_id).first()
         slug = article_obj.slug if article_obj else article_id
         return {"id": article_id, "slug": slug, "status": "processing"}
@@ -61,7 +67,7 @@ async def get_articles(
     db: Session = Depends(get_db),
     is_admin: bool = Depends(check_is_admin),
 ):
-    articles, total = article_service.get_articles(
+    articles, total = article_query_service.get_articles(
         db=db,
         page=page,
         size=size,
@@ -138,14 +144,14 @@ async def get_article(
     db: Session = Depends(get_db),
     is_admin: bool = Depends(check_is_admin),
 ):
-    article = article_service.get_article_by_slug(db, article_slug)
+    article = article_query_service.get_article_by_slug(db, article_slug)
     if not article:
         raise HTTPException(status_code=404, detail="文章不存在")
 
     if not is_admin and not article.is_visible:
         raise HTTPException(status_code=404, detail="文章不存在")
 
-    prev_article, next_article = article_service.get_article_neighbors(
+    prev_article, next_article = article_query_service.get_article_neighbors(
         db, article, is_admin=is_admin
     )
 
@@ -225,7 +231,7 @@ async def get_similar_articles(
     if admin and not bool(admin.recommendations_enabled):
         return {"status": "disabled", "items": []}
 
-    article = article_service.get_article_by_slug(db, article_slug)
+    article = article_query_service.get_article_by_slug(db, article_slug)
     if not article:
         raise HTTPException(status_code=404, detail="文章不存在")
 
@@ -274,7 +280,7 @@ async def get_similar_articles(
             vector = json.loads(record.embedding)
         except Exception:
             continue
-        score = article_service.cosine_similarity(base_vector, vector)
+        score = article_embedding_service.cosine_similarity(base_vector, vector)
         if base_category_id and candidate_article.category_id == base_category_id:
             score += CATEGORY_SIMILARITY_BOOST
         scored.append((score, candidate_article))
@@ -307,7 +313,7 @@ async def regenerate_article_embedding(
     db: Session = Depends(get_db),
     _: bool = Depends(get_current_admin),
 ):
-    article = article_service.get_article_by_slug(db, article_slug)
+    article = article_query_service.get_article_by_slug(db, article_slug)
     if not article:
         raise HTTPException(status_code=404, detail="文章不存在")
 
@@ -327,7 +333,7 @@ async def update_article_notes(
     db: Session = Depends(get_db),
     _: bool = Depends(get_current_admin),
 ):
-    article = article_service.get_article_by_slug(db, article_slug)
+    article = article_query_service.get_article_by_slug(db, article_slug)
     if not article:
         raise HTTPException(status_code=404, detail="文章不存在")
     if payload.note_content is not None:
@@ -346,7 +352,7 @@ async def delete_article(
     db: Session = Depends(get_db),
     _: bool = Depends(get_current_admin),
 ):
-    article = article_service.get_article_by_slug(db, article_slug)
+    article = article_query_service.get_article_by_slug(db, article_slug)
     if not article:
         raise HTTPException(status_code=404, detail="文章不存在")
 
@@ -365,7 +371,7 @@ async def update_article(
     db: Session = Depends(get_db),
     _: bool = Depends(get_current_admin),
 ):
-    article = article_service.get_article_by_slug(db, article_slug)
+    article = article_query_service.get_article_by_slug(db, article_slug)
     if not article:
         raise HTTPException(status_code=404, detail="文章不存在")
 
@@ -479,7 +485,7 @@ async def update_article_visibility(
     db: Session = Depends(get_db),
     _: bool = Depends(get_current_admin),
 ):
-    article = article_service.get_article_by_slug(db, article_slug)
+    article = article_query_service.get_article_by_slug(db, article_slug)
     if not article:
         raise HTTPException(status_code=404, detail="文章不存在")
 
@@ -497,10 +503,10 @@ async def retry_article_ai(
     _: bool = Depends(get_current_admin),
 ):
     try:
-        article = article_service.get_article_by_slug(db, article_slug)
+        article = article_query_service.get_article_by_slug(db, article_slug)
         if not article:
             raise HTTPException(status_code=404, detail="文章不存在")
-        actual_article_id = await article_service.retry_article_ai(db, article.id)
+        actual_article_id = await article_command_service.retry_article_ai(db, article.id)
         return {"id": actual_article_id, "status": "processing"}
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -515,10 +521,10 @@ async def retry_article_translation(
     _: bool = Depends(get_current_admin),
 ):
     try:
-        article = article_service.get_article_by_slug(db, article_slug)
+        article = article_query_service.get_article_by_slug(db, article_slug)
         if not article:
             raise HTTPException(status_code=404, detail="文章不存在")
-        actual_article_id = await article_service.retry_article_translation(db, article.id)
+        actual_article_id = await article_command_service.retry_article_translation(db, article.id)
         return {"id": actual_article_id, "translation_status": "processing"}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -542,10 +548,10 @@ async def generate_ai_content(
         )
 
     try:
-        article = article_service.get_article_by_slug(db, article_slug)
+        article = article_query_service.get_article_by_slug(db, article_slug)
         if not article:
             raise HTTPException(status_code=404, detail="文章不存在")
-        await article_service.generate_ai_content(
+        await article_command_service.generate_ai_content(
             db,
             article.id,
             content_type,

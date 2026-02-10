@@ -12,12 +12,12 @@ from app.core.dependencies import (
     normalize_date_bound,
 )
 from app.schemas import CommentCreate, CommentUpdate, CommentVisibilityUpdate
-from article_service import ArticleService
+from app.domain.article_query_service import ArticleQueryService
 from auth import get_current_admin, security
 from models import Article, ArticleComment, get_db, now_str
 
 router = APIRouter()
-article_service = ArticleService()
+article_query_service = ArticleQueryService()
 
 
 @router.get("/api/articles/{article_slug}/comments")
@@ -29,7 +29,7 @@ async def get_article_comments(
 ):
     if not comments_enabled(db):
         raise HTTPException(status_code=403, detail="评论已关闭")
-    article = article_service.get_article_by_slug(db, article_slug)
+    article = article_query_service.get_article_by_slug(db, article_slug)
     if not article:
         raise HTTPException(status_code=404, detail="文章不存在")
 
@@ -74,7 +74,7 @@ async def create_article_comment(
 ):
     if not comments_enabled(db):
         raise HTTPException(status_code=403, detail="评论已关闭")
-    article = article_service.get_article_by_slug(db, article_slug)
+    article = article_query_service.get_article_by_slug(db, article_slug)
     if not article:
         raise HTTPException(status_code=404, detail="文章不存在")
 
