@@ -1,0 +1,85 @@
+[
+  {
+    "name": "auth_status",
+    "method": "GET",
+    "path": "/api/auth/status",
+    "expected_status": 200,
+    "body_type": "object",
+    "required_paths": ["/initialized"]
+  },
+  {
+    "name": "auth_verify",
+    "method": "GET",
+    "path": "/api/auth/verify",
+    "expected_status": 200,
+    "body_type": "object",
+    "required_paths": ["/valid", "/role"]
+  },
+  {
+    "name": "articles_list",
+    "method": "GET",
+    "path": "/api/articles?page=1&size=1",
+    "expected_status": 200,
+    "body_type": "object",
+    "required_paths": [
+      "/data",
+      "/pagination",
+      "/pagination/page",
+      "/pagination/size",
+      "/pagination/total",
+      "/pagination/total_pages"
+    ],
+    "required_when_nonempty_paths": [
+      "/data/0/id",
+      "/data/0/slug",
+      "/data/0/title",
+      "/data/0/status"
+    ]
+  },
+  {
+    "name": "categories",
+    "method": "GET",
+    "path": "/api/categories",
+    "expected_status": 200,
+    "body_type": "array",
+    "required_when_nonempty_paths": [
+      "/0/id",
+      "/0/name",
+      "/0/article_count"
+    ]
+  },
+  {
+    "name": "basic_settings_public",
+    "method": "GET",
+    "path": "/api/settings/basic/public",
+    "expected_status": 200,
+    "body_type": "object",
+    "required_paths": [
+      "/default_language",
+      "/site_name",
+      "/site_description"
+    ]
+  },
+  {
+    "name": "sources",
+    "method": "GET",
+    "path": "/api/sources",
+    "expected_status": 200,
+    "body_type": "array"
+  },
+  {
+    "name": "authors",
+    "method": "GET",
+    "path": "/api/authors",
+    "expected_status": 200,
+    "body_type": "array"
+  },
+  {
+    "name": "ai_tasks_unauthorized",
+    "method": "GET",
+    "path": "/api/ai-tasks",
+    "expected_status": 401,
+    "body_type": "object",
+    "required_paths": ["/detail"]
+  }
+]

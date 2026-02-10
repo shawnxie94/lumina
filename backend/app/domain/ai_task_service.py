@@ -241,6 +241,60 @@ class AITaskService:
             )
         db.commit()
 
+    def _require_article_id(self, article_id: str | None) -> str:
+        if not article_id:
+            raise TaskDataError("缺少文章ID")
+        return article_id
+
+    async def _handle_process_article_ai(self, pipeline, article_id: str, category_id):
+        await pipeline.process_article_ai(article_id, category_id)
+
+    async def _handle_process_article_cleaning(self, pipeline, article_id: str, category_id):
+        await pipeline.process_article_cleaning(article_id, category_id)
+
+    async def _handle_process_article_validation(
+        self,
+        pipeline,
+        article_id: str,
+        category_id,
+        payload: dict,
+    ):
+        cleaned_md = payload.get("cleaned_md")
+        await pipeline.process_article_validation(article_id, category_id, cleaned_md)
+
+    async def _handle_process_article_classification(
+        self,
+        pipeline,
+        article_id: str,
+        category_id,
+    ):
+        await pipeline.process_article_classification(article_id, category_id)
+
+    async def _handle_process_article_translation(self, pipeline, article_id: str, category_id):
+        await pipeline.process_article_translation(article_id, category_id)
+
+    async def _handle_process_ai_content(
+        self,
+        pipeline,
+        task: AITask,
+        article_id: str,
+        category_id,
+        payload: dict,
+    ):
+        content_type = task.content_type or payload.get("content_type")
+        if not content_type:
+            raise TaskDataError("缺少内容类型")
+        await pipeline.process_ai_content(
+            article_id,
+            category_id,
+            content_type,
+            model_config_id=payload.get("model_config_id"),
+            prompt_config_id=payload.get("prompt_config_id"),
+        )
+
+    async def _handle_process_article_embedding(self, article_id: str):
+        await self.embedding_service.process_article_embedding(article_id)
+
     async def run_task_async(self, task: AITask) -> None:
         payload = json.loads(task.payload or "{}")
         article_id = task.article_id
@@ -250,59 +304,50 @@ class AITaskService:
             enqueue_task_func=self.enqueue_task,
         )
 
-        if task.task_type == "process_article_ai":
-            if not article_id:
-                raise TaskDataError("缺少文章ID")
-            await pipeline.process_article_ai(article_id, category_id)
-            return
-
-        if task.task_type == "process_article_cleaning":
-            if not article_id:
-                raise TaskDataError("缺少文章ID")
-            await pipeline.process_article_cleaning(article_id, category_id)
-            return
-
-        if task.task_type == "process_article_validation":
-            if not article_id:
-                raise TaskDataError("缺少文章ID")
-            cleaned_md = payload.get("cleaned_md")
-            await pipeline.process_article_validation(article_id, category_id, cleaned_md)
-            return
-
-        if task.task_type == "process_article_classification":
-            if not article_id:
-                raise TaskDataError("缺少文章ID")
-            await pipeline.process_article_classification(article_id, category_id)
-            return
-
-        if task.task_type == "process_article_translation":
-            if not article_id:
-                raise TaskDataError("缺少文章ID")
-            await pipeline.process_article_translation(article_id, category_id)
-            return
-
-        if task.task_type == "process_ai_content":
-            if not article_id:
-                raise TaskDataError("缺少文章ID")
-            content_type = task.content_type or payload.get("content_type")
-            if not content_type:
-                raise TaskDataError("缺少内容类型")
-            await pipeline.process_ai_content(
-                article_id,
+        handlers = {
+            "process_article_ai": lambda: self._handle_process_article_ai(
+                pipeline,
+                self._require_article_id(article_id),
                 category_id,
-                content_type,
-                model_config_id=payload.get("model_config_id"),
-                prompt_config_id=payload.get("prompt_config_id"),
-            )
-            return
+            ),
+            "process_article_cleaning": lambda: self._handle_process_article_cleaning(
+                pipeline,
+                self._require_article_id(article_id),
+                category_id,
+            ),
+            "process_article_validation": lambda: self._handle_process_article_validation(
+                pipeline,
+                self._require_article_id(article_id),
+                category_id,
+                payload,
+            ),
+            "process_article_classification": lambda: self._handle_process_article_classification(
+                pipeline,
+                self._require_article_id(article_id),
+                category_id,
+            ),
+            "process_article_translation": lambda: self._handle_process_article_translation(
+                pipeline,
+                self._require_article_id(article_id),
+                category_id,
+            ),
+            "process_ai_content": lambda: self._handle_process_ai_content(
+                pipeline,
+                task,
+                self._require_article_id(article_id),
+                category_id,
+                payload,
+            ),
+            "process_article_embedding": lambda: self._handle_process_article_embedding(
+                self._require_article_id(article_id)
+            ),
+        }
 
-        if task.task_type == "process_article_embedding":
-            if not article_id:
-                raise TaskDataError("缺少文章ID")
-            await self.embedding_service.process_article_embedding(article_id)
-            return
+        handler = handlers.get(task.task_type)
+        if handler is None:
+            raise TaskDataError(f"未知任务类型: {task.task_type}")
 
-        raise TaskDataError(f"未知任务类型: {task.task_type}")
+        await handler()
 
     def cleanup_stale_tasks(self, db) -> int:
         now_iso = get_now_iso()

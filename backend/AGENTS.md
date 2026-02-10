@@ -35,6 +35,7 @@ backend/
 | Request/response schemas | `backend/app/schemas/` | Reuse schema types across routers |
 | DB migrations | `backend/alembic/` `backend/scripts/migrate_db.py` | Alembic revision + upgrade entrypoint |
 | Route contract baseline | `backend/scripts/route_contract_baseline.json` | Guard for API signature coverage |
+| Response contract baseline | `backend/scripts/response_contract_baseline.json` | Guard for key API response shape regression |
 | Worker orchestration | `backend/worker.py` | Uses `app.domain.ai_task_service` |
 
 ## CONVENTIONS
@@ -56,8 +57,11 @@ python scripts/migrate_db.py
 
 # Route coverage guard (modular routers vs route contract baseline)
 python scripts/check_route_coverage.py --verbose
-# (Intentional API contract update only)
+# (Intentional API route contract update only)
 python scripts/check_route_coverage.py --write-baseline
+
+# Response contract guard (HTTP status + key fields)
+python scripts/check_response_contract.py --verbose
 
 # One-click docker startup + healthcheck (run from repo root)
 ../scripts/docker_healthcheck.sh

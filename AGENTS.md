@@ -28,6 +28,7 @@ Article Database System: Next.js 14 frontend (pages router) + FastAPI backend + 
 | Backend domain services | `backend/app/domain/` | Query/command/AI/task split |
 | Backend DB migrations | `backend/alembic/` `backend/scripts/migrate_db.py` | Alembic-based schema/index upgrade path |
 | Route contract baseline | `backend/scripts/route_contract_baseline.json` | API signature regression baseline for modular routers |
+| Response contract baseline | `backend/scripts/response_contract_baseline.json` | Key API response shape regression baseline |
 | DB models + init | `backend/models.py` | Models + DB setup + defaults |
 | AI worker loop | `backend/worker.py` | Background task processor |
 | Frontend list page | `frontend/pages/index.tsx` | Filters, batch ops, pagination |
@@ -86,6 +87,7 @@ uv run uvicorn main:app --reload
 uv run uvicorn main:app --host 0.0.0.0 --port 8000
 python scripts/migrate_db.py
 python scripts/check_route_coverage.py --verbose
+python scripts/check_response_contract.py --verbose
 
 # Extension
 cd extension
