@@ -116,6 +116,7 @@ const translations: Record<Language, Record<string | number, string>> = {
 		已选内容: "Selected content",
 		输入划线批注内容: "Enter highlight annotation",
 		删除评论: "Delete comment",
+		评论详情: "Comment details",
 		"确定要删除这条评论吗？此操作不可撤销。": "Are you sure you want to delete this comment? This action cannot be undone.",
 		"确定要删除这条划线批注吗？此操作不可撤销。": "Are you sure you want to delete this highlight note? This action cannot be undone.",
 		"确定要删除文章开头批注吗？此操作不可撤销。": "Are you sure you want to delete the article note? This action cannot be undone.",

@@ -385,6 +385,21 @@ export default function Home() {
   ]);
 
   useEffect(() => {
+    setSelectedArticleSlugs(new Set());
+  }, [
+    selectedCategory,
+    searchTerm,
+    sourceDomain,
+    author,
+    visibilityFilter,
+    publishedStartDate,
+    publishedEndDate,
+    createdStartDate,
+    createdEndDate,
+    sortBy,
+  ]);
+
+  useEffect(() => {
     if (!initialized || authLoading) return;
     fetchArticles();
   }, [initialized, authLoading, page, pageSize]);

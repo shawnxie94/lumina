@@ -179,6 +179,17 @@ interface AITaskItem {
 	finished_at: string | null;
 }
 
+interface UsageCostBreakdown {
+	currency: string;
+	promptTokens: number | null;
+	completionTokens: number | null;
+	inputUnitPrice: number | null;
+	outputUnitPrice: number | null;
+	inputCost: number | null;
+	outputCost: number | null;
+	totalCost: number | null;
+}
+
 interface SortableCategoryItemProps {
 	category: Category;
 	onEdit: (category: Category) => void;
@@ -335,6 +346,7 @@ export default function AdminPage() {
 	const [showUsageCostModal, setShowUsageCostModal] = useState(false);
 	const [usageCostTitle, setUsageCostTitle] = useState("");
 	const [usageCostDetails, setUsageCostDetails] = useState("");
+	const [usageCostBreakdown, setUsageCostBreakdown] = useState<UsageCostBreakdown | null>(null);
 	const showUsageView =
 		activeSection === "monitoring" && monitoringSubSection === "ai-usage";
 	const showCommentListView =
@@ -460,6 +472,8 @@ export default function AdminPage() {
 	const [commentReplyFilter, setCommentReplyFilter] = useState("");
 	const [hoverComment, setHoverComment] = useState<ArticleComment | null>(null);
 	const [hoverTooltipPos, setHoverTooltipPos] = useState<{ x: number; y: number } | null>(null);
+	const [showCommentContentModal, setShowCommentContentModal] = useState(false);
+	const [activeCommentContent, setActiveCommentContent] = useState<ArticleComment | null>(null);
 	const hasCommentFilters = Boolean(
 		commentQuery ||
 			commentArticleTitle ||
@@ -522,6 +536,11 @@ const { section, article_title: articleTitleParam } = router.query;
 	useEffect(() => {
 		const handleKeyDown = (event: KeyboardEvent) => {
 			if (event.key !== "Escape") return;
+			if (showCommentContentModal) {
+				setShowCommentContentModal(false);
+				setActiveCommentContent(null);
+				return;
+			}
 			if (showUsagePayloadModal) {
 				setShowUsagePayloadModal(false);
 				return;
@@ -558,6 +577,7 @@ const { section, article_title: articleTitleParam } = router.query;
 		document.addEventListener("keydown", handleKeyDown);
 		return () => document.removeEventListener("keydown", handleKeyDown);
 	}, [
+		showCommentContentModal,
 		showUsagePayloadModal,
 		showUsageCostModal,
 		showModelAPITestModal,
@@ -1600,38 +1620,45 @@ const { section, article_title: articleTitleParam } = router.query;
 		price: number | null,
 		currency: string,
 	) => {
-	if (tokens == null || price == null) {
-		return `${label}: -`;
-	}
-	const cost = (tokens / 1000) * price;
-	return `${label}: ${tokens} / 1000 * ${price.toFixed(6)} = ${cost.toFixed(
-		6,
-	)} ${currency}`;
-};
+		if (tokens == null || price == null) {
+			return `${label}: -`;
+		}
+		const cost = (tokens / 1000) * price;
+		return `${label}: (${tokens} / 1000) * ${price.toFixed(6)} = ${cost.toFixed(6)} ${currency}`;
+	};
 
-const formatPrice = (value: number | null | undefined) => {
-	if (value == null) return "-";
-	return value.toFixed(4);
-};
+	const formatCostValue = (value: number | null | undefined, digits = 6) => {
+		if (value == null || Number.isNaN(value)) return "-";
+		return value.toFixed(digits);
+	};
 
-const stripReplyPrefix = (content: string) => {
-	if (!content) return "";
-	const lines = content.split("\n");
-	const prefixes = ["> 回复 @", "> Reply @"];
-	if (!prefixes.some((prefix) => lines[0]?.startsWith(prefix))) return content;
-	const blankIndex = lines.findIndex((line, index) => index > 0 && !line.trim());
-	if (blankIndex >= 0) {
-		return lines.slice(blankIndex + 1).join("\n").trim();
-	}
-	return lines.slice(1).join("\n").trim();
-};
+	const formatPrice = (value: number | null | undefined, digits = 6) => {
+		if (value == null || Number.isNaN(value)) return "-";
+		if (value === 0) return "0";
+		return value.toFixed(digits);
+	};
 
-const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
-	if (!start && !end) return null;
-	const startDate = start ? dayjs(start) : null;
-	const endDate = end ? dayjs(end) : null;
-	return [startDate, endDate] as [Dayjs | null, Dayjs | null];
-};
+	const stripReplyPrefix = (content: string) => {
+		if (!content) return "";
+		const lines = content.split("\n");
+		const prefixes = ["> 回复 @", "> Reply @"];
+		if (!prefixes.some((prefix) => lines[0]?.startsWith(prefix))) return content;
+		const blankIndex = lines.findIndex((line, index) => index > 0 && !line.trim());
+		if (blankIndex >= 0) {
+			return lines.slice(blankIndex + 1).join("\n").trim();
+		}
+		return lines.slice(1).join("\n").trim();
+	};
+
+	const buildCommentPreview = (content: string) =>
+		stripReplyPrefix(content).replace(/\s+/g, " ").trim();
+
+	const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
+		if (!start && !end) return null;
+		const startDate = start ? dayjs(start) : null;
+		const endDate = end ? dayjs(end) : null;
+		return [startDate, endDate] as [Dayjs | null, Dayjs | null];
+	};
 
 	const openUsageCost = (log: AIUsageLogItem) => {
 		const currency = log.currency || "USD";
@@ -1645,39 +1672,81 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 			log.completion_tokens > 0
 				? log.cost_output / (log.completion_tokens / 1000)
 				: null;
-	const inputLine = formatCostLine(
-		t("输入"),
-		log.prompt_tokens,
-		inputPrice,
-		currency,
-	);
-	const outputLine = formatCostLine(
-		t("输出"),
-		log.completion_tokens,
-		outputPrice,
-		currency,
-	);
-		const total = log.cost_total != null
-			? `${log.cost_total.toFixed(6)} ${currency}`
-			: "-";
-	setUsageCostTitle(t("费用计算逻辑（仅供参考）"));
-	setUsageCostDetails(
-		t("费用计算详情")
-			.replace("{inputLine}", inputLine)
-			.replace("{outputLine}", outputLine)
-			.replace("{total}", total),
-	);
+		const inputCost =
+			log.prompt_tokens != null && inputPrice != null
+				? (log.prompt_tokens / 1000) * inputPrice
+				: null;
+		const outputCost =
+			log.completion_tokens != null && outputPrice != null
+				? (log.completion_tokens / 1000) * outputPrice
+				: null;
+		const totalCost =
+			log.cost_total != null
+				? log.cost_total
+				: inputCost != null || outputCost != null
+					? (inputCost || 0) + (outputCost || 0)
+					: null;
+
+		setUsageCostBreakdown({
+			currency,
+			promptTokens: log.prompt_tokens,
+			completionTokens: log.completion_tokens,
+			inputUnitPrice: inputPrice,
+			outputUnitPrice: outputPrice,
+			inputCost,
+			outputCost,
+			totalCost,
+		});
+
+		const inputLine = formatCostLine(
+			t("输入"),
+			log.prompt_tokens,
+			inputPrice,
+			currency,
+		);
+		const outputLine = formatCostLine(
+			t("输出"),
+			log.completion_tokens,
+			outputPrice,
+			currency,
+		);
+
+		setUsageCostTitle(t("费用计算逻辑（仅供参考）"));
+		setUsageCostDetails(
+			[
+				t("费用计算详情")
+					.replace("{inputLine}", inputLine)
+					.replace("{outputLine}", outputLine)
+					.replace(
+						"{total}",
+						totalCost != null ? `${totalCost.toFixed(6)} ${currency}` : "-",
+					),
+				`${t("输入单价（每 1K tokens）")}: ${formatCostValue(inputPrice)} ${currency}`,
+				`${t("输出单价（每 1K tokens）")}: ${formatCostValue(outputPrice)} ${currency}`,
+			].join("\n"),
+		);
 		setShowUsageCostModal(true);
 	};
 
 	const handleCopyPayload = async () => {
-	try {
-		await navigator.clipboard.writeText(usagePayloadContent);
-		showToast(t("已复制"));
-	} catch (error) {
-		console.error(t("复制失败"), error);
-		showToast(t("复制失败"), "error");
-	}
+		try {
+			await navigator.clipboard.writeText(usagePayloadContent);
+			showToast(t("已复制"));
+		} catch (error) {
+			console.error(t("复制失败"), error);
+			showToast(t("复制失败"), "error");
+		}
+	};
+
+	const handleCopyMaskedValue = async (value: string) => {
+		if (!value) return;
+		try {
+			await navigator.clipboard.writeText(value);
+			showToast(t("已复制"));
+		} catch (error) {
+			console.error(t("复制失败"), error);
+			showToast(t("复制失败"), "error");
+		}
 	};
 
 	const formatUsageDateTime = (value: string | null) => {
@@ -2432,6 +2501,8 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 															<Link
 																href={`/article/${log.article_slug || log.article_id}`}
 																className="text-primary hover:text-primary-ink"
+											target="_blank"
+											rel="noopener noreferrer"
 															>
 																{t("查看")}
 															</Link>
@@ -3228,17 +3299,30 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 													<label className="block text-sm text-text-2 mb-1">
 														GitHub Client Secret
 													</label>
-													<TextInput
-														type="password"
-														value={commentSettings.github_client_secret}
-														onChange={(e) =>
-															setCommentSettings((prev) => ({
-																...prev,
-																github_client_secret: e.target.value,
-															}))
-														}
-														placeholder={t("填写 GitHub OAuth Client Secret")}
-														/>
+													<div className="flex items-center gap-2">
+												<TextInput
+													type="password"
+													value={commentSettings.github_client_secret}
+													onChange={(e) =>
+														setCommentSettings((prev) => ({
+															...prev,
+															github_client_secret: e.target.value,
+														}))
+													}
+													placeholder={t("填写 GitHub OAuth Client Secret")}
+													className="flex-1"
+												/>
+												<IconButton
+													type="button"
+													onClick={() => handleCopyMaskedValue(commentSettings.github_client_secret)}
+													variant="secondary"
+													size="md"
+													title={t("复制")}
+													disabled={!commentSettings.github_client_secret}
+												>
+													<IconCopy className="h-4 w-4" />
+												</IconButton>
+											</div>
 												</div>
 												<div>
 													<label className="block text-sm text-text-2 mb-1">
@@ -3259,17 +3343,30 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 													<label className="block text-sm text-text-2 mb-1">
 														Google Client Secret
 													</label>
-													<TextInput
-														type="password"
-														value={commentSettings.google_client_secret}
-														onChange={(e) =>
-															setCommentSettings((prev) => ({
-																...prev,
-																google_client_secret: e.target.value,
-															}))
-														}
-														placeholder={t("填写 Google OAuth Client Secret")}
-														/>
+													<div className="flex items-center gap-2">
+												<TextInput
+													type="password"
+													value={commentSettings.google_client_secret}
+													onChange={(e) =>
+														setCommentSettings((prev) => ({
+															...prev,
+															google_client_secret: e.target.value,
+														}))
+													}
+													placeholder={t("填写 Google OAuth Client Secret")}
+													className="flex-1"
+												/>
+												<IconButton
+													type="button"
+													onClick={() => handleCopyMaskedValue(commentSettings.google_client_secret)}
+													variant="secondary"
+													size="md"
+													title={t("复制")}
+													disabled={!commentSettings.google_client_secret}
+												>
+													<IconCopy className="h-4 w-4" />
+												</IconButton>
+											</div>
 												</div>
 											</div>
 
@@ -3290,6 +3387,16 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 													placeholder={t("用于签名会话的 Secret")}
 													className="flex-1"
 												/>
+												<IconButton
+													type="button"
+													onClick={() => handleCopyMaskedValue(commentSettings.nextauth_secret)}
+													variant="secondary"
+													size="md"
+													title={t("复制")}
+													disabled={!commentSettings.nextauth_secret}
+												>
+													<IconCopy className="h-4 w-4" />
+												</IconButton>
 												<Button
 													type="button"
 													onClick={handleGenerateNextAuthSecret}
@@ -3366,7 +3473,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 												<div
 													className={`rounded-sm border p-3 text-xs ${
 														commentValidationResult.ok
-															? "border-green-200 bg-green-50 text-green-700"
+															? "border-success-soft bg-success-soft text-success-ink"
 															: "border-danger-soft bg-danger-soft text-danger-ink"
 													}`}
 												>
@@ -3688,6 +3795,8 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 																		title={
 																			task.article_title || task.article_id
 																		}
+											target="_blank"
+											rel="noopener noreferrer"
 																	>
 																		{(() => {
 																			const title =
@@ -4031,7 +4140,8 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 															)}
 														</td>
 												<td className="px-4 py-3">
-													<span
+													<button
+														type="button"
 														onMouseEnter={(event) => {
 															setHoverComment(comment);
 															const rect = event.currentTarget.getBoundingClientRect();
@@ -4044,11 +4154,18 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 															setHoverComment(null);
 															setHoverTooltipPos(null);
 														}}
-														className="inline-flex items-center gap-1 text-sm text-accent cursor-pointer"
+														onClick={() => {
+															setActiveCommentContent(comment);
+															setShowCommentContentModal(true);
+															setHoverComment(null);
+															setHoverTooltipPos(null);
+														}}
+														className="inline-flex items-center gap-1 text-sm text-accent hover:underline"
+														aria-label={t("查看")}
 													>
 														<IconEye className="h-3 w-3" />
 														{t("查看")}
-													</span>
+													</button>
 												</td>
 															<td className="px-4 py-3">
 																<div className="text-text-1">
@@ -4063,6 +4180,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 														href={`/article/${comment.article_slug || comment.article_id}#comment-${comment.id}`}
 														className="inline-flex items-center gap-1 text-xs text-accent hover:underline"
 														target="_blank"
+														rel="noopener noreferrer"
 													>
 														<IconLink className="h-3 w-3" />
 														{t("查看")}
@@ -4165,16 +4283,60 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 
 					{hoverComment && hoverTooltipPos && (
 						<div
-							className="fixed z-50 w-max max-w-md rounded-md text-sm px-4 py-3 shadow-lg backdrop-blur bg-surface border border-border"
+							className="fixed z-50 w-72 max-w-[calc(100vw-2rem)] rounded-md text-sm px-4 py-3 shadow-lg backdrop-blur bg-surface border border-border"
 							style={{ left: hoverTooltipPos.x, top: hoverTooltipPos.y }}
 						>
-							<p className="text-text-1 whitespace-pre-wrap">
-								{stripReplyPrefix(hoverComment.content)}
+							<p
+								className="text-text-1"
+								style={{
+									display: "-webkit-box",
+									WebkitLineClamp: 3,
+									WebkitBoxOrient: "vertical",
+									overflow: "hidden",
+									textOverflow: "ellipsis",
+								}}
+							>
+								{buildCommentPreview(hoverComment.content)}
 							</p>
 						</div>
 					)}
 					</div>
 				</div>
+
+					{showCommentContentModal && activeCommentContent && (
+						<ModalShell
+							isOpen={showCommentContentModal}
+							onClose={() => {
+								setShowCommentContentModal(false);
+								setActiveCommentContent(null);
+							}}
+							title={t("评论详情")}
+							widthClassName="max-w-2xl"
+							footer={
+								<div className="flex justify-end">
+									<Button
+										type="button"
+										onClick={() => {
+											setShowCommentContentModal(false);
+											setActiveCommentContent(null);
+										}}
+										variant="secondary"
+									>
+										{t("关闭")}
+									</Button>
+								</div>
+							}
+						>
+							<div className="space-y-2 text-sm text-text-2">
+								<div className="text-xs text-text-3">
+									{activeCommentContent.user_name || t("匿名")} · {new Date(activeCommentContent.created_at).toLocaleString("zh-CN")}
+								</div>
+								<div className="rounded-sm border border-border bg-muted p-3 whitespace-pre-wrap break-words text-text-1">
+									{stripReplyPrefix(activeCommentContent.content)}
+								</div>
+							</div>
+						</ModalShell>
+					)}
 
 					{showModelAPIModal && (
 					<ModalShell
@@ -4252,18 +4414,31 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 						</FormField>
 
 						<FormField label={t("API密钥")} required>
-							<TextInput
-								type="password"
-								value={modelAPIFormData.api_key}
-								onChange={(e) =>
-									setModelAPIFormData({
-										...modelAPIFormData,
-										api_key: e.target.value,
-									})
-								}
-								placeholder={t("sk-...")}
-								required
-							/>
+							<div className="flex items-center gap-2">
+								<TextInput
+									type="password"
+									value={modelAPIFormData.api_key}
+									onChange={(e) =>
+										setModelAPIFormData({
+											...modelAPIFormData,
+											api_key: e.target.value,
+										})
+									}
+									placeholder={t("sk-...")}
+									required
+									className="flex-1"
+								/>
+								<IconButton
+									type="button"
+									onClick={() => handleCopyMaskedValue(modelAPIFormData.api_key)}
+									variant="secondary"
+									size="md"
+									title={t("复制")}
+									disabled={!modelAPIFormData.api_key}
+								>
+									<IconCopy className="h-4 w-4" />
+								</IconButton>
+							</div>
 						</FormField>
 
 						<FormField label={t("模型名称")} required>
@@ -4460,7 +4635,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 									{selectedTaskTimeline.task.article_slug && (
 										<div>
 											{t("文章")}:
-											<Link href={`/article/${selectedTaskTimeline.task.article_slug}`} className="text-primary hover:underline">
+											<Link href={`/article/${selectedTaskTimeline.task.article_slug}`} className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">
 												{selectedTaskTimeline.task.article_title || selectedTaskTimeline.task.article_slug}
 											</Link>
 										</div>
@@ -4564,9 +4739,64 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 							</div>
 						}
 					>
-						<pre className="rounded-lg border border-border bg-muted p-4 text-xs text-text-1 whitespace-pre-wrap">
-							{usageCostDetails}
-						</pre>
+						<div className="space-y-4">
+							{usageCostBreakdown && (
+								<div className="rounded-lg border border-border bg-muted p-4">
+									<div className="mb-3 text-sm font-medium text-text-1">
+										{t("计算明细")}
+									</div>
+									<div className="overflow-x-auto">
+										<table className="min-w-full text-xs">
+											<thead className="text-text-3">
+												<tr>
+													<th className="px-3 py-2 text-left">{t("项目")}</th>
+													<th className="px-3 py-2 text-left">{t("数值")}</th>
+													<th className="px-3 py-2 text-left">{t("公式")}</th>
+												</tr>
+											</thead>
+											<tbody className="divide-y divide-border text-text-2">
+												<tr>
+													<td className="px-3 py-2">{t("输入成本")}</td>
+													<td className="px-3 py-2">
+														{formatCostValue(usageCostBreakdown.inputCost)} {usageCostBreakdown.currency}
+													</td>
+													<td className="px-3 py-2">
+														{usageCostBreakdown.promptTokens != null && usageCostBreakdown.inputUnitPrice != null
+															? `(${usageCostBreakdown.promptTokens} / 1000) × ${formatCostValue(usageCostBreakdown.inputUnitPrice)} = ${formatCostValue(usageCostBreakdown.inputCost)}`
+															: "-"}
+													</td>
+												</tr>
+												<tr>
+													<td className="px-3 py-2">{t("输出成本")}</td>
+													<td className="px-3 py-2">
+														{formatCostValue(usageCostBreakdown.outputCost)} {usageCostBreakdown.currency}
+													</td>
+													<td className="px-3 py-2">
+														{usageCostBreakdown.completionTokens != null && usageCostBreakdown.outputUnitPrice != null
+															? `(${usageCostBreakdown.completionTokens} / 1000) × ${formatCostValue(usageCostBreakdown.outputUnitPrice)} = ${formatCostValue(usageCostBreakdown.outputCost)}`
+															: "-"}
+													</td>
+												</tr>
+												<tr>
+													<td className="px-3 py-2">{t("总成本")}</td>
+													<td className="px-3 py-2 font-medium text-text-1">
+														{formatCostValue(usageCostBreakdown.totalCost)} {usageCostBreakdown.currency}
+													</td>
+													<td className="px-3 py-2">
+														{usageCostBreakdown.inputCost != null || usageCostBreakdown.outputCost != null
+															? `${formatCostValue(usageCostBreakdown.inputCost)} + ${formatCostValue(usageCostBreakdown.outputCost)} = ${formatCostValue(usageCostBreakdown.totalCost)}`
+															: "-"}
+													</td>
+												</tr>
+											</tbody>
+										</table>
+									</div>
+								</div>
+							)}
+							<pre className="rounded-lg border border-border bg-muted p-4 text-xs text-text-1 whitespace-pre-wrap">
+								{usageCostDetails}
+							</pre>
+						</div>
 					</ModalShell>
 				)}
 
@@ -4863,7 +5093,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 										onClick={() => setCategoryFormData({ ...categoryFormData, color })}
 										className={`h-8 w-8 rounded-lg transition ${
 											categoryFormData.color === color
-												? "ring-2 ring-blue-500 ring-offset-2"
+												? "ring-2 ring-primary ring-offset-2"
 												: "hover:scale-110"
 										}`}
 										style={{ backgroundColor: color }}

@@ -13,7 +13,7 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 export const buttonVariantStyles: Record<ButtonVariant, string> = {
 	primary:
-		"bg-blue-600 text-white hover:bg-blue-700 focus:ring-2 focus:ring-blue-500/20",
+		"bg-primary text-white hover:opacity-90 focus:ring-2 focus:ring-primary/20",
 	secondary:
 		"bg-surface text-text-2 border border-border hover:bg-muted hover:text-text-1 focus:ring-2 focus:ring-accent/20",
 	danger:

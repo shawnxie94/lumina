@@ -224,10 +224,10 @@ function MindMapTree({ node, isRoot = false, compact = false, depth = 0 }: { nod
       : 'pl-5 border-l border-border space-y-4';
 
   const palette = [
-    'border-blue-200 bg-blue-50/60 text-blue-800',
-    'border-emerald-200 bg-emerald-50/60 text-emerald-800',
-    'border-amber-200 bg-amber-50/60 text-amber-800',
-    'border-purple-200 bg-purple-50/60 text-purple-800',
+    'border-info-soft bg-info-soft text-info-ink',
+    'border-success-soft bg-success-soft text-success-ink',
+    'border-warning-soft bg-warning-soft text-warning-ink',
+    'border-primary-soft bg-primary-soft text-primary-ink',
   ];
   const colorClass = palette[depth % palette.length];
 
@@ -285,8 +285,8 @@ function AIContentSection({
     if (!status) return null;
     const statusConfig: Record<string, { bg: string; text: string; label: string }> = {
       pending: { bg: 'bg-muted', text: 'text-text-2', label: t('等待处理') },
-      processing: { bg: 'bg-blue-100', text: 'text-blue-700', label: t('生成中...') },
-      completed: { bg: 'bg-green-100', text: 'text-green-700', label: t('已完成') },
+      processing: { bg: 'bg-info-soft', text: 'text-info-ink', label: t('生成中...') },
+      completed: { bg: 'bg-success-soft', text: 'text-success-ink', label: t('已完成') },
       failed: { bg: 'bg-danger-soft', text: 'text-danger-ink', label: t('失败') },
     };
     const config = statusConfig[status];
@@ -1676,15 +1676,28 @@ export default function ArticleDetailPage() {
             ) : (
               <div className="space-y-2 text-sm text-text-2">
                 {similarArticles.map((item) => (
-                  <div key={item.id} className="flex items-start gap-2 truncate">
+                  <div key={item.id} className="flex items-start gap-2">
                     <span className="text-text-3">·</span>
-                    <Link
-                      href={buildArticleHref(item.slug)}
-                      className="hover:text-text-1 transition truncate"
-                      title={item.title}
-                    >
-                      {item.title}
-                    </Link>
+                    <div className="min-w-0 flex items-center gap-2">
+                      {item.category_name && (
+                        <span
+                          className="shrink-0 rounded px-2 py-0.5 text-xs"
+                          style={{
+                            backgroundColor: item.category_color ? `${item.category_color}20` : 'var(--bg-muted)',
+                            color: item.category_color || 'var(--text-2)',
+                          }}
+                        >
+                          {item.category_name}
+                        </span>
+                      )}
+                      <Link
+                        href={buildArticleHref(item.slug)}
+                        className="hover:text-text-1 transition truncate"
+                        title={item.title}
+                      >
+                        {item.title}
+                      </Link>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1730,8 +1743,8 @@ export default function ArticleDetailPage() {
     if (!status) return null;
     const statusConfig: Record<string, { bg: string; text: string; label: string }> = {
       pending: { bg: 'bg-muted', text: 'text-text-2', label: t('等待处理') },
-      processing: { bg: 'bg-blue-100', text: 'text-blue-700', label: t('生成中...') },
-      completed: { bg: 'bg-green-100', text: 'text-green-700', label: t('已完成') },
+      processing: { bg: 'bg-info-soft', text: 'text-info-ink', label: t('生成中...') },
+      completed: { bg: 'bg-success-soft', text: 'text-success-ink', label: t('已完成') },
       failed: { bg: 'bg-danger-soft', text: 'text-danger-ink', label: t('失败') },
     };
     const config = statusConfig[status];
@@ -2434,7 +2447,7 @@ export default function ArticleDetailPage() {
                     {isAdmin && article.translation_status === 'failed' && (
                       <button type="button"
                         onClick={handleRetryTranslation}
-                        className="flex items-center gap-1 px-2 py-0.5 rounded text-xs text-orange-700 bg-orange-100 hover:bg-orange-200 transition"
+                        className="flex items-center gap-1 px-2 py-0.5 rounded text-xs text-warning-ink bg-warning-soft hover:bg-warning-soft transition"
                         title={article.translation_error || t('重新翻译')}
                         aria-label={t('翻译失败')}
                       >

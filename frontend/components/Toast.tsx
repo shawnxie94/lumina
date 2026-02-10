@@ -66,10 +66,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             key={toast.id}
             className={`px-4 py-3 rounded-sm shadow-md flex items-center gap-3 min-w-[280px] animate-slide-in ${
               toast.type === 'success'
-                ? 'bg-green-500 text-white'
+                ? 'bg-success text-white'
                 : toast.type === 'error'
                 ? 'bg-danger text-white'
-                : 'bg-blue-500 text-white'
+                : 'bg-info text-white'
             }`}
           >
             <span className="text-lg" aria-hidden="true">

@@ -1058,6 +1058,9 @@ async def get_similar_articles(
                 "title": candidate_article.title,
                 "published_at": candidate_article.published_at,
                 "created_at": candidate_article.created_at,
+                "category_id": candidate_article.category_id,
+                "category_name": candidate_article.category.name if candidate_article.category else None,
+                "category_color": candidate_article.category.color if candidate_article.category else None,
             }
         )
     return {"status": "ready", "items": items}

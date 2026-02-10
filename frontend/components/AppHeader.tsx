@@ -242,8 +242,8 @@ export default function AppHeader() {
 
   const getLevelClass = useCallback((level: NotificationItem['level']) => {
     if (level === 'error') return 'text-danger';
-    if (level === 'warning') return 'text-amber-500';
-    return 'text-blue-500';
+    if (level === 'warning') return 'text-warning-ink';
+    return 'text-info-ink';
   }, []);
 
   const siteName = basicSettings.site_name || 'Lumina';

@@ -12,9 +12,9 @@ interface StatusTagProps {
 
 const toneClassName: Record<StatusTone, string> = {
 	neutral: "bg-muted text-text-2",
-	info: "bg-primary-soft text-primary-ink",
-	success: "bg-green-100 text-green-700",
-	warning: "bg-yellow-100 text-yellow-700",
+	info: "bg-info-soft text-info-ink",
+	success: "bg-success-soft text-success-ink",
+	warning: "bg-warning-soft text-warning-ink",
 	danger: "bg-danger-soft text-danger-ink",
 };
 

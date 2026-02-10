@@ -234,6 +234,9 @@ export interface SimilarArticleItem {
 	title: string;
 	published_at: string | null;
 	created_at: string;
+	category_id?: string | null;
+	category_name?: string | null;
+	category_color?: string | null;
 }
 
 export interface SimilarArticleResponse {
