@@ -15,27 +15,25 @@ type CommentAuthSettings = {
 };
 
 async function getCommentAuthSettings(): Promise<CommentAuthSettings> {
+  let response: Response;
+
   try {
-    const response = await fetch(`${API_URL}/api/settings/comments`, {
+    response = await fetch(`${API_URL}/api/settings/comments`, {
       headers: INTERNAL_API_TOKEN
         ? {
             'X-Internal-Token': INTERNAL_API_TOKEN,
           }
         : undefined,
     });
-    if (response.ok) {
-      return response.json();
-    }
   } catch (error) {
-    // ignore and fallback to env
+    throw new Error('无法连接后端评论配置接口');
   }
-  return {
-    github_client_id: process.env.GITHUB_ID,
-    github_client_secret: process.env.GITHUB_SECRET,
-    google_client_id: process.env.GOOGLE_CLIENT_ID,
-    google_client_secret: process.env.GOOGLE_CLIENT_SECRET,
-    nextauth_secret: process.env.NEXTAUTH_SECRET,
-  };
+
+  if (!response.ok) {
+    throw new Error(`评论配置接口请求失败: ${response.status}`);
+  }
+
+  return response.json();
 }
 
 export async function getAuthOptions(): Promise<NextAuthOptions> {
@@ -92,11 +90,15 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
         return session;
       },
     },
-    secret: settings.nextauth_secret || process.env.NEXTAUTH_SECRET,
+    secret: settings.nextauth_secret,
   };
 }
 
 export default async function auth(req: any, res: any) {
-  const authOptions = await getAuthOptions();
-  return NextAuth(req, res, authOptions);
+  try {
+    const authOptions = await getAuthOptions();
+    return NextAuth(req, res, authOptions);
+  } catch (error) {
+    return res.status(503).json({ error: '评论登录配置不可用，请检查后端设置' });
+  }
 }
