@@ -1,4 +1,5 @@
 from ai_client import ConfigurableAIClient, is_english_content
+import hashlib
 import json
 import logging
 import math
@@ -217,13 +218,19 @@ class ArticleService:
         use_local = bool(config.get("use_local"))
         model_name = LOCAL_EMBEDDING_MODEL_NAME if use_local else config["model_name"]
         model_label = f"local:{model_name}" if use_local else model_name
+        source_hash = hashlib.sha256(source_text.encode("utf-8")).hexdigest()
 
         existing = (
             db.query(ArticleEmbedding)
             .filter(ArticleEmbedding.article_id == article.id)
             .first()
         )
-        if existing and existing.model == model_label and existing.embedding:
+        if (
+            existing
+            and existing.model == model_label
+            and existing.embedding
+            and existing.source_hash == source_hash
+        ):
             return existing
 
         if use_local:
@@ -272,6 +279,7 @@ class ArticleService:
         if existing:
             existing.embedding = embedding_json
             existing.model = model_label
+            existing.source_hash = source_hash
             existing.updated_at = now_iso
             db.commit()
             return existing
@@ -280,6 +288,7 @@ class ArticleService:
             article_id=article.id,
             model=model_label,
             embedding=embedding_json,
+            source_hash=source_hash,
             created_at=now_iso,
             updated_at=now_iso,
         )
@@ -2113,13 +2122,6 @@ class ArticleService:
                 article.ai_analysis.error_message = None
                 article.ai_analysis.updated_at = now_str()
                 print(f"{content_type} 生成完成: {article.title}")
-                if content_type == "summary":
-                    self.enqueue_task(
-                        db,
-                        task_type="process_article_embedding",
-                        article_id=article_id,
-                        content_type="embedding",
-                    )
                 if content_type == "summary":
                     self.enqueue_task(
                         db,

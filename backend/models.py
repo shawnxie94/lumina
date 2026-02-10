@@ -224,6 +224,7 @@ class ArticleEmbedding(Base):
     )
     model = Column(String, nullable=True)
     embedding = Column(Text, nullable=False)
+    source_hash = Column(String, nullable=True)
     created_at = Column(String, default=now_str)
     updated_at = Column(String, default=now_str)
 
@@ -396,6 +397,13 @@ def init_db():
                 "ai_analyses",
                 [
                     ("classification_status", "TEXT"),
+                ],
+            )
+
+            ensure_columns(
+                "article_embeddings",
+                [
+                    ("source_hash", "TEXT"),
                 ],
             )
 
