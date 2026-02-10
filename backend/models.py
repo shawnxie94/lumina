@@ -157,6 +157,7 @@ class AIAnalysis(Base):
     quotes_status = Column(String, default=None)
     mindmap = Column(Text)
     classification_status = Column(String, default=None)
+    cleaned_md_draft = Column(Text, nullable=True)
     error_message = Column(Text, nullable=True)
     updated_at = Column(String, default=today_str)
 
@@ -397,6 +398,7 @@ def init_db():
                 "ai_analyses",
                 [
                     ("classification_status", "TEXT"),
+                    ("cleaned_md_draft", "TEXT"),
                 ],
             )
 
@@ -458,6 +460,11 @@ def init_db():
             conn.execute(
                 text(
                     "CREATE INDEX IF NOT EXISTS idx_ai_tasks_article_id ON ai_tasks (article_id)"
+                )
+            )
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_ai_tasks_dedupe ON ai_tasks (article_id, task_type, content_type, status)"
                 )
             )
 

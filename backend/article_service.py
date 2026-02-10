@@ -375,15 +375,41 @@ class ArticleService:
         content_type: str | None = None,
         payload: dict | None = None,
     ) -> str:
+        payload_json = json.dumps(
+            payload or {}, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        )
+        existing_query = db.query(AITask).filter(
+            AITask.task_type == task_type,
+            AITask.status.in_(["pending", "processing"]),
+            AITask.payload == payload_json,
+        )
+
+        if article_id is None:
+            existing_query = existing_query.filter(AITask.article_id.is_(None))
+        else:
+            existing_query = existing_query.filter(AITask.article_id == article_id)
+
+        if content_type is None:
+            existing_query = existing_query.filter(AITask.content_type.is_(None))
+        else:
+            existing_query = existing_query.filter(AITask.content_type == content_type)
+
+        existing_task = (
+            existing_query.order_by(AITask.created_at.desc(), AITask.id.desc()).first()
+        )
+        if existing_task:
+            return existing_task.id
+
+        now_iso = now_str()
         task = AITask(
             article_id=article_id,
             task_type=task_type,
             content_type=content_type,
-            payload=json.dumps(payload or {}, ensure_ascii=False),
+            payload=payload_json,
             status="pending",
             attempts=0,
-            run_at=now_str(),
-            updated_at=now_str(),
+            run_at=now_iso,
+            updated_at=now_iso,
         )
         db.add(task)
         db.commit()
@@ -415,12 +441,6 @@ class ArticleService:
     def get_article_by_slug(self, db: Session, slug: str) -> Article | None:
         """通过slug查询文章"""
         return db.query(Article).filter(Article.slug == slug).first()
-
-    def get_article_by_identifier(self, db: Session, identifier: str) -> Article | None:
-        article = self.get_article_by_slug(db, identifier)
-        if article:
-            return article
-        return db.query(Article).filter(Article.id == identifier).first()
 
     async def create_article(self, article_data: dict, db: Session) -> str:
         if not article_data.get("content_html") and not article_data.get("content_md"):
@@ -712,6 +732,7 @@ class ArticleService:
             article.content_md = final_md
             article.updated_at = now_str()
             ai_analysis.error_message = None
+            ai_analysis.cleaned_md_draft = None
             ai_analysis.updated_at = now_str()
             db.commit()
 
@@ -1199,6 +1220,10 @@ class ArticleService:
                 db.commit()
                 return
 
+            ai_analysis.cleaned_md_draft = None
+            ai_analysis.updated_at = now_str()
+            db.commit()
+
             cleaning_config = self.get_ai_config(
                 db, category_id, prompt_type="content_cleaning"
             )
@@ -1280,6 +1305,10 @@ class ArticleService:
                 )
                 raise
 
+            ai_analysis.cleaned_md_draft = cleaned_md
+            ai_analysis.updated_at = now_str()
+            db.commit()
+
             self.enqueue_task(
                 db,
                 task_type="process_article_validation",
@@ -1287,7 +1316,6 @@ class ArticleService:
                 content_type="content_validation",
                 payload={
                     "category_id": category_id,
-                    "cleaned_md": cleaned_md,
                 },
             )
         except Exception as e:
@@ -1319,7 +1347,7 @@ class ArticleService:
         self,
         article_id: str,
         category_id: str,
-        cleaned_md: str,
+        cleaned_md: str | None = None,
     ):
         from models import SessionLocal
         import asyncio
@@ -1341,6 +1369,12 @@ class ArticleService:
                 )
                 db.add(ai_analysis)
                 db.commit()
+
+            cleaned_md_candidate = (cleaned_md or "").strip()
+            if not cleaned_md_candidate and ai_analysis.cleaned_md_draft:
+                cleaned_md_candidate = (ai_analysis.cleaned_md_draft or "").strip()
+            if not cleaned_md_candidate:
+                raise ValueError("缺少待校验内容，请先执行内容清洗")
 
             validation_config = self.get_ai_config(
                 db, category_id, prompt_type="content_validation"
@@ -1365,7 +1399,7 @@ class ArticleService:
             try:
                 result = await asyncio.wait_for(
                     validation_client.generate_summary(
-                        cleaned_md, prompt=prompt, parameters=parameters
+                        cleaned_md_candidate, prompt=prompt, parameters=parameters
                     ),
                     timeout=300.0,
                 )
@@ -1449,7 +1483,7 @@ class ArticleService:
                 db.commit()
                 raise ValueError(ai_analysis.error_message or "内容校验未通过")
 
-            final_md = cleaned_md.strip()
+            final_md = cleaned_md_candidate
             if not final_md:
                 article.status = "failed"
                 ai_analysis.error_message = "内容校验未通过：内容为空"
@@ -1460,6 +1494,7 @@ class ArticleService:
             article.content_md = final_md
             article.updated_at = now_str()
             ai_analysis.error_message = None
+            ai_analysis.cleaned_md_draft = None
             ai_analysis.updated_at = now_str()
             db.commit()
 
@@ -1651,6 +1686,10 @@ class ArticleService:
             )
 
             if article.content_md and is_english_content(article.content_md):
+                article.translation_status = "pending"
+                article.translation_error = None
+                article.updated_at = now_str()
+                db.commit()
                 self.enqueue_task(
                     db,
                     task_type="process_article_translation",
@@ -1955,7 +1994,7 @@ class ArticleService:
                     summary_status = analysis.summary_status if analysis else None
                     translation_status = article.translation_status
                     if summary_status in ["completed", "failed"] and (
-                        translation_status in ["completed", "failed", "skipped", None]
+                        translation_status in ["completed", "failed", "skipped"]
                     ):
                         article.status = "completed"
                         article.updated_at = now_str()
@@ -2028,10 +2067,48 @@ class ArticleService:
             if model_config_id:
                 model_config = (
                     db.query(ModelAPIConfig)
-                    .filter(ModelAPIConfig.id == model_config_id)
+                    .filter(
+                        ModelAPIConfig.id == model_config_id,
+                        ModelAPIConfig.is_enabled == True,
+                    )
                     .first()
                 )
-                if model_config:
+                if not model_config:
+                    raise ValueError("指定模型配置不存在或已禁用")
+                ai_config = {
+                    "base_url": model_config.base_url,
+                    "api_key": model_config.api_key,
+                    "model_name": model_config.model_name,
+                    "model_api_config_id": model_config.id,
+                    "price_input_per_1k": model_config.price_input_per_1k,
+                    "price_output_per_1k": model_config.price_output_per_1k,
+                    "currency": model_config.currency,
+                }
+
+            if prompt_config_id:
+                prompt_config = (
+                    db.query(PromptConfig)
+                    .filter(
+                        PromptConfig.id == prompt_config_id,
+                        PromptConfig.is_enabled == True,
+                    )
+                    .first()
+                )
+                if not prompt_config:
+                    raise ValueError("指定提示词不存在或已禁用")
+                prompt = prompt_config.prompt
+                prompt_parameters = build_parameters(prompt_config)
+                if not ai_config and prompt_config.model_api_config_id:
+                    model_config = (
+                        db.query(ModelAPIConfig)
+                        .filter(
+                            ModelAPIConfig.id == prompt_config.model_api_config_id,
+                            ModelAPIConfig.is_enabled == True,
+                        )
+                        .first()
+                    )
+                    if not model_config:
+                        raise ValueError("提示词绑定的模型不存在或已禁用")
                     ai_config = {
                         "base_url": model_config.base_url,
                         "api_key": model_config.api_key,
@@ -2041,34 +2118,6 @@ class ArticleService:
                         "price_output_per_1k": model_config.price_output_per_1k,
                         "currency": model_config.currency,
                     }
-
-            if prompt_config_id:
-                prompt_config = (
-                    db.query(PromptConfig)
-                    .filter(PromptConfig.id == prompt_config_id)
-                    .first()
-                )
-                if prompt_config:
-                    prompt = prompt_config.prompt
-                    prompt_parameters = build_parameters(prompt_config)
-                    if not ai_config and prompt_config.model_api_config_id:
-                        model_config = (
-                            db.query(ModelAPIConfig)
-                            .filter(
-                                ModelAPIConfig.id == prompt_config.model_api_config_id
-                            )
-                            .first()
-                        )
-                        if model_config:
-                            ai_config = {
-                                "base_url": model_config.base_url,
-                                "api_key": model_config.api_key,
-                                "model_name": model_config.model_name,
-                                "model_api_config_id": model_config.id,
-                                "price_input_per_1k": model_config.price_input_per_1k,
-                                "price_output_per_1k": model_config.price_output_per_1k,
-                                "currency": model_config.currency,
-                            }
 
             if not ai_config:
                 default_config = self.get_ai_config(
@@ -2188,7 +2237,7 @@ class ArticleService:
                     summary_status = analysis.summary_status if analysis else None
                     translation_status = article.translation_status
                     if summary_status in ["completed", "failed"] and (
-                        translation_status in ["completed", "failed", "skipped", None]
+                        translation_status in ["completed", "failed", "skipped"]
                     ):
                         article.status = "completed"
                         article.updated_at = now_str()

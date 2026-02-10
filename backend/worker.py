@@ -15,6 +15,7 @@ POLL_INTERVAL = float(os.getenv("AI_WORKER_POLL_INTERVAL", "3"))
 LOCK_TIMEOUT_SECONDS = int(os.getenv("AI_TASK_LOCK_TIMEOUT", "300"))
 TASK_TIMEOUT_SECONDS = int(os.getenv("AI_TASK_TIMEOUT", "900"))
 WORKER_ID = os.getenv("AI_WORKER_ID", str(uuid.uuid4()))
+NON_RETRYABLE_ERROR_TYPES = {"config", "data"}
 
 
 def get_now_iso() -> str:
@@ -90,7 +91,9 @@ def finish_task(
             }
         )
     else:
-        if task.attempts >= (task.max_attempts or 3):
+        is_non_retryable_error = (error_type or "") in NON_RETRYABLE_ERROR_TYPES
+        max_attempts = task.max_attempts or 3
+        if is_non_retryable_error or task.attempts >= max_attempts:
             updates.update(
                 {
                     "status": "failed",
@@ -126,9 +129,20 @@ def classify_error(exc: Exception) -> str:
         or "超时" in message
     ):
         return "timeout"
-    if "未配置ai服务" in message or "ai服务" in message or "config" in message:
+    if (
+        "未配置ai服务" in message
+        or "ai服务" in message
+        or "config" in message
+        or "禁用" in message
+        or "disabled" in message
+    ):
         return "config"
-    if "文章不存在" in message or "缺少" in message:
+    if (
+        "文章不存在" in message
+        or "缺少" in message
+        or "未通过" in message
+        or "格式异常" in message
+    ):
         return "data"
     return "unknown"
 
