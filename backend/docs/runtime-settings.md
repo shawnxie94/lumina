@@ -19,7 +19,7 @@
 | 分组 | 变量名 | 默认值 | 说明 |
 |---|---|---|---|
 | database | `DATABASE_URL` | `sqlite:///./data/articles.db` | SQLAlchemy 连接串 |
-| security | `INTERNAL_API_TOKEN` | 空字符串 | 内部请求校验 token；为空时允许内网免 token |
+| security | `INTERNAL_API_TOKEN` | 无（必填） | 内部请求校验 token；未设置将导致启动失败 |
 | cors | `ALLOWED_ORIGINS` | 空字符串 | 为空时允许 localhost:3000/127.0.0.1:3000 |
 | media | `MEDIA_ROOT` | `backend/data/media` | 媒体文件存储目录 |
 | media | `MEDIA_BASE_URL` | `/media` | 媒体静态路由前缀 |

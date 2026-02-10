@@ -10,6 +10,7 @@ from app.core.dependencies import (
     contains_sensitive_word,
     get_sensitive_words,
     normalize_date_bound,
+    require_internal_token,
 )
 from app.schemas import CommentCreate, CommentUpdate, CommentVisibilityUpdate
 from app.domain.article_query_service import ArticleQueryService
@@ -71,6 +72,7 @@ async def create_article_comment(
     article_slug: str,
     payload: CommentCreate,
     db: Session = Depends(get_db),
+    _: bool = Depends(require_internal_token),
 ):
     if not comments_enabled(db):
         raise HTTPException(status_code=403, detail="评论已关闭")
@@ -236,6 +238,7 @@ async def update_comment(
     comment_id: str,
     payload: CommentUpdate,
     db: Session = Depends(get_db),
+    _: bool = Depends(require_internal_token),
 ):
     if not comments_enabled(db):
         raise HTTPException(status_code=403, detail="评论已关闭")
@@ -276,7 +279,11 @@ async def update_comment(
 
 
 @router.delete("/api/comments/{comment_id}")
-async def delete_comment(comment_id: str, db: Session = Depends(get_db)):
+async def delete_comment(
+    comment_id: str,
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_internal_token),
+):
     if not comments_enabled(db):
         raise HTTPException(status_code=403, detail="评论已关闭")
     comment = db.query(ArticleComment).filter(ArticleComment.id == comment_id).first()

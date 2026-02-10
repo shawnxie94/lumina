@@ -4,6 +4,7 @@ import { getServerSession } from 'next-auth/next';
 import { getAuthOptions } from '../../auth/[...nextauth]';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const INTERNAL_API_TOKEN = process.env.INTERNAL_API_TOKEN || '';
 const SETTINGS_URL = `${API_URL}/api/settings/comments/public`;
 
 async function commentsEnabled(): Promise<boolean> {
@@ -52,6 +53,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   if (req.method === 'PUT') {
+    if (!INTERNAL_API_TOKEN) {
+      res.status(500).json({ message: '服务端缺少 INTERNAL_API_TOKEN 配置' });
+      return;
+    }
     const enabled = await commentsEnabled();
     if (!enabled) {
       res.status(403).json({ message: '评论已关闭' });
@@ -78,7 +83,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
       const response = await fetch(`${API_URL}/api/comments/${id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Internal-Token': INTERNAL_API_TOKEN,
+        },
         body: JSON.stringify({ content }),
       });
       const data = await response.json();
@@ -90,6 +98,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   if (req.method === 'DELETE') {
+    if (!INTERNAL_API_TOKEN) {
+      res.status(500).json({ message: '服务端缺少 INTERNAL_API_TOKEN 配置' });
+      return;
+    }
     const enabled = await commentsEnabled();
     if (!enabled) {
       res.status(403).json({ message: '评论已关闭' });
@@ -107,6 +119,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
       const response = await fetch(`${API_URL}/api/comments/${id}`, {
         method: 'DELETE',
+        headers: {
+          'X-Internal-Token': INTERNAL_API_TOKEN,
+        },
       });
       const data = await response.json();
       res.status(response.status).json(data);

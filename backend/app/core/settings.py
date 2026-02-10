@@ -115,6 +115,9 @@ def validate_startup_settings(settings: AppSettings) -> None:
     if not settings.database_url.strip():
         errors.append("DATABASE_URL 不能为空")
 
+    if not settings.internal_api_token.strip():
+        errors.append("INTERNAL_API_TOKEN 不能为空")
+
     media = settings.media
     if not media.root:
         errors.append("MEDIA_ROOT 不能为空")

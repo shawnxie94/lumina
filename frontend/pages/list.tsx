@@ -6,7 +6,6 @@ import Link from 'next/link';
 import dayjs, { type Dayjs } from 'dayjs';
 
 import { articleApi, categoryApi, Article, Category, resolveMediaUrl } from '@/lib/api';
-import { marked } from 'marked';
 import AppFooter from '@/components/AppFooter';
 import AppHeader from '@/components/AppHeader';
 import Button from '@/components/Button';
@@ -27,6 +26,7 @@ import { IconEye, IconEyeOff, IconSearch, IconTag, IconTrash, IconPlus, IconRefr
 import { useAuth } from '@/contexts/AuthContext';
 import { useBasicSettings } from '@/contexts/BasicSettingsContext';
 import { useI18n } from '@/lib/i18n';
+import { renderSafeMarkdown } from '@/lib/safeHtml';
 
 const formatDate = (date: Date | null): string => {
   if (!date) return '';
@@ -1734,7 +1734,7 @@ export default function Home() {
                     <article className="p-6">
                       <div
                         className="prose prose-sm max-w-none"
-                        dangerouslySetInnerHTML={{ __html: marked(createContent || '') }}
+                        dangerouslySetInnerHTML={{ __html: renderSafeMarkdown(createContent || '') }}
                       />
                     </article>
                   </div>

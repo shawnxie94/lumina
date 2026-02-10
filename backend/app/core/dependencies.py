@@ -1,4 +1,4 @@
-import ipaddress
+import secrets
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
@@ -31,17 +31,14 @@ DEFAULT_BASIC_SETTINGS = {
 def is_internal_request(request: Request) -> bool:
     if not security_settings.internal_api_token:
         return False
-    return request.headers.get("X-Internal-Token") == security_settings.internal_api_token
+    provided = request.headers.get("X-Internal-Token") or ""
+    return secrets.compare_digest(provided, security_settings.internal_api_token)
 
 
-def is_private_request(request: Request) -> bool:
-    if not request.client:
-        return False
-    try:
-        ip = ipaddress.ip_address(request.client.host)
-        return ip.is_private or ip.is_loopback
-    except ValueError:
-        return False
+def require_internal_token(request: Request) -> bool:
+    if not is_internal_request(request):
+        raise HTTPException(status_code=403, detail="内部请求鉴权失败")
+    return True
 
 
 def get_admin_or_internal(
@@ -50,8 +47,6 @@ def get_admin_or_internal(
     db: Session = Depends(get_db),
 ) -> bool:
     if is_internal_request(request):
-        return True
-    if not security_settings.internal_api_token and is_private_request(request):
         return True
     return get_current_admin(credentials=credentials, db=db)
 

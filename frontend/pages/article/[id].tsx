@@ -3,7 +3,6 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 
 import { useRouter } from "next/router";
 import Link from "next/link";
-import { marked } from "marked";
 
 import {
 	articleApi,
@@ -58,6 +57,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useBasicSettings } from "@/contexts/BasicSettingsContext";
 import { useReading } from "@/contexts/ReadingContext";
 import { useI18n } from "@/lib/i18n";
+import { renderSafeMarkdown, sanitizeRichHtml } from "@/lib/safeHtml";
 import { signIn, signOut, useSession } from "next-auth/react";
 
 // 轮询间隔（毫秒）
@@ -455,7 +455,7 @@ function AIContentSection({
 				) : renderMarkdown ? (
 					<div
 						className="prose prose-sm max-w-none rounded-lg border border-border bg-muted p-3 text-text-2"
-						dangerouslySetInnerHTML={{ __html: marked(content) }}
+						dangerouslySetInnerHTML={{ __html: renderSafeMarkdown(content) }}
 					/>
 				) : (
 					<div className="text-text-2 text-sm whitespace-pre-wrap">
@@ -645,8 +645,7 @@ function applyAnnotations(html: string, annotations: ArticleAnnotation[]) {
 }
 
 function renderMarkdown(content: string) {
-	const result = marked.parse(content);
-	return typeof result === "string" ? result : "";
+	return renderSafeMarkdown(content);
 }
 
 interface ArticleNeighbor {
@@ -907,11 +906,12 @@ export default function ArticleDetailPage() {
 				? renderMarkdown(article.content_trans)
 				: article.content_md
 					? renderMarkdown(article.content_md)
-					: article.content_html;
-		const normalizedHtml = normalizeMediaHtml(baseHtml);
-		return immersiveMode
+					: sanitizeRichHtml(article.content_html || "");
+		const normalizedHtml = sanitizeRichHtml(normalizeMediaHtml(baseHtml));
+		const htmlWithAnnotations = immersiveMode
 			? normalizedHtml
 			: applyAnnotations(normalizedHtml, annotations);
+		return sanitizeRichHtml(htmlWithAnnotations);
 	}, [article, annotations, showTranslation, immersiveMode]);
 
 	const activeAnnotation = annotations.find(
@@ -1536,10 +1536,12 @@ export default function ArticleDetailPage() {
 			if (contentRef.current) {
 				if (annotation) {
 					setActiveAnnotationText(
-						getRangeSnippet(
-							contentRef.current,
-							annotation.start,
-							annotation.end,
+						sanitizeRichHtml(
+							getRangeSnippet(
+								contentRef.current,
+								annotation.start,
+								annotation.end,
+							),
 						),
 					);
 					setAnnotationEditDraft(annotation.comment);
@@ -3948,7 +3950,7 @@ export default function ArticleDetailPage() {
 											<div
 												className="prose prose-sm max-w-none"
 												dangerouslySetInnerHTML={{
-													__html: marked(editContent || ""),
+													__html: renderSafeMarkdown(editContent || ""),
 												}}
 											/>
 										</article>
@@ -4054,7 +4056,9 @@ export default function ArticleDetailPage() {
 						{activeAnnotationText && (
 							<div
 								className="mb-3 rounded-sm border border-border bg-muted p-3 text-xs text-text-3"
-								dangerouslySetInnerHTML={{ __html: activeAnnotationText }}
+								dangerouslySetInnerHTML={{
+									__html: sanitizeRichHtml(activeAnnotationText),
+								}}
 							/>
 						)}
 						<div
