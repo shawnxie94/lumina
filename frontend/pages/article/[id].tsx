@@ -3329,9 +3329,9 @@ export default function ArticleDetailPage() {
                       </FormField>
                     </div>
 
-                    <FormField
-                      label={(
-                        <span className="flex w-full items-center justify-between gap-2">
+                    <div>
+                      <div className="mb-1.5 flex items-center justify-between gap-2">
+                        <span className="flex min-w-0 items-center gap-2 text-sm text-text-2">
                           <span>{t('头图 URL')}</span>
                           {!mediaStorageEnabled && (
                             <span className="text-xs font-normal text-text-3">
@@ -3339,10 +3339,10 @@ export default function ArticleDetailPage() {
                             </span>
                           )}
                         </span>
-                      )}
-                    >
+                      </div>
                       <div className="flex gap-2">
                         <TextInput
+                          id="edit-top-image"
                           type="text"
                           value={editTopImage}
                           onChange={(e) => setEditTopImage(e.target.value)}
@@ -3365,7 +3365,7 @@ export default function ArticleDetailPage() {
                           <IconLink className="h-4 w-4" />
                         </IconButton>
                       </div>
-                    </FormField>
+                    </div>
 
                     <div className="flex-1 flex flex-col">
                       <div className="mb-1.5 flex items-center justify-between gap-2">

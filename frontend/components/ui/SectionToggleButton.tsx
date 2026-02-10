@@ -36,7 +36,7 @@ export default function SectionToggleButton({
 				<button
 					type="button"
 					onClick={onMainClick}
-					className="flex-1 inline-flex items-center gap-2 px-4 py-3 text-left"
+					className="flex-1 inline-flex items-center gap-2 px-4 py-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35 focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
 				>
 					{icon}
 					<span>{label}</span>
@@ -44,7 +44,7 @@ export default function SectionToggleButton({
 				<button
 					type="button"
 					onClick={onToggle}
-					className="px-3 py-3 text-current"
+					className="px-3 py-3 text-current focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35 focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
 					aria-label={toggleAriaLabel}
 				>
 					{indicator}
@@ -57,7 +57,7 @@ export default function SectionToggleButton({
 		<button
 			type="button"
 			onClick={onToggle}
-			className={`${containerClassName} flex w-full items-center justify-between px-4 py-3 text-sm`}
+			className={`${containerClassName} flex w-full items-center justify-between px-4 py-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35 focus-visible:ring-offset-2 focus-visible:ring-offset-surface`}
 		>
 			<span>{label}</span>
 			<span className="text-text-3">{indicator}</span>

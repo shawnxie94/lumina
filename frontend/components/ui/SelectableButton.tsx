@@ -39,7 +39,7 @@ export default function SelectableButton({
 	return (
 		<button
 			type={type ?? "button"}
-			className={`${variantBaseClassName[variant]} transition disabled:cursor-not-allowed disabled:opacity-50 ${active ? activeClassName : inactiveClassName} ${className}`}
+			className={`${variantBaseClassName[variant]} transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35 focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:cursor-not-allowed disabled:opacity-50 ${active ? activeClassName : inactiveClassName} ${className}`}
 			{...props}
 		>
 			{children}

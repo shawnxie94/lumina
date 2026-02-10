@@ -240,7 +240,7 @@ function SortableCategoryItem({
 					{category.name.charAt(0).toUpperCase()}
 				</div>
 				<div>
-					<div className="flex items-center gap-2">
+					<div className="flex flex-wrap items-center gap-2">
 						<h3 className="font-semibold text-text-1 text-sm">
 							{category.name}
 						</h3>
@@ -281,15 +281,20 @@ export default function AdminPage() {
 	const { showToast } = useToast();
 	const { isAdmin, isLoading: authLoading } = useAuth();
 	const { t } = useI18n();
-	const {
-		basicSettings,
-		updateBasicSettings: updateBasicSettingsContext,
-	} = useBasicSettings();
+	const { basicSettings, updateBasicSettings: updateBasicSettingsContext } =
+		useBasicSettings();
 	const [primaryTab, setPrimaryTab] = useState<"monitoring" | "settings">(
 		"monitoring",
 	);
 	const settingsSections = useMemo(
-		() => new Set<SettingSection>(["basic", "categories", "ai", "comments", "storage"]),
+		() =>
+			new Set<SettingSection>([
+				"basic",
+				"categories",
+				"ai",
+				"comments",
+				"storage",
+			]),
 		[],
 	);
 	const [activeSection, setActiveSection] =
@@ -323,6 +328,8 @@ export default function AdminPage() {
 	const [taskTimelineError, setTaskTimelineError] = useState("");
 	const [selectedTaskTimeline, setSelectedTaskTimeline] =
 		useState<AITaskTimelineResponse | null>(null);
+	const [selectedTaskTimelineUsageId, setSelectedTaskTimelineUsageId] =
+		useState<string | null>(null);
 
 	const [usageLogs, setUsageLogs] = useState<AIUsageLogItem[]>([]);
 	const [usageSummary, setUsageSummary] = useState<
@@ -346,7 +353,8 @@ export default function AdminPage() {
 	const [showUsageCostModal, setShowUsageCostModal] = useState(false);
 	const [usageCostTitle, setUsageCostTitle] = useState("");
 	const [usageCostDetails, setUsageCostDetails] = useState("");
-	const [usageCostBreakdown, setUsageCostBreakdown] = useState<UsageCostBreakdown | null>(null);
+	const [usageCostBreakdown, setUsageCostBreakdown] =
+		useState<UsageCostBreakdown | null>(null);
 	const showUsageView =
 		activeSection === "monitoring" && monitoringSubSection === "ai-usage";
 	const showCommentListView =
@@ -458,7 +466,9 @@ export default function AdminPage() {
 		onCancel: undefined,
 	});
 
-	const [commentList, setCommentList] = useState<CommentListResponse["items"]>([]);
+	const [commentList, setCommentList] = useState<CommentListResponse["items"]>(
+		[],
+	);
 	const [commentListLoading, setCommentListLoading] = useState(false);
 	const [commentListPage, setCommentListPage] = useState(1);
 	const [commentListPageSize, setCommentListPageSize] = useState(10);
@@ -471,9 +481,13 @@ export default function AdminPage() {
 	const [commentVisibility, setCommentVisibility] = useState("");
 	const [commentReplyFilter, setCommentReplyFilter] = useState("");
 	const [hoverComment, setHoverComment] = useState<ArticleComment | null>(null);
-	const [hoverTooltipPos, setHoverTooltipPos] = useState<{ x: number; y: number } | null>(null);
+	const [hoverTooltipPos, setHoverTooltipPos] = useState<{
+		x: number;
+		y: number;
+	} | null>(null);
 	const [showCommentContentModal, setShowCommentContentModal] = useState(false);
-	const [activeCommentContent, setActiveCommentContent] = useState<ArticleComment | null>(null);
+	const [activeCommentContent, setActiveCommentContent] =
+		useState<ArticleComment | null>(null);
 	const hasCommentFilters = Boolean(
 		commentQuery ||
 			commentArticleTitle ||
@@ -483,6 +497,20 @@ export default function AdminPage() {
 			commentVisibility ||
 			commentReplyFilter,
 	);
+
+	const selectedTaskTimelineUsage = useMemo(() => {
+		if (!selectedTaskTimeline) return null;
+		if (!selectedTaskTimelineUsageId) {
+			return selectedTaskTimeline.usage[0] || null;
+		}
+		return (
+			selectedTaskTimeline.usage.find(
+				(usage) => usage.id === selectedTaskTimelineUsageId,
+			) ||
+			selectedTaskTimeline.usage[0] ||
+			null
+		);
+	}, [selectedTaskTimeline, selectedTaskTimelineUsageId]);
 
 	const [editingModelAPIConfig, setEditingModelAPIConfig] =
 		useState<ModelAPIConfig | null>(null);
@@ -509,12 +537,10 @@ export default function AdminPage() {
 
 	useEffect(() => {
 		if (!router.isReady) return;
-const { section, article_title: articleTitleParam } = router.query;
+		const { section, article_title: articleTitleParam } = router.query;
 		if (section && typeof section === "string") {
 			setActiveSection(section as SettingSection);
-			setPrimaryTab(
-				section === "monitoring" ? "monitoring" : "settings",
-			);
+			setPrimaryTab(section === "monitoring" ? "monitoring" : "settings");
 		}
 		if (articleTitleParam && typeof articleTitleParam === "string") {
 			setActiveSection("monitoring");
@@ -523,7 +549,6 @@ const { section, article_title: articleTitleParam } = router.query;
 			setTaskPage(1);
 		}
 	}, [router.isReady, router.query]);
-
 
 	useEffect(() => {
 		if (settingsSections.has(activeSection)) {
@@ -655,8 +680,9 @@ const { section, article_title: articleTitleParam } = router.query;
 	const [modelOptionsError, setModelOptionsError] = useState("");
 	const [modelNameManual, setModelNameManual] = useState(false);
 	const [showModelAPIAdvanced, setShowModelAPIAdvanced] = useState(false);
-	const [modelCategory, setModelCategory] =
-		useState<"general" | "vector">("general");
+	const [modelCategory, setModelCategory] = useState<"general" | "vector">(
+		"general",
+	);
 
 	const filteredModelAPIConfigs = useMemo(() => {
 		const isVector = (config: ModelAPIConfig) =>
@@ -673,6 +699,19 @@ const { section, article_title: articleTitleParam } = router.query;
 	const [modelAPITestRaw, setModelAPITestRaw] = useState("");
 	const [modelAPITestError, setModelAPITestError] = useState("");
 	const [modelAPITestLoading, setModelAPITestLoading] = useState(false);
+	const [modelAPISaving, setModelAPISaving] = useState(false);
+	const [promptSaving, setPromptSaving] = useState(false);
+	const [categorySaving, setCategorySaving] = useState(false);
+	const [promptImporting, setPromptImporting] = useState(false);
+	const [pendingTaskActionIds, setPendingTaskActionIds] = useState<Set<string>>(
+		new Set(),
+	);
+	const [pendingCommentActionIds, setPendingCommentActionIds] = useState<
+		Set<string>
+	>(new Set());
+	const [openingTaskTimelineId, setOpeningTaskTimelineId] = useState<
+		string | null
+	>(null);
 	const modelOptionsFetchRef = useRef<ReturnType<typeof setTimeout> | null>(
 		null,
 	);
@@ -683,6 +722,30 @@ const { section, article_title: articleTitleParam } = router.query;
 		color: "#3B82F6",
 		sort_order: 0,
 	});
+
+	const setTaskActionPending = (taskId: string, pending: boolean) => {
+		setPendingTaskActionIds((prev) => {
+			const next = new Set(prev);
+			if (pending) {
+				next.add(taskId);
+			} else {
+				next.delete(taskId);
+			}
+			return next;
+		});
+	};
+
+	const setCommentActionPending = (commentId: string, pending: boolean) => {
+		setPendingCommentActionIds((prev) => {
+			const next = new Set(prev);
+			if (pending) {
+				next.add(commentId);
+			} else {
+				next.delete(commentId);
+			}
+			return next;
+		});
+	};
 
 	const fetchModelAPIConfigs = async () => {
 		setModelLoading(true);
@@ -954,8 +1017,7 @@ const { section, article_title: articleTitleParam } = router.query;
 	const handleValidateCommentSettings = () => {
 		const messages: string[] = [];
 		const callbacks: string[] = [];
-		const origin =
-			typeof window !== "undefined" ? window.location.origin : "";
+		const origin = typeof window !== "undefined" ? window.location.origin : "";
 
 		if (!commentSettings.comments_enabled) {
 			messages.push(t("评论已关闭，当前不会对访客开放。"));
@@ -974,16 +1036,28 @@ const { section, article_title: articleTitleParam } = router.query;
 		if (!hasGithub && !hasGoogle) {
 			messages.push(t("至少需要配置 GitHub 或 Google 的 Client 信息。"));
 		}
-		if (commentSettings.github_client_id && !commentSettings.github_client_secret) {
+		if (
+			commentSettings.github_client_id &&
+			!commentSettings.github_client_secret
+		) {
 			messages.push(t("GitHub Client Secret 未填写。"));
 		}
-		if (commentSettings.github_client_secret && !commentSettings.github_client_id) {
+		if (
+			commentSettings.github_client_secret &&
+			!commentSettings.github_client_id
+		) {
 			messages.push(t("GitHub Client ID 未填写。"));
 		}
-		if (commentSettings.google_client_id && !commentSettings.google_client_secret) {
+		if (
+			commentSettings.google_client_id &&
+			!commentSettings.google_client_secret
+		) {
 			messages.push(t("Google Client Secret 未填写。"));
 		}
-		if (commentSettings.google_client_secret && !commentSettings.google_client_id) {
+		if (
+			commentSettings.google_client_secret &&
+			!commentSettings.google_client_id
+		) {
 			messages.push(t("Google Client ID 未填写。"));
 		}
 
@@ -1008,14 +1082,21 @@ const { section, article_title: articleTitleParam } = router.query;
 		);
 	};
 
-	const handleToggleCommentVisibility = async (commentId: string, nextHidden: boolean) => {
+	const handleToggleCommentVisibility = async (
+		commentId: string,
+		nextHidden: boolean,
+	) => {
+		if (pendingCommentActionIds.has(commentId)) return;
+		setCommentActionPending(commentId, true);
 		try {
 			await commentApi.toggleHidden(commentId, nextHidden);
 			showToast(nextHidden ? t("评论已隐藏") : t("评论已显示"));
-			fetchCommentList();
+			await fetchCommentList();
 		} catch (error) {
 			console.error("Failed to toggle comment visibility:", error);
 			showToast(t("更新失败"), "error");
+		} finally {
+			setCommentActionPending(commentId, false);
 		}
 	};
 
@@ -1027,13 +1108,17 @@ const { section, article_title: articleTitleParam } = router.query;
 			confirmText: t("删除"),
 			cancelText: t("取消"),
 			onConfirm: async () => {
+				if (pendingCommentActionIds.has(commentId)) return;
+				setCommentActionPending(commentId, true);
 				try {
 					await commentAdminApi.delete(commentId);
 					showToast(t("删除成功"));
-					fetchCommentList();
+					await fetchCommentList();
 				} catch (error) {
 					console.error("Failed to delete comment:", error);
 					showToast(t("删除失败"), "error");
+				} finally {
+					setCommentActionPending(commentId, false);
 				}
 			},
 			onCancel: () => {},
@@ -1153,7 +1238,8 @@ const { section, article_title: articleTitleParam } = router.query;
 	}, [activeSection, monitoringSubSection]);
 
 	useEffect(() => {
-		if (activeSection !== "monitoring" || monitoringSubSection !== "tasks") return;
+		if (activeSection !== "monitoring" || monitoringSubSection !== "tasks")
+			return;
 		fetchTasks();
 	}, [
 		taskPage,
@@ -1251,6 +1337,7 @@ const { section, article_title: articleTitleParam } = router.query;
 	};
 
 	const handleSaveModelAPI = async () => {
+		if (modelAPISaving) return;
 		const payload = {
 			...modelAPIFormData,
 			price_input_per_1k: modelAPIFormData.price_input_per_1k
@@ -1261,6 +1348,7 @@ const { section, article_title: articleTitleParam } = router.query;
 				: undefined,
 			currency: modelAPIFormData.currency || undefined,
 		};
+		setModelAPISaving(true);
 		try {
 			if (editingModelAPIConfig) {
 				await articleApi.updateModelAPIConfig(
@@ -1270,16 +1358,16 @@ const { section, article_title: articleTitleParam } = router.query;
 			} else {
 				await articleApi.createModelAPIConfig(payload);
 			}
-			showToast(
-				editingModelAPIConfig ? t("配置已更新") : t("配置已创建"),
-			);
-			fetchModelAPIConfigs();
+			showToast(editingModelAPIConfig ? t("配置已更新") : t("配置已创建"));
+			await fetchModelAPIConfigs();
 			setShowModelAPIModal(false);
 			setShowModelAPIAdvanced(false);
 			setEditingModelAPIConfig(null);
 		} catch (error) {
 			console.error("Failed to save model API config:", error);
 			showToast(t("保存失败"), "error");
+		} finally {
+			setModelAPISaving(false);
 		}
 	};
 
@@ -1330,31 +1418,31 @@ const { section, article_title: articleTitleParam } = router.query;
 			);
 			return;
 		}
-			setModelOptionsLoading(true);
-			setModelOptionsError("");
+		setModelOptionsLoading(true);
+		setModelOptionsError("");
 		try {
 			const result = await articleApi.getModelAPIModels({
 				base_url: modelAPIFormData.base_url,
 				api_key: modelAPIFormData.api_key,
 				provider: modelAPIFormData.provider,
 			});
-		if (result.success) {
-			setModelOptions(result.models || []);
-			showToast(t("已获取模型列表"));
-		} else {
+			if (result.success) {
+				setModelOptions(result.models || []);
+				showToast(t("已获取模型列表"));
+			} else {
+				setModelOptions([]);
+				setModelOptionsError(result.message || t("获取模型失败"));
+				showToast(t("获取模型失败"), "error");
+			}
+		} catch (error) {
+			console.error("Failed to fetch model list:", error);
 			setModelOptions([]);
-			setModelOptionsError(result.message || t("获取模型失败"));
+			setModelOptionsError(t("获取模型失败"));
 			showToast(t("获取模型失败"), "error");
+		} finally {
+			setModelOptionsLoading(false);
 		}
-	} catch (error) {
-		console.error("Failed to fetch model list:", error);
-		setModelOptions([]);
-		setModelOptionsError(t("获取模型失败"));
-		showToast(t("获取模型失败"), "error");
-	} finally {
-		setModelOptionsLoading(false);
-	}
-};
+	};
 
 	useEffect(() => {
 		if (!showModelAPIModal) return;
@@ -1383,24 +1471,24 @@ const { section, article_title: articleTitleParam } = router.query;
 				modelAPITestConfig.id,
 				{ prompt: modelAPITestPrompt },
 			);
-		if (result.success) {
-			setModelAPITestResult(result.content || "");
-			setModelAPITestRaw(result.raw_response || "");
-			showToast(t("调用成功"));
-		} else {
-			setModelAPITestError(result.message || t("调用失败"));
-			setModelAPITestResult(result.content || "");
-			setModelAPITestRaw(result.raw_response || "");
+			if (result.success) {
+				setModelAPITestResult(result.content || "");
+				setModelAPITestRaw(result.raw_response || "");
+				showToast(t("调用成功"));
+			} else {
+				setModelAPITestError(result.message || t("调用失败"));
+				setModelAPITestResult(result.content || "");
+				setModelAPITestRaw(result.raw_response || "");
+				showToast(t("调用失败"), "error");
+			}
+		} catch (error) {
+			console.error("Failed to test model API config:", error);
+			setModelAPITestError(t("调用失败"));
 			showToast(t("调用失败"), "error");
+		} finally {
+			setModelAPITestLoading(false);
 		}
-	} catch (error) {
-		console.error("Failed to test model API config:", error);
-		setModelAPITestError(t("调用失败"));
-		showToast(t("调用失败"), "error");
-	} finally {
-		setModelAPITestLoading(false);
-	}
-};
+	};
 
 	const handleCreatePromptNew = () => {
 		setEditingPromptConfig(null);
@@ -1443,6 +1531,7 @@ const { section, article_title: articleTitleParam } = router.query;
 	};
 
 	const handleSavePrompt = async () => {
+		if (promptSaving) return;
 		if (!promptFormData.system_prompt.trim()) {
 			showToast("请填写系统提示词", "error");
 			return;
@@ -1452,6 +1541,7 @@ const { section, article_title: articleTitleParam } = router.query;
 			return;
 		}
 
+		setPromptSaving(true);
 		try {
 			const data = {
 				...promptFormData,
@@ -1473,26 +1563,30 @@ const { section, article_title: articleTitleParam } = router.query;
 			} else {
 				await articleApi.createPromptConfig(data);
 			}
-			showToast(
-				editingPromptConfig ? t("配置已更新") : t("配置已创建"),
-			);
-			fetchPromptConfigs();
+			showToast(editingPromptConfig ? t("配置已更新") : t("配置已创建"));
+			await fetchPromptConfigs();
 			setShowPromptModal(false);
 			setEditingPromptConfig(null);
 		} catch (error) {
 			console.error("Failed to save prompt config:", error);
 			showToast(t("保存失败"), "error");
+		} finally {
+			setPromptSaving(false);
 		}
 	};
 
 	const handleRetryTask = async (taskId: string) => {
+		if (pendingTaskActionIds.has(taskId)) return;
+		setTaskActionPending(taskId, true);
 		try {
 			await articleApi.retryAITasks([taskId]);
 			showToast(t("任务已重试"));
-			fetchTasks();
+			await fetchTasks();
 		} catch (error) {
 			console.error("Failed to retry task:", error);
 			showToast(t("重试失败"), "error");
+		} finally {
+			setTaskActionPending(taskId, false);
 		}
 	};
 
@@ -1504,37 +1598,63 @@ const { section, article_title: articleTitleParam } = router.query;
 			confirmText: t("确定"),
 			cancelText: t("取消"),
 			onConfirm: async () => {
+				if (pendingTaskActionIds.has(taskId)) return;
+				setTaskActionPending(taskId, true);
 				try {
 					await articleApi.cancelAITasks([taskId]);
 					showToast(t("任务已取消"));
-					fetchTasks();
+					await fetchTasks();
 				} catch (error) {
 					console.error("Failed to cancel task:", error);
 					showToast(t("取消失败"), "error");
+				} finally {
+					setTaskActionPending(taskId, false);
 				}
 			},
 		});
 	};
 
-	const handleOpenTaskTimeline = async (taskId: string) => {
+	const handleOpenTaskTimeline = async (
+		taskId: string,
+		preferredUsageId?: string | null,
+	) => {
+		if (openingTaskTimelineId === taskId) return;
+		setOpeningTaskTimelineId(taskId);
 		setShowTaskTimelineModal(true);
 		setTaskTimelineLoading(true);
 		setTaskTimelineError("");
+		setSelectedTaskTimelineUsageId(null);
 		try {
 			const data = await articleApi.getAITaskTimeline(taskId);
 			setSelectedTaskTimeline(data);
+			const preferredUsage = preferredUsageId
+				? data.usage.find((usage) => usage.id === preferredUsageId)
+				: null;
+			setSelectedTaskTimelineUsageId(
+				preferredUsage?.id || data.usage[0]?.id || null,
+			);
 		} catch (error: any) {
 			console.error("Failed to fetch task timeline:", error);
 			setSelectedTaskTimeline(null);
-			setTaskTimelineError(error?.response?.data?.detail || t("任务详情加载失败"));
+			setTaskTimelineError(
+				error?.response?.data?.detail || t("任务详情加载失败"),
+			);
 		} finally {
 			setTaskTimelineLoading(false);
+			setOpeningTaskTimelineId(null);
 		}
+	};
+
+	const handleOpenUsageRelatedTask = (taskId: string, usageId?: string) => {
+		setActiveSection("monitoring");
+		setMonitoringSubSection("tasks");
+		void handleOpenTaskTimeline(taskId, usageId);
 	};
 
 	const closeTaskTimelineModal = () => {
 		setShowTaskTimelineModal(false);
 		setSelectedTaskTimeline(null);
+		setSelectedTaskTimelineUsageId(null);
 		setTaskTimelineError("");
 	};
 
@@ -1568,7 +1688,8 @@ const { section, article_title: articleTitleParam } = router.query;
 		if (eventType === "claimed") return t("领取");
 		if (eventType === "retry_scheduled") return t("安排重试");
 		if (eventType === "retried") return t("手动重试");
-		if (eventType === "retry_skipped_duplicate") return t("重试跳过（重复任务）");
+		if (eventType === "retry_skipped_duplicate")
+			return t("重试跳过（重复任务）");
 		if (eventType === "completed") return t("完成");
 		if (eventType === "failed") return t("失败");
 		if (eventType === "cancelled_by_api") return t("手动取消");
@@ -1642,10 +1763,16 @@ const { section, article_title: articleTitleParam } = router.query;
 		if (!content) return "";
 		const lines = content.split("\n");
 		const prefixes = ["> 回复 @", "> Reply @"];
-		if (!prefixes.some((prefix) => lines[0]?.startsWith(prefix))) return content;
-		const blankIndex = lines.findIndex((line, index) => index > 0 && !line.trim());
+		if (!prefixes.some((prefix) => lines[0]?.startsWith(prefix)))
+			return content;
+		const blankIndex = lines.findIndex(
+			(line, index) => index > 0 && !line.trim(),
+		);
 		if (blankIndex >= 0) {
-			return lines.slice(blankIndex + 1).join("\n").trim();
+			return lines
+				.slice(blankIndex + 1)
+				.join("\n")
+				.trim();
 		}
 		return lines.slice(1).join("\n").trim();
 	};
@@ -1663,7 +1790,9 @@ const { section, article_title: articleTitleParam } = router.query;
 	const openUsageCost = (log: AIUsageLogItem) => {
 		const currency = log.currency || "USD";
 		const inputPrice =
-			log.cost_input != null && log.prompt_tokens != null && log.prompt_tokens > 0
+			log.cost_input != null &&
+			log.prompt_tokens != null &&
+			log.prompt_tokens > 0
 				? log.cost_input / (log.prompt_tokens / 1000)
 				: null;
 		const outputPrice =
@@ -1777,12 +1906,12 @@ const { section, article_title: articleTitleParam } = router.query;
 	}, [usageByModel]);
 
 	const handleDeletePrompt = async (id: string) => {
-	setConfirmState({
-		isOpen: true,
-		title: t("删除提示词配置"),
-		message: t("确定要删除这个提示词配置吗？此操作不可撤销。"),
-		confirmText: t("删除"),
-		cancelText: t("取消"),
+		setConfirmState({
+			isOpen: true,
+			title: t("删除提示词配置"),
+			message: t("确定要删除这个提示词配置吗？此操作不可撤销。"),
+			confirmText: t("删除"),
+			cancelText: t("取消"),
 			onConfirm: async () => {
 				try {
 					await articleApi.deletePromptConfig(id);
@@ -1830,8 +1959,10 @@ const { section, article_title: articleTitleParam } = router.query;
 	const handleImportPromptConfigs = async (
 		event: React.ChangeEvent<HTMLInputElement>,
 	) => {
+		if (promptImporting) return;
 		const file = event.target.files?.[0];
 		if (!file) return;
+		setPromptImporting(true);
 		try {
 			const raw = await file.text();
 			const parsed = JSON.parse(raw);
@@ -1897,11 +2028,12 @@ const { section, article_title: articleTitleParam } = router.query;
 					.replace("{updated}", String(updated))
 					.replace("{skipped}", String(skipped)),
 			);
-			fetchPromptConfigs();
+			await fetchPromptConfigs();
 		} catch (error) {
 			console.error("Failed to import prompt configs:", error);
 			showToast(t("导入失败，请检查文件内容"), "error");
 		} finally {
+			setPromptImporting(false);
 			if (promptImportInputRef.current) {
 				promptImportInputRef.current.value = "";
 			}
@@ -1936,6 +2068,8 @@ const { section, article_title: articleTitleParam } = router.query;
 	};
 
 	const handleSaveCategory = async () => {
+		if (categorySaving) return;
+		setCategorySaving(true);
 		try {
 			if (editingCategory) {
 				await categoryApi.updateCategory(editingCategory.id, categoryFormData);
@@ -1943,12 +2077,14 @@ const { section, article_title: articleTitleParam } = router.query;
 				await categoryApi.createCategory(categoryFormData);
 			}
 			showToast(editingCategory ? t("分类已更新") : t("分类已创建"));
-			fetchCategories();
+			await fetchCategories();
 			setShowCategoryModal(false);
 			setEditingCategory(null);
 		} catch (error) {
 			console.error("Failed to save category:", error);
 			showToast(t("保存失败"), "error");
+		} finally {
+			setCategorySaving(false);
 		}
 	};
 
@@ -1992,7 +2128,7 @@ const { section, article_title: articleTitleParam } = router.query;
 					<div className="text-center">
 						<div className="text-text-3 mb-4">{t("无权限访问此页面")}</div>
 						<Link
-							href={`/login?redirect=${encodeURIComponent(router.asPath || '/admin')}`}
+							href={`/login?redirect=${encodeURIComponent(router.asPath || "/admin")}`}
 							className="text-primary hover:underline"
 						>
 							{t("去登录")}
@@ -2014,7 +2150,6 @@ const { section, article_title: articleTitleParam } = router.query;
 			<AppHeader />
 
 			<div className="flex-1">
-
 				<div className="max-w-7xl mx-auto px-4 pt-6">
 					<div className="flex gap-1 border-b border-border">
 						<SelectableButton
@@ -2041,230 +2176,245 @@ const { section, article_title: articleTitleParam } = router.query;
 				</div>
 
 				<div className="max-w-7xl mx-auto px-4 py-6">
-					<div className="flex gap-6">
+					<div className="flex min-w-0 gap-6">
 						<aside className="w-64 flex-shrink-0">
 							<div className="bg-surface rounded-lg shadow-sm p-4">
 								<h2 className="font-semibold text-text-1 mb-4">
-									{primaryTab === "monitoring"
-										? t("监控模块")
-										: t("设置模块")}
+									{primaryTab === "monitoring" ? t("监控模块") : t("设置模块")}
 								</h2>
 								<div className="space-y-2">
-										{primaryTab === "monitoring" ? (
-											<>
-												<SelectableButton
-													onClick={() => {
-														setActiveSection("monitoring");
-														setMonitoringSubSection("ai-usage");
-													}}
-													active={
-														activeSection === "monitoring" &&
-														monitoringSubSection === "ai-usage"
-													}
-													variant="menu"
-												>
-													<span className="inline-flex items-center gap-2">
-														<IconMoney className="h-4 w-4" />
-														<span>{t("模型记录/计量")}</span>
-													</span>
-												</SelectableButton>
-												<SelectableButton
-													onClick={() => {
-														setActiveSection("monitoring");
-														setMonitoringSubSection("tasks");
-													}}
-													active={
-														activeSection === "monitoring" &&
-														monitoringSubSection === "tasks"
-													}
-													variant="menu"
-												>
-													<span className="inline-flex items-center gap-2">
-														<IconList className="h-4 w-4" />
-														<span>{t("任务监控")}</span>
-													</span>
-												</SelectableButton>
-												<SelectableButton
-													onClick={() => {
-														setActiveSection("monitoring");
-														setMonitoringSubSection("comments");
-													}}
-													active={
-														activeSection === "monitoring" &&
-														monitoringSubSection === "comments"
-													}
-													variant="menu"
-												>
-													<span className="inline-flex items-center gap-2">
-														<IconNote className="h-4 w-4" />
-														<span>{t("评论列表")}</span>
-													</span>
-												</SelectableButton>
-											</>
-										) : (
-											<>
-												<SelectableButton
-													onClick={() => setActiveSection("basic")}
-													active={activeSection === "basic"}
-													variant="menu"
-												>
-													<span className="inline-flex items-center gap-2">
-														<IconSettings className="h-4 w-4" />
-														<span>{t("基础配置")}</span>
-													</span>
-												</SelectableButton>
-												<SelectableButton
-													onClick={() => setActiveSection("categories")}
-													active={activeSection === "categories"}
-													variant="menu"
-												>
-													<span className="inline-flex items-center gap-2">
-														<IconTag className="h-4 w-4" />
-														<span>{t("分类管理")}</span>
-													</span>
-												</SelectableButton>
+									{primaryTab === "monitoring" ? (
+										<>
+											<SelectableButton
+												onClick={() => {
+													setActiveSection("monitoring");
+													setMonitoringSubSection("ai-usage");
+												}}
+												active={
+													activeSection === "monitoring" &&
+													monitoringSubSection === "ai-usage"
+												}
+												variant="menu"
+											>
+												<span className="inline-flex items-center gap-2">
+													<IconMoney className="h-4 w-4" />
+													<span>{t("模型记录/计量")}</span>
+												</span>
+											</SelectableButton>
+											<SelectableButton
+												onClick={() => {
+													setActiveSection("monitoring");
+													setMonitoringSubSection("tasks");
+												}}
+												active={
+													activeSection === "monitoring" &&
+													monitoringSubSection === "tasks"
+												}
+												variant="menu"
+											>
+												<span className="inline-flex items-center gap-2">
+													<IconList className="h-4 w-4" />
+													<span>{t("任务监控")}</span>
+												</span>
+											</SelectableButton>
+											<SelectableButton
+												onClick={() => {
+													setActiveSection("monitoring");
+													setMonitoringSubSection("comments");
+												}}
+												active={
+													activeSection === "monitoring" &&
+													monitoringSubSection === "comments"
+												}
+												variant="menu"
+											>
+												<span className="inline-flex items-center gap-2">
+													<IconNote className="h-4 w-4" />
+													<span>{t("评论列表")}</span>
+												</span>
+											</SelectableButton>
+										</>
+									) : (
+										<>
+											<SelectableButton
+												onClick={() => setActiveSection("basic")}
+												active={activeSection === "basic"}
+												variant="menu"
+											>
+												<span className="inline-flex items-center gap-2">
+													<IconSettings className="h-4 w-4" />
+													<span>{t("基础配置")}</span>
+												</span>
+											</SelectableButton>
+											<SelectableButton
+												onClick={() => setActiveSection("categories")}
+												active={activeSection === "categories"}
+												variant="menu"
+											>
+												<span className="inline-flex items-center gap-2">
+													<IconTag className="h-4 w-4" />
+													<span>{t("分类管理")}</span>
+												</span>
+											</SelectableButton>
 
-												<SectionToggleButton
-													label={t("AI配置")}
-													active={activeSection === "ai"}
-													expanded={!collapsedSettings.ai}
-													onMainClick={handleToggleAISection}
-													onToggle={handleToggleAISection}
-													toggleAriaLabel={collapsedSettings.ai ? t("展开") : t("收起")}
-													icon={<IconRobot className="h-4 w-4" />}
-													expandedIndicator={<IconArrowUp className="h-4 w-4" />}
-													collapsedIndicator={<IconArrowDown className="h-4 w-4" />}
-												/>
+											<SectionToggleButton
+												label={t("AI配置")}
+												active={activeSection === "ai"}
+												expanded={!collapsedSettings.ai}
+												onMainClick={handleToggleAISection}
+												onToggle={handleToggleAISection}
+												toggleAriaLabel={
+													collapsedSettings.ai ? t("展开") : t("收起")
+												}
+												icon={<IconRobot className="h-4 w-4" />}
+												expandedIndicator={<IconArrowUp className="h-4 w-4" />}
+												collapsedIndicator={
+													<IconArrowDown className="h-4 w-4" />
+												}
+											/>
 
-												{!collapsedSettings.ai && (
-													<>
-														<SelectableButton
-															onClick={() => {
-																setActiveSection("ai");
-																setAISubSection("model-api");
-															}}
-															active={
-																activeSection === "ai" && aiSubSection === "model-api"
-															}
-															variant="submenu"
-														>
-															<span className="inline-flex items-center gap-2">
-																<IconPlug className="h-4 w-4" />
-																<span>{t("模型API")}</span>
-															</span>
-														</SelectableButton>
-														<SelectableButton
-															onClick={() => {
-																setActiveSection("ai");
-																setAISubSection("prompt");
-															}}
-															active={activeSection === "ai" && aiSubSection === "prompt"}
-															variant="submenu"
-														>
-															<span className="inline-flex items-center gap-2">
-																<IconNote className="h-4 w-4" />
-																<span>{t("提示词")}</span>
-															</span>
-														</SelectableButton>
-														<SelectableButton
-															onClick={() => {
-																setActiveSection("ai");
-																setAISubSection("recommendations");
-															}}
-															active={
-																activeSection === "ai" && aiSubSection === "recommendations"
-															}
-															variant="submenu"
-														>
-															<span className="inline-flex items-center gap-2">
-																<IconTag className="h-4 w-4" />
-																<span>{t("文章推荐")}</span>
-															</span>
-														</SelectableButton>
-													</>
-												)}
+											{!collapsedSettings.ai && (
+												<>
+													<SelectableButton
+														onClick={() => {
+															setActiveSection("ai");
+															setAISubSection("model-api");
+														}}
+														active={
+															activeSection === "ai" &&
+															aiSubSection === "model-api"
+														}
+														variant="submenu"
+													>
+														<span className="inline-flex items-center gap-2">
+															<IconPlug className="h-4 w-4" />
+															<span>{t("模型API")}</span>
+														</span>
+													</SelectableButton>
+													<SelectableButton
+														onClick={() => {
+															setActiveSection("ai");
+															setAISubSection("prompt");
+														}}
+														active={
+															activeSection === "ai" &&
+															aiSubSection === "prompt"
+														}
+														variant="submenu"
+													>
+														<span className="inline-flex items-center gap-2">
+															<IconNote className="h-4 w-4" />
+															<span>{t("提示词")}</span>
+														</span>
+													</SelectableButton>
+													<SelectableButton
+														onClick={() => {
+															setActiveSection("ai");
+															setAISubSection("recommendations");
+														}}
+														active={
+															activeSection === "ai" &&
+															aiSubSection === "recommendations"
+														}
+														variant="submenu"
+													>
+														<span className="inline-flex items-center gap-2">
+															<IconTag className="h-4 w-4" />
+															<span>{t("文章推荐")}</span>
+														</span>
+													</SelectableButton>
+												</>
+											)}
 
-												<SectionToggleButton
-													label={t("评论配置")}
-													active={activeSection === "comments"}
-													expanded={!collapsedSettings.comments}
-													onMainClick={handleToggleCommentSection}
-													onToggle={handleToggleCommentSection}
-													toggleAriaLabel={
-														collapsedSettings.comments ? t("展开") : t("收起")
-													}
-													icon={<IconFilter className="h-4 w-4" />}
-													expandedIndicator={<IconArrowUp className="h-4 w-4" />}
-													collapsedIndicator={<IconArrowDown className="h-4 w-4" />}
-												/>
+											<SectionToggleButton
+												label={t("评论配置")}
+												active={activeSection === "comments"}
+												expanded={!collapsedSettings.comments}
+												onMainClick={handleToggleCommentSection}
+												onToggle={handleToggleCommentSection}
+												toggleAriaLabel={
+													collapsedSettings.comments ? t("展开") : t("收起")
+												}
+												icon={<IconFilter className="h-4 w-4" />}
+												expandedIndicator={<IconArrowUp className="h-4 w-4" />}
+												collapsedIndicator={
+													<IconArrowDown className="h-4 w-4" />
+												}
+											/>
 
-												{!collapsedSettings.comments && (
-													<>
-														<SelectableButton
-															onClick={() => {
-																setActiveSection("comments");
-																setCommentSubSection("keys");
-															}}
-															active={
-																activeSection === "comments" && commentSubSection === "keys"
-															}
-															variant="submenu"
-														>
-															<span className="inline-flex items-center gap-2">
-																<IconPlug className="h-4 w-4" />
-																<span>{t("登录密钥")}</span>
-															</span>
-														</SelectableButton>
-														<SelectableButton
-															onClick={() => {
-																setActiveSection("comments");
-																setCommentSubSection("filters");
-															}}
-															active={
-																activeSection === "comments" &&
-																commentSubSection === "filters"
-															}
-															variant="submenu"
-														>
-															<span className="inline-flex items-center gap-2">
-																<IconFilter className="h-4 w-4" />
-																<span>{t("过滤规则")}</span>
-															</span>
-														</SelectableButton>
-													</>
-												)}
+											{!collapsedSettings.comments && (
+												<>
+													<SelectableButton
+														onClick={() => {
+															setActiveSection("comments");
+															setCommentSubSection("keys");
+														}}
+														active={
+															activeSection === "comments" &&
+															commentSubSection === "keys"
+														}
+														variant="submenu"
+													>
+														<span className="inline-flex items-center gap-2">
+															<IconPlug className="h-4 w-4" />
+															<span>{t("登录密钥")}</span>
+														</span>
+													</SelectableButton>
+													<SelectableButton
+														onClick={() => {
+															setActiveSection("comments");
+															setCommentSubSection("filters");
+														}}
+														active={
+															activeSection === "comments" &&
+															commentSubSection === "filters"
+														}
+														variant="submenu"
+													>
+														<span className="inline-flex items-center gap-2">
+															<IconFilter className="h-4 w-4" />
+															<span>{t("过滤规则")}</span>
+														</span>
+													</SelectableButton>
+												</>
+											)}
 
-												<SelectableButton
-													onClick={() => setActiveSection("storage")}
-													active={activeSection === "storage"}
-													variant="menu"
-												>
-													<span className="inline-flex items-center gap-2">
-														<IconLink className="h-4 w-4" />
-														<span>{t("文件存储")}</span>
-													</span>
-												</SelectableButton>
-											</>
-										)}
-									</div>
-
+											<SelectableButton
+												onClick={() => setActiveSection("storage")}
+												active={activeSection === "storage"}
+												variant="menu"
+											>
+												<span className="inline-flex items-center gap-2">
+													<IconLink className="h-4 w-4" />
+													<span>{t("文件存储")}</span>
+												</span>
+											</SelectableButton>
+										</>
+									)}
 								</div>
+							</div>
 						</aside>
 
-						<main className="flex-1 w-full">
-							{((activeSection === "ai" && aiSubSection === "model-api") || showUsageView) && (
-								<div className="bg-surface rounded-sm shadow-sm border border-border p-6">
-									<div className="flex items-center justify-between mb-6">
-										<h2 className="text-lg font-semibold text-text-1">
-											{showUsageView
-												? t("模型记录/计量")
-												: t("模型API配置列表")}
-										</h2>
-										<div className="flex items-center gap-2">
+						<main className="flex-1 w-full min-w-0">
+							{((activeSection === "ai" && aiSubSection === "model-api") ||
+								showUsageView) && (
+								<div className="bg-surface rounded-sm shadow-sm border border-border p-6 w-full min-w-0">
+									<div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+										<div className="space-y-1">
+											<h2 className="text-lg font-semibold text-text-1">
+												{showUsageView
+													? t("模型记录/计量")
+													: t("模型API配置列表")}
+											</h2>
+										</div>
+										<div className="flex flex-wrap items-center gap-2">
 											{!showUsageView && (
-												<Button onClick={handleCreateModelAPINew} variant="primary">
-												+ {t("创建配置")}
-											</Button>
+												<Button
+													onClick={handleCreateModelAPINew}
+													variant="primary"
+												>
+													+ {t("创建配置")}
+												</Button>
 											)}
 										</div>
 									</div>
@@ -2299,15 +2449,15 @@ const { section, article_title: articleTitleParam } = router.query;
 														{usageSummary?.calls ?? 0}
 													</div>
 												</div>
-										<div className="bg-surface border border-border rounded-sm p-3">
-											<div className="text-xs text-text-3">
-												{t("Tokens（输入/输出）")}
-											</div>
-											<div className="text-lg font-semibold text-text-1">
-												{usageSummary?.prompt_tokens ?? 0}/
-												{usageSummary?.completion_tokens ?? 0}
-											</div>
-										</div>
+												<div className="bg-surface border border-border rounded-sm p-3">
+													<div className="text-xs text-text-3">
+														{t("Tokens（输入/输出）")}
+													</div>
+													<div className="text-lg font-semibold text-text-1">
+														{usageSummary?.prompt_tokens ?? 0}/
+														{usageSummary?.completion_tokens ?? 0}
+													</div>
+												</div>
 												<div className="bg-surface border border-border rounded-sm p-3">
 													<div className="text-xs text-text-3">
 														{t("费用合计（参考）")}
@@ -2315,12 +2465,13 @@ const { section, article_title: articleTitleParam } = router.query;
 													<div className="text-lg font-semibold text-text-1">
 														{usageCostByCurrency.length > 0 ? (
 															<div className="space-y-1">
-																{usageCostByCurrency.map(([currency, total]) => (
-																	<div key={currency}>
-																		{formatPrice(total)}{" "}
-																		{currency}
-																	</div>
-																))}
+																{usageCostByCurrency.map(
+																	([currency, total]) => (
+																		<div key={currency}>
+																			{formatPrice(total)} {currency}
+																		</div>
+																	),
+																)}
 															</div>
 														) : (
 															<span>{formatPrice(0)}</span>
@@ -2337,44 +2488,44 @@ const { section, article_title: articleTitleParam } = router.query;
 												</div>
 											</div>
 
-												<div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-													<FilterSelect
-														label={t("模型")}
-														value={usageModelId}
-														onChange={(value) => {
-															setUsageModelId(value);
-															setUsagePage(1);
-														}}
-														options={[
-															{ value: "", label: t("全部") },
-															...modelAPIConfigs.map((config) => ({
-																value: config.id,
-																label: config.name,
-															})),
-														]}
-													/>
-													<FilterSelect
-														label={t("状态")}
-														value={usageStatus}
-														onChange={(value) => {
-															setUsageStatus(value);
-															setUsagePage(1);
-														}}
-														options={[
-															{ value: "", label: t("全部") },
-															{ value: "completed", label: t("已完成") },
-															{ value: "failed", label: t("失败") },
-															{ value: "processing", label: t("处理中") },
-															{ value: "pending", label: t("待处理") },
-														]}
-													/>
-													<FilterSelect
-														label={t("类型")}
-														value={usageContentType}
-														onChange={(value) => {
-															setUsageContentType(value);
-															setUsagePage(1);
-														}}
+											<div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+												<FilterSelect
+													label={t("模型")}
+													value={usageModelId}
+													onChange={(value) => {
+														setUsageModelId(value);
+														setUsagePage(1);
+													}}
+													options={[
+														{ value: "", label: t("全部") },
+														...modelAPIConfigs.map((config) => ({
+															value: config.id,
+															label: config.name,
+														})),
+													]}
+												/>
+												<FilterSelect
+													label={t("状态")}
+													value={usageStatus}
+													onChange={(value) => {
+														setUsageStatus(value);
+														setUsagePage(1);
+													}}
+													options={[
+														{ value: "", label: t("全部") },
+														{ value: "completed", label: t("已完成") },
+														{ value: "failed", label: t("失败") },
+														{ value: "processing", label: t("处理中") },
+														{ value: "pending", label: t("待处理") },
+													]}
+												/>
+												<FilterSelect
+													label={t("类型")}
+													value={usageContentType}
+													onChange={(value) => {
+														setUsageContentType(value);
+														setUsagePage(1);
+													}}
 													options={[
 														{ value: "", label: t("全部") },
 														{ value: "summary", label: t("摘要") },
@@ -2387,41 +2538,57 @@ const { section, article_title: articleTitleParam } = router.query;
 														{ value: "classification", label: t("分类") },
 													]}
 												/>
-													<div className="md:col-span-2">
-														<label htmlFor="usage-date-range" className="block text-sm text-text-2 mb-1.5">
-															{t("日期范围")}
-														</label>
-														<DateRangePicker
-															id="usage-date-range"
-															value={toDayjsRangeFromDateStrings(usageStart, usageEnd)}
-															onChange={(values) => {
-																const [start, end] = values || [];
-																setUsageStart(start ? start.format("YYYY-MM-DD") : "");
-																setUsageEnd(end ? end.format("YYYY-MM-DD") : "");
-																setUsagePage(1);
-															}}
-															className="w-full"
-														/>
-													</div>
+												<div className="md:col-span-2">
+													<label
+														htmlFor="usage-date-range"
+														className="block text-sm text-text-2 mb-1.5"
+													>
+														{t("日期范围")}
+													</label>
+													<DateRangePicker
+														id="usage-date-range"
+														value={toDayjsRangeFromDateStrings(
+															usageStart,
+															usageEnd,
+														)}
+														onChange={(values) => {
+															const [start, end] = values || [];
+															setUsageStart(
+																start ? start.format("YYYY-MM-DD") : "",
+															);
+															setUsageEnd(end ? end.format("YYYY-MM-DD") : "");
+															setUsagePage(1);
+														}}
+														className="w-full"
+													/>
 												</div>
+											</div>
 
 											<div className="bg-surface border border-border rounded-sm p-4">
 												<div className="text-sm font-semibold text-text-1 mb-3">
 													{t("按模型汇总")}
 												</div>
 												{usageByModel.length === 0 ? (
-													<div className="text-sm text-text-3">{t("暂无数据")}</div>
+													<div className="rounded-sm border border-border bg-muted px-4 py-4 text-sm text-text-3">
+														{t("暂无数据")}
+													</div>
 												) : (
-													<div className="overflow-x-auto">
-														<table className="min-w-full text-sm">
+													<div className="w-full overflow-x-auto">
+														<table className="w-full table-auto text-sm">
 															<thead className="bg-muted text-text-2">
 																<tr>
-																	<th className="text-left px-3 py-2">{t("模型")}</th>
-																	<th className="text-left px-3 py-2">{t("调用")}</th>
-															<th className="text-left px-3 py-2">
-																{t("Tokens（输入/输出）")}
-															</th>
-																	<th className="text-left px-3 py-2">{t("费用（参考）")}</th>
+																	<th className="w-[34%] text-left px-3 py-2">
+																		{t("模型")}
+																	</th>
+																	<th className="text-left px-3 py-2">
+																		{t("调用")}
+																	</th>
+																	<th className="w-[24%] whitespace-nowrap text-left px-3 py-2">
+																		{t("Tokens（输入/输出）")}
+																	</th>
+																	<th className="w-[22%] whitespace-nowrap text-left px-3 py-2">
+																		{t("费用（参考）")}
+																	</th>
 																</tr>
 															</thead>
 															<tbody className="divide-y divide-border">
@@ -2438,9 +2605,10 @@ const { section, article_title: articleTitleParam } = router.query;
 																		<td className="px-3 py-2 text-text-2">
 																			{row.calls}
 																		</td>
-																<td className="px-3 py-2 text-text-2">
-																	{row.prompt_tokens ?? "-"}/{row.completion_tokens ?? "-"}
-																</td>
+																		<td className="px-3 py-2 text-text-2">
+																			{row.prompt_tokens ?? "-"}/
+																			{row.completion_tokens ?? "-"}
+																		</td>
 																		<td className="px-3 py-2 text-text-2">
 																			{row.cost_total.toFixed(4)}
 																			{row.currency ? ` ${row.currency}` : ""}
@@ -2463,113 +2631,114 @@ const { section, article_title: articleTitleParam } = router.query;
 													</div>
 												</div>
 												{usageLoading ? (
-													<div className="text-center py-6 text-text-3">
+													<div className="rounded-sm border border-border bg-muted px-4 py-8 text-center text-sm text-text-3">
 														{t("加载中")}
 													</div>
 												) : usageLogs.length === 0 ? (
-													<div className="text-center py-6 text-text-3">
+													<div className="rounded-sm border border-border bg-muted px-4 py-8 text-center text-sm text-text-3">
 														{t("暂无记录")}
 													</div>
 												) : (
-													<div className="overflow-x-auto">
-														<table className="min-w-full text-sm">
+													<div className="w-full overflow-x-auto">
+														<table className="w-full table-auto text-sm">
 															<thead className="bg-muted text-text-2">
 																<tr>
-																<th className="text-left px-3 py-2">{t("时间")}</th>
-																	<th className="text-left px-3 py-2">{t("模型")}</th>
-																	<th className="text-left px-3 py-2">{t("文章")}</th>
-																	<th className="text-left px-3 py-2">{t("类型")}</th>
-																	<th className="text-left px-3 py-2">
+																	<th className="w-[16%] whitespace-nowrap text-left px-3 py-2">
+																		{t("时间")}
+																	</th>
+																	<th className="w-[16%] text-left px-3 py-2">
+																		{t("模型")}
+																	</th>
+																	<th className="w-[8%] whitespace-nowrap text-left px-3 py-2">
+																		{t("文章")}
+																	</th>
+																	<th className="w-[10%] whitespace-nowrap text-left px-3 py-2">
+																		{t("类型")}
+																	</th>
+																	<th className="w-[20%] whitespace-nowrap text-left px-3 py-2">
 																		{t("Tokens（输入/输出）")}
 																	</th>
-															<th className="text-left px-3 py-2">{t("费用（参考）")}</th>
-															<th className="text-left px-3 py-2">{t("状态")}</th>
-															<th className="text-left px-3 py-2">{t("查看")}</th>
-														</tr>
+																	<th className="w-[14%] whitespace-nowrap text-left px-3 py-2">
+																		{t("费用（参考）")}
+																	</th>
+																	<th className="w-[8%] whitespace-nowrap text-left px-3 py-2">
+																		{t("状态")}
+																	</th>
+																	<th className="w-[8%] whitespace-nowrap text-left px-3 py-2">
+																		{t("关联任务")}
+																	</th>
+																</tr>
 															</thead>
 															<tbody className="divide-y divide-border">
 																{usageLogs.map((log) => (
 																	<tr key={log.id} className="hover:bg-muted">
-																<td className="px-3 py-2 text-text-2">
-																	{formatUsageDateTime(log.created_at)}
-																</td>
-																<td className="px-3 py-2 text-text-1">
-																	{log.model_api_config_name || "-"}
-																</td>
-																<td className="px-3 py-2 text-text-2">
-{log.article_id ? (
-															<Link
-																href={`/article/${log.article_slug || log.article_id}`}
-																className="text-primary hover:text-primary-ink"
-											target="_blank"
-											rel="noopener noreferrer"
-															>
-																{t("查看")}
-															</Link>
-														) : (
-															"-"
-														)}
-																</td>
-																<td className="px-3 py-2 text-text-2">
-																	{getUsageContentTypeLabel(log.content_type)}
-																</td>
-															<td className="px-3 py-2 text-text-2">
-																{log.prompt_tokens ?? "-"}/{log.completion_tokens ?? "-"}
-															</td>
-																<td className="px-3 py-2 text-text-2">
-																		{log.cost_total != null ? (
-																			<button
-																				type="button"
-																				onClick={() => openUsageCost(log)}
-																				className="text-primary hover:text-primary-ink"
-																			>
-																				{log.cost_total.toFixed(4)}
-																				{log.currency ? ` ${log.currency}` : ""}
-																			</button>
-																		) : (
-																			"-"
-																		)}
-																</td>
-															<td className="px-3 py-2 text-text-2">
-																{getUsageStatusLabel(log.status)}
-															</td>
-														<td className="px-3 py-2 text-text-2">
-																{log.request_payload || log.response_payload ? (
-																	<div className="flex items-center gap-2">
-																		<IconButton
-																			type="button"
-																			onClick={() =>
-																				openUsagePayload(
-																					t("请求输入"),
-																					log.request_payload,
-																				)
-																			}
-																			variant="ghost"
-																			size="sm"
-																			title={t("输入")}
-																		>
-																			<IconArrowDown className="h-4 w-4" />
-																		</IconButton>
-																		<IconButton
-																			type="button"
-																			onClick={() =>
-																				openUsagePayload(
-																					t("响应输出"),
-																					log.response_payload,
-																				)
-																			}
-																			variant="ghost"
-																			size="sm"
-																			title={t("输出")}
-																		>
-																			<IconArrowUp className="h-4 w-4" />
-																		</IconButton>
-																	</div>
-																) : (
-																	"-"
-																)}
-															</td>
-														</tr>
+																		<td className="px-3 py-2 text-text-2 whitespace-nowrap">
+																			{formatUsageDateTime(log.created_at)}
+																		</td>
+																		<td className="px-3 py-2 text-text-1">
+																			{log.model_api_config_name || "-"}
+																		</td>
+																		<td className="px-3 py-2 text-text-2">
+																			{log.article_id ? (
+																				<Link
+																					href={`/article/${log.article_slug || log.article_id}`}
+																					className="text-primary hover:text-primary-ink"
+																					target="_blank"
+																					rel="noopener noreferrer"
+																				>
+																					{t("查看")}
+																				</Link>
+																			) : (
+																				"-"
+																			)}
+																		</td>
+																		<td className="px-3 py-2 text-text-2">
+																			{getUsageContentTypeLabel(
+																				log.content_type,
+																			)}
+																		</td>
+																		<td className="px-3 py-2 text-text-2">
+																			{log.prompt_tokens ?? "-"}/
+																			{log.completion_tokens ?? "-"}
+																		</td>
+																		<td className="px-3 py-2 text-text-2">
+																			{log.cost_total != null ? (
+																				<button
+																					type="button"
+																					onClick={() => openUsageCost(log)}
+																					className="text-primary hover:text-primary-ink"
+																				>
+																					{log.cost_total.toFixed(4)}
+																					{log.currency
+																						? ` ${log.currency}`
+																						: ""}
+																				</button>
+																			) : (
+																				"-"
+																			)}
+																		</td>
+																		<td className="px-3 py-2 text-text-2">
+																			{getUsageStatusLabel(log.status)}
+																		</td>
+																		<td className="px-3 py-2 text-text-2">
+																			{log.task_id ? (
+																				<button
+																					type="button"
+																					onClick={() =>
+																						handleOpenUsageRelatedTask(
+																							log.task_id!,
+																							log.id,
+																						)
+																					}
+																					className="text-primary hover:text-primary-ink"
+																				>
+																					{t("查看任务")}
+																				</button>
+																			) : (
+																				"-"
+																			)}
+																		</td>
+																	</tr>
 																))}
 															</tbody>
 														</table>
@@ -2597,48 +2766,52 @@ const { section, article_title: articleTitleParam } = router.query;
 																{t("条")}，{t("共")} {usageTotal} {t("条")}
 															</span>
 														</div>
-														<div className="flex items-center gap-2">
-														<Button
-															onClick={() =>
-																setUsagePage((page) => Math.max(1, page - 1))
-															}
-															disabled={usagePage === 1}
-															variant="secondary"
-															size="sm"
-														>
-															{t("上一页")}
-														</Button>
-														<span className="px-4 py-2 text-sm bg-surface border border-border rounded-sm text-text-2">
-															{t("第")} {usagePage} /{" "}
-															{Math.ceil(usageTotal / usagePageSize) || 1} {t("页")}
-														</span>
-														<Button
-															onClick={() => setUsagePage((page) => page + 1)}
-															disabled={
-																usagePage * usagePageSize >= usageTotal
-															}
-															variant="secondary"
-															size="sm"
-														>
-															{t("下一页")}
-														</Button>
+														<div className="flex flex-wrap items-center gap-2">
+															<Button
+																onClick={() =>
+																	setUsagePage((page) => Math.max(1, page - 1))
+																}
+																disabled={usagePage === 1}
+																variant="secondary"
+																size="sm"
+															>
+																{t("上一页")}
+															</Button>
+															<span className="min-w-[112px] px-4 py-2 text-center text-sm bg-surface border border-border rounded-sm text-text-2">
+																{t("第")} {usagePage} /{" "}
+																{Math.ceil(usageTotal / usagePageSize) || 1}{" "}
+																{t("页")}
+															</span>
+															<Button
+																onClick={() => setUsagePage((page) => page + 1)}
+																disabled={
+																	usagePage * usagePageSize >= usageTotal
+																}
+																variant="secondary"
+																size="sm"
+															>
+																{t("下一页")}
+															</Button>
 														</div>
 													</div>
 												)}
 											</div>
 										</div>
 									) : modelLoading ? (
-										<div className="text-center py-12 text-text-3">
+										<div className="rounded-sm border border-border bg-muted px-4 py-8 text-center text-sm text-text-3">
 											{t("加载中...")}
 										</div>
 									) : filteredModelAPIConfigs.length === 0 ? (
-										<div className="text-center py-12 text-text-3">
+										<div className="rounded-sm border border-border bg-muted px-4 py-8 text-center text-sm text-text-3">
 											<div className="mb-4">
 												{t("暂无")}
 												{t(modelCategory === "vector" ? "向量" : "通用")}
 												{t("模型配置")}
 											</div>
-											<Button onClick={handleCreateModelAPINew} variant="primary">
+											<Button
+												onClick={handleCreateModelAPINew}
+												variant="primary"
+											>
 												{t("创建配置")}
 											</Button>
 										</div>
@@ -2660,14 +2833,18 @@ const { section, article_title: articleTitleParam } = router.query;
 																	<h3 className="font-semibold text-text-1">
 																		{config.name}
 																	</h3>
-															{config.is_default && (
-																<StatusTag tone="info" className="ml-2">
-																	{t("默认")}
-																</StatusTag>
-															)}
-															<StatusTag tone={config.is_enabled ? "success" : "neutral"}>
-																{config.is_enabled ? t("启用") : t("禁用")}
-															</StatusTag>
+																	{config.is_default && (
+																		<StatusTag tone="info" className="ml-2">
+																			{t("默认")}
+																		</StatusTag>
+																	)}
+																	<StatusTag
+																		tone={
+																			config.is_enabled ? "success" : "neutral"
+																		}
+																	>
+																		{config.is_enabled ? t("启用") : t("禁用")}
+																	</StatusTag>
 																</div>
 
 																<div className="space-y-1 text-sm text-text-2">
@@ -2697,18 +2874,19 @@ const { section, article_title: articleTitleParam } = router.query;
 																		<span className="font-medium">
 																			{t("模型类型")}：
 																		</span>
-																		<span>{config.model_type || "general"}</span>
+																		<span>
+																			{config.model_type || "general"}
+																		</span>
 																	</div>
-																	{(config.model_type || "general") !== "vector" && (
+																	{(config.model_type || "general") !==
+																		"vector" && (
 																		<div>
 																			<span className="font-medium">
 																				{t("计费")}：
 																			</span>
 																			<span>
 																				{t("输入")}{" "}
-																				{formatPrice(
-																					config.price_input_per_1k,
-																				)}
+																				{formatPrice(config.price_input_per_1k)}
 																				/ {t("输出")}{" "}
 																				{formatPrice(
 																					config.price_output_per_1k,
@@ -2731,32 +2909,32 @@ const { section, article_title: articleTitleParam } = router.query;
 															</div>
 
 															<div className="flex gap-1">
-															<IconButton
-																onClick={() => handleTestModelAPI(config)}
-																variant="primary"
-																size="sm"
-																title={t("测试连接")}
-															>
-																<IconLink className="h-4 w-4" />
-															</IconButton>
-															<IconButton
-																onClick={() => handleEditModelAPI(config)}
-																variant="primary"
-																size="sm"
-																title={t("编辑")}
-															>
-																<IconEdit className="h-4 w-4" />
-															</IconButton>
-															<IconButton
-																onClick={() =>
-																	handleDeleteModelAPI(config.id)
-																}
-																variant="danger"
-																size="sm"
-																title={t("删除")}
-															>
-																<IconTrash className="h-4 w-4" />
-															</IconButton>
+																<IconButton
+																	onClick={() => handleTestModelAPI(config)}
+																	variant="primary"
+																	size="sm"
+																	title={t("测试连接")}
+																>
+																	<IconLink className="h-4 w-4" />
+																</IconButton>
+																<IconButton
+																	onClick={() => handleEditModelAPI(config)}
+																	variant="primary"
+																	size="sm"
+																	title={t("编辑")}
+																>
+																	<IconEdit className="h-4 w-4" />
+																</IconButton>
+																<IconButton
+																	onClick={() =>
+																		handleDeleteModelAPI(config.id)
+																	}
+																	variant="danger"
+																	size="sm"
+																	title={t("删除")}
+																>
+																	<IconTrash className="h-4 w-4" />
+																</IconButton>
 															</div>
 														</div>
 													</div>
@@ -2767,12 +2945,14 @@ const { section, article_title: articleTitleParam } = router.query;
 							)}
 
 							{activeSection === "ai" && aiSubSection === "prompt" && (
-								<div className="bg-surface rounded-lg shadow-sm p-6">
-									<div className="flex items-center justify-between mb-4">
-										<h2 className="text-lg font-semibold text-text-1">
-											{t("提示词配置列表")}
-										</h2>
-										<div className="flex items-center gap-2">
+								<div className="bg-surface rounded-sm shadow-sm border border-border p-6 w-full min-w-0">
+									<div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+										<div className="space-y-1">
+											<h2 className="text-lg font-semibold text-text-1">
+												{t("提示词配置列表")}
+											</h2>
+										</div>
+										<div className="flex flex-wrap items-center gap-2">
 											<Button
 												onClick={() => handleExportPromptConfigs("current")}
 												variant="secondary"
@@ -2791,6 +2971,8 @@ const { section, article_title: articleTitleParam } = router.query;
 												onClick={() => promptImportInputRef.current?.click()}
 												variant="secondary"
 												size="sm"
+												loading={promptImporting}
+												disabled={promptImporting}
 											>
 												{t("导入")}
 											</Button>
@@ -2806,6 +2988,7 @@ const { section, article_title: articleTitleParam } = router.query;
 										accept="application/json"
 										className="hidden"
 										onChange={handleImportPromptConfigs}
+										disabled={promptImporting}
 									/>
 
 									<div className="flex gap-2 mb-6">
@@ -2822,12 +3005,12 @@ const { section, article_title: articleTitleParam } = router.query;
 									</div>
 
 									{promptLoading ? (
-										<div className="text-center py-12 text-text-3">
+										<div className="rounded-sm border border-border bg-muted px-4 py-8 text-center text-sm text-text-3">
 											{t("加载中...")}
 										</div>
 									) : promptConfigs.filter((c) => c.type === selectedPromptType)
 											.length === 0 ? (
-										<div className="text-center py-12 text-text-3">
+										<div className="rounded-sm border border-border bg-muted px-4 py-8 text-center text-sm text-text-3">
 											<div className="mb-4">
 												{t("暂无")}
 												{t(
@@ -2865,7 +3048,11 @@ const { section, article_title: articleTitleParam } = router.query;
 																			{t("默认")}
 																		</StatusTag>
 																	)}
-																	<StatusTag tone={config.is_enabled ? "success" : "neutral"}>
+																	<StatusTag
+																		tone={
+																			config.is_enabled ? "success" : "neutral"
+																		}
+																	>
 																		{config.is_enabled ? t("启用") : t("禁用")}
 																	</StatusTag>
 																</div>
@@ -2884,7 +3071,9 @@ const { section, article_title: articleTitleParam } = router.query;
 																			<span className="font-medium">
 																				{t("关联模型API")}：
 																			</span>
-																			<span>{config.model_api_config_name}</span>
+																			<span>
+																				{config.model_api_config_name}
+																			</span>
 																		</div>
 																	)}
 																	{config.system_prompt && (
@@ -2894,7 +3083,9 @@ const { section, article_title: articleTitleParam } = router.query;
 																			</span>
 																			<code className="px-2 py-1 bg-muted rounded text-xs block mt-1 max-h-20 overflow-y-auto">
 																				{config.system_prompt.slice(0, 100)}
-																				{config.system_prompt.length > 100 ? "..." : ""}
+																				{config.system_prompt.length > 100
+																					? "..."
+																					: ""}
 																			</code>
 																		</div>
 																	)}
@@ -2915,7 +3106,8 @@ const { section, article_title: articleTitleParam } = router.query;
 																		<div className="flex flex-wrap gap-2 pt-1">
 																			{config.response_format && (
 																				<StatusTag tone="neutral">
-																					{t("响应格式")}: {config.response_format}
+																					{t("响应格式")}:{" "}
+																					{config.response_format}
 																				</StatusTag>
 																			)}
 																			{config.temperature != null && (
@@ -2925,11 +3117,14 @@ const { section, article_title: articleTitleParam } = router.query;
 																			)}
 																			{config.max_tokens != null && (
 																				<StatusTag tone="neutral">
-																					{t("最大 Tokens")}: {config.max_tokens}
+																					{t("最大 Tokens")}:{" "}
+																					{config.max_tokens}
 																				</StatusTag>
 																			)}
 																			{config.top_p != null && (
-																				<StatusTag tone="neutral">Top P: {config.top_p}</StatusTag>
+																				<StatusTag tone="neutral">
+																					Top P: {config.top_p}
+																				</StatusTag>
 																			)}
 																		</div>
 																	)}
@@ -2971,9 +3166,9 @@ const { section, article_title: articleTitleParam } = router.query;
 							)}
 
 							{activeSection === "basic" && (
-								<div className="bg-surface rounded-sm shadow-sm border border-border p-6">
-									<div className="flex items-center justify-between mb-6">
-										<div>
+								<div className="bg-surface rounded-sm shadow-sm border border-border p-6 w-full min-w-0">
+									<div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+										<div className="space-y-1">
 											<h2 className="text-lg font-semibold text-text-1">
 												{t("基础配置")}
 											</h2>
@@ -2981,17 +3176,19 @@ const { section, article_title: articleTitleParam } = router.query;
 												{t("配置站点名称与默认语言")}
 											</p>
 										</div>
-										<Button
-										onClick={handleSaveBasicSettings}
-										disabled={basicSettingsSaving}
-										variant="primary"
-									>
-										{basicSettingsSaving ? t("保存中") : t("保存配置")}
-									</Button>
+										<div className="flex flex-wrap items-center gap-2">
+											<Button
+												onClick={handleSaveBasicSettings}
+												disabled={basicSettingsSaving}
+												variant="primary"
+											>
+												{basicSettingsSaving ? t("保存中") : t("保存配置")}
+											</Button>
+										</div>
 									</div>
 
 									{basicSettingsLoading ? (
-										<div className="text-center py-12 text-text-3">
+										<div className="rounded-sm border border-border bg-muted px-4 py-8 text-center text-sm text-text-3">
 											{t("加载中")}
 										</div>
 									) : (
@@ -3009,8 +3206,10 @@ const { section, article_title: articleTitleParam } = router.query;
 																home_badge_text: e.target.value,
 															}))
 														}
-														placeholder={t("请输入首页顶部标语（留空使用默认）")}
-														/>
+														placeholder={t(
+															"请输入首页顶部标语（留空使用默认）",
+														)}
+													/>
 												</div>
 												<div>
 													<label className="block text-sm text-text-2 mb-1">
@@ -3025,7 +3224,7 @@ const { section, article_title: articleTitleParam } = router.query;
 															}))
 														}
 														placeholder={t("请输入站点名称")}
-														/>
+													/>
 												</div>
 											</div>
 											<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -3042,7 +3241,7 @@ const { section, article_title: articleTitleParam } = router.query;
 															}))
 														}
 														placeholder={t("请输入站点描述")}
-														/>
+													/>
 												</div>
 												<div>
 													<label className="block text-sm text-text-2 mb-1">
@@ -3056,8 +3255,10 @@ const { section, article_title: articleTitleParam } = router.query;
 																home_tagline_text: e.target.value,
 															}))
 														}
-														placeholder={t("请输入首页补充文案（留空使用默认）")}
-														/>
+														placeholder={t(
+															"请输入首页补充文案（留空使用默认）",
+														)}
+													/>
 												</div>
 											</div>
 											<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -3074,7 +3275,7 @@ const { section, article_title: articleTitleParam } = router.query;
 															}))
 														}
 														placeholder={t("请输入按钮文案（留空使用默认）")}
-														/>
+													/>
 												</div>
 												<div>
 													<label className="block text-sm text-text-2 mb-1">
@@ -3088,8 +3289,10 @@ const { section, article_title: articleTitleParam } = router.query;
 																home_primary_button_url: e.target.value,
 															}))
 														}
-														placeholder={t("请输入按钮链接（支持 /path 或 https://，留空使用默认）")}
-														/>
+														placeholder={t(
+															"请输入按钮链接（支持 /path 或 https://，留空使用默认）",
+														)}
+													/>
 												</div>
 											</div>
 											<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -3106,7 +3309,7 @@ const { section, article_title: articleTitleParam } = router.query;
 															}))
 														}
 														placeholder={t("请输入按钮文案（留空使用默认）")}
-														/>
+													/>
 												</div>
 												<div>
 													<label className="block text-sm text-text-2 mb-1">
@@ -3120,8 +3323,10 @@ const { section, article_title: articleTitleParam } = router.query;
 																home_secondary_button_url: e.target.value,
 															}))
 														}
-														placeholder={t("请输入按钮链接（支持 /path 或 https://，留空使用默认）")}
-														/>
+														placeholder={t(
+															"请输入按钮链接（支持 /path 或 https://，留空使用默认）",
+														)}
+													/>
 												</div>
 											</div>
 											<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -3138,7 +3343,7 @@ const { section, article_title: articleTitleParam } = router.query;
 															}))
 														}
 														placeholder={t("可选，留空使用默认图标")}
-														/>
+													/>
 												</div>
 												<div>
 													<label className="block text-sm text-text-2 mb-1">
@@ -3165,26 +3370,36 @@ const { section, article_title: articleTitleParam } = router.query;
 							)}
 
 							{activeSection === "categories" && (
-								<div className="bg-surface rounded-lg shadow-sm p-6">
-									<div className="flex items-center justify-between mb-6">
-										<h2 className="text-lg font-semibold text-text-1">
-											{t("分类列表")}
-										</h2>
-										<Button onClick={handleCreateCategoryNew} variant="primary">
-											+ {t("新增分类")}
-										</Button>
+								<div className="bg-surface rounded-sm shadow-sm border border-border p-6 w-full min-w-0">
+									<div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+										<div className="space-y-1">
+											<h2 className="text-lg font-semibold text-text-1">
+												{t("分类列表")}
+											</h2>
+										</div>
+										<div className="flex flex-wrap items-center gap-2">
+											<Button
+												onClick={handleCreateCategoryNew}
+												variant="primary"
+											>
+												+ {t("新增分类")}
+											</Button>
+										</div>
 									</div>
 
 									{categoryLoading ? (
-										<div className="text-center py-12 text-text-3">
+										<div className="rounded-sm border border-border bg-muted px-4 py-8 text-center text-sm text-text-3">
 											{t("加载中...")}
 										</div>
 									) : categories.length === 0 ? (
-										<div className="text-center py-12 text-text-3">
+										<div className="rounded-sm border border-border bg-muted px-4 py-8 text-center text-sm text-text-3">
 											<div className="mb-4">{t("暂无分类")}</div>
-											<Button onClick={handleCreateCategoryNew} variant="primary">
-											{t("新增分类")}
-										</Button>
+											<Button
+												onClick={handleCreateCategoryNew}
+												variant="primary"
+											>
+												{t("新增分类")}
+											</Button>
 										</div>
 									) : (
 										<DndContext
@@ -3212,24 +3427,27 @@ const { section, article_title: articleTitleParam } = router.query;
 								</div>
 							)}
 
-						{activeSection === "comments" && (
-							<div className="bg-surface rounded-sm shadow-sm border border-border p-6">
-								<div className="flex items-center justify-between mb-6">
-									<div>
-										<h2 className="text-lg font-semibold text-text-1">
-											{commentSubSection === "keys"
-												? t("登录密钥")
-												: t("过滤规则")}
-										</h2>
-										<p className="text-sm text-text-3">
-											{commentSubSection === "keys"
-												? t("配置第三方登录并启用文章评论功能")
-												: t("配置评论敏感词过滤规则")}
-										</p>
-									</div>
-										<div className="flex items-center gap-2">
+							{activeSection === "comments" && (
+								<div className="bg-surface rounded-sm shadow-sm border border-border p-6 w-full min-w-0">
+									<div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+										<div className="space-y-1">
+											<h2 className="text-lg font-semibold text-text-1">
+												{commentSubSection === "keys"
+													? t("登录密钥")
+													: t("过滤规则")}
+											</h2>
+											<p className="text-sm text-text-3">
+												{commentSubSection === "keys"
+													? t("配置第三方登录并启用文章评论功能")
+													: t("配置评论敏感词过滤规则")}
+											</p>
+										</div>
+										<div className="flex flex-wrap items-center gap-2">
 											{commentSubSection === "keys" && (
-												<Button onClick={handleValidateCommentSettings} variant="secondary">
+												<Button
+													onClick={handleValidateCommentSettings}
+													variant="secondary"
+												>
 													{t("验证配置")}
 												</Button>
 											)}
@@ -3243,313 +3461,339 @@ const { section, article_title: articleTitleParam } = router.query;
 										</div>
 									</div>
 
-											{commentSettingsLoading ? (
-												<div className="text-center py-12 text-text-3">
-													{t("加载中")}
-												</div>
-											) : (
-												<div className="space-y-6">
-													{commentSubSection === "keys" && (
-														<>
-											<div className="flex items-center justify-between border border-border rounded-sm p-4 bg-surface">
-												<div>
-													<div className="text-sm font-medium text-text-1">
-														{t("开启评论")}
-													</div>
-													<div className="text-xs text-text-3 mt-1">
-														{t("关闭后访客评论入口将隐藏")}
-													</div>
-												</div>
-												<label className="inline-flex items-center gap-2 text-sm text-text-2 cursor-pointer">
-													<CheckboxInput
-														checked={commentSettings.comments_enabled}
-														onChange={(e) =>
-															setCommentSettings((prev) => ({
-																...prev,
-																comments_enabled: e.target.checked,
-															}))
-														}
-														className="h-4 w-4"
-													/>
-													<span>
-														{commentSettings.comments_enabled
-															? t("已开启")
-															: t("已关闭")}
-													</span>
-												</label>
-											</div>
-
-											<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-												<div>
-													<label className="block text-sm text-text-2 mb-1">
-														GitHub Client ID
-													</label>
-													<TextInput
-														value={commentSettings.github_client_id}
-														onChange={(e) =>
-															setCommentSettings((prev) => ({
-																...prev,
-																github_client_id: e.target.value,
-															}))
-														}
-														placeholder={t("填写 GitHub OAuth Client ID")}
-														/>
-												</div>
-												<div>
-													<label className="block text-sm text-text-2 mb-1">
-														GitHub Client Secret
-													</label>
-													<div className="flex items-center gap-2">
-												<TextInput
-													type="password"
-													value={commentSettings.github_client_secret}
-													onChange={(e) =>
-														setCommentSettings((prev) => ({
-															...prev,
-															github_client_secret: e.target.value,
-														}))
-													}
-													placeholder={t("填写 GitHub OAuth Client Secret")}
-													className="flex-1"
-												/>
-												<IconButton
-													type="button"
-													onClick={() => handleCopyMaskedValue(commentSettings.github_client_secret)}
-													variant="secondary"
-													size="md"
-													title={t("复制")}
-													disabled={!commentSettings.github_client_secret}
-												>
-													<IconCopy className="h-4 w-4" />
-												</IconButton>
-											</div>
-												</div>
-												<div>
-													<label className="block text-sm text-text-2 mb-1">
-														Google Client ID
-													</label>
-													<TextInput
-														value={commentSettings.google_client_id}
-														onChange={(e) =>
-															setCommentSettings((prev) => ({
-																...prev,
-																google_client_id: e.target.value,
-															}))
-														}
-														placeholder={t("填写 Google OAuth Client ID")}
-														/>
-												</div>
-												<div>
-													<label className="block text-sm text-text-2 mb-1">
-														Google Client Secret
-													</label>
-													<div className="flex items-center gap-2">
-												<TextInput
-													type="password"
-													value={commentSettings.google_client_secret}
-													onChange={(e) =>
-														setCommentSettings((prev) => ({
-															...prev,
-															google_client_secret: e.target.value,
-														}))
-													}
-													placeholder={t("填写 Google OAuth Client Secret")}
-													className="flex-1"
-												/>
-												<IconButton
-													type="button"
-													onClick={() => handleCopyMaskedValue(commentSettings.google_client_secret)}
-													variant="secondary"
-													size="md"
-													title={t("复制")}
-													disabled={!commentSettings.google_client_secret}
-												>
-													<IconCopy className="h-4 w-4" />
-												</IconButton>
-											</div>
-												</div>
-											</div>
-
-											<div>
-												<label className="block text-sm text-text-2 mb-1">
-													NextAuth Secret
-												</label>
-												<div className="flex gap-2">
-													<TextInput
-													type="password"
-													value={commentSettings.nextauth_secret}
-													onChange={(e) =>
-														setCommentSettings((prev) => ({
-															...prev,
-															nextauth_secret: e.target.value,
-														}))
-													}
-													placeholder={t("用于签名会话的 Secret")}
-													className="flex-1"
-												/>
-												<IconButton
-													type="button"
-													onClick={() => handleCopyMaskedValue(commentSettings.nextauth_secret)}
-													variant="secondary"
-													size="md"
-													title={t("复制")}
-													disabled={!commentSettings.nextauth_secret}
-												>
-													<IconCopy className="h-4 w-4" />
-												</IconButton>
-												<Button
-													type="button"
-													onClick={handleGenerateNextAuthSecret}
-													variant="secondary"
-													size="sm"
-												>
-													{t("自动生成")}
-												</Button>
-												</div>
-											</div>
-														</>
-													)}
-
-													{commentSubSection === "filters" && (
-														<>
-															<div className="flex items-center justify-between border border-border rounded-sm p-4 bg-surface">
-																<div>
-																	<div className="text-sm font-medium text-text-1">
-																		{t("敏感词过滤")}
-																	</div>
-																	<div className="text-xs text-text-3 mt-1">
-																		{t("启用后将拦截包含敏感词的评论")}
-																	</div>
-																</div>
-																<label className="inline-flex items-center gap-2 text-sm text-text-2 cursor-pointer">
-																	<CheckboxInput
-																		checked={commentSettings.sensitive_filter_enabled}
-																		onChange={(e) =>
-																			setCommentSettings((prev) => ({
-																				...prev,
-																				sensitive_filter_enabled: e.target.checked,
-																			}))
-																		}
-																		className="h-4 w-4"
-																	/>
-																	<span>
-																		{commentSettings.sensitive_filter_enabled
-																			? t("已开启")
-																			: t("已关闭")}
-																	</span>
-																</label>
+									{commentSettingsLoading ? (
+										<div className="rounded-sm border border-border bg-muted px-4 py-8 text-center text-sm text-text-3">
+											{t("加载中")}
+										</div>
+									) : (
+										<div className="space-y-6">
+											{commentSubSection === "keys" && (
+												<>
+													<div className="flex items-center justify-between border border-border rounded-sm p-4 bg-surface">
+														<div>
+															<div className="text-sm font-medium text-text-1">
+																{t("开启评论")}
 															</div>
+															<div className="text-xs text-text-3 mt-1">
+																{t("关闭后访客评论入口将隐藏")}
+															</div>
+														</div>
+														<label className="inline-flex items-center gap-2 text-sm text-text-2 cursor-pointer">
+															<CheckboxInput
+																checked={commentSettings.comments_enabled}
+																onChange={(e) =>
+																	setCommentSettings((prev) => ({
+																		...prev,
+																		comments_enabled: e.target.checked,
+																	}))
+																}
+																className="h-4 w-4"
+															/>
+															<span>
+																{commentSettings.comments_enabled
+																	? t("已开启")
+																	: t("已关闭")}
+															</span>
+														</label>
+													</div>
 
-															<div>
-																<div className="flex items-center gap-2 mb-1">
-																	<label className="block text-sm text-text-2">
-																		{t("敏感词列表")}
-																	</label>
-																	<div className="relative group">
-																		<span className="h-5 w-5 rounded-full border border-border text-text-3 inline-flex items-center justify-center text-xs cursor-default">
-																			?
-																		</span>
-																		<div className="pointer-events-none absolute left-1/2 top-full mt-2 -translate-x-1/2 whitespace-nowrap rounded-sm border border-border bg-surface px-2 py-1 text-xs text-text-2 shadow-sm opacity-0 group-hover:opacity-100 transition">
-																			{t("支持换行或逗号分隔")}
-																		</div>
-																	</div>
-																</div>
-																<TextArea
-																	value={commentSettings.sensitive_words}
+													<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+														<div>
+															<label className="block text-sm text-text-2 mb-1">
+																GitHub Client ID
+															</label>
+															<TextInput
+																value={commentSettings.github_client_id}
+																onChange={(e) =>
+																	setCommentSettings((prev) => ({
+																		...prev,
+																		github_client_id: e.target.value,
+																	}))
+																}
+																placeholder={t("填写 GitHub OAuth Client ID")}
+															/>
+														</div>
+														<div>
+															<label className="block text-sm text-text-2 mb-1">
+																GitHub Client Secret
+															</label>
+															<div className="flex flex-wrap items-center gap-2">
+																<TextInput
+																	type="password"
+																	value={commentSettings.github_client_secret}
 																	onChange={(e) =>
 																		setCommentSettings((prev) => ({
 																			...prev,
-																			sensitive_words: e.target.value,
+																			github_client_secret: e.target.value,
 																		}))
 																	}
-																	rows={4}
-																	placeholder={t("每行一个敏感词，或使用逗号分隔")}
-																	/>
-															</div>
-														</>
-													)}
-
-											{commentSubSection === "keys" && commentValidationResult && (
-												<div
-													className={`rounded-sm border p-3 text-xs ${
-														commentValidationResult.ok
-															? "border-success-soft bg-success-soft text-success-ink"
-															: "border-danger-soft bg-danger-soft text-danger-ink"
-													}`}
-												>
-													<div className="font-medium mb-1">
-														{commentValidationResult.ok
-															? t("校验通过")
-															: t("校验提示")}
-													</div>
-													<div className="space-y-1">
-														{commentValidationResult.messages.map((item) => (
-															<div key={item}>{item}</div>
-														))}
-													</div>
-													{commentValidationResult.callbacks.length > 0 && (
-														<div className="mt-2 text-text-2">
-															<div className="font-medium mb-1">
-																{t("回调地址")}
-															</div>
-															<div className="space-y-1">
-																{commentValidationResult.callbacks.map((item) => (
-																	<div key={item} className="break-all">
-																		{item}
-																	</div>
-																))}
+																	placeholder={t(
+																		"填写 GitHub OAuth Client Secret",
+																	)}
+																	className="flex-1"
+																/>
+																<IconButton
+																	type="button"
+																	onClick={() =>
+																		handleCopyMaskedValue(
+																			commentSettings.github_client_secret,
+																		)
+																	}
+																	variant="secondary"
+																	size="md"
+																	title={t("复制")}
+																	disabled={
+																		!commentSettings.github_client_secret
+																	}
+																>
+																	<IconCopy className="h-4 w-4" />
+																</IconButton>
 															</div>
 														</div>
+														<div>
+															<label className="block text-sm text-text-2 mb-1">
+																Google Client ID
+															</label>
+															<TextInput
+																value={commentSettings.google_client_id}
+																onChange={(e) =>
+																	setCommentSettings((prev) => ({
+																		...prev,
+																		google_client_id: e.target.value,
+																	}))
+																}
+																placeholder={t("填写 Google OAuth Client ID")}
+															/>
+														</div>
+														<div>
+															<label className="block text-sm text-text-2 mb-1">
+																Google Client Secret
+															</label>
+															<div className="flex flex-wrap items-center gap-2">
+																<TextInput
+																	type="password"
+																	value={commentSettings.google_client_secret}
+																	onChange={(e) =>
+																		setCommentSettings((prev) => ({
+																			...prev,
+																			google_client_secret: e.target.value,
+																		}))
+																	}
+																	placeholder={t(
+																		"填写 Google OAuth Client Secret",
+																	)}
+																	className="flex-1"
+																/>
+																<IconButton
+																	type="button"
+																	onClick={() =>
+																		handleCopyMaskedValue(
+																			commentSettings.google_client_secret,
+																		)
+																	}
+																	variant="secondary"
+																	size="md"
+																	title={t("复制")}
+																	disabled={
+																		!commentSettings.google_client_secret
+																	}
+																>
+																	<IconCopy className="h-4 w-4" />
+																</IconButton>
+															</div>
+														</div>
+													</div>
+
+													<div>
+														<label className="block text-sm text-text-2 mb-1">
+															NextAuth Secret
+														</label>
+														<div className="flex gap-2">
+															<TextInput
+																type="password"
+																value={commentSettings.nextauth_secret}
+																onChange={(e) =>
+																	setCommentSettings((prev) => ({
+																		...prev,
+																		nextauth_secret: e.target.value,
+																	}))
+																}
+																placeholder={t("用于签名会话的 Secret")}
+																className="flex-1"
+															/>
+															<IconButton
+																type="button"
+																onClick={() =>
+																	handleCopyMaskedValue(
+																		commentSettings.nextauth_secret,
+																	)
+																}
+																variant="secondary"
+																size="md"
+																title={t("复制")}
+																disabled={!commentSettings.nextauth_secret}
+															>
+																<IconCopy className="h-4 w-4" />
+															</IconButton>
+															<Button
+																type="button"
+																onClick={handleGenerateNextAuthSecret}
+																variant="secondary"
+																size="sm"
+															>
+																{t("自动生成")}
+															</Button>
+														</div>
+													</div>
+												</>
+											)}
+
+											{commentSubSection === "filters" && (
+												<>
+													<div className="flex items-center justify-between border border-border rounded-sm p-4 bg-surface">
+														<div>
+															<div className="text-sm font-medium text-text-1">
+																{t("敏感词过滤")}
+															</div>
+															<div className="text-xs text-text-3 mt-1">
+																{t("启用后将拦截包含敏感词的评论")}
+															</div>
+														</div>
+														<label className="inline-flex items-center gap-2 text-sm text-text-2 cursor-pointer">
+															<CheckboxInput
+																checked={
+																	commentSettings.sensitive_filter_enabled
+																}
+																onChange={(e) =>
+																	setCommentSettings((prev) => ({
+																		...prev,
+																		sensitive_filter_enabled: e.target.checked,
+																	}))
+																}
+																className="h-4 w-4"
+															/>
+															<span>
+																{commentSettings.sensitive_filter_enabled
+																	? t("已开启")
+																	: t("已关闭")}
+															</span>
+														</label>
+													</div>
+
+													<div>
+														<div className="flex items-center gap-2 mb-1">
+															<label className="block text-sm text-text-2">
+																{t("敏感词列表")}
+															</label>
+															<div className="relative group">
+																<span className="h-5 w-5 rounded-full border border-border text-text-3 inline-flex items-center justify-center text-xs cursor-default">
+																	?
+																</span>
+																<div className="pointer-events-none absolute left-1/2 top-full mt-2 -translate-x-1/2 whitespace-nowrap rounded-sm border border-border bg-surface px-2 py-1 text-xs text-text-2 shadow-sm opacity-0 group-hover:opacity-100 transition">
+																	{t("支持换行或逗号分隔")}
+																</div>
+															</div>
+														</div>
+														<TextArea
+															value={commentSettings.sensitive_words}
+															onChange={(e) =>
+																setCommentSettings((prev) => ({
+																	...prev,
+																	sensitive_words: e.target.value,
+																}))
+															}
+															rows={4}
+															placeholder={t("每行一个敏感词，或使用逗号分隔")}
+														/>
+													</div>
+												</>
+											)}
+
+											{commentSubSection === "keys" &&
+												commentValidationResult && (
+													<div
+														className={`rounded-sm border p-3 text-xs ${
+															commentValidationResult.ok
+																? "border-success-soft bg-success-soft text-success-ink"
+																: "border-danger-soft bg-danger-soft text-danger-ink"
+														}`}
+													>
+														<div className="font-medium mb-1">
+															{commentValidationResult.ok
+																? t("校验通过")
+																: t("校验提示")}
+														</div>
+														<div className="space-y-1">
+															{commentValidationResult.messages.map((item) => (
+																<div key={item}>{item}</div>
+															))}
+														</div>
+														{commentValidationResult.callbacks.length > 0 && (
+															<div className="mt-2 text-text-2">
+																<div className="font-medium mb-1">
+																	{t("回调地址")}
+																</div>
+																<div className="space-y-1">
+																	{commentValidationResult.callbacks.map(
+																		(item) => (
+																			<div key={item} className="break-all">
+																				{item}
+																			</div>
+																		),
+																	)}
+																</div>
+															</div>
+														)}
+													</div>
+												)}
+											{commentSubSection === "keys" && (
+												<div className="text-xs text-text-3">
+													{t(
+														"保存后立即生效，如登录异常请检查 OAuth 回调地址配置。",
 													)}
 												</div>
 											)}
-											{commentSubSection === "keys" && (
-												<div className="text-xs text-text-3">
-													{t("保存后立即生效，如登录异常请检查 OAuth 回调地址配置。")}
-												</div>
-											)}
-
 										</div>
 									)}
 								</div>
 							)}
 
 							{activeSection === "storage" && (
-								<div className="bg-surface rounded-sm shadow-sm border border-border p-6">
-									<div className="flex items-center justify-between mb-6">
-									<div>
-										<h2 className="text-lg font-semibold text-text-1">
-											{t("文件存储")}
-										</h2>
-										<p className="text-sm text-text-3">
-											{t("控制图片是否转存为本地文件")}
-										</p>
+								<div className="bg-surface rounded-sm shadow-sm border border-border p-6 w-full min-w-0">
+									<div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+										<div className="space-y-1">
+											<h2 className="text-lg font-semibold text-text-1">
+												{t("文件存储")}
+											</h2>
+											<p className="text-sm text-text-3">
+												{t("控制图片是否转存为本地文件")}
+											</p>
+										</div>
+										<div className="flex flex-wrap items-center gap-2">
+											<Button
+												onClick={handleCleanupMedia}
+												disabled={storageCleanupLoading}
+												variant="secondary"
+											>
+												{storageCleanupLoading ? t("清理中") : t("深度清理")}
+											</Button>
+											<Button
+												onClick={handleSaveStorageSettings}
+												disabled={storageSettingsSaving}
+												variant="primary"
+											>
+												{storageSettingsSaving ? t("保存中") : t("保存配置")}
+											</Button>
+										</div>
 									</div>
-									<div className="flex items-center gap-2">
-										<Button
-										onClick={handleCleanupMedia}
-										disabled={storageCleanupLoading}
-										variant="secondary"
-									>
-										{storageCleanupLoading ? t("清理中") : t("深度清理")}
-									</Button>
-										<Button
-										onClick={handleSaveStorageSettings}
-										disabled={storageSettingsSaving}
-										variant="primary"
-									>
-										{storageSettingsSaving ? t("保存中") : t("保存配置")}
-									</Button>
-									</div>
-								</div>
 
-								{storageSettingsLoading ? (
-									<div className="text-center py-12 text-text-3">
-										{t("加载中")}
-									</div>
-								) : (
-									<div className="space-y-4">
-										<div className="flex items-center justify-between border border-border rounded-sm p-4 bg-surface">
+									{storageSettingsLoading ? (
+										<div className="rounded-sm border border-border bg-muted px-4 py-8 text-center text-sm text-text-3">
+											{t("加载中")}
+										</div>
+									) : (
+										<div className="space-y-4">
+											<div className="flex items-center justify-between border border-border rounded-sm p-4 bg-surface">
 												<div>
 													<div className="text-sm font-medium text-text-1">
 														{t("开启本地图片存储")}
@@ -3574,340 +3818,404 @@ const { section, article_title: articleTitleParam } = router.query;
 															? t("已开启")
 															: t("已关闭")}
 													</span>
-											</label>
+												</label>
+											</div>
+											<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+												<div>
+													<label className="block text-sm text-text-2 mb-1">
+														{t("压缩阈值 (KB)")}
+													</label>
+													<TextInput
+														type="number"
+														min={256}
+														value={Math.round(
+															storageSettings.media_compress_threshold / 1024,
+														)}
+														onChange={(e) =>
+															setStorageSettings((prev) => ({
+																...prev,
+																media_compress_threshold:
+																	Math.max(256, Number(e.target.value || 0)) *
+																	1024,
+															}))
+														}
+														placeholder={t("超过该大小触发压缩")}
+													/>
+												</div>
+												<div>
+													<label className="block text-sm text-text-2 mb-1">
+														{t("最长边 (px)")}
+													</label>
+													<TextInput
+														type="number"
+														min={600}
+														value={storageSettings.media_max_dim}
+														onChange={(e) =>
+															setStorageSettings((prev) => ({
+																...prev,
+																media_max_dim: Math.max(
+																	600,
+																	Number(e.target.value || 0),
+																),
+															}))
+														}
+														placeholder={t("限制图片最长边")}
+													/>
+												</div>
+												<div>
+													<label className="block text-sm text-text-2 mb-1">
+														{t("WEBP 质量 (30-95)")}
+													</label>
+													<TextInput
+														type="number"
+														min={30}
+														max={95}
+														value={storageSettings.media_webp_quality}
+														onChange={(e) =>
+															setStorageSettings((prev) => ({
+																...prev,
+																media_webp_quality: Math.min(
+																	95,
+																	Math.max(30, Number(e.target.value || 0)),
+																),
+															}))
+														}
+														placeholder={t("WEBP 压缩质量")}
+													/>
+												</div>
+											</div>
 										</div>
-										<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-											<div>
-												<label className="block text-sm text-text-2 mb-1">
-													{t("压缩阈值 (KB)")}
-												</label>
-												<TextInput
-													type="number"
-													min={256}
-													value={Math.round(storageSettings.media_compress_threshold / 1024)}
-													onChange={(e) =>
-														setStorageSettings((prev) => ({
-															...prev,
-															media_compress_threshold: Math.max(
-																256,
-																Number(e.target.value || 0),
-															) * 1024,
-														}))
-													}
-																										placeholder={t("超过该大小触发压缩")}
-											/>
+									)}
+								</div>
+							)}
+
+							{activeSection === "monitoring" &&
+								monitoringSubSection === "tasks" && (
+									<div className="bg-surface rounded-sm shadow-sm border border-border p-6 w-full min-w-0">
+										<div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+											<div className="space-y-1">
+												<h2 className="text-lg font-semibold text-text-1">
+													{t("AI 任务监控")}
+												</h2>
+												<p className="text-sm text-text-3">
+													{t("查看、重试或取消后台任务")}
+												</p>
 											</div>
-											<div>
-												<label className="block text-sm text-text-2 mb-1">
-													{t("最长边 (px)")}
-												</label>
-												<TextInput
-													type="number"
-													min={600}
-													value={storageSettings.media_max_dim}
-													onChange={(e) =>
-														setStorageSettings((prev) => ({
-															...prev,
-															media_max_dim: Math.max(
-																600,
-																Number(e.target.value || 0),
-															),
-														}))
-													}
-																										placeholder={t("限制图片最长边")}
-											/>
+											<div className="flex flex-wrap items-center gap-2">
+												<Button
+													onClick={() => {
+														setTaskStatusFilter("");
+														setTaskTypeFilter("");
+														setTaskArticleTitleFilter("");
+														setTaskPage(1);
+													}}
+													variant="secondary"
+													disabled={!hasTaskFilters}
+												>
+													{t("清空筛选")}
+												</Button>
+												<Button onClick={fetchTasks} variant="secondary">
+													{t("刷新")}
+												</Button>
 											</div>
-											<div>
-												<label className="block text-sm text-text-2 mb-1">
-													{t("WEBP 质量 (30-95)")}
-												</label>
-												<TextInput
-													type="number"
-													min={30}
-													max={95}
-													value={storageSettings.media_webp_quality}
-													onChange={(e) =>
-														setStorageSettings((prev) => ({
-															...prev,
-															media_webp_quality: Math.min(
-																95,
-																Math.max(30, Number(e.target.value || 0)),
-															),
-														}))
-													}
-																										placeholder={t("WEBP 压缩质量")}
+										</div>
+
+										<div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+											<FilterSelect
+												label={t("状态")}
+												value={taskStatusFilter}
+												onChange={(value) => {
+													setTaskStatusFilter(value);
+													setTaskPage(1);
+												}}
+												options={[
+													{ value: "", label: t("全部") },
+													{ value: "pending", label: t("待处理") },
+													{ value: "processing", label: t("处理中") },
+													{ value: "completed", label: t("已完成") },
+													{ value: "failed", label: t("失败") },
+													{ value: "cancelled", label: t("已取消") },
+												]}
 											/>
+											<FilterSelect
+												label={t("任务类型")}
+												value={taskTypeFilter}
+												onChange={(value) => {
+													setTaskTypeFilter(value);
+													setTaskPage(1);
+												}}
+												options={[
+													{ value: "", label: t("全部") },
+													{
+														value: "process_article_cleaning",
+														label: t("清洗"),
+													},
+													{
+														value: "process_article_validation",
+														label: t("校验"),
+													},
+													{
+														value: "process_article_classification",
+														label: t("分类"),
+													},
+													{
+														value: "process_article_translation",
+														label: t("翻译"),
+													},
+													{
+														value: "process_article_embedding",
+														label: t("向量化"),
+													},
+													{
+														value: "process_ai_content:summary",
+														label: t("摘要"),
+													},
+													{
+														value: "process_ai_content:outline",
+														label: t("大纲"),
+													},
+													{
+														value: "process_ai_content:quotes",
+														label: t("金句"),
+													},
+													{
+														value: "process_ai_content:key_points",
+														label: t("总结"),
+													},
+													{ value: "process_article_ai", label: t("旧流程") },
+												]}
+											/>
+											<ArticleSearchSelect
+												label={t("文章名称")}
+												value={taskArticleTitleFilter}
+												onChange={(value) => {
+													setTaskArticleTitleFilter(value);
+													setTaskPage(1);
+												}}
+												placeholder={t("输入文章名称搜索...")}
+											/>
+										</div>
+
+										{taskLoading ? (
+											<div className="rounded-sm border border-border bg-muted px-4 py-8 text-center text-sm text-text-3">
+												{t("加载中")}
+											</div>
+										) : taskItems.length === 0 ? (
+											<div className="rounded-sm border border-border bg-muted px-4 py-8 text-center text-sm text-text-3">
+												{hasTaskFilters ? t("暂无匹配任务") : t("暂无任务")}
+											</div>
+										) : (
+											<div className="w-full overflow-x-auto">
+												<table className="w-full table-auto text-sm">
+													<thead className="bg-muted text-text-2">
+														<tr>
+															<th className="w-[11%] text-left px-4 py-3">
+																{t("任务")}
+															</th>
+															<th className="w-[12%] whitespace-nowrap text-left px-4 py-3">
+																{t("状态")}
+															</th>
+															<th className="w-[8%] whitespace-nowrap text-left px-4 py-3">
+																{t("尝试")}
+															</th>
+															<th className="w-[18%] text-left px-4 py-3">
+																{t("文章")}
+															</th>
+															<th className="w-[28%] whitespace-nowrap text-left px-4 py-3">
+																{t("时间")}
+															</th>
+															<th className="w-[12%] whitespace-nowrap text-right px-4 py-3">
+																{t("操作")}
+															</th>
+														</tr>
+													</thead>
+													<tbody className="divide-y divide-border">
+														{taskItems.map((task) => (
+															<tr key={task.id} className="hover:bg-muted">
+																<td className="px-4 py-3">
+																	<button
+																		type="button"
+																		onClick={() =>
+																			handleOpenTaskTimeline(task.id)
+																		}
+																		className="w-full text-left text-primary hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
+																		disabled={openingTaskTimelineId === task.id}
+																		aria-busy={
+																			openingTaskTimelineId === task.id ||
+																			undefined
+																		}
+																	>
+																		<div className="font-medium text-text-1 truncate">
+																			{getTaskTypeLabel(
+																				task.task_type,
+																				task.content_type,
+																			)}
+																			{t("生成")}
+																		</div>
+																		<div className="text-xs text-text-3">
+																			#{task.id.slice(0, 8)}
+																		</div>
+																		{openingTaskTimelineId === task.id && (
+																			<div className="text-xs text-text-3">
+																				{t("加载中...")}
+																			</div>
+																		)}
+																	</button>
+																</td>
+																<td className="px-4 py-3">
+																	<StatusTag
+																		tone={
+																			task.status === "completed"
+																				? "success"
+																				: task.status === "failed"
+																					? "danger"
+																					: task.status === "processing"
+																						? "info"
+																						: task.status === "cancelled"
+																							? "neutral"
+																							: "warning"
+																		}
+																	>
+																		{getTaskStatusLabel(task.status)}
+																	</StatusTag>
+																	{task.last_error && (
+																		<div
+																			className="text-xs text-danger mt-1 line-clamp-1"
+																			title={task.last_error}
+																		>
+																			{task.last_error}
+																		</div>
+																	)}
+																</td>
+																<td className="px-4 py-3 text-text-2">
+																	{task.attempts}/{task.max_attempts}
+																</td>
+																<td className="px-4 py-3 text-text-2">
+																	{task.article_id ? (
+																		<Link
+																			href={`/article/${task.article_slug || task.article_id}`}
+																			className="text-primary hover:underline"
+																			title={
+																				task.article_title ||
+																				task.article_id ||
+																				t("未知文章")
+																			}
+																			target="_blank"
+																			rel="noopener noreferrer"
+																		>
+																			{t("查看")}
+																		</Link>
+																	) : (
+																		"-"
+																	)}
+																</td>
+																<td className="px-4 py-3 text-text-3">
+																	<div>
+																		{t("创建")}：
+																		{new Date(task.created_at).toLocaleString(
+																			"zh-CN",
+																		)}
+																	</div>
+																	{task.finished_at && (
+																		<div>
+																			{t("完成")}：
+																			{new Date(
+																				task.finished_at,
+																			).toLocaleString("zh-CN")}
+																		</div>
+																	)}
+																</td>
+																<td className="px-4 py-3 text-right">
+																	<div className="flex items-center justify-end gap-2">
+																		<IconButton
+																			onClick={() => handleRetryTask(task.id)}
+																			variant="ghost"
+																			size="sm"
+																			title={t("重试")}
+																			loading={pendingTaskActionIds.has(
+																				task.id,
+																			)}
+																			disabled={
+																				task.status === "processing" ||
+																				pendingTaskActionIds.has(task.id)
+																			}
+																		>
+																			<IconRefresh className="h-4 w-4" />
+																		</IconButton>
+																		<IconButton
+																			onClick={() => handleCancelTask(task.id)}
+																			variant="danger"
+																			size="sm"
+																			title={t("取消")}
+																			loading={pendingTaskActionIds.has(
+																				task.id,
+																			)}
+																			disabled={pendingTaskActionIds.has(
+																				task.id,
+																			)}
+																		>
+																			<IconTrash className="h-4 w-4" />
+																		</IconButton>
+																	</div>
+																</td>
+															</tr>
+														))}
+													</tbody>
+												</table>
+											</div>
+										)}
+
+										<div className="mt-6 flex items-center justify-between">
+											<div className="flex items-center gap-2 text-sm text-text-2">
+												<span>{t("每页显示")}</span>
+												<SelectField
+													value={taskPageSize}
+													onChange={(value) => {
+														setTaskPageSize(Number(value));
+														setTaskPage(1);
+													}}
+													className="w-20"
+													popupClassName="select-modern-dropdown"
+													options={[
+														{ value: 10, label: "10" },
+														{ value: 20, label: "20" },
+														{ value: 50, label: "50" },
+													]}
+												/>
+												<span>
+													{t("条")}，{t("共")} {taskTotal} {t("条")}
+												</span>
+											</div>
+											<div className="flex flex-wrap items-center gap-2">
+												<Button
+													onClick={() => setTaskPage((p) => Math.max(1, p - 1))}
+													disabled={taskPage === 1}
+													variant="secondary"
+													size="sm"
+												>
+													{t("上一页")}
+												</Button>
+												<span className="min-w-[112px] px-4 py-2 text-center text-sm bg-surface border border-border rounded-sm text-text-2">
+													{t("第")} {taskPage} /{" "}
+													{Math.ceil(taskTotal / taskPageSize) || 1} {t("页")}
+												</span>
+												<Button
+													onClick={() => setTaskPage((p) => p + 1)}
+													disabled={taskPage * taskPageSize >= taskTotal}
+													variant="secondary"
+													size="sm"
+												>
+													{t("下一页")}
+												</Button>
 											</div>
 										</div>
 									</div>
 								)}
-							</div>
-						)}
 
-							{activeSection === "monitoring" && monitoringSubSection === "tasks" && (
-								<div className="bg-surface rounded-lg shadow-sm p-6">
-									<div className="flex items-center justify-between mb-6">
-										<div>
-											<h2 className="text-lg font-semibold text-text-1">
-												{t("AI 任务监控")}
-											</h2>
-											<p className="text-sm text-text-3">
-												{t("查看、重试或取消后台任务")}
-											</p>
-										</div>
-										<div className="flex items-center gap-2">
-											<Button
-												onClick={() => {
-													setTaskStatusFilter("");
-													setTaskTypeFilter("");
-													setTaskArticleTitleFilter("");
-													setTaskPage(1);
-											}}
-												variant="secondary"
-												disabled={!hasTaskFilters}
-											>
-												{t("清空筛选")}
-											</Button>
-											<Button onClick={fetchTasks} variant="secondary">
-											{t("刷新")}
-										</Button>
-										</div>
-									</div>
-
-									<div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-										<FilterSelect
-											label={t("状态")}
-											value={taskStatusFilter}
-											onChange={(value) => {
-												setTaskStatusFilter(value);
-												setTaskPage(1);
-											}}
-											options={[
-												{ value: "", label: t("全部") },
-												{ value: "pending", label: t("待处理") },
-												{ value: "processing", label: t("处理中") },
-												{ value: "completed", label: t("已完成") },
-												{ value: "failed", label: t("失败") },
-												{ value: "cancelled", label: t("已取消") },
-											]}
-										/>
-										<FilterSelect
-											label={t("任务类型")}
-											value={taskTypeFilter}
-											onChange={(value) => {
-												setTaskTypeFilter(value);
-												setTaskPage(1);
-											}}
-											options={[
-												{ value: "", label: t("全部") },
-												{ value: "process_article_cleaning", label: t("清洗") },
-												{ value: "process_article_validation", label: t("校验") },
-												{ value: "process_article_classification", label: t("分类") },
-												{ value: "process_article_translation", label: t("翻译") },
-												{ value: "process_article_embedding", label: t("向量化") },
-												{ value: "process_ai_content:summary", label: t("摘要") },
-												{ value: "process_ai_content:outline", label: t("大纲") },
-												{ value: "process_ai_content:quotes", label: t("金句") },
-												{ value: "process_ai_content:key_points", label: t("总结") },
-												{ value: "process_article_ai", label: t("旧流程") },
-											]}
-										/>
-<ArticleSearchSelect
-													label={t("文章名称")}
-													value={taskArticleTitleFilter}
-													onChange={(value) => {
-														setTaskArticleTitleFilter(value);
-														setTaskPage(1);
-													}}
-													placeholder={t("输入文章名称搜索...")}
-												/>
-									</div>
-
-									{taskLoading ? (
-										<div className="text-center py-12 text-text-3">
-											{t("加载中")}
-										</div>
-									) : taskItems.length === 0 ? (
-										<div className="text-center py-12 text-text-3">
-											{hasTaskFilters ? t("暂无匹配任务") : t("暂无任务")}
-										</div>
-									) : (
-										<div className="overflow-x-auto">
-											<table className="min-w-full text-sm">
-												<thead className="bg-muted text-text-2">
-													<tr>
-														<th className="text-left px-4 py-3">{t("任务")}</th>
-														<th className="text-left px-4 py-3">{t("状态")}</th>
-														<th className="text-left px-4 py-3">{t("尝试")}</th>
-														<th className="text-left px-4 py-3">{t("文章")}</th>
-														<th className="text-left px-4 py-3">{t("时间")}</th>
-														<th className="text-right px-4 py-3">{t("操作")}</th>
-													</tr>
-												</thead>
-												<tbody className="divide-y divide-border">
-													{taskItems.map((task) => (
-														<tr key={task.id} className="hover:bg-muted">
-															<td className="px-4 py-3">
-												<button
-													type="button"
-													onClick={() => handleOpenTaskTimeline(task.id)}
-													className="text-left text-primary hover:underline"
-												>
-													<div className="font-medium text-text-1">
-														{getTaskTypeLabel(task.task_type, task.content_type)}{t("生成")}
-													</div>
-													<div className="text-xs text-text-3">#{task.id.slice(0, 8)}</div>
-												</button>
-											</td>
-															<td className="px-4 py-3">
-													<StatusTag
-														tone={
-															task.status === "completed"
-																? "success"
-																: task.status === "failed"
-																	? "danger"
-																	: task.status === "processing"
-																		? "info"
-																		: task.status === "cancelled"
-																			? "neutral"
-																			: "warning"
-														}
-													>
-														{getTaskStatusLabel(task.status)}
-													</StatusTag>
-																{task.last_error && (
-																	<div
-																		className="text-xs text-danger mt-1 line-clamp-1"
-																		title={task.last_error}
-																	>
-																		{task.last_error}
-																	</div>
-																)}
-															</td>
-															<td className="px-4 py-3 text-text-2">
-																{task.attempts}/{task.max_attempts}
-															</td>
-															<td className="px-4 py-3 text-text-2">
-																{task.article_id ? (
-																	<Link
-																		href={`/article/${task.article_slug || task.article_id}`}
-																		className="text-primary hover:underline"
-																		title={
-																			task.article_title || task.article_id
-																		}
-											target="_blank"
-											rel="noopener noreferrer"
-																	>
-																		{(() => {
-																			const title =
-																				task.article_title || t("未知文章");
-																			const chars = Array.from(title);
-																			const truncated = chars
-																				.slice(0, 10)
-																				.join("");
-																			return chars.length > 10
-																				? `${truncated}...`
-																				: truncated;
-																		})()}
-																	</Link>
-																) : (
-																	"-"
-																)}
-															</td>
-															<td className="px-4 py-3 text-text-3">
-																<div>
-																	{t("创建")}：
-																	{new Date(task.created_at).toLocaleString(
-																		"zh-CN",
-																	)}
-																</div>
-																{task.finished_at && (
-																	<div>
-																		{t("完成")}：
-																		{new Date(task.finished_at).toLocaleString(
-																			"zh-CN",
-																		)}
-																	</div>
-																)}
-															</td>
-															<td className="px-4 py-3 text-right">
-																<div className="flex items-center justify-end gap-2">
-																	<IconButton
-																		onClick={() => handleRetryTask(task.id)}
-																		variant="ghost"
-																		size="sm"
-																		title={t("重试")}
-																		disabled={task.status === "processing"}
-																	>
-																		<IconRefresh className="h-4 w-4" />
-																	</IconButton>
-																	<IconButton
-																		onClick={() => handleCancelTask(task.id)}
-																		variant="danger"
-																		size="sm"
-																		title={t("取消")}
-																	>
-																		<IconTrash className="h-4 w-4" />
-																	</IconButton>
-																</div>
-															</td>
-														</tr>
-													))}
-												</tbody>
-											</table>
-										</div>
-									)}
-
-									<div className="mt-6 flex items-center justify-between">
-										<div className="flex items-center gap-2 text-sm text-text-2">
-											<span>{t("每页显示")}</span>
-											<SelectField
-												value={taskPageSize}
-												onChange={(value) => {
-													setTaskPageSize(Number(value));
-													setTaskPage(1);
-												}}
-												className="w-20"
-												popupClassName="select-modern-dropdown"
-												options={[
-													{ value: 10, label: "10" },
-													{ value: 20, label: "20" },
-													{ value: 50, label: "50" },
-												]}
-											/>
-											<span>{t("条")}，{t("共")} {taskTotal} {t("条")}</span>
-										</div>
-										<div className="flex items-center gap-2">
-											<Button
-												onClick={() => setTaskPage((p) => Math.max(1, p - 1))}
-												disabled={taskPage === 1}
-												variant="secondary"
-												size="sm"
-											>
-												{t("上一页")}
-											</Button>
-											<span className="px-4 py-2 text-sm bg-surface border border-border rounded-sm text-text-2">
-												{t("第")} {taskPage} /{" "}
-												{Math.ceil(taskTotal / taskPageSize) || 1} {t("页")}
-											</span>
-											<Button
-												onClick={() => setTaskPage((p) => p + 1)}
-												disabled={taskPage * taskPageSize >= taskTotal}
-												variant="secondary"
-												size="sm"
-											>
-												{t("下一页")}
-											</Button>
-										</div>
-									</div>
-								</div>
-							)}
-
-							{activeSection === "ai" &&
-								aiSubSection === "recommendations" && (
-								<div className="bg-surface rounded-sm shadow-sm border border-border p-6">
-									<div className="flex items-center justify-between mb-6">
-										<div>
+							{activeSection === "ai" && aiSubSection === "recommendations" && (
+								<div className="bg-surface rounded-sm shadow-sm border border-border p-6 w-full min-w-0">
+									<div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+										<div className="space-y-1">
 											<h2 className="text-lg font-semibold text-text-1">
 												{t("文章推荐配置")}
 											</h2>
@@ -3915,19 +4223,21 @@ const { section, article_title: articleTitleParam } = router.query;
 												{t("控制相似文章推荐与向量化模型")}
 											</p>
 										</div>
-										<div className="flex items-center gap-2">
+										<div className="flex flex-wrap items-center gap-2">
 											<Button
 												onClick={handleSaveRecommendationSettings}
 												disabled={recommendationSettingsSaving}
 												variant="primary"
 											>
-												{recommendationSettingsSaving ? t("保存中") : t("保存配置")}
+												{recommendationSettingsSaving
+													? t("保存中")
+													: t("保存配置")}
 											</Button>
 										</div>
 									</div>
 
 									{recommendationSettingsLoading ? (
-										<div className="text-center py-12 text-text-3">
+										<div className="rounded-sm border border-border bg-muted px-4 py-8 text-center text-sm text-text-3">
 											{t("加载中")}
 										</div>
 									) : (
@@ -3943,7 +4253,9 @@ const { section, article_title: articleTitleParam } = router.query;
 												</div>
 												<label className="inline-flex items-center gap-2 text-sm text-text-2 cursor-pointer">
 													<CheckboxInput
-														checked={recommendationSettings.recommendations_enabled}
+														checked={
+															recommendationSettings.recommendations_enabled
+														}
 														onChange={(e) =>
 															setRecommendationSettings((prev) => ({
 																...prev,
@@ -3965,14 +4277,20 @@ const { section, article_title: articleTitleParam } = router.query;
 													{t("向量化模型")}
 												</label>
 												{modelAPIConfigs.filter(
-													(config) => (config.model_type || "general") === "vector",
+													(config) =>
+														(config.model_type || "general") === "vector",
 												).length === 0 && (
 													<div className="text-xs text-text-3 mb-2">
-														{t("暂无向量模型配置，请在模型API配置中设置模型类型为向量。")}
+														{t(
+															"暂无向量模型配置，请在模型API配置中设置模型类型为向量。",
+														)}
 													</div>
 												)}
 												<SelectField
-													value={recommendationSettings.recommendation_model_config_id || ""}
+													value={
+														recommendationSettings.recommendation_model_config_id ||
+														""
+													}
 													onChange={(value) =>
 														setRecommendationSettings((prev) => ({
 															...prev,
@@ -3998,7 +4316,9 @@ const { section, article_title: articleTitleParam } = router.query;
 													]}
 												/>
 												<div className="text-xs text-text-3 mt-2">
-													{t("默认本地模型将使用本地推理；选择模型配置将走 API 调用生成向量。")}
+													{t(
+														"默认本地模型将使用本地推理；选择模型配置将走 API 调用生成向量。",
+													)}
 												</div>
 											</div>
 										</div>
@@ -4008,227 +4328,265 @@ const { section, article_title: articleTitleParam } = router.query;
 
 							{activeSection === "monitoring" &&
 								monitoringSubSection === "comments" && (
-									<div className="bg-surface rounded-sm shadow-sm border border-border p-6">
-										<div className="flex items-center justify-between mb-6">
-											<div>
-											<h2 className="text-lg font-semibold text-text-1">
-												{t("评论列表")}
-											</h2>
-											<p className="text-sm text-text-3">
-												{t("查看与管理所有评论与回复")}
-											</p>
+									<div className="bg-surface rounded-sm shadow-sm border border-border p-6 w-full min-w-0">
+										<div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+											<div className="space-y-1">
+												<h2 className="text-lg font-semibold text-text-1">
+													{t("评论列表")}
+												</h2>
+												<p className="text-sm text-text-3">
+													{t("查看与管理所有评论与回复")}
+												</p>
 											</div>
-											<div className="flex items-center gap-2">
+											<div className="flex flex-wrap items-center gap-2">
 												<Button
-												onClick={resetCommentFilters}
-												variant="secondary"
-												disabled={!hasCommentFilters}
-											>
-												{t("清空筛选")}
-											</Button>
+													onClick={resetCommentFilters}
+													variant="secondary"
+													disabled={!hasCommentFilters}
+												>
+													{t("清空筛选")}
+												</Button>
 												<Button onClick={fetchCommentList} variant="secondary">
-												{t("刷新")}
-											</Button>
+													{t("刷新")}
+												</Button>
 											</div>
 										</div>
 
 										<div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-										<FilterInput
-											label={t("关键词")}
-											value={commentQuery}
-											onChange={(value) => {
-												setCommentQuery(value);
-												setCommentListPage(1);
-											}}
-											placeholder={t("搜索评论内容")}
-										/>
-<ArticleSearchSelect
-													label={t("文章名称")}
-													value={commentArticleTitle}
-													onChange={(value) => {
-														setCommentArticleTitle(value);
-														setCommentListPage(1);
-													}}
-													placeholder={t("输入文章名称搜索...")}
-												/>
-										<FilterInput
-											label={t("评论人")}
-											value={commentAuthor}
-											onChange={(value) => {
-												setCommentAuthor(value);
-												setCommentListPage(1);
-											}}
-											placeholder={t("评论人昵称")}
-										/>
-										<FilterSelect
-											label={t("可见性")}
-											value={commentVisibility}
-											onChange={(value) => {
-												setCommentVisibility(value);
-												setCommentListPage(1);
-											}}
-											options={[
-												{ value: "", label: t("全部") },
-												{ value: "visible", label: t("可见") },
-												{ value: "hidden", label: t("已隐藏") },
-											]}
-										/>
-										<FilterSelect
-											label={t("类型")}
-											value={commentReplyFilter}
-											onChange={(value) => {
-												setCommentReplyFilter(value);
-												setCommentListPage(1);
-											}}
-											options={[
-												{ value: "", label: t("全部") },
-												{ value: "main", label: t("主评论") },
-												{ value: "reply", label: t("回复") },
-											]}
-										/>
-										<div>
-											<label className="block text-sm text-text-2 mb-1.5">
-												{t("日期范围")}
-											</label>
-											<DateRangePicker
-												value={toDayjsRangeFromDateStrings(
-													commentStart,
-													commentEnd,
-												)}
-												onChange={(values) => {
-													const [start, end] = values || [];
-													setCommentStart(
-														start ? start.format("YYYY-MM-DD") : "",
-													);
-													setCommentEnd(end ? end.format("YYYY-MM-DD") : "");
+											<FilterInput
+												label={t("关键词")}
+												value={commentQuery}
+												onChange={(value) => {
+													setCommentQuery(value);
 													setCommentListPage(1);
 												}}
-												className="w-full"
+												placeholder={t("搜索评论内容")}
 											/>
+											<ArticleSearchSelect
+												label={t("文章名称")}
+												value={commentArticleTitle}
+												onChange={(value) => {
+													setCommentArticleTitle(value);
+													setCommentListPage(1);
+												}}
+												placeholder={t("输入文章名称搜索...")}
+											/>
+											<FilterInput
+												label={t("评论人")}
+												value={commentAuthor}
+												onChange={(value) => {
+													setCommentAuthor(value);
+													setCommentListPage(1);
+												}}
+												placeholder={t("评论人昵称")}
+											/>
+											<FilterSelect
+												label={t("可见性")}
+												value={commentVisibility}
+												onChange={(value) => {
+													setCommentVisibility(value);
+													setCommentListPage(1);
+												}}
+												options={[
+													{ value: "", label: t("全部") },
+													{ value: "visible", label: t("可见") },
+													{ value: "hidden", label: t("已隐藏") },
+												]}
+											/>
+											<FilterSelect
+												label={t("类型")}
+												value={commentReplyFilter}
+												onChange={(value) => {
+													setCommentReplyFilter(value);
+													setCommentListPage(1);
+												}}
+												options={[
+													{ value: "", label: t("全部") },
+													{ value: "main", label: t("主评论") },
+													{ value: "reply", label: t("回复") },
+												]}
+											/>
+											<div>
+												<label className="block text-sm text-text-2 mb-1.5">
+													{t("日期范围")}
+												</label>
+												<DateRangePicker
+													value={toDayjsRangeFromDateStrings(
+														commentStart,
+														commentEnd,
+													)}
+													onChange={(values) => {
+														const [start, end] = values || [];
+														setCommentStart(
+															start ? start.format("YYYY-MM-DD") : "",
+														);
+														setCommentEnd(end ? end.format("YYYY-MM-DD") : "");
+														setCommentListPage(1);
+													}}
+													className="w-full"
+												/>
+											</div>
 										</div>
-									</div>
 
 										{commentListLoading ? (
-											<div className="text-center py-12 text-text-3">
+											<div className="rounded-sm border border-border bg-muted px-4 py-8 text-center text-sm text-text-3">
 												{t("加载中")}
 											</div>
 										) : commentList.length === 0 ? (
-											<div className="text-center py-12 text-text-3">
+											<div className="rounded-sm border border-border bg-muted px-4 py-8 text-center text-sm text-text-3">
 												{hasCommentFilters ? t("暂无匹配评论") : t("暂无评论")}
 											</div>
 										) : (
-											<div className="overflow-x-auto">
-												<table className="min-w-full text-sm">
-										<thead className="bg-muted text-text-2">
-												<tr>
-													<th className="text-left px-4 py-3">{t("时间")}</th>
-													<th className="text-left px-4 py-3">{t("内容")}</th>
-													<th className="text-left px-4 py-3">{t("作者")}</th>
-													<th className="text-left px-4 py-3">{t("文章")}</th>
-													<th className="text-left px-4 py-3">{t("类型")}</th>
-													<th className="text-left px-4 py-3">{t("状态")}</th>
-													<th className="text-right px-4 py-3">{t("操作")}</th>
-												</tr>
-											</thead>
-										<tbody className="divide-y divide-border">
-											{commentList.map((comment) => {
-												return (
-													<tr key={comment.id} className="hover:bg-muted/40">
-														<td className="px-4 py-3 text-text-2 whitespace-nowrap">
-															{new Date(comment.created_at).toLocaleString(
-																"zh-CN",
-															)}
-														</td>
-												<td className="px-4 py-3">
-													<button
-														type="button"
-														onMouseEnter={(event) => {
-															setHoverComment(comment);
-															const rect = event.currentTarget.getBoundingClientRect();
-															setHoverTooltipPos({
-																x: rect.left,
-																y: rect.bottom + 8,
-															});
-														}}
-														onMouseLeave={() => {
-															setHoverComment(null);
-															setHoverTooltipPos(null);
-														}}
-														onClick={() => {
-															setActiveCommentContent(comment);
-															setShowCommentContentModal(true);
-															setHoverComment(null);
-															setHoverTooltipPos(null);
-														}}
-														className="inline-flex items-center gap-1 text-sm text-accent hover:underline"
-														aria-label={t("查看")}
-													>
-														<IconEye className="h-3 w-3" />
-														{t("查看")}
-													</button>
-												</td>
-															<td className="px-4 py-3">
-																<div className="text-text-1">
-																	{comment.user_name || t("匿名")}
-																</div>
-																<div className="text-xs text-text-3">
-																	{comment.provider || "-"}
-																</div>
-															</td>
-												<td className="px-4 py-3">
-													<Link
-														href={`/article/${comment.article_slug || comment.article_id}#comment-${comment.id}`}
-														className="inline-flex items-center gap-1 text-xs text-accent hover:underline"
-														target="_blank"
-														rel="noopener noreferrer"
-													>
-														<IconLink className="h-3 w-3" />
-														{t("查看")}
-													</Link>
-												</td>
-															<td className="px-4 py-3">
-																<StatusTag tone="neutral">
-															{comment.reply_to_id ? t("回复") : t("主评论")}
-														</StatusTag>
-															</td>
-															<td className="px-4 py-3">
-																<StatusTag tone={comment.is_hidden ? "danger" : "success"}>
-															{comment.is_hidden ? t("已隐藏") : t("可见")}
-														</StatusTag>
-															</td>
-															<td className="px-4 py-3 text-right">
-																			<div className="flex items-center justify-end gap-2">
-																				<IconButton
-																					onClick={() =>
-																						handleToggleCommentVisibility(
-																							comment.id,
-																							!comment.is_hidden,
-																						)
-																					}
-																					variant="ghost"
-																					size="sm"
-																					title={
-																						comment.is_hidden ? t("设为可见") : t("设为隐藏")
-																					}
-																				>
-																					<IconEye className="h-4 w-4" />
-																				</IconButton>
-																				<IconButton
-																					onClick={() =>
-																						handleDeleteCommentAdmin(comment.id)
-																					}
-																					variant="danger"
-																					size="sm"
-																					title={t("删除")}
-																				>
-																					<IconTrash className="h-4 w-4" />
-																				</IconButton>
-																			</div>
-															</td>
+											<div className="w-full overflow-x-auto">
+												<table className="w-full table-auto text-sm">
+													<thead className="bg-muted text-text-2">
+														<tr>
+															<th className="w-[22%] whitespace-nowrap text-left px-4 py-3">
+																{t("时间")}
+															</th>
+															<th className="w-[10%] whitespace-nowrap text-left px-4 py-3">
+																{t("内容")}
+															</th>
+															<th className="w-[18%] text-left px-4 py-3">
+																{t("作者")}
+															</th>
+															<th className="w-[14%] text-left px-4 py-3">
+																{t("文章")}
+															</th>
+															<th className="w-[10%] whitespace-nowrap text-left px-4 py-3">
+																{t("类型")}
+															</th>
+															<th className="w-[12%] whitespace-nowrap text-left px-4 py-3">
+																{t("状态")}
+															</th>
+															<th className="w-[14%] whitespace-nowrap text-right px-4 py-3">
+																{t("操作")}
+															</th>
 														</tr>
-													);
-												})}
-											</tbody>
+													</thead>
+													<tbody className="divide-y divide-border">
+														{commentList.map((comment) => {
+															return (
+																<tr
+																	key={comment.id}
+																	className="hover:bg-muted/40"
+																>
+																	<td className="px-4 py-3 text-text-2 whitespace-nowrap">
+																		{new Date(
+																			comment.created_at,
+																		).toLocaleString("zh-CN")}
+																	</td>
+																	<td className="px-4 py-3">
+																		<button
+																			type="button"
+																			onMouseEnter={(event) => {
+																				setHoverComment(comment);
+																				const rect =
+																					event.currentTarget.getBoundingClientRect();
+																				setHoverTooltipPos({
+																					x: rect.left,
+																					y: rect.bottom + 8,
+																				});
+																			}}
+																			onMouseLeave={() => {
+																				setHoverComment(null);
+																				setHoverTooltipPos(null);
+																			}}
+																			onClick={() => {
+																				setActiveCommentContent(comment);
+																				setShowCommentContentModal(true);
+																				setHoverComment(null);
+																				setHoverTooltipPos(null);
+																			}}
+																			className="text-primary hover:text-primary-ink"
+																			aria-label={t("查看")}
+																		>
+																			{t("查看")}
+																		</button>
+																	</td>
+																	<td className="px-4 py-3">
+																		<div className="max-w-[160px] truncate text-text-1">
+																			{comment.user_name || t("匿名")}
+																		</div>
+																		<div className="text-xs text-text-3">
+																			{comment.provider || "-"}
+																		</div>
+																	</td>
+																	<td className="px-4 py-3">
+																		<Link
+																			href={`/article/${comment.article_slug || comment.article_id}#comment-${comment.id}`}
+																			className="text-primary hover:text-primary-ink"
+																			target="_blank"
+																			rel="noopener noreferrer"
+																		>
+																			{t("查看")}
+																		</Link>
+																	</td>
+																	<td className="px-4 py-3">
+																		<StatusTag tone="neutral">
+																			{comment.reply_to_id
+																				? t("回复")
+																				: t("主评论")}
+																		</StatusTag>
+																	</td>
+																	<td className="px-4 py-3">
+																		<StatusTag
+																			tone={
+																				comment.is_hidden ? "danger" : "success"
+																			}
+																		>
+																			{comment.is_hidden
+																				? t("已隐藏")
+																				: t("可见")}
+																		</StatusTag>
+																	</td>
+																	<td className="px-4 py-3 text-right">
+																		<div className="flex items-center justify-end gap-2">
+																			<IconButton
+																				onClick={() =>
+																					handleToggleCommentVisibility(
+																						comment.id,
+																						!comment.is_hidden,
+																					)
+																				}
+																				variant="ghost"
+																				size="sm"
+																				title={
+																					comment.is_hidden
+																						? t("设为可见")
+																						: t("设为隐藏")
+																				}
+																				loading={pendingCommentActionIds.has(
+																					comment.id,
+																				)}
+																				disabled={pendingCommentActionIds.has(
+																					comment.id,
+																				)}
+																			>
+																				<IconEye className="h-4 w-4" />
+																			</IconButton>
+																			<IconButton
+																				onClick={() =>
+																					handleDeleteCommentAdmin(comment.id)
+																				}
+																				variant="danger"
+																				size="sm"
+																				title={t("删除")}
+																				loading={pendingCommentActionIds.has(
+																					comment.id,
+																				)}
+																				disabled={pendingCommentActionIds.has(
+																					comment.id,
+																				)}
+																			>
+																				<IconTrash className="h-4 w-4" />
+																			</IconButton>
+																		</div>
+																	</td>
+																</tr>
+															);
+														})}
+													</tbody>
 												</table>
 											</div>
 										)}
@@ -4250,9 +4608,11 @@ const { section, article_title: articleTitleParam } = router.query;
 														{ value: 50, label: "50" },
 													]}
 												/>
-												<span>{t("条")}，{t("共")} {commentListTotal} {t("条")}</span>
+												<span>
+													{t("条")}，{t("共")} {commentListTotal} {t("条")}
+												</span>
 											</div>
-											<div className="flex items-center gap-2">
+											<div className="flex flex-wrap items-center gap-2">
 												<Button
 													onClick={() =>
 														setCommentListPage((p) => Math.max(1, p - 1))
@@ -4263,82 +4623,90 @@ const { section, article_title: articleTitleParam } = router.query;
 												>
 													{t("上一页")}
 												</Button>
-												<span className="px-4 py-2 text-sm bg-surface border border-border rounded-sm text-text-2">
+												<span className="min-w-[112px] px-4 py-2 text-center text-sm bg-surface border border-border rounded-sm text-text-2">
 													{t("第")} {commentListPage} /{" "}
-													{Math.ceil(commentListTotal / commentListPageSize) || 1} {t("页")}
+													{Math.ceil(commentListTotal / commentListPageSize) ||
+														1}{" "}
+													{t("页")}
 												</span>
 												<Button
 													onClick={() => setCommentListPage((p) => p + 1)}
-													disabled={commentListPage * commentListPageSize >= commentListTotal}
+													disabled={
+														commentListPage * commentListPageSize >=
+														commentListTotal
+													}
 													variant="secondary"
 													size="sm"
 												>
 													{t("下一页")}
 												</Button>
 											</div>
+										</div>
 									</div>
-								</div>
-							)}
-					</main>
+								)}
+						</main>
 
-					{hoverComment && hoverTooltipPos && (
-						<div
-							className="fixed z-50 w-72 max-w-[calc(100vw-2rem)] rounded-md text-sm px-4 py-3 shadow-lg backdrop-blur bg-surface border border-border"
-							style={{ left: hoverTooltipPos.x, top: hoverTooltipPos.y }}
-						>
-							<p
-								className="text-text-1"
-								style={{
-									display: "-webkit-box",
-									WebkitLineClamp: 3,
-									WebkitBoxOrient: "vertical",
-									overflow: "hidden",
-									textOverflow: "ellipsis",
-								}}
+						{hoverComment && hoverTooltipPos && (
+							<div
+								className="fixed z-50 w-72 max-w-[calc(100vw-2rem)] rounded-md text-sm px-4 py-3 shadow-lg backdrop-blur bg-surface border border-border"
+								style={{ left: hoverTooltipPos.x, top: hoverTooltipPos.y }}
 							>
-								{buildCommentPreview(hoverComment.content)}
-							</p>
-						</div>
-					)}
+								<p
+									className="text-text-1"
+									style={{
+										display: "-webkit-box",
+										WebkitLineClamp: 3,
+										WebkitBoxOrient: "vertical",
+										overflow: "hidden",
+										textOverflow: "ellipsis",
+									}}
+								>
+									{buildCommentPreview(hoverComment.content)}
+								</p>
+							</div>
+						)}
 					</div>
 				</div>
 
-					{showCommentContentModal && activeCommentContent && (
-						<ModalShell
-							isOpen={showCommentContentModal}
-							onClose={() => {
-								setShowCommentContentModal(false);
-								setActiveCommentContent(null);
-							}}
-							title={t("评论详情")}
-							widthClassName="max-w-2xl"
-							footer={
-								<div className="flex justify-end">
-									<Button
-										type="button"
-										onClick={() => {
-											setShowCommentContentModal(false);
-											setActiveCommentContent(null);
-										}}
-										variant="secondary"
-									>
-										{t("关闭")}
-									</Button>
-								</div>
-							}
-						>
-							<div className="space-y-2 text-sm text-text-2">
-								<div className="text-xs text-text-3">
-									{activeCommentContent.user_name || t("匿名")} · {new Date(activeCommentContent.created_at).toLocaleString("zh-CN")}
-								</div>
-								<div className="rounded-sm border border-border bg-muted p-3 whitespace-pre-wrap break-words text-text-1">
-									{stripReplyPrefix(activeCommentContent.content)}
-								</div>
+				{showCommentContentModal && activeCommentContent && (
+					<ModalShell
+						isOpen={showCommentContentModal}
+						onClose={() => {
+							setShowCommentContentModal(false);
+							setActiveCommentContent(null);
+						}}
+						title={t("评论详情")}
+						widthClassName="max-w-2xl"
+						footer={
+							<div className="flex justify-end">
+								<Button
+									type="button"
+									onClick={() => {
+										setShowCommentContentModal(false);
+										setActiveCommentContent(null);
+									}}
+									variant="secondary"
+								>
+									{t("关闭")}
+								</Button>
 							</div>
-						</ModalShell>
-					)}
+						}
+					>
+						<div className="space-y-2 text-sm text-text-2">
+							<div className="text-xs text-text-3">
+								{activeCommentContent.user_name || t("匿名")} ·{" "}
+								{new Date(activeCommentContent.created_at).toLocaleString(
+									"zh-CN",
+								)}
+							</div>
+							<div className="rounded-sm border border-border bg-muted p-3 whitespace-pre-wrap break-words text-text-1">
+								{stripReplyPrefix(activeCommentContent.content)}
+							</div>
+						</div>
+					</ModalShell>
+				)}
 
-					{showModelAPIModal && (
+				{showModelAPIModal && (
 					<ModalShell
 						isOpen={showModelAPIModal}
 						onClose={() => setShowModelAPIModal(false)}
@@ -4360,7 +4728,12 @@ const { section, article_title: articleTitleParam } = router.query;
 								>
 									{t("取消")}
 								</Button>
-								<Button onClick={handleSaveModelAPI} variant="primary">
+								<Button
+									onClick={handleSaveModelAPI}
+									variant="primary"
+									loading={modelAPISaving}
+									disabled={modelAPISaving}
+								>
 									{editingModelAPIConfig ? t("保存") : t("创建")}
 								</Button>
 							</div>
@@ -4414,7 +4787,7 @@ const { section, article_title: articleTitleParam } = router.query;
 						</FormField>
 
 						<FormField label={t("API密钥")} required>
-							<div className="flex items-center gap-2">
+							<div className="flex flex-wrap items-center gap-2">
 								<TextInput
 									type="password"
 									value={modelAPIFormData.api_key}
@@ -4430,7 +4803,9 @@ const { section, article_title: articleTitleParam } = router.query;
 								/>
 								<IconButton
 									type="button"
-									onClick={() => handleCopyMaskedValue(modelAPIFormData.api_key)}
+									onClick={() =>
+										handleCopyMaskedValue(modelAPIFormData.api_key)
+									}
 									variant="secondary"
 									size="md"
 									title={t("复制")}
@@ -4443,7 +4818,7 @@ const { section, article_title: articleTitleParam } = router.query;
 
 						<FormField label={t("模型名称")} required>
 							{modelNameManual ? (
-								<div className="flex items-center gap-2">
+								<div className="flex flex-wrap items-center gap-2">
 									<TextInput
 										type="text"
 										value={modelAPIFormData.model_name}
@@ -4468,7 +4843,7 @@ const { section, article_title: articleTitleParam } = router.query;
 									</Button>
 								</div>
 							) : (
-								<div className="flex items-center gap-2">
+								<div className="flex flex-wrap items-center gap-2">
 									<SelectField
 										value={modelAPIFormData.model_name || undefined}
 										onChange={(value) =>
@@ -4478,7 +4853,7 @@ const { section, article_title: articleTitleParam } = router.query;
 											})
 										}
 										className="w-full"
-																				popupClassName="select-modern-dropdown"
+										popupClassName="select-modern-dropdown"
 										placeholder={t("请选择模型")}
 										options={modelOptions.map((model) => ({
 											value: model,
@@ -4508,7 +4883,9 @@ const { section, article_title: articleTitleParam } = router.query;
 								<SectionToggleButton
 									label={t("计费设置（可选）")}
 									expanded={showModelAPIAdvanced}
-									onToggle={() => setShowModelAPIAdvanced(!showModelAPIAdvanced)}
+									onToggle={() =>
+										setShowModelAPIAdvanced(!showModelAPIAdvanced)
+									}
 									expandedIndicator={t("收起")}
 									collapsedIndicator={t("展开")}
 								/>
@@ -4568,7 +4945,7 @@ const { section, article_title: articleTitleParam } = router.query;
 						)}
 
 						<div className="flex items-center gap-4">
-							<label className="flex items-center gap-2">
+							<label className="flex flex-wrap items-center gap-2">
 								<CheckboxInput
 									checked={modelAPIFormData.is_enabled}
 									onChange={(e) =>
@@ -4582,7 +4959,7 @@ const { section, article_title: articleTitleParam } = router.query;
 							</label>
 
 							{modelAPIFormData.model_type !== "vector" && (
-								<label className="flex items-center gap-2">
+								<label className="flex flex-wrap items-center gap-2">
 									<CheckboxInput
 										checked={modelAPIFormData.is_default}
 										onChange={(e) =>
@@ -4620,42 +4997,129 @@ const { section, article_title: articleTitleParam } = router.query;
 						}
 					>
 						{taskTimelineLoading ? (
-							<div className="py-10 text-center text-text-3">{t("加载中")}</div>
+							<div className="rounded-sm border border-border bg-muted px-4 py-8 text-center text-sm text-text-3">
+								{t("加载中")}
+							</div>
 						) : taskTimelineError ? (
-							<div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+							<div className="rounded-sm border border-danger/40 bg-danger-soft px-4 py-3 text-sm text-danger-ink">
 								{taskTimelineError}
 							</div>
 						) : selectedTaskTimeline ? (
 							<div className="space-y-4">
 								<div className="rounded-lg border border-border bg-muted p-4 text-sm text-text-2">
-									<div className="font-medium text-text-1 mb-2">{getTaskTypeLabel(selectedTaskTimeline.task.task_type, selectedTaskTimeline.task.content_type)}</div>
-									<div>{t("任务ID")}: {selectedTaskTimeline.task.id}</div>
-									<div>{t("状态")}: {getTaskStatusLabel(selectedTaskTimeline.task.status)}</div>
-									<div>{t("尝试")}: {selectedTaskTimeline.task.attempts}/{selectedTaskTimeline.task.max_attempts}</div>
+									<div className="font-medium text-text-1 mb-2">
+										{getTaskTypeLabel(
+											selectedTaskTimeline.task.task_type,
+											selectedTaskTimeline.task.content_type,
+										)}
+									</div>
+									<div>
+										{t("任务ID")}: {selectedTaskTimeline.task.id}
+									</div>
+									<div>
+										{t("状态")}:{" "}
+										{getTaskStatusLabel(selectedTaskTimeline.task.status)}
+									</div>
+									<div>
+										{t("尝试")}: {selectedTaskTimeline.task.attempts}/
+										{selectedTaskTimeline.task.max_attempts}
+									</div>
 									{selectedTaskTimeline.task.article_slug && (
 										<div>
 											{t("文章")}:
-											<Link href={`/article/${selectedTaskTimeline.task.article_slug}`} className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">
-												{selectedTaskTimeline.task.article_title || selectedTaskTimeline.task.article_slug}
+											<Link
+												href={`/article/${selectedTaskTimeline.task.article_slug}`}
+												className="text-primary hover:underline"
+												target="_blank"
+												rel="noopener noreferrer"
+											>
+												{selectedTaskTimeline.task.article_title ||
+													selectedTaskTimeline.task.article_slug}
 											</Link>
 										</div>
 									)}
 								</div>
 
+								<div className="mb-3 space-y-2">
+									<div className="flex flex-wrap items-center gap-2">
+										<span className="text-sm font-semibold text-text-1">
+											{t("调用链")}
+										</span>
+										{selectedTaskTimeline.usage.length === 0 ? (
+											<span className="text-xs text-text-3">
+												{t("暂无调用记录")}
+											</span>
+										) : (
+											selectedTaskTimeline.usage.map((usage, index) => (
+												<SelectableButton
+													key={usage.id}
+													onClick={() =>
+														setSelectedTaskTimelineUsageId(usage.id)
+													}
+													active={selectedTaskTimelineUsage?.id === usage.id}
+													variant="pill"
+												>
+													{usage.model_api_config_name ||
+														`${t("调用链")} ${index + 1}`}{" "}
+													·{" "}
+													{new Date(usage.created_at).toLocaleTimeString(
+														"zh-CN",
+														{
+															hour12: false,
+														},
+													)}
+												</SelectableButton>
+											))
+										)}
+									</div>
+									{selectedTaskTimelineUsage && (
+										<div className="rounded-sm border border-border bg-muted px-3 py-2 text-xs text-text-2">
+											<div>
+												{t("当前调用状态")}:{" "}
+												{getUsageStatusLabel(selectedTaskTimelineUsage.status)}
+											</div>
+											{selectedTaskTimelineUsage.error_message && (
+												<div className="text-danger-ink">
+													{selectedTaskTimelineUsage.error_message}
+												</div>
+											)}
+										</div>
+									)}
+								</div>
+
 								<div>
-									<h4 className="mb-2 text-sm font-semibold text-text-1">{t("状态时间线")}</h4>
+									<h4 className="mb-2 text-sm font-semibold text-text-1">
+										{t("状态时间线")}
+									</h4>
 									{selectedTaskTimeline.events.length === 0 ? (
-										<div className="text-sm text-text-3">{t("暂无事件")}</div>
+										<div className="rounded-sm border border-border bg-muted px-4 py-4 text-sm text-text-3">
+											{t("暂无事件")}
+										</div>
 									) : (
 										<div className="space-y-2">
 											{selectedTaskTimeline.events.map((event) => (
-												<div key={event.id} className="rounded-md border border-border p-3 text-xs text-text-2">
-													<div className="font-medium text-text-1">{getTaskEventLabel(event.event_type)}</div>
-													<div>{new Date(event.created_at).toLocaleString("zh-CN")}</div>
-													{event.from_status && event.to_status && <div>{event.from_status} → {event.to_status}</div>}
+												<div
+													key={event.id}
+													className="rounded-md border border-border p-3 text-xs text-text-2"
+												>
+													<div className="font-medium text-text-1">
+														{getTaskEventLabel(event.event_type)}
+													</div>
+													<div>
+														{new Date(event.created_at).toLocaleString("zh-CN")}
+													</div>
+													{event.from_status && event.to_status && (
+														<div>
+															{event.from_status} → {event.to_status}
+														</div>
+													)}
 													{event.message && <div>{event.message}</div>}
 													{event.details && (
-														<pre className="mt-1 whitespace-pre-wrap rounded bg-surface p-2 text-[11px]">{typeof event.details === "string" ? event.details : JSON.stringify(event.details, null, 2)}</pre>
+														<pre className="mt-1 whitespace-pre-wrap rounded bg-surface p-2 text-[11px]">
+															{typeof event.details === "string"
+																? event.details
+																: JSON.stringify(event.details, null, 2)}
+														</pre>
 													)}
 												</div>
 											))}
@@ -4664,21 +5128,83 @@ const { section, article_title: articleTitleParam } = router.query;
 								</div>
 
 								<div>
-									<h4 className="mb-2 text-sm font-semibold text-text-1">{t("AI调用记录")}</h4>
+									<div className="mb-2 flex flex-wrap items-center gap-2">
+										<h4 className="text-sm font-semibold text-text-1">
+											{t("AI调用记录")}
+										</h4>
+										<div className="flex flex-wrap items-center gap-2">
+											<IconButton
+												type="button"
+												onClick={() =>
+													openUsagePayload(
+														`${t("请求输入")} · ${selectedTaskTimelineUsage?.model_api_config_name || t("未知模型")}`,
+														selectedTaskTimelineUsage?.request_payload || null,
+													)
+												}
+												variant="ghost"
+												size="sm"
+												title={t("查看所选入参")}
+												disabled={!selectedTaskTimelineUsage?.request_payload}
+											>
+												<IconArrowDown className="h-4 w-4" />
+											</IconButton>
+											<IconButton
+												type="button"
+												onClick={() =>
+													openUsagePayload(
+														`${t("响应输出")} · ${selectedTaskTimelineUsage?.model_api_config_name || t("未知模型")}`,
+														selectedTaskTimelineUsage?.response_payload || null,
+													)
+												}
+												variant="ghost"
+												size="sm"
+												title={t("查看所选出参")}
+												disabled={!selectedTaskTimelineUsage?.response_payload}
+											>
+												<IconArrowUp className="h-4 w-4" />
+											</IconButton>
+										</div>
+									</div>
 									{selectedTaskTimeline.usage.length === 0 ? (
-										<div className="text-sm text-text-3">{t("暂无调用记录")}</div>
+										<div className="rounded-sm border border-border bg-muted px-4 py-4 text-sm text-text-3">
+											{t("暂无调用记录")}
+										</div>
 									) : (
-										<div className="space-y-2">
-											{selectedTaskTimeline.usage.map((usage) => (
-												<div key={usage.id} className="rounded-md border border-border p-3 text-xs text-text-2">
-													<div className="font-medium text-text-1">{usage.model_api_config_name || t("未知模型")}</div>
-													<div>{new Date(usage.created_at).toLocaleString("zh-CN")}</div>
-													<div>{t("状态")}: {getUsageStatusLabel(usage.status)}</div>
-													<div>{t("tokens")}: {usage.total_tokens ?? 0}</div>
-													{usage.latency_ms != null && <div>{t("耗时")}: {usage.latency_ms}ms</div>}
-													{usage.error_message && <div className="text-red-600">{usage.error_message}</div>}
+										<div className="space-y-3">
+											{selectedTaskTimelineUsage && (
+												<div className="rounded-md border border-border p-3 text-xs text-text-2">
+													<div className="font-medium text-text-1">
+														{selectedTaskTimelineUsage.model_api_config_name ||
+															t("未知模型")}
+													</div>
+													<div>
+														{new Date(
+															selectedTaskTimelineUsage.created_at,
+														).toLocaleString("zh-CN")}
+													</div>
+													<div>
+														{t("状态")}:{" "}
+														{getUsageStatusLabel(
+															selectedTaskTimelineUsage.status,
+														)}
+													</div>
+													<div>
+														{t("tokens")}:{" "}
+														{selectedTaskTimelineUsage.total_tokens ?? 0}
+													</div>
+													{selectedTaskTimelineUsage.latency_ms != null && (
+														<div>
+															{t("耗时")}:{" "}
+															{selectedTaskTimelineUsage.latency_ms}ms
+														</div>
+													)}
+													{selectedTaskTimelineUsage.error_message && (
+														<div className="text-danger-ink">
+															{selectedTaskTimelineUsage.error_message}
+														</div>
+													)}
 												</div>
-											))}
+											)}
 										</div>
 									)}
 								</div>
@@ -4695,14 +5221,22 @@ const { section, article_title: articleTitleParam } = router.query;
 						widthClassName="max-w-3xl"
 						panelClassName="max-h-[90vh] overflow-y-auto"
 						headerClassName="border-b border-border p-6"
+						headerActions={
+							<IconButton
+								type="button"
+								onClick={handleCopyPayload}
+								variant="ghost"
+								size="sm"
+								title={t("复制")}
+								aria-label={t("复制内容")}
+							>
+								<IconCopy className="h-4 w-4" />
+							</IconButton>
+						}
 						bodyClassName="p-6"
 						footerClassName="border-t border-border bg-muted p-6"
 						footer={
-							<div className="flex justify-end gap-2">
-								<Button onClick={handleCopyPayload} variant="secondary" size="sm">
-									<IconCopy className="mr-1 h-4 w-4" />
-									{t("复制")}
-								</Button>
+							<div className="flex justify-end">
 								<Button
 									onClick={() => setShowUsagePayloadModal(false)}
 									variant="secondary"
@@ -4758,10 +5292,12 @@ const { section, article_title: articleTitleParam } = router.query;
 												<tr>
 													<td className="px-3 py-2">{t("输入成本")}</td>
 													<td className="px-3 py-2">
-														{formatCostValue(usageCostBreakdown.inputCost)} {usageCostBreakdown.currency}
+														{formatCostValue(usageCostBreakdown.inputCost)}{" "}
+														{usageCostBreakdown.currency}
 													</td>
 													<td className="px-3 py-2">
-														{usageCostBreakdown.promptTokens != null && usageCostBreakdown.inputUnitPrice != null
+														{usageCostBreakdown.promptTokens != null &&
+														usageCostBreakdown.inputUnitPrice != null
 															? `(${usageCostBreakdown.promptTokens} / 1000) × ${formatCostValue(usageCostBreakdown.inputUnitPrice)} = ${formatCostValue(usageCostBreakdown.inputCost)}`
 															: "-"}
 													</td>
@@ -4769,10 +5305,12 @@ const { section, article_title: articleTitleParam } = router.query;
 												<tr>
 													<td className="px-3 py-2">{t("输出成本")}</td>
 													<td className="px-3 py-2">
-														{formatCostValue(usageCostBreakdown.outputCost)} {usageCostBreakdown.currency}
+														{formatCostValue(usageCostBreakdown.outputCost)}{" "}
+														{usageCostBreakdown.currency}
 													</td>
 													<td className="px-3 py-2">
-														{usageCostBreakdown.completionTokens != null && usageCostBreakdown.outputUnitPrice != null
+														{usageCostBreakdown.completionTokens != null &&
+														usageCostBreakdown.outputUnitPrice != null
 															? `(${usageCostBreakdown.completionTokens} / 1000) × ${formatCostValue(usageCostBreakdown.outputUnitPrice)} = ${formatCostValue(usageCostBreakdown.outputCost)}`
 															: "-"}
 													</td>
@@ -4780,10 +5318,12 @@ const { section, article_title: articleTitleParam } = router.query;
 												<tr>
 													<td className="px-3 py-2">{t("总成本")}</td>
 													<td className="px-3 py-2 font-medium text-text-1">
-														{formatCostValue(usageCostBreakdown.totalCost)} {usageCostBreakdown.currency}
+														{formatCostValue(usageCostBreakdown.totalCost)}{" "}
+														{usageCostBreakdown.currency}
 													</td>
 													<td className="px-3 py-2">
-														{usageCostBreakdown.inputCost != null || usageCostBreakdown.outputCost != null
+														{usageCostBreakdown.inputCost != null ||
+														usageCostBreakdown.outputCost != null
 															? `${formatCostValue(usageCostBreakdown.inputCost)} + ${formatCostValue(usageCostBreakdown.outputCost)} = ${formatCostValue(usageCostBreakdown.totalCost)}`
 															: "-"}
 													</td>
@@ -4805,9 +5345,7 @@ const { section, article_title: articleTitleParam } = router.query;
 						isOpen={showPromptModal}
 						onClose={() => setShowPromptModal(false)}
 						title={
-							editingPromptConfig
-								? t("编辑提示词配置")
-								: t("创建新提示词配置")
+							editingPromptConfig ? t("编辑提示词配置") : t("创建新提示词配置")
 						}
 						widthClassName="max-w-2xl"
 						panelClassName="max-h-[90vh] overflow-y-auto"
@@ -4822,7 +5360,12 @@ const { section, article_title: articleTitleParam } = router.query;
 								>
 									{t("取消")}
 								</Button>
-								<Button onClick={handleSavePrompt} variant="primary">
+								<Button
+									onClick={handleSavePrompt}
+									variant="primary"
+									loading={promptSaving}
+									disabled={promptSaving}
+								>
 									{editingPromptConfig ? t("保存") : t("创建")}
 								</Button>
 							</div>
@@ -5001,7 +5544,7 @@ const { section, article_title: articleTitleParam } = router.query;
 						</FormField>
 
 						<div className="flex items-center gap-4">
-							<label className="flex items-center gap-2">
+							<label className="flex flex-wrap items-center gap-2">
 								<CheckboxInput
 									checked={promptFormData.is_enabled}
 									onChange={(e) =>
@@ -5014,7 +5557,7 @@ const { section, article_title: articleTitleParam } = router.query;
 								<span className="text-sm text-text-2">{t("启用此配置")}</span>
 							</label>
 
-							<label className="flex items-center gap-2">
+							<label className="flex flex-wrap items-center gap-2">
 								<CheckboxInput
 									checked={promptFormData.is_default}
 									onChange={(e) =>
@@ -5024,9 +5567,7 @@ const { section, article_title: articleTitleParam } = router.query;
 										})
 									}
 								/>
-								<span className="text-sm text-text-2">
-									{t("设为默认配置")}
-								</span>
+								<span className="text-sm text-text-2">{t("设为默认配置")}</span>
 							</label>
 						</div>
 					</ModalShell>
@@ -5051,7 +5592,12 @@ const { section, article_title: articleTitleParam } = router.query;
 								>
 									{t("取消")}
 								</Button>
-								<Button onClick={handleSaveCategory} variant="primary">
+								<Button
+									onClick={handleSaveCategory}
+									variant="primary"
+									loading={categorySaving}
+									disabled={categorySaving}
+								>
 									{editingCategory ? t("保存") : t("创建")}
 								</Button>
 							</div>
@@ -5081,6 +5627,7 @@ const { section, article_title: articleTitleParam } = router.query;
 									})
 								}
 								rows={3}
+								placeholder={t("描述将用于辅助AI自动分类判断")}
 							/>
 						</FormField>
 
@@ -5090,7 +5637,9 @@ const { section, article_title: articleTitleParam } = router.query;
 									<button
 										key={color}
 										type="button"
-										onClick={() => setCategoryFormData({ ...categoryFormData, color })}
+										onClick={() =>
+											setCategoryFormData({ ...categoryFormData, color })
+										}
 										className={`h-8 w-8 rounded-lg transition ${
 											categoryFormData.color === color
 												? "ring-2 ring-primary ring-offset-2"
@@ -5262,7 +5811,6 @@ const { section, article_title: articleTitleParam } = router.query;
 						)}
 					</ModalShell>
 				)}
-
 			</div>
 			<ConfirmModal
 				isOpen={confirmState.isOpen}

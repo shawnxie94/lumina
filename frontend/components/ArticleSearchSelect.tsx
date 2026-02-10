@@ -116,14 +116,24 @@ export function ArticleSearchSelect({
             setIsOpen(true);
             if (inputValue) searchArticles(inputValue);
           }}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              setIsOpen(false);
+              return;
+            }
+            if (event.key === "Enter" && isOpen && options.length > 0) {
+              event.preventDefault();
+              handleSelect(options[0]);
+            }
+          }}
           placeholder={resolvedPlaceholder}
-          className="w-full h-9 px-3 pr-8 border border-border rounded-sm bg-surface text-text-1 text-sm placeholder:text-sm placeholder:text-text-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
+          className="w-full h-9 px-3 pr-8 border border-border rounded-sm bg-surface text-text-1 text-sm placeholder:text-sm placeholder:text-text-3 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35 focus-visible:ring-offset-2 focus-visible:ring-offset-surface focus-visible:border-accent"
         />
         {(inputValue || selectedArticle) && (
           <button
             type="button"
             onClick={handleClear}
-            className="absolute right-2 top-1/2 -translate-y-1/2 text-text-3 hover:text-text-1"
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-text-3 hover:text-text-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35 focus-visible:ring-offset-2 focus-visible:ring-offset-surface rounded-sm"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <title>{t('清除')}</title>
@@ -143,7 +153,7 @@ export function ArticleSearchSelect({
                 key={article.id}
                 type="button"
                 onClick={() => handleSelect(article)}
-                className="w-full px-3 py-2 text-left text-sm text-text-1 hover:bg-muted transition-colors"
+                className="w-full px-3 py-2 text-left text-sm text-text-1 hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35 focus-visible:ring-inset"
               >
                 <div className="truncate">{article.title}</div>
               </button>

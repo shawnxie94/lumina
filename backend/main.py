@@ -1667,13 +1667,28 @@ async def get_ai_task_timeline(
         .all()
     )
 
-    usage_rows = (
+    usage_query = (
         db.query(AIUsageLog, ModelAPIConfig.name)
         .outerjoin(ModelAPIConfig, AIUsageLog.model_api_config_id == ModelAPIConfig.id)
         .filter(AIUsageLog.task_id == task_id)
-        .order_by(AIUsageLog.created_at.asc())
-        .all()
     )
+    if task.task_type:
+        usage_query = usage_query.filter(
+            or_(AIUsageLog.task_type == task.task_type, AIUsageLog.task_type.is_(None))
+        )
+    if task.article_id:
+        usage_query = usage_query.filter(
+            or_(AIUsageLog.article_id == task.article_id, AIUsageLog.article_id.is_(None))
+        )
+    if task.content_type:
+        usage_query = usage_query.filter(
+            or_(
+                AIUsageLog.content_type == task.content_type,
+                AIUsageLog.content_type.is_(None),
+            )
+        )
+
+    usage_rows = usage_query.order_by(AIUsageLog.created_at.asc()).all()
 
     event_items = []
     for event in events:
@@ -1713,6 +1728,8 @@ async def get_ai_task_timeline(
                 "currency": log.currency,
                 "latency_ms": log.latency_ms,
                 "error_message": log.error_message,
+                "request_payload": log.request_payload,
+                "response_payload": log.response_payload,
                 "created_at": log.created_at,
             }
         )

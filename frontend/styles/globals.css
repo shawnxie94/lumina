@@ -330,7 +330,7 @@ html[data-theme="dark"] .note-panel {
 
 .select-modern-antd.ant-select-focused .ant-select-selector {
   border-color: var(--accent);
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.18), 0 2px 6px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.35);
 }
 
 .ant-select-dropdown {
@@ -368,10 +368,10 @@ html[data-theme="dark"] .note-panel {
   border-color: var(--border-strong);
 }
 
-.select-modern:focus {
+.select-modern:focus-visible {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.18), 0 2px 6px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.35);
 }
 
 .immersive-content img {

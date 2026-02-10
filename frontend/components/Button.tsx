@@ -13,13 +13,13 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 export const buttonVariantStyles: Record<ButtonVariant, string> = {
 	primary:
-		"bg-primary text-white hover:opacity-90 focus:ring-2 focus:ring-primary/20",
+		"bg-primary text-white hover:opacity-90",
 	secondary:
-		"bg-surface text-text-2 border border-border hover:bg-muted hover:text-text-1 focus:ring-2 focus:ring-accent/20",
+		"bg-surface text-text-2 border border-border hover:bg-muted hover:text-text-1",
 	danger:
-		"bg-danger text-white hover:bg-danger-hover focus:ring-2 focus:ring-danger/20",
+		"bg-danger text-white hover:bg-danger-hover",
 	ghost:
-		"bg-transparent text-text-2 hover:bg-muted hover:text-text-1 focus:ring-2 focus:ring-accent/20",
+		"bg-transparent text-text-2 hover:bg-muted hover:text-text-1",
 };
 
 export const buttonSizeStyles: Record<ButtonSize, string> = {
@@ -39,13 +39,14 @@ export default function Button({
 }: ButtonProps) {
 	const { t } = useI18n();
 	const baseStyles =
-		"inline-flex items-center justify-center rounded-sm transition font-medium focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed";
+		"inline-flex items-center justify-center rounded-sm transition font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35 focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:opacity-50 disabled:cursor-not-allowed";
 
 	return (
 		<button
 			type="button"
 			className={`${baseStyles} ${buttonVariantStyles[variant]} ${buttonSizeStyles[size]} ${className}`}
 			disabled={disabled || loading}
+			aria-busy={loading || undefined}
 			{...props}
 		>
 			{loading ? (

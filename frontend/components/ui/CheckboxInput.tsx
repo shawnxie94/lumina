@@ -7,7 +7,7 @@ export default function CheckboxInput({ className = "", ...props }: CheckboxInpu
 		<input
 			{...props}
 			type="checkbox"
-			className={`h-4 w-4 rounded border-border text-primary focus:ring-primary/20 ${className}`}
+			className={`h-4 w-4 rounded border-border text-primary focus-visible:ring-2 focus-visible:ring-primary/35 focus-visible:ring-offset-2 focus-visible:ring-offset-surface ${className}`}
 		/>
 	);
 }

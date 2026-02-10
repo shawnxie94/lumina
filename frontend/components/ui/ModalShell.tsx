@@ -7,6 +7,7 @@ interface ModalShellProps {
 	onClose?: () => void;
 	title: ReactNode;
 	children: ReactNode;
+	headerActions?: ReactNode;
 	footer?: ReactNode;
 	widthClassName?: string;
 	panelClassName?: string;
@@ -32,6 +33,7 @@ export default function ModalShell({
 	onClose,
 	title,
 	children,
+	headerActions,
 	footer,
 	widthClassName = "max-w-lg",
 	panelClassName = "",
@@ -131,15 +133,20 @@ export default function ModalShell({
 					<h3 id={titleId} className="text-lg font-semibold text-text-1">
 						{title}
 					</h3>
-					{showCloseButton && onClose && (
-						<button
-							type="button"
-							onClick={onClose}
-							className="text-xl text-text-3 transition hover:text-text-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
-							aria-label={t("关闭")}
-						>
-							×
-						</button>
+					{(headerActions || (showCloseButton && onClose)) && (
+						<div className="flex items-center gap-2">
+							{headerActions}
+							{showCloseButton && onClose && (
+								<button
+									type="button"
+									onClick={onClose}
+									className="text-xl text-text-3 transition hover:text-text-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35 focus-visible:ring-offset-2 focus-visible:ring-offset-surface rounded-sm"
+									aria-label={t("关闭")}
+								>
+									×
+								</button>
+							)}
+						</div>
 					)}
 				</div>
 				<div className={bodyClassName}>{children}</div>
