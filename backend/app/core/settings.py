@@ -87,10 +87,6 @@ class AppSettings(BaseSettings):
         )
 
     @property
-    def normalized_media_base_url(self) -> str:
-        return self.media.normalized_base_url
-
-    @property
     def cors_allow_origins(self) -> list[str]:
         raw = self.allowed_origins.strip()
         if not raw:
