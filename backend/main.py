@@ -1646,23 +1646,41 @@ async def retry_ai_tasks(
     if not request.task_ids:
         raise HTTPException(status_code=400, detail="请选择任务")
 
-    updated = (
-        db.query(AITask)
-        .filter(AITask.id.in_(request.task_ids))
-        .update(
-            {
-                "status": "pending",
-                "run_at": now_str(),
-                "locked_at": None,
-                "locked_by": None,
-                "last_error": None,
-                "updated_at": now_str(),
-            },
-            synchronize_session=False,
-        )
-    )
+    task_ids = list(dict.fromkeys(request.task_ids))
+    tasks = db.query(AITask).filter(AITask.id.in_(task_ids)).all()
+    task_map = {task.id: task for task in tasks}
+    now_iso = now_str()
+
+    updated_ids: list[str] = []
+    skipped_ids: list[str] = []
+
+    for task_id in task_ids:
+        task = task_map.get(task_id)
+        if not task:
+            skipped_ids.append(task_id)
+            continue
+        if task.status not in ["failed", "cancelled"]:
+            skipped_ids.append(task_id)
+            continue
+
+        task.status = "pending"
+        task.attempts = 0
+        task.run_at = now_iso
+        task.locked_at = None
+        task.locked_by = None
+        task.last_error = None
+        task.last_error_type = None
+        task.finished_at = None
+        task.updated_at = now_iso
+        updated_ids.append(task_id)
+
     db.commit()
-    return {"updated": updated}
+    return {
+        "updated": len(updated_ids),
+        "updated_ids": updated_ids,
+        "skipped": len(skipped_ids),
+        "skipped_ids": skipped_ids,
+    }
 
 
 @app.post("/api/ai-tasks/cancel")
@@ -1674,23 +1692,37 @@ async def cancel_ai_tasks(
     if not request.task_ids:
         raise HTTPException(status_code=400, detail="请选择任务")
 
-    updated = (
-        db.query(AITask)
-        .filter(AITask.id.in_(request.task_ids))
-        .filter(AITask.status.in_(["pending", "processing"]))
-        .update(
-            {
-                "status": "cancelled",
-                "locked_at": None,
-                "locked_by": None,
-                "updated_at": now_str(),
-                "finished_at": now_str(),
-            },
-            synchronize_session=False,
-        )
-    )
+    task_ids = list(dict.fromkeys(request.task_ids))
+    tasks = db.query(AITask).filter(AITask.id.in_(task_ids)).all()
+    task_map = {task.id: task for task in tasks}
+    now_iso = now_str()
+
+    updated_ids: list[str] = []
+    skipped_ids: list[str] = []
+
+    for task_id in task_ids:
+        task = task_map.get(task_id)
+        if not task:
+            skipped_ids.append(task_id)
+            continue
+        if task.status != "pending":
+            skipped_ids.append(task_id)
+            continue
+
+        task.status = "cancelled"
+        task.locked_at = None
+        task.locked_by = None
+        task.updated_at = now_iso
+        task.finished_at = now_iso
+        updated_ids.append(task_id)
+
     db.commit()
-    return {"updated": updated}
+    return {
+        "updated": len(updated_ids),
+        "updated_ids": updated_ids,
+        "skipped": len(skipped_ids),
+        "skipped_ids": skipped_ids,
+    }
 
 
 @app.get("/api/ai-usage")

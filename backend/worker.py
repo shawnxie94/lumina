@@ -1,10 +1,9 @@
 import asyncio
-import asyncio
 import json
 import os
 import time
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import or_
 
@@ -22,8 +21,12 @@ def get_now_iso() -> str:
     return now_str()
 
 
+def get_future_iso(seconds: int) -> str:
+    return (datetime.now(timezone.utc) + timedelta(seconds=seconds)).isoformat()
+
+
 def get_stale_lock_iso() -> str:
-    return (datetime.now() - timedelta(seconds=LOCK_TIMEOUT_SECONDS)).isoformat()
+    return (datetime.now(timezone.utc) - timedelta(seconds=LOCK_TIMEOUT_SECONDS)).isoformat()
 
 
 def claim_task(db) -> AITask | None:
@@ -72,27 +75,46 @@ def finish_task(
     error_type: str | None = None,
 ) -> None:
     now_iso = get_now_iso()
+    updates: dict[str, str | None] = {
+        "updated_at": now_iso,
+        "locked_at": None,
+        "locked_by": None,
+    }
     if success:
-        task.status = "completed"
-        task.finished_at = now_iso
-        task.last_error = None
-        task.last_error_type = None
+        updates.update(
+            {
+                "status": "completed",
+                "finished_at": now_iso,
+                "last_error": None,
+                "last_error_type": None,
+            }
+        )
     else:
         if task.attempts >= (task.max_attempts or 3):
-            task.status = "failed"
-            task.finished_at = now_iso
+            updates.update(
+                {
+                    "status": "failed",
+                    "finished_at": now_iso,
+                }
+            )
         else:
             backoff_seconds = min(60 * task.attempts, 300)
-            task.status = "pending"
-            task.run_at = (
-                datetime.now() + timedelta(seconds=backoff_seconds)
-            ).isoformat()
-        task.last_error = error
-        task.last_error_type = error_type
+            updates.update(
+                {
+                    "status": "pending",
+                    "run_at": get_future_iso(backoff_seconds),
+                }
+            )
+        updates["last_error"] = error
+        updates["last_error_type"] = error_type
 
-    task.locked_at = None
-    task.locked_by = None
-    task.updated_at = now_iso
+    (
+        db.query(AITask)
+        .filter(AITask.id == task.id)
+        .filter(AITask.status == "processing")
+        .filter(AITask.locked_by == WORKER_ID)
+        .update(updates, synchronize_session=False)
+    )
     db.commit()
 
 
