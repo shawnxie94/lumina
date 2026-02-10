@@ -1,0 +1,190 @@
+name: release-artifacts
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      release_tag: ${{ steps.vars.outputs.release_tag }}
+      short_sha: ${{ steps.vars.outputs.short_sha }}
+      is_prerelease: ${{ steps.vars.outputs.is_prerelease }}
+      dockerhub_namespace: ${{ steps.vars.outputs.dockerhub_namespace }}
+    steps:
+      - name: Prepare release metadata
+        id: vars
+        env:
+          DOCKERHUB_NAMESPACE: ${{ vars.DOCKERHUB_NAMESPACE }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+        run: |
+          RELEASE_TAG="${GITHUB_REF_NAME}"
+          SHORT_SHA="${GITHUB_SHA::7}"
+
+          if [[ "${RELEASE_TAG}" == *-* ]]; then
+            IS_PRERELEASE=true
+          else
+            IS_PRERELEASE=false
+          fi
+
+          NAMESPACE="${DOCKERHUB_NAMESPACE}"
+          if [[ -z "${NAMESPACE}" ]]; then
+            NAMESPACE="${DOCKERHUB_USERNAME}"
+          fi
+          if [[ -z "${NAMESPACE}" ]]; then
+            echo "Missing Docker Hub namespace. Please set repository variable DOCKERHUB_NAMESPACE or secret DOCKERHUB_USERNAME." >&2
+            exit 1
+          fi
+          NAMESPACE="$(echo "${NAMESPACE}" | tr '[:upper:]' '[:lower:]')"
+
+          echo "release_tag=${RELEASE_TAG}" >> "${GITHUB_OUTPUT}"
+          echo "short_sha=${SHORT_SHA}" >> "${GITHUB_OUTPUT}"
+          echo "is_prerelease=${IS_PRERELEASE}" >> "${GITHUB_OUTPUT}"
+          echo "dockerhub_namespace=${NAMESPACE}" >> "${GITHUB_OUTPUT}"
+
+  publish-backend-image:
+    runs-on: ubuntu-latest
+    needs: prepare
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          registry: docker.io
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Generate backend image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            docker.io/${{ needs.prepare.outputs.dockerhub_namespace }}/lumina-api
+            docker.io/${{ needs.prepare.outputs.dockerhub_namespace }}/lumina-worker
+          tags: |
+            type=raw,value=${{ needs.prepare.outputs.release_tag }}
+            type=raw,value=sha-${{ needs.prepare.outputs.short_sha }}
+            type=raw,value=latest,enable=${{ needs.prepare.outputs.is_prerelease == 'false' }}
+
+      - name: Build and push backend images
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+
+  publish-web-image:
+    runs-on: ubuntu-latest
+    needs: prepare
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          registry: docker.io
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Generate web image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: docker.io/${{ needs.prepare.outputs.dockerhub_namespace }}/lumina-web
+          tags: |
+            type=raw,value=${{ needs.prepare.outputs.release_tag }}
+            type=raw,value=sha-${{ needs.prepare.outputs.short_sha }}
+            type=raw,value=latest,enable=${{ needs.prepare.outputs.is_prerelease == 'false' }}
+
+      - name: Build and push web image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
+
+  publish-extension-release:
+    runs-on: ubuntu-latest
+    needs:
+      - prepare
+      - publish-backend-image
+      - publish-web-image
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: extension/package-lock.json
+
+      - name: Install extension dependencies
+        working-directory: ./extension
+        run: npm ci
+
+      - name: Build extension zip
+        working-directory: ./extension
+        run: npm run zip
+
+      - name: Prepare release assets
+        id: package
+        run: |
+          mkdir -p release-assets
+          ZIP_PATH="$(find extension/.output -type f -name '*.zip' | head -n 1)"
+          if [[ -z "${ZIP_PATH}" ]]; then
+            echo "Extension zip output not found." >&2
+            exit 1
+          fi
+          RELEASE_ZIP="lumina-extension-${{ needs.prepare.outputs.release_tag }}+${{ needs.prepare.outputs.short_sha }}.zip"
+          cp "${ZIP_PATH}" "release-assets/${RELEASE_ZIP}"
+          sha256sum "release-assets/${RELEASE_ZIP}" > "release-assets/${RELEASE_ZIP}.sha256"
+          echo "release_zip=${RELEASE_ZIP}" >> "${GITHUB_OUTPUT}"
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare.outputs.release_tag }}
+          generate_release_notes: true
+          prerelease: ${{ needs.prepare.outputs.is_prerelease == 'true' }}
+          body: |
+            ## 容器镜像（Docker Hub）
+            - `docker.io/${{ needs.prepare.outputs.dockerhub_namespace }}/lumina-api:${{ needs.prepare.outputs.release_tag }}`
+            - `docker.io/${{ needs.prepare.outputs.dockerhub_namespace }}/lumina-worker:${{ needs.prepare.outputs.release_tag }}`
+            - `docker.io/${{ needs.prepare.outputs.dockerhub_namespace }}/lumina-web:${{ needs.prepare.outputs.release_tag }}`
+
+            ## 扩展安装包
+            - `${{ steps.package.outputs.release_zip }}`
+            - `${{ steps.package.outputs.release_zip }}.sha256`
+          files: |
+            release-assets/${{ steps.package.outputs.release_zip }}
+            release-assets/${{ steps.package.outputs.release_zip }}.sha256

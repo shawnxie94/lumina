@@ -1,0 +1,49 @@
+services:
+  web:
+    image: docker.io/${DOCKERHUB_NAMESPACE}/lumina-web:${LUMINA_IMAGE_TAG}
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://api:8000
+      - INTERNAL_API_TOKEN=${INTERNAL_API_TOKEN}
+    depends_on:
+      - api
+    networks:
+      - app-network
+
+  api:
+    image: docker.io/${DOCKERHUB_NAMESPACE}/lumina-api:${LUMINA_IMAGE_TAG}
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=sqlite:///./data/articles.db
+      - INTERNAL_API_TOKEN=${INTERNAL_API_TOKEN}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-*}
+      - MEDIA_ROOT=/app/data/media
+    volumes:
+      - ./data:/app/data
+      - ./data/media:/app/data/media
+    networks:
+      - app-network
+
+  worker:
+    image: docker.io/${DOCKERHUB_NAMESPACE}/lumina-worker:${LUMINA_IMAGE_TAG}
+    restart: unless-stopped
+    command: /app/.venv/bin/python worker.py
+    environment:
+      - DATABASE_URL=sqlite:///./data/articles.db
+      - INTERNAL_API_TOKEN=${INTERNAL_API_TOKEN}
+      - AI_WORKER_POLL_INTERVAL=${AI_WORKER_POLL_INTERVAL:-3}
+      - AI_TASK_LOCK_TIMEOUT=${AI_TASK_LOCK_TIMEOUT:-300}
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      - api
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
