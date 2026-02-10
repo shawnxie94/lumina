@@ -416,6 +416,12 @@ class ArticleService:
         """通过slug查询文章"""
         return db.query(Article).filter(Article.slug == slug).first()
 
+    def get_article_by_identifier(self, db: Session, identifier: str) -> Article | None:
+        article = self.get_article_by_slug(db, identifier)
+        if article:
+            return article
+        return db.query(Article).filter(Article.id == identifier).first()
+
     async def create_article(self, article_data: dict, db: Session) -> str:
         if not article_data.get("content_html") and not article_data.get("content_md"):
             raise ValueError("文章内容不能为空")

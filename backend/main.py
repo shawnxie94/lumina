@@ -198,6 +198,10 @@ def get_admin_or_internal(
     return get_current_admin(credentials=credentials, db=db)
 
 
+def get_article_by_identifier(db: Session, identifier: str) -> Article | None:
+    return article_service.get_article_by_identifier(db, identifier)
+
+
 app = FastAPI(title="文章知识库API", version="1.0.0")
 
 app.mount(
@@ -1931,7 +1935,7 @@ async def retry_article_ai(
     _: bool = Depends(get_current_admin),
 ):
     try:
-        article = article_service.get_article_by_slug(db, article_slug)
+        article = get_article_by_identifier(db, article_slug)
         if not article:
             raise HTTPException(status_code=404, detail="文章不存在")
         actual_article_id = await article_service.retry_article_ai(db, article.id)
@@ -1942,14 +1946,14 @@ async def retry_article_ai(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@app.post("/api/articles/{article_id}/retry-translation")
+@app.post("/api/articles/{article_identifier}/retry-translation")
 async def retry_article_translation(
-    article_id: str,
+    article_identifier: str,
     db: Session = Depends(get_db),
     _: bool = Depends(get_current_admin),
 ):
     try:
-        article = article_service.get_article_by_slug(db, article_id)
+        article = get_article_by_identifier(db, article_identifier)
         if not article:
             raise HTTPException(status_code=404, detail="文章不存在")
         actual_article_id = await article_service.retry_article_translation(
@@ -1962,9 +1966,9 @@ async def retry_article_translation(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@app.post("/api/articles/{article_id}/generate/{content_type}")
+@app.post("/api/articles/{article_identifier}/generate/{content_type}")
 async def generate_ai_content(
-    article_id: str,
+    article_identifier: str,
     content_type: str,
     model_config_id: str = None,
     prompt_config_id: str = None,
@@ -1978,8 +1982,8 @@ async def generate_ai_content(
         )
 
     try:
-        # 通过 slug 查找文章
-        article = article_service.get_article_by_slug(db, article_id)
+        # 优先按 slug 查询，兼容使用 UUID 标识
+        article = get_article_by_identifier(db, article_identifier)
         if not article:
             raise HTTPException(status_code=404, detail="文章不存在")
         await article_service.generate_ai_content(
