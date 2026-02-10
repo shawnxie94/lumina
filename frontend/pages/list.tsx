@@ -234,15 +234,6 @@ export default function Home() {
     return `/article/${slug}?from=${encodeURIComponent(from)}`;
   };
 
-  const openArticleInNewTab = (slug: string) => {
-    const href = buildArticleHref(slug);
-    if (typeof window !== 'undefined') {
-      window.open(href, '_blank', 'noopener,noreferrer');
-      return;
-    }
-    router.push(href);
-  };
-
   const fetchArticles = async () => {
     const requestId = articleRequestIdRef.current + 1;
     articleRequestIdRef.current = requestId;
@@ -872,6 +863,9 @@ export default function Home() {
     event: React.MouseEvent<HTMLElement>,
     article: Article,
   ) => {
+    if (!showAdminDesktop) {
+      return;
+    }
     const target = event.target as HTMLElement | null;
     if (
       target?.closest(
@@ -880,19 +874,16 @@ export default function Home() {
     ) {
       return;
     }
-    if (showAdminDesktop) {
-      handleToggleSelect(article.slug);
-      return;
-    }
-
-    // 使用 slug 作为 URL，seo 更友好
-    openArticleInNewTab(article.slug);
+    handleToggleSelect(article.slug);
   };
 
   const handleArticleCardKeyDown = (
     event: React.KeyboardEvent<HTMLElement>,
     article: Article,
   ) => {
+    if (!showAdminDesktop) {
+      return;
+    }
     if (event.key !== 'Enter' && event.key !== ' ') {
       return;
     }
@@ -905,11 +896,7 @@ export default function Home() {
       return;
     }
     event.preventDefault();
-    if (showAdminDesktop) {
-      handleToggleSelect(article.slug);
-      return;
-    }
-    openArticleInNewTab(article.slug);
+    handleToggleSelect(article.slug);
   };
 
   const handleSelectAll = () => {
@@ -1036,33 +1023,39 @@ export default function Home() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div className="flex flex-wrap items-center gap-3">
           <span className="text-sm text-text-2">{t('已选')} {selectedArticleSlugs.size} {t('篇')}</span>
-          <button
+          <Button
             type="button"
             onClick={handleExport}
             disabled={batchActionPending}
-            className="px-3 py-1 text-sm rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition disabled:opacity-50 disabled:cursor-not-allowed"
+            variant="ghost"
+            size="sm"
+            className="min-w-[104px]"
           >
             {batchAction === 'export' ? t('导出中...') : `${t('导出选中')} (${selectedArticleSlugs.size})`}
-          </button>
+          </Button>
         </div>
         {isAdmin && (
           <div className="flex flex-wrap items-center gap-3">
-            <button
+            <Button
               type="button"
               onClick={() => handleBatchVisibility(true)}
               disabled={batchActionPending}
-              className="px-3 py-1 text-sm rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition disabled:opacity-50 disabled:cursor-not-allowed"
+              variant="ghost"
+              size="sm"
+              className="min-w-[88px]"
             >
               {batchAction === 'visibility' ? t('处理中...') : t('设为可见')}
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
               onClick={() => handleBatchVisibility(false)}
               disabled={batchActionPending}
-              className="px-3 py-1 text-sm rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition disabled:opacity-50 disabled:cursor-not-allowed"
+              variant="ghost"
+              size="sm"
+              className="min-w-[88px]"
             >
               {batchAction === 'visibility' ? t('处理中...') : t('设为隐藏')}
-            </button>
+            </Button>
             <div className="flex items-center gap-2">
               <SelectField
                 value={batchCategoryId}
@@ -1075,23 +1068,27 @@ export default function Home() {
                   ...categories.map((category) => ({ value: category.id, label: category.name })),
                 ]}
               />
-              <button
+              <Button
                 type="button"
                 onClick={handleBatchCategory}
                 disabled={batchActionPending}
-                className="px-3 py-1 text-sm rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition disabled:opacity-50 disabled:cursor-not-allowed"
+                variant="ghost"
+                size="sm"
+                className="min-w-[88px]"
               >
                 {batchAction === 'category' ? t('处理中...') : t('应用分类')}
-              </button>
+              </Button>
             </div>
-            <button
+            <Button
               type="button"
               onClick={handleBatchDelete}
               disabled={batchActionPending}
-              className="px-3 py-1 text-sm rounded-sm text-text-2 hover:text-red-700 hover:bg-red-100 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              variant="danger"
+              size="sm"
+              className="min-w-[96px]"
             >
               {batchAction === 'delete' ? t('删除中...') : t('批量删除')}
-            </button>
+            </Button>
           </div>
         )}
       </div>
@@ -1305,74 +1302,114 @@ export default function Home() {
                     </div>
                   )}
                   <div className="space-y-4">
-                    {articles.map((article) => (
-                      <div
-                        key={article.slug}
-                        id={`article-${article.slug}`}
-                        onClick={(event) => handleOpenArticle(event, article)}
-                        onKeyDown={(event) => handleArticleCardKeyDown(event, article)}
-                        role="button"
-                        tabIndex={0}
-                        aria-label={showAdminDesktop ? t('选择文章') : t('查看文章')}
-                        aria-pressed={showAdminDesktop ? selectedArticleSlugs.has(article.slug) : undefined}
-                        className={`bg-surface rounded-lg shadow-sm p-4 sm:p-6 min-h-[184px] hover:shadow-md transition relative cursor-pointer scroll-mt-24 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${!article.is_visible && isAdmin ? 'opacity-60' : ''} ${selectedArticleSlugs.has(article.slug) ? 'ring-2 ring-primary ring-offset-2' : ''}`}
-                      >
-                         {showAdminDesktop && (
-                           <div className="absolute top-3 right-3 flex items-center gap-1">
-                            <IconButton
-                              onClick={(e) => { e.stopPropagation(); handleToggleVisibility(article.slug, article.is_visible); }}
-                              variant="default"
-                              size="sm"
-                              title={article.is_visible ? t('点击隐藏') : t('点击显示')}
-                            >
-                              {article.is_visible ? (
-                                <IconEye className="h-4 w-4" />
-                              ) : (
-                                <IconEyeOff className="h-4 w-4" />
-                              )}
-                            </IconButton>
-                            <IconButton
-                              onClick={(e) => { e.stopPropagation(); handleDelete(article.slug); }}
-                              variant="danger"
-                              size="sm"
-                              title={t('删除')}
-                            >
-                              <IconTrash className="h-4 w-4" />
-                            </IconButton>
+                    {articles.map((article) => {
+                      const articleHref = buildArticleHref(article.slug);
+                      const selected = showAdminDesktop && selectedArticleSlugs.has(article.slug);
+                      const mediaBlock = article.top_image ? (
+                        showAdminDesktop ? (
+                          <div className="relative w-full sm:w-40 aspect-video sm:aspect-square overflow-hidden rounded-lg bg-muted">
+                            <img
+                              src={resolveMediaUrl(article.top_image)}
+                              alt={article.title}
+                              className="absolute inset-0 h-full w-full object-cover"
+                              loading="lazy"
+                              decoding="async"
+                            />
+                            <span className="absolute left-2 top-2 rounded-sm bg-black/60 px-2 py-0.5 text-xs text-white">
+                              {getArticleLanguageTag(article)}
+                            </span>
                           </div>
-                        )}
-                         <div className="flex flex-col sm:flex-row gap-4">
-                           {showAdminDesktop && (
-                             <CheckboxInput
-                               checked={selectedArticleSlugs.has(article.slug)}
-                               onChange={() => handleToggleSelect(article.slug)}
-                               onClick={(e) => e.stopPropagation()}
-                               className="mt-1"
-                             />
-                           )}
-                           {article.top_image && (
-                             <div className="relative w-full sm:w-40 aspect-video sm:aspect-square overflow-hidden rounded-lg bg-muted">
-                               <img
-                                 src={resolveMediaUrl(article.top_image)}
-                                 alt={article.title}
-                                 className="absolute inset-0 h-full w-full object-cover"
-                                 loading="lazy"
-                                 decoding="async"
-                               />
-                               <span className="absolute left-2 top-2 rounded-sm bg-black/60 px-2 py-0.5 text-xs text-white">
-                                 {getArticleLanguageTag(article)}
-                               </span>
-                             </div>
-                           )}
-                           <div className="flex-1 sm:pr-6">
-                             <Link href={buildArticleHref(article.slug)} onClick={(e) => e.stopPropagation()} target="_blank" rel="noopener noreferrer">
-                               <h3 className="text-xl font-semibold text-text-1 hover:text-primary transition cursor-pointer">
-                                 {article.title}
-                               </h3>
-                             </Link>
+                        ) : (
+                          <Link
+                            href={articleHref}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="relative block w-full sm:w-40 aspect-video sm:aspect-square overflow-hidden rounded-lg bg-muted"
+                          >
+                            <img
+                              src={resolveMediaUrl(article.top_image)}
+                              alt={article.title}
+                              className="absolute inset-0 h-full w-full object-cover"
+                              loading="lazy"
+                              decoding="async"
+                            />
+                            <span className="absolute left-2 top-2 rounded-sm bg-black/60 px-2 py-0.5 text-xs text-white">
+                              {getArticleLanguageTag(article)}
+                            </span>
+                          </Link>
+                        )
+                      ) : null;
+
+                      return (
+                        <article
+                          key={article.slug}
+                          id={`article-${article.slug}`}
+                          onClick={showAdminDesktop ? (event) => handleOpenArticle(event, article) : undefined}
+                          onKeyDown={showAdminDesktop ? (event) => handleArticleCardKeyDown(event, article) : undefined}
+                          role={showAdminDesktop ? 'button' : undefined}
+                          tabIndex={showAdminDesktop ? 0 : undefined}
+                          aria-label={showAdminDesktop ? t('选择文章') : undefined}
+                          aria-pressed={showAdminDesktop ? selected : undefined}
+                          className={`bg-surface rounded-lg shadow-sm p-4 sm:p-6 min-h-[184px] transition relative scroll-mt-24 ${
+                            showAdminDesktop
+                              ? 'cursor-pointer hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40'
+                              : 'hover:shadow-sm'
+                          } ${!article.is_visible && isAdmin ? 'opacity-60' : ''} ${selected ? 'ring-2 ring-primary ring-offset-2' : ''}`}
+                        >
+                          {showAdminDesktop && (
+                            <div className="absolute top-3 right-3 flex items-center gap-1">
+                              <IconButton
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleToggleVisibility(article.slug, article.is_visible);
+                                }}
+                                variant="default"
+                                size="sm"
+                                title={article.is_visible ? t('点击隐藏') : t('点击显示')}
+                              >
+                                {article.is_visible ? (
+                                  <IconEye className="h-4 w-4" />
+                                ) : (
+                                  <IconEyeOff className="h-4 w-4" />
+                                )}
+                              </IconButton>
+                              <IconButton
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDelete(article.slug);
+                                }}
+                                variant="danger"
+                                size="sm"
+                                title={t('删除')}
+                              >
+                                <IconTrash className="h-4 w-4" />
+                              </IconButton>
+                            </div>
+                          )}
+                          <div className="flex flex-col sm:flex-row gap-4">
+                            {showAdminDesktop && (
+                              <CheckboxInput
+                                checked={selected}
+                                onChange={() => handleToggleSelect(article.slug)}
+                                onClick={(e) => e.stopPropagation()}
+                                className="mt-1"
+                              />
+                            )}
+                            {mediaBlock}
+                            <div className="flex-1 sm:pr-6">
+                              <Link
+                                href={articleHref}
+                                onClick={(e) => e.stopPropagation()}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              >
+                                <h3 className="text-xl font-semibold text-text-1 hover:text-primary transition cursor-pointer">
+                                  {article.title}
+                                </h3>
+                              </Link>
                               <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-text-2">
                                 {article.category && (
-                                  <span 
+                                  <span
                                     className="px-2 py-1 rounded"
                                     style={{
                                       backgroundColor: article.category.color ? `${article.category.color}20` : 'var(--bg-muted)',
@@ -1384,25 +1421,26 @@ export default function Home() {
                                 )}
                                 {article.author && <span>{t('作者')}: {article.author}</span>}
                                 <span>
-                                 {t('发表时间')}：
+                                  {t('发表时间')}：
                                   {article.published_at
                                     ? new Date(article.published_at).toLocaleDateString(
-                                       language === 'en' ? 'en-US' : 'zh-CN',
-                                     )
+                                        language === 'en' ? 'en-US' : 'zh-CN',
+                                      )
                                     : new Date(article.created_at).toLocaleDateString(
-                                       language === 'en' ? 'en-US' : 'zh-CN',
-                                     )}
+                                        language === 'en' ? 'en-US' : 'zh-CN',
+                                      )}
                                 </span>
                               </div>
-                               {article.summary && (
-                                 <p className="mt-2 text-text-2 line-clamp-3">
-                                   {article.summary}
-                                 </p>
-                               )}
-                           </div>
-                         </div>
-                       </div>
-                    ))}
+                              {article.summary && (
+                                <p className="mt-2 text-text-2 line-clamp-3">
+                                  {article.summary}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </article>
+                      );
+                    })}
                   </div>
 
                 {!isMobile && (

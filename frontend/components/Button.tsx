@@ -17,7 +17,7 @@ export const buttonVariantStyles: Record<ButtonVariant, string> = {
 	secondary:
 		"bg-surface text-text-2 border border-border hover:bg-muted hover:text-text-1 focus:ring-2 focus:ring-accent/20",
 	danger:
-		"bg-red-600 text-white hover:bg-red-700 focus:ring-2 focus:ring-red-500/20",
+		"bg-danger text-white hover:bg-danger-hover focus:ring-2 focus:ring-danger/20",
 	ghost:
 		"bg-transparent text-text-2 hover:bg-muted hover:text-text-1 focus:ring-2 focus:ring-accent/20",
 };

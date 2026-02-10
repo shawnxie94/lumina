@@ -36,6 +36,7 @@ export function ContinueReadingBanner() {
           onClick={() => setIsCollapsed(false)}
           className="flex items-center justify-center w-10 h-10 rounded-full bg-surface border border-border shadow-lg text-text-2 hover:text-text-1 hover:bg-muted transition"
           title={t('最近阅读')}
+          aria-label={t('展开最近阅读')}
         >
           <IconClock className="h-5 w-5" />
         </button>
@@ -58,8 +59,9 @@ export function ContinueReadingBanner() {
             <button
               type="button"
               onClick={clearArticles}
-              className="text-text-3 hover:text-red-600 transition"
+              className="text-text-3 hover:text-danger transition"
               title={t('清空全部')}
+              aria-label={t('清空全部')}
             >
               <IconBroom className="h-4 w-4" />
             </button>
@@ -68,6 +70,7 @@ export function ContinueReadingBanner() {
               onClick={() => setIsCollapsed(true)}
               className="text-text-3 hover:text-text-1 transition"
               title={t('收起')}
+              aria-label={t('收起最近阅读')}
             >
               <IconChevronRight className="h-4 w-4" />
             </button>
@@ -105,8 +108,9 @@ export function ContinueReadingBanner() {
                     e.stopPropagation();
                     removeArticle(article.id);
                   }}
-                  className="text-text-3 hover:text-red-600 transition ml-2 flex-shrink-0"
+                  className="text-text-3 hover:text-danger transition ml-2 flex-shrink-0"
                   title={t('删除')}
+                  aria-label={t('删除')}
                 >
                   <IconTrash className="h-3.5 w-3.5" />
                 </button>

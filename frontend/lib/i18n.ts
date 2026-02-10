@@ -263,6 +263,8 @@ const translations: Record<Language, Record<string | number, string>> = {
 		系统通知: "System notice",
 		通知: "Notification",
 		最近阅读: "Recent reads",
+		展开最近阅读: "Expand recent reads",
+		收起最近阅读: "Collapse recent reads",
 		清空全部: "Clear all",
 		开始日期: "Start date",
 		结束日期: "End date",

@@ -22,9 +22,11 @@ export function BackToTop() {
 
   return (
     <button
+      type="button"
       onClick={scrollToTop}
       className="fixed bottom-8 right-8 z-50 flex h-12 w-12 items-center justify-center rounded-full border border-border bg-surface text-text-2 shadow-md transition hover:bg-muted hover:text-text-1"
       title={t('回到顶部')}
+      aria-label={t('回到顶部')}
     >
       ↑
     </button>

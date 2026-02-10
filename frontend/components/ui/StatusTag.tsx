@@ -15,7 +15,7 @@ const toneClassName: Record<StatusTone, string> = {
 	info: "bg-primary-soft text-primary-ink",
 	success: "bg-green-100 text-green-700",
 	warning: "bg-yellow-100 text-yellow-700",
-	danger: "bg-red-100 text-red-700",
+	danger: "bg-danger-soft text-danger-ink",
 };
 
 const sizeClassName: Record<StatusSize, string> = {

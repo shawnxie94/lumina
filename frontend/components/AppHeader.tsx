@@ -241,7 +241,7 @@ export default function AppHeader() {
   );
 
   const getLevelClass = useCallback((level: NotificationItem['level']) => {
-    if (level === 'error') return 'text-red-500';
+    if (level === 'error') return 'text-danger';
     if (level === 'warning') return 'text-amber-500';
     return 'text-blue-500';
   }, []);
@@ -307,7 +307,7 @@ export default function AppHeader() {
                 >
                   <IconBell className="h-4 w-4" />
                   {notificationCount > 0 && (
-                    <span className="absolute -top-1 -right-1 min-w-[18px] px-1 text-[10px] leading-5 bg-red-500 text-white rounded-full text-center">
+                    <span className="absolute -top-1 -right-1 min-w-[18px] px-1 text-[10px] leading-5 bg-danger text-white rounded-full text-center">
                       {notificationCount > 99 ? '99+' : notificationCount}
                     </span>
                   )}
@@ -475,7 +475,7 @@ export default function AppHeader() {
             {resolvedAdmin ? (
               <button
                 onClick={logout}
-                className="hidden lg:flex items-center gap-1 px-3 py-1 rounded-sm text-sm text-text-3 hover:text-red-700 hover:bg-red-100 transition"
+                className="hidden lg:flex items-center gap-1 px-3 py-1 rounded-sm text-sm text-text-3 hover:text-danger-ink hover:bg-danger-soft transition"
                 title={t('退出登录')}
                 aria-label={t('退出登录')}
                 type="button"
@@ -494,6 +494,25 @@ export default function AppHeader() {
             ) : (
               <div className="hidden lg:block h-8 w-8" aria-hidden="true" />
             )}
+          </div>
+
+          <div className="mt-3 flex lg:hidden items-center gap-2 text-sm font-medium">
+            <Link
+              href="/"
+              className={`px-3 py-1 rounded-sm transition ${
+                isHomeRoute ? 'bg-muted text-text-1' : 'text-text-2 hover:bg-muted hover:text-text-1'
+              }`}
+            >
+              {t('主页')}
+            </Link>
+            <Link
+              href="/list"
+              className={`px-3 py-1 rounded-sm transition ${
+                isFeedRoute ? 'bg-muted text-text-1' : 'text-text-2 hover:bg-muted hover:text-text-1'
+              }`}
+            >
+              {t('信息流')}
+            </Link>
           </div>
         </div>
       </div>

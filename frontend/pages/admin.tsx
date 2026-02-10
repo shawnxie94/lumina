@@ -217,6 +217,7 @@ function SortableCategoryItem({
 					{...listeners}
 					className="cursor-grab active:cursor-grabbing text-text-3 hover:text-text-2 px-1"
 					title={t("拖动排序")}
+					aria-label={t("拖动排序")}
 				>
 					<IconGrip className="h-4 w-4" />
 				</button>
@@ -3317,7 +3318,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 													className={`rounded-sm border p-3 text-xs ${
 														commentValidationResult.ok
 															? "border-green-200 bg-green-50 text-green-700"
-															: "border-red-200 bg-red-50 text-red-700"
+															: "border-danger-soft bg-danger-soft text-danger-ink"
 													}`}
 												>
 													<div className="font-medium mb-1">
@@ -3621,7 +3622,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 													</StatusTag>
 																{task.last_error && (
 																	<div
-																		className="text-xs text-red-600 mt-1 line-clamp-1"
+																		className="text-xs text-danger mt-1 line-clamp-1"
 																		title={task.last_error}
 																	>
 																		{task.last_error}
@@ -4275,7 +4276,7 @@ const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 								</div>
 							)}
 							{modelOptionsError && (
-								<p className="mt-2 text-xs text-red-600">{modelOptionsError}</p>
+								<p className="mt-2 text-xs text-danger">{modelOptionsError}</p>
 							)}
 						</FormField>
 

@@ -25,6 +25,10 @@ html {
   --accent: #3b82f6;
   --accent-soft: #e8f0ff;
   --accent-ink: #1e3a8a;
+  --danger: #dc2626;
+  --danger-hover: #b91c1c;
+  --danger-soft: #fee2e2;
+  --danger-ink: #991b1b;
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
   --shadow-md: 0 6px 18px rgba(0, 0, 0, 0.08);
   --radius-xs: 2px;
@@ -53,6 +57,10 @@ html {
     --accent: #60a5fa;
     --accent-soft: #1e2a44;
     --accent-ink: #bfdbfe;
+    --danger: #f87171;
+    --danger-hover: #ef4444;
+    --danger-soft: #3a1f27;
+    --danger-ink: #fecaca;
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
     --shadow-md: 0 12px 30px rgba(0, 0, 0, 0.45);
   }
@@ -70,6 +78,10 @@ html[data-theme="dark"] {
   --accent: #60a5fa;
   --accent-soft: #1e2a44;
   --accent-ink: #bfdbfe;
+  --danger: #f87171;
+  --danger-hover: #ef4444;
+  --danger-soft: #3a1f27;
+  --danger-ink: #fecaca;
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow-md: 0 12px 30px rgba(0, 0, 0, 0.45);
 }
@@ -86,6 +98,10 @@ html[data-theme="light"] {
   --accent: #3b82f6;
   --accent-soft: #e8f0ff;
   --accent-ink: #1e3a8a;
+  --danger: #dc2626;
+  --danger-hover: #b91c1c;
+  --danger-soft: #fee2e2;
+  --danger-ink: #991b1b;
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
   --shadow-md: 0 6px 18px rgba(0, 0, 0, 0.08);
 }
@@ -445,7 +461,7 @@ html[data-theme="dark"] .note-panel {
   }
 
   .hover\:bg-red-50:hover {
-    background-color: rgba(239, 68, 68, 0.12);
+    background-color: var(--danger-soft);
   }
 
   .hover\:bg-blue-50:hover {
@@ -679,7 +695,7 @@ html[data-theme="dark"] .hover\:bg-gray-100:hover {
 }
 
 html[data-theme="dark"] .hover\:bg-red-50:hover {
-  background-color: rgba(239, 68, 68, 0.12);
+  background-color: var(--danger-soft);
 }
 
 html[data-theme="dark"] .hover\:bg-blue-50:hover {

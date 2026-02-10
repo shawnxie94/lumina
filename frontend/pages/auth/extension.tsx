@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 
 import { useRouter } from 'next/router';
 import Head from 'next/head';
@@ -23,6 +23,14 @@ export default function ExtensionAuthPage() {
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [authorized, setAuthorized] = useState(false);
+
+  const loginHref = useMemo(() => {
+    const currentPath = router.asPath || '/auth/extension';
+    if (currentPath.startsWith('/login')) {
+      return '/login';
+    }
+    return `/login?redirect=${encodeURIComponent(currentPath)}`;
+  }, [router.asPath]);
 
   useEffect(() => {
     if (!isLoading && isAdmin && extension_id) {
@@ -88,7 +96,7 @@ export default function ExtensionAuthPage() {
       <div className="min-h-screen flex items-center justify-center bg-app">
         <div className="text-center">
           <div className="text-text-3 mb-4">{t('系统未初始化')}</div>
-          <Link href="/login" className="text-primary hover:underline">
+          <Link href={loginHref} className="text-primary hover:underline">
             {t('去设置管理员密码')}
           </Link>
         </div>
@@ -128,7 +136,7 @@ export default function ExtensionAuthPage() {
               <IconLock className="h-8 w-8" />
             </div>
             <h1 className="text-xl font-semibold text-text-1 mb-2">{t('正在授权扩展...')}</h1>
-            {error && <p className="text-red-600 mb-4">{error}</p>}
+            {error && <p className="text-danger mb-4">{error}</p>}
             {!error && <p className="text-text-3">{t('请稍候')}</p>}
           </div>
         </div>
@@ -172,7 +180,7 @@ export default function ExtensionAuthPage() {
             </div>
 
             {error && (
-              <div className="text-red-600 text-sm text-center">{error}</div>
+              <div className="text-danger text-sm text-center">{error}</div>
             )}
 
             <div>

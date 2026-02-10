@@ -287,7 +287,7 @@ function AIContentSection({
       pending: { bg: 'bg-muted', text: 'text-text-2', label: t('等待处理') },
       processing: { bg: 'bg-blue-100', text: 'text-blue-700', label: t('生成中...') },
       completed: { bg: 'bg-green-100', text: 'text-green-700', label: t('已完成') },
-      failed: { bg: 'bg-red-100', text: 'text-red-700', label: t('失败') },
+      failed: { bg: 'bg-danger-soft', text: 'text-danger-ink', label: t('失败') },
     };
     const config = statusConfig[status];
     if (!config) return null;
@@ -1536,8 +1536,8 @@ export default function ArticleDetailPage() {
         </div>
 
         {isAdmin && article?.ai_analysis?.error_message && (
-          <div className="p-3 bg-red-100 border border-red-200 rounded-lg">
-            <p className="text-red-700 text-sm">
+          <div className="p-3 bg-danger-soft border border-danger-soft rounded-lg">
+            <p className="text-danger-ink text-sm">
               {article.ai_analysis.error_message}
             </p>
           </div>
@@ -1732,7 +1732,7 @@ export default function ArticleDetailPage() {
       pending: { bg: 'bg-muted', text: 'text-text-2', label: t('等待处理') },
       processing: { bg: 'bg-blue-100', text: 'text-blue-700', label: t('生成中...') },
       completed: { bg: 'bg-green-100', text: 'text-green-700', label: t('已完成') },
-      failed: { bg: 'bg-red-100', text: 'text-red-700', label: t('失败') },
+      failed: { bg: 'bg-danger-soft', text: 'text-danger-ink', label: t('失败') },
     };
     const config = statusConfig[status];
     if (!config) return null;
@@ -2423,7 +2423,7 @@ export default function ArticleDetailPage() {
                     {isAdmin && article.status === 'failed' && (
                       <button type="button"
                         onClick={handleRetryCleaning}
-                        className="flex items-center gap-1 px-2 py-0.5 rounded text-xs text-red-700 bg-red-100 hover:bg-red-200 transition"
+                        className="flex items-center gap-1 px-2 py-0.5 rounded text-xs text-danger-ink bg-danger-soft hover:bg-danger-soft transition"
                         title={article.ai_analysis?.error_message || t('重新清洗')}
                         aria-label={t('重试清洗')}
                       >
@@ -2479,7 +2479,7 @@ export default function ArticleDetailPage() {
                         <button
                           type="button"
                           onClick={() => setShowDeleteModal(true)}
-                          className="flex items-center justify-center w-8 h-8 rounded-sm text-text-2 hover:text-red-700 hover:bg-red-100 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400/40"
+                          className="flex items-center justify-center w-8 h-8 rounded-sm text-text-2 hover:text-danger-ink hover:bg-danger-soft transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger"
                           title={t('删除文章')}
                           aria-label={t('删除文章')}
                         >
