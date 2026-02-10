@@ -342,5 +342,4 @@ class AdminSettings(Base):
 
 
 def init_db():
-    Base.metadata.create_all(bind=engine)
     run_db_migrations(DATABASE_URL)

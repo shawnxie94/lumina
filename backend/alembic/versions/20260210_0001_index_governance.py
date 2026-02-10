@@ -1,7 +1,7 @@
 """index governance baseline
 
 Revision ID: 20260210_0001
-Revises:
+Revises: 20260210_0000
 Create Date: 2026-02-10 21:20:00
 
 """
@@ -15,7 +15,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = "20260210_0001"
-down_revision = None
+down_revision = "20260210_0000"
 branch_labels = None
 depends_on = None
 
