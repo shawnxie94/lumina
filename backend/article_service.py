@@ -61,36 +61,56 @@ def build_parameters(model) -> dict:
 
 
 class ArticleService:
-    def __init__(self):
-        pass
+    def __init__(self, current_task_id: str | None = None):
+        self.current_task_id = current_task_id
+
+    def _prompt_ordering(self, query):
+        return query.order_by(
+            PromptConfig.is_default.desc(),
+            PromptConfig.updated_at.desc(),
+            PromptConfig.created_at.desc(),
+            PromptConfig.id.asc(),
+        )
+
+    def _model_ordering(self, query):
+        return query.order_by(
+            ModelAPIConfig.updated_at.desc(),
+            ModelAPIConfig.created_at.desc(),
+            ModelAPIConfig.id.asc(),
+        )
 
     def get_ai_config(
         self, db: Session, category_id: str = None, prompt_type: str = "summary"
     ):
-        query = db.query(ModelAPIConfig).filter(ModelAPIConfig.is_enabled == True)
+        model_query = db.query(ModelAPIConfig).filter(ModelAPIConfig.is_enabled == True)
         prompt_query = db.query(PromptConfig).filter(
             PromptConfig.is_enabled == True, PromptConfig.type == prompt_type
         )
 
         prompt_config = None
         if category_id:
-            prompt_config = prompt_query.filter(
-                PromptConfig.category_id == category_id
+            prompt_config = self._prompt_ordering(
+                prompt_query.filter(PromptConfig.category_id == category_id)
             ).first()
 
         if not prompt_config:
-            prompt_config = prompt_query.filter(
-                PromptConfig.category_id.is_(None)
+            prompt_config = self._prompt_ordering(
+                prompt_query.filter(PromptConfig.category_id.is_(None))
             ).first()
 
         model_config = None
         if prompt_config and prompt_config.model_api_config_id:
-            model_config = query.filter(
+            model_config = model_query.filter(
                 ModelAPIConfig.id == prompt_config.model_api_config_id
             ).first()
 
         if not model_config:
-            model_config = query.filter(ModelAPIConfig.is_default == True).first()
+            model_config = self._model_ordering(
+                model_query.filter(ModelAPIConfig.is_default == True)
+            ).first()
+
+        if not model_config:
+            model_config = self._model_ordering(model_query).first()
 
         if not model_config:
             return None
@@ -1806,15 +1826,17 @@ class ArticleService:
             article.translation_error = None
             db.commit()
 
-            # 获取AI配置
-            ai_config = self.get_ai_config(db, category_id)
+            trans_config = self.get_ai_config(db, category_id, prompt_type="translation")
+            ai_config = trans_config or self.get_ai_config(
+                db, category_id, prompt_type="summary"
+            )
             if not ai_config:
                 article.translation_status = "failed"
                 article.translation_error = "未配置AI服务，请先在配置页面设置AI参数"
                 db.commit()
                 return
 
-            ai_client = self.create_ai_client(ai_config)
+            trans_client = self.create_ai_client(ai_config)
             pricing = {
                 "model_api_config_id": ai_config.get("model_api_config_id"),
                 "price_input_per_1k": ai_config.get("price_input_per_1k"),
@@ -1822,28 +1844,12 @@ class ArticleService:
                 "currency": ai_config.get("currency"),
             }
 
-            # 获取翻译类型的提示词配置
-            trans_config = self.get_ai_config(
-                db, category_id, prompt_type="translation"
-            )
             trans_prompt = None
             trans_parameters = {}
 
             if trans_config:
                 trans_prompt = trans_config.get("prompt_template")
                 trans_parameters = trans_config.get("parameters") or {}
-                pricing = {
-                    "model_api_config_id": trans_config.get("model_api_config_id"),
-                    "price_input_per_1k": trans_config.get("price_input_per_1k"),
-                    "price_output_per_1k": trans_config.get("price_output_per_1k"),
-                    "currency": trans_config.get("currency"),
-                }
-                if trans_config.get("base_url") and trans_config.get("api_key"):
-                    trans_client = self.create_ai_client(trans_config)
-                else:
-                    trans_client = ai_client
-            else:
-                trans_client = ai_client
 
             try:
                 content_trans = await asyncio.wait_for(
