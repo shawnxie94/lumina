@@ -55,6 +55,7 @@ flowchart LR
 ![设置模块](./docs/assets/screenshots/03-admin-dashboard-settings.png)
 
 ### 5) 扩展插件
+[下载地址](https://github.com/shawnxie94/lumina/releases)
 
 - **全文一键采集**：不选中内容，点击插件采集按钮或页面右键采集。
 

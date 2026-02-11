@@ -13,6 +13,7 @@ on:
         default: all
         options:
           - all
+          - images
           - backend
           - web
           - extension
@@ -45,9 +46,9 @@ jobs:
         run: |
           TARGET="${INPUT_TARGET:-all}"
           case "${TARGET}" in
-            all|backend|web|extension) ;;
+            all|images|backend|web|extension) ;;
             *)
-              echo "Invalid target '${TARGET}'. Valid values: all/backend/web/extension." >&2
+              echo "Invalid target '${TARGET}'. Valid values: all/images/backend/web/extension." >&2
               exit 1
               ;;
           esac
@@ -62,12 +63,12 @@ jobs:
             RELEASE_TAG="${GITHUB_REF_NAME}"
           fi
 
-          if [[ "${TARGET}" == "all" || "${TARGET}" == "backend" ]]; then
+          if [[ "${TARGET}" == "all" || "${TARGET}" == "images" || "${TARGET}" == "backend" ]]; then
             RUN_BACKEND=true
           else
             RUN_BACKEND=false
           fi
-          if [[ "${TARGET}" == "all" || "${TARGET}" == "web" ]]; then
+          if [[ "${TARGET}" == "all" || "${TARGET}" == "images" || "${TARGET}" == "web" ]]; then
             RUN_WEB=true
           else
             RUN_WEB=false

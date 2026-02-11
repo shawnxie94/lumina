@@ -57,6 +57,7 @@ flowchart LR
 ![Settings module](./docs/assets/screenshots/03-admin-dashboard-settings.png)
 
 ### 5) Extension
+[Download](https://github.com/shawnxie94/lumina/releases)
 
 - **One-click full-page capture**: capture via extension button or page context menu without selecting text.
 

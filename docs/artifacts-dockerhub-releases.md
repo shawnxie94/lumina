@@ -18,8 +18,10 @@ git push origin v1.2.0
 ### 方式 B：手动触发（可选发布范围）
 
 在 GitHub Actions 页面点 `Run workflow`，输入：
-- `target`: `all` / `backend` / `web` / `extension`
+- `target`: `all` / `images` / `backend` / `web` / `extension`
 - `release_tag`: 手动触发必填（示例：`v1.2.0-rc.2`）
+
+> `images` 表示仅发布后端与前端容器镜像，不打包扩展。
 
 ## 2. 自动产物
 
