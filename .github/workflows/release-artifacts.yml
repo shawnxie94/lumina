@@ -4,6 +4,22 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Select artifacts to publish"
+        required: true
+        type: choice
+        default: all
+        options:
+          - all
+          - backend
+          - web
+          - extension
+      release_tag:
+        description: "Release tag (required for manual runs, e.g. v1.2.3-rc.1)"
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -16,14 +32,60 @@ jobs:
       short_sha: ${{ steps.vars.outputs.short_sha }}
       is_prerelease: ${{ steps.vars.outputs.is_prerelease }}
       dockerhub_namespace: ${{ steps.vars.outputs.dockerhub_namespace }}
+      run_precheck: ${{ steps.vars.outputs.run_precheck }}
+      run_backend: ${{ steps.vars.outputs.run_backend }}
+      run_web: ${{ steps.vars.outputs.run_web }}
+      run_extension: ${{ steps.vars.outputs.run_extension }}
     steps:
       - name: Prepare release metadata
         id: vars
         env:
           DOCKERHUB_NAMESPACE: ${{ vars.DOCKERHUB_NAMESPACE }}
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          INPUT_TARGET: ${{ github.event.inputs.target }}
+          INPUT_RELEASE_TAG: ${{ github.event.inputs.release_tag }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
-          RELEASE_TAG="${GITHUB_REF_NAME}"
+          TARGET="${INPUT_TARGET:-all}"
+          case "${TARGET}" in
+            all|backend|web|extension) ;;
+            *)
+              echo "Invalid target '${TARGET}'. Valid values: all/backend/web/extension." >&2
+              exit 1
+              ;;
+          esac
+
+          if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
+            RELEASE_TAG="${INPUT_RELEASE_TAG}"
+            if [[ -z "${RELEASE_TAG}" ]]; then
+              echo "For manual runs, 'release_tag' is required (for example: v1.2.3-rc.1)." >&2
+              exit 1
+            fi
+          else
+            RELEASE_TAG="${GITHUB_REF_NAME}"
+          fi
+
+          if [[ "${TARGET}" == "all" || "${TARGET}" == "backend" ]]; then
+            RUN_BACKEND=true
+          else
+            RUN_BACKEND=false
+          fi
+          if [[ "${TARGET}" == "all" || "${TARGET}" == "web" ]]; then
+            RUN_WEB=true
+          else
+            RUN_WEB=false
+          fi
+          if [[ "${TARGET}" == "all" || "${TARGET}" == "extension" ]]; then
+            RUN_EXTENSION=true
+          else
+            RUN_EXTENSION=false
+          fi
+          if [[ "${RUN_BACKEND}" == "true" || "${RUN_WEB}" == "true" ]]; then
+            RUN_PRECHECK=true
+          else
+            RUN_PRECHECK=false
+          fi
+
           SHORT_SHA="${GITHUB_SHA::7}"
 
           if [[ "${RELEASE_TAG}" == *-* ]]; then
@@ -36,20 +98,79 @@ jobs:
           if [[ -z "${NAMESPACE}" ]]; then
             NAMESPACE="${DOCKERHUB_USERNAME}"
           fi
-          if [[ -z "${NAMESPACE}" ]]; then
+          if [[ -z "${NAMESPACE}" && "${RUN_PRECHECK}" == "true" ]]; then
             echo "Missing Docker Hub namespace. Please set repository variable DOCKERHUB_NAMESPACE or secret DOCKERHUB_USERNAME." >&2
             exit 1
           fi
-          NAMESPACE="$(echo "${NAMESPACE}" | tr '[:upper:]' '[:lower:]')"
+          if [[ -n "${NAMESPACE}" ]]; then
+            NAMESPACE="$(echo "${NAMESPACE}" | tr '[:upper:]' '[:lower:]')"
+          fi
 
+          echo "target=${TARGET}" >> "${GITHUB_OUTPUT}"
           echo "release_tag=${RELEASE_TAG}" >> "${GITHUB_OUTPUT}"
           echo "short_sha=${SHORT_SHA}" >> "${GITHUB_OUTPUT}"
           echo "is_prerelease=${IS_PRERELEASE}" >> "${GITHUB_OUTPUT}"
           echo "dockerhub_namespace=${NAMESPACE}" >> "${GITHUB_OUTPUT}"
+          echo "run_precheck=${RUN_PRECHECK}" >> "${GITHUB_OUTPUT}"
+          echo "run_backend=${RUN_BACKEND}" >> "${GITHUB_OUTPUT}"
+          echo "run_web=${RUN_WEB}" >> "${GITHUB_OUTPUT}"
+          echo "run_extension=${RUN_EXTENSION}" >> "${GITHUB_OUTPUT}"
+
+  dockerhub-precheck:
+    runs-on: ubuntu-latest
+    needs: prepare
+    if: ${{ needs.prepare.outputs.run_precheck == 'true' }}
+    permissions:
+      contents: read
+    steps:
+      - name: Validate Docker Hub credentials and repositories
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          DOCKERHUB_NAMESPACE: ${{ needs.prepare.outputs.dockerhub_namespace }}
+        run: |
+          if [[ -z "${DOCKERHUB_USERNAME}" ]]; then
+            echo "Missing secret DOCKERHUB_USERNAME." >&2
+            exit 1
+          fi
+          if [[ -z "${DOCKERHUB_TOKEN}" ]]; then
+            echo "Missing secret DOCKERHUB_TOKEN." >&2
+            exit 1
+          fi
+
+          USERNAME_LC="$(echo "${DOCKERHUB_USERNAME}" | tr '[:upper:]' '[:lower:]')"
+          echo "Docker Hub username: ${DOCKERHUB_USERNAME}"
+          echo "Docker Hub namespace: ${DOCKERHUB_NAMESPACE}"
+          if [[ "${USERNAME_LC}" != "${DOCKERHUB_NAMESPACE}" ]]; then
+            echo "::warning::Namespace (${DOCKERHUB_NAMESPACE}) differs from username (${USERNAME_LC}). Ensure this user has write access to that namespace."
+          fi
+
+          AUTH_RESPONSE="$(curl -fsSL -X POST https://hub.docker.com/v2/users/login/ -H 'Content-Type: application/json' -d "{\"username\":\"${DOCKERHUB_USERNAME}\",\"password\":\"${DOCKERHUB_TOKEN}\"}")"
+          JWT_TOKEN="$(python3 -c 'import json,sys; print(json.loads(sys.stdin.read())["token"])' <<<"${AUTH_RESPONSE}")"
+          if [[ -z "${JWT_TOKEN}" ]]; then
+            echo "Failed to acquire Docker Hub JWT token." >&2
+            exit 1
+          fi
+
+          for repo in lumina-api lumina-worker lumina-web; do
+            API_URL="https://hub.docker.com/v2/repositories/${DOCKERHUB_NAMESPACE}/${repo}/"
+            HTTP_STATUS="$(curl -sS -o /tmp/dockerhub-repo-check.json -w "%{http_code}" -H "Authorization: JWT ${JWT_TOKEN}" "${API_URL}")"
+            if [[ "${HTTP_STATUS}" != "200" ]]; then
+              echo "Cannot access docker.io/${DOCKERHUB_NAMESPACE}/${repo} (HTTP ${HTTP_STATUS})." >&2
+              echo "Please confirm repository exists and ${DOCKERHUB_USERNAME} has write permission." >&2
+              cat /tmp/dockerhub-repo-check.json >&2 || true
+              exit 1
+            fi
+          done
+
+          echo "Docker Hub precheck passed."
 
   publish-backend-image:
     runs-on: ubuntu-latest
-    needs: prepare
+    needs:
+      - prepare
+      - dockerhub-precheck
+    if: ${{ needs.prepare.outputs.run_backend == 'true' }}
     permissions:
       contents: read
     steps:
@@ -91,7 +212,10 @@ jobs:
 
   publish-web-image:
     runs-on: ubuntu-latest
-    needs: prepare
+    needs:
+      - prepare
+      - dockerhub-precheck
+    if: ${{ needs.prepare.outputs.run_web == 'true' }}
     permissions:
       contents: read
     steps:
@@ -135,6 +259,7 @@ jobs:
       - prepare
       - publish-backend-image
       - publish-web-image
+    if: ${{ needs.prepare.outputs.run_extension == 'true' && (needs.prepare.outputs.run_backend != 'true' || needs.publish-backend-image.result == 'success') && (needs.prepare.outputs.run_web != 'true' || needs.publish-web-image.result == 'success') }}
     permissions:
       contents: write
     steps:
@@ -170,21 +295,39 @@ jobs:
           sha256sum "release-assets/${RELEASE_ZIP}" > "release-assets/${RELEASE_ZIP}.sha256"
           echo "release_zip=${RELEASE_ZIP}" >> "${GITHUB_OUTPUT}"
 
+      - name: Build release note body
+        env:
+          DOCKERHUB_NAMESPACE: ${{ needs.prepare.outputs.dockerhub_namespace }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+          RUN_BACKEND: ${{ needs.prepare.outputs.run_backend }}
+          RUN_WEB: ${{ needs.prepare.outputs.run_web }}
+          RELEASE_ZIP: ${{ steps.package.outputs.release_zip }}
+        run: |
+          {
+            echo "## 容器镜像（Docker Hub）"
+            if [[ "${RUN_BACKEND}" == "true" ]]; then
+              echo "- \`docker.io/${DOCKERHUB_NAMESPACE}/lumina-api:${RELEASE_TAG}\`"
+              echo "- \`docker.io/${DOCKERHUB_NAMESPACE}/lumina-worker:${RELEASE_TAG}\`"
+            fi
+            if [[ "${RUN_WEB}" == "true" ]]; then
+              echo "- \`docker.io/${DOCKERHUB_NAMESPACE}/lumina-web:${RELEASE_TAG}\`"
+            fi
+            if [[ "${RUN_BACKEND}" != "true" && "${RUN_WEB}" != "true" ]]; then
+              echo "- 本次未构建容器镜像。"
+            fi
+            echo
+            echo "## 扩展安装包"
+            echo "- \`${RELEASE_ZIP}\`"
+            echo "- \`${RELEASE_ZIP}.sha256\`"
+          } > release-assets/release-body.md
+
       - name: Upload release assets
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare.outputs.release_tag }}
           generate_release_notes: true
           prerelease: ${{ needs.prepare.outputs.is_prerelease == 'true' }}
-          body: |
-            ## 容器镜像（Docker Hub）
-            - `docker.io/${{ needs.prepare.outputs.dockerhub_namespace }}/lumina-api:${{ needs.prepare.outputs.release_tag }}`
-            - `docker.io/${{ needs.prepare.outputs.dockerhub_namespace }}/lumina-worker:${{ needs.prepare.outputs.release_tag }}`
-            - `docker.io/${{ needs.prepare.outputs.dockerhub_namespace }}/lumina-web:${{ needs.prepare.outputs.release_tag }}`
-
-            ## 扩展安装包
-            - `${{ steps.package.outputs.release_zip }}`
-            - `${{ steps.package.outputs.release_zip }}.sha256`
+          body_path: release-assets/release-body.md
           files: |
             release-assets/${{ steps.package.outputs.release_zip }}
             release-assets/${{ steps.package.outputs.release_zip }}.sha256

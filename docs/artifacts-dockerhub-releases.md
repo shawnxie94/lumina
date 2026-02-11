@@ -8,12 +8,18 @@
 
 工作流文件：`/.github/workflows/release-artifacts.yml`
 
-触发条件：推送 `v*` 标签（示例：`v1.2.0`）
+### 方式 A：推送 tag（默认全量发布）
 
 ```bash
 git tag v1.2.0
 git push origin v1.2.0
 ```
+
+### 方式 B：手动触发（可选发布范围）
+
+在 GitHub Actions 页面点 `Run workflow`，输入：
+- `target`: `all` / `backend` / `web` / `extension`
+- `release_tag`: 手动触发必填（示例：`v1.2.0-rc.2`）
 
 ## 2. 自动产物
 
@@ -30,7 +36,7 @@ git push origin v1.2.0
 
 ### GitHub Releases 资产
 
-同一个 tag 的 Release 会上传：
+当 `target=all` 或 `target=extension` 时，Release 会上传：
 - `lumina-extension-<tag>+<short_sha>.zip`
 - `lumina-extension-<tag>+<short_sha>.zip.sha256`
 
