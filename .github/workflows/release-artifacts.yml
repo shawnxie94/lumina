@@ -243,8 +243,12 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=web
-          cache-to: type=gha,mode=max,scope=web
+          cache-from: |
+            type=gha,scope=web
+            type=registry,ref=docker.io/${{ env.DOCKERHUB_NAMESPACE }}/lumina-web:buildcache
+          cache-to: |
+            type=gha,mode=max,scope=web
+            type=registry,ref=docker.io/${{ env.DOCKERHUB_NAMESPACE }}/lumina-web:buildcache,mode=max
 
   publish-extension-release:
     runs-on: ubuntu-latest

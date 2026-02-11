@@ -15,7 +15,10 @@ from app.schemas import (
 )
 from app.domain.ai_task_service import AITaskService
 from app.domain.article_command_service import ArticleCommandService
-from app.domain.article_embedding_service import ArticleEmbeddingService
+from app.domain.article_embedding_service import (
+    REMOTE_EMBEDDING_REQUIRED_MESSAGE,
+    ArticleEmbeddingService,
+)
 from app.domain.article_query_service import ArticleQueryService
 from auth import check_is_admin, get_admin_settings, get_current_admin
 from media_service import cleanup_media_assets
@@ -226,6 +229,8 @@ async def get_similar_articles(
     admin = get_admin_settings(db)
     if admin and not bool(admin.recommendations_enabled):
         return {"status": "disabled", "items": []}
+    if not article_embedding_service.has_available_remote_config(db):
+        return {"status": "disabled", "items": []}
 
     article = article_query_service.get_article_by_slug(db, article_slug)
     if not article:
@@ -329,6 +334,8 @@ async def regenerate_article_embedding(
     article = article_query_service.get_article_by_slug(db, article_slug)
     if not article:
         raise HTTPException(status_code=404, detail="文章不存在")
+    if not article_embedding_service.has_available_remote_config(db):
+        raise HTTPException(status_code=409, detail=REMOTE_EMBEDDING_REQUIRED_MESSAGE)
     if not article_embedding_service.has_summary_source(article):
         raise HTTPException(status_code=409, detail="请先完成摘要生成后再执行向量化")
 

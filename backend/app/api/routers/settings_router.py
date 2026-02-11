@@ -16,9 +16,19 @@ from app.schemas import (
     StorageSettingsUpdate,
 )
 from auth import get_admin_settings, get_current_admin
-from models import get_db, now_str
+from models import ModelAPIConfig, get_db, now_str
 
 router = APIRouter()
+
+
+def validate_recommendation_model_config(db: Session, config_id: str) -> None:
+    model_config = db.query(ModelAPIConfig).filter(ModelAPIConfig.id == config_id).first()
+    if not model_config:
+        raise HTTPException(status_code=400, detail="所选向量模型不存在，请重新选择")
+    if not bool(model_config.is_enabled):
+        raise HTTPException(status_code=400, detail="所选向量模型已禁用，请重新选择")
+    if (model_config.model_type or "general") != "vector":
+        raise HTTPException(status_code=400, detail="所选模型不是向量模型，请重新选择")
 
 
 @router.get("/api/settings/basic")
@@ -200,9 +210,20 @@ async def get_recommendation_settings(
     admin = get_admin_settings(db)
     if admin is None:
         raise HTTPException(status_code=404, detail="未初始化管理员设置")
+    model_config_id = (admin.recommendation_model_config_id or "").strip()
+    if model_config_id:
+        model_config = (
+            db.query(ModelAPIConfig).filter(ModelAPIConfig.id == model_config_id).first()
+        )
+        if (
+            not model_config
+            or not bool(model_config.is_enabled)
+            or (model_config.model_type or "general") != "vector"
+        ):
+            model_config_id = ""
     return {
         "recommendations_enabled": bool(admin.recommendations_enabled),
-        "recommendation_model_config_id": admin.recommendation_model_config_id or "",
+        "recommendation_model_config_id": model_config_id,
     }
 
 
@@ -215,10 +236,28 @@ async def update_recommendation_settings(
     admin = get_admin_settings(db)
     if admin is None:
         raise HTTPException(status_code=404, detail="未初始化管理员设置")
+    next_enabled = (
+        bool(payload.recommendations_enabled)
+        if payload.recommendations_enabled is not None
+        else bool(admin.recommendations_enabled)
+    )
+    next_model_config_id = (
+        (payload.recommendation_model_config_id or "").strip()
+        if payload.recommendation_model_config_id is not None
+        else (admin.recommendation_model_config_id or "").strip()
+    )
+
+    if payload.recommendation_model_config_id is not None and next_model_config_id:
+        validate_recommendation_model_config(db, next_model_config_id)
+    if next_enabled:
+        if not next_model_config_id:
+            raise HTTPException(status_code=400, detail="开启文章推荐前，请先选择远程向量模型")
+        validate_recommendation_model_config(db, next_model_config_id)
+
     if payload.recommendations_enabled is not None:
-        admin.recommendations_enabled = bool(payload.recommendations_enabled)
+        admin.recommendations_enabled = next_enabled
     if payload.recommendation_model_config_id is not None:
-        admin.recommendation_model_config_id = payload.recommendation_model_config_id or ""
+        admin.recommendation_model_config_id = next_model_config_id
     admin.updated_at = now_str()
     db.commit()
     db.refresh(admin)

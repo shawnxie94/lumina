@@ -27,7 +27,7 @@ services:
 
   worker:
     build: ./backend
-    command: /app/.venv/bin/python worker.py
+    command: python worker.py
     environment:
       - DATABASE_URL=sqlite:///./data/articles.db
       - INTERNAL_API_TOKEN=034c6ac483ecbb6dbe15889df3584868566c1acfb64d33a297022b4af5044f00
@@ -43,4 +43,3 @@ services:
 networks:
   app-network:
     driver: bridge
-

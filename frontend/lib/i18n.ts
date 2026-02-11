@@ -128,7 +128,7 @@ const translations: Record<Language, Record<string | number, string>> = {
 		重新生成向量: "Regenerate embeddings",
 		"文章加载中...": "Loading articles...",
 		"文章生成中...": "Generating articles...",
-		文章推荐已关闭: "Recommendations disabled",
+		文章推荐暂不可用: "Recommendations unavailable",
 		暂无推荐文章: "No recommendations",
 		取消回复: "Cancel reply",
 		显示: "Show",
@@ -163,8 +163,12 @@ const translations: Record<Language, Record<string | number, string>> = {
 		开启文章推荐: "Enable recommendations",
 		"基于向量相似度生成相似文章列表": "Generate similar articles based on vector similarity",
 		向量化模型: "Embedding model",
+		请选择远程向量模型: "Please select a remote embedding model",
+		"开启文章推荐前，请先选择远程向量模型":
+			"Select a remote embedding model before enabling recommendations",
 		"暂无向量模型配置，请在模型API配置中设置模型类型为向量。": "No vector model config. Set model type to vector in Model API configs.",
-		"默认本地模型将使用本地推理；选择模型配置将走 API 调用生成向量。": "Default local model runs locally; selecting a config uses API embeddings.",
+		"文章推荐仅支持远程向量模型；未配置时将无法生成推荐。":
+			"Recommendations only support remote embedding models; without one, no recommendations are generated.",
 		"查看与管理所有评论与回复": "View and manage all comments and replies",
 		关键词: "Keyword",
 		评论人: "Commenter",
@@ -461,8 +465,6 @@ const translations: Record<Language, Record<string | number, string>> = {
 		原始响应: "Raw response",
 		暂无原始响应: "No raw response",
 		开始测试: "Start test",
-		"本地默认模型 (all-MiniLM-L6-v2)":
-			"Local default model (all-MiniLM-L6-v2)",
 		删除文章: "Delete article",
 		"确定要删除这篇文章吗？此操作不可撤销。":
 			"Are you sure you want to delete this article? This action cannot be undone.",

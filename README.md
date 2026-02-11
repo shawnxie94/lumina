@@ -129,11 +129,7 @@ On first run, open `/login` and set the admin password before normal login.
 
 ### Why does the extension fail to submit article?
 
-Check extension API host/token settings and confirm backend is reachable from the browser.
-
-### Why are screenshots not displayed in README?
-
-Check file names and paths under `./docs/assets/screenshots/`, and confirm the image files are committed.
+Check extension API host settings and confirm backend is reachable from the browser.
 
 ## License
 

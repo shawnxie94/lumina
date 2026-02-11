@@ -17,3 +17,4 @@ dist/
 frontend/tsconfig.tsbuildinfo
 docker-compose.yml
 .worktrees/
+docker-compose.dockerhub.yml

@@ -1072,12 +1072,17 @@ class ArticleAIPipelineService:
                 if content_type == "summary":
                     summary_text = (result or "").strip()
                     if summary_text:
-                        self._enqueue_task(
-                            db,
-                            task_type="process_article_embedding",
-                            article_id=article_id,
-                            content_type="embedding",
+                        from app.domain.article_embedding_service import (
+                            ArticleEmbeddingService,
                         )
+
+                        if ArticleEmbeddingService().has_available_remote_config(db):
+                            self._enqueue_task(
+                                db,
+                                task_type="process_article_embedding",
+                                article_id=article_id,
+                                content_type="embedding",
+                            )
             except asyncio.TimeoutError:
                 self._log_ai_usage(
                     db,

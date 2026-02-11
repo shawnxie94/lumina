@@ -1138,13 +1138,23 @@ export default function AdminPage() {
 	};
 
 	const handleSaveRecommendationSettings = async () => {
+		if (
+			recommendationSettings.recommendations_enabled &&
+			!recommendationSettings.recommendation_model_config_id
+		) {
+			showToast(t("开启文章推荐前，请先选择远程向量模型"), "error");
+			return;
+		}
 		setRecommendationSettingsSaving(true);
 		try {
 			await recommendationSettingsApi.updateSettings(recommendationSettings);
 			showToast(t("文章推荐配置已保存"));
-		} catch (error) {
+		} catch (error: any) {
 			console.error("Failed to save recommendation settings:", error);
-			showToast(t("文章推荐配置保存失败"), "error");
+			showToast(
+				error?.response?.data?.detail || t("文章推荐配置保存失败"),
+				"error",
+			);
 		} finally {
 			setRecommendationSettingsSaving(false);
 		}
@@ -4484,7 +4494,7 @@ export default function AdminPage() {
 													options={[
 														{
 															value: "",
-															label: t("本地默认模型 (all-MiniLM-L6-v2)"),
+															label: t("请选择远程向量模型"),
 														},
 														...modelAPIConfigs
 															.filter(
@@ -4499,7 +4509,7 @@ export default function AdminPage() {
 												/>
 												<div className="text-xs text-text-3 mt-2">
 													{t(
-														"默认本地模型将使用本地推理；选择模型配置将走 API 调用生成向量。",
+														"文章推荐仅支持远程向量模型；未配置时将无法生成推荐。",
 													)}
 												</div>
 											</div>

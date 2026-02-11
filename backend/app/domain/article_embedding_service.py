@@ -16,36 +16,30 @@ from sqlalchemy.orm import Session
 from task_errors import TaskConfigError, TaskDataError
 
 EMBEDDING_TEXT_LIMIT = 4000
-LOCAL_EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
-_local_embedding_model = None
-
-
-def get_local_embedding_model():
-    global _local_embedding_model
-    if _local_embedding_model is None:
-        from sentence_transformers import SentenceTransformer
-
-        _local_embedding_model = SentenceTransformer(LOCAL_EMBEDDING_MODEL_NAME)
-    return _local_embedding_model
+REMOTE_EMBEDDING_REQUIRED_MESSAGE = (
+    "文章推荐未启用或未配置可用的远程向量模型，请先在后台完成配置"
+)
 
 
 class ArticleEmbeddingService:
     def get_embedding_config(self, db: Session) -> dict | None:
         admin = db.query(AdminSettings).first()
-        if admin and not bool(admin.recommendations_enabled):
+        if not admin or not bool(admin.recommendations_enabled):
             return {"disabled": True}
 
-        if admin and admin.recommendation_model_config_id:
-            model_config = (
-                db.query(ModelAPIConfig)
-                .filter(ModelAPIConfig.id == admin.recommendation_model_config_id)
-                .first()
-            )
-        else:
-            model_config = None
+        model_config_id = (admin.recommendation_model_config_id or "").strip()
+        if not model_config_id:
+            return None
 
-        if not model_config:
-            return {"use_local": True}
+        model_config = (
+            db.query(ModelAPIConfig)
+            .filter(ModelAPIConfig.id == model_config_id)
+            .first()
+        )
+        if not model_config or not bool(model_config.is_enabled):
+            return None
+        if (model_config.model_type or "general") != "vector":
+            return None
 
         return {
             "base_url": model_config.base_url,
@@ -57,6 +51,10 @@ class ArticleEmbeddingService:
             "price_output_per_1k": model_config.price_output_per_1k,
             "currency": model_config.currency,
         }
+
+    def has_available_remote_config(self, db: Session) -> bool:
+        config = self.get_embedding_config(db)
+        return bool(config and not config.get("disabled"))
 
     def get_embedding_source_text(self, article: Article) -> str:
         title = (article.title or "").strip()
@@ -108,7 +106,7 @@ class ArticleEmbeddingService:
     ) -> ArticleEmbedding | None:
         config = self.get_embedding_config(db)
         if not config:
-            raise TaskConfigError("未配置AI服务，请先在配置页面设置AI参数")
+            raise TaskConfigError(REMOTE_EMBEDDING_REQUIRED_MESSAGE)
         if config.get("disabled"):
             return None
 
@@ -116,9 +114,8 @@ class ArticleEmbeddingService:
         if not source_text:
             raise TaskDataError("摘要未生成，暂无法生成向量")
 
-        use_local = bool(config.get("use_local"))
-        model_name = LOCAL_EMBEDDING_MODEL_NAME if use_local else config["model_name"]
-        model_label = f"local:{model_name}" if use_local else model_name
+        model_name = config["model_name"]
+        model_label = model_name
         source_hash = hashlib.sha256(source_text.encode("utf-8")).hexdigest()
 
         existing = (
@@ -134,42 +131,36 @@ class ArticleEmbeddingService:
         ):
             return existing
 
-        if use_local:
-            local_model = get_local_embedding_model()
-            embedding_data = local_model.encode(
-                source_text, normalize_embeddings=True
-            ).tolist()
-        else:
-            provider = (config.get("provider") or "openai").lower()
-            if provider == "jina":
-                import httpx
+        provider = (config.get("provider") or "openai").lower()
+        if provider == "jina":
+            import httpx
 
-                jina_base = config["base_url"].rstrip("/")
-                if not jina_base.endswith("/v1"):
-                    jina_base = f"{jina_base}/v1"
+            jina_base = config["base_url"].rstrip("/")
+            if not jina_base.endswith("/v1"):
+                jina_base = f"{jina_base}/v1"
 
-                async with httpx.AsyncClient() as client:
-                    response = await client.post(
-                        f"{jina_base}/embeddings",
-                        headers={
-                            "Authorization": f"Bearer {config['api_key']}",
-                            "Content-Type": "application/json",
-                            "Accept": "application/json",
-                        },
-                        json={"model": model_name, "input": [source_text]},
-                        timeout=20.0,
-                    )
-                    response.raise_for_status()
-                    data = response.json()
-                    embedding_data = (data.get("data") or [{}])[0].get("embedding") or []
-            else:
-                client = ConfigurableAIClient(
-                    base_url=config["base_url"],
-                    api_key=config["api_key"],
-                    model_name=model_name,
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"{jina_base}/embeddings",
+                    headers={
+                        "Authorization": f"Bearer {config['api_key']}",
+                        "Content-Type": "application/json",
+                        "Accept": "application/json",
+                    },
+                    json={"model": model_name, "input": [source_text]},
+                    timeout=20.0,
                 )
-                result = await client.generate_embedding(source_text, model_name=model_name)
-                embedding_data = result.get("embedding") or []
+                response.raise_for_status()
+                data = response.json()
+                embedding_data = (data.get("data") or [{}])[0].get("embedding") or []
+        else:
+            client = ConfigurableAIClient(
+                base_url=config["base_url"],
+                api_key=config["api_key"],
+                model_name=model_name,
+            )
+            result = await client.generate_embedding(source_text, model_name=model_name)
+            embedding_data = result.get("embedding") or []
 
         embedding_json = json.dumps(embedding_data, ensure_ascii=False)
         now_iso = now_str()

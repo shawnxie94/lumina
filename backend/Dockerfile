@@ -2,15 +2,13 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-RUN pip install --no-cache-dir uv
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PYTHONDONTWRITEBYTECODE=1
 
 COPY . .
 
-RUN uv venv --python 3.11
-ENV PATH="/app/.venv/bin:$PATH"
-
-RUN /app/.venv/bin/python -m ensurepip
-RUN /app/.venv/bin/python -m pip install -e .
+RUN pip install --no-cache-dir --no-compile -e .
 
 RUN mkdir -p /app/data
 

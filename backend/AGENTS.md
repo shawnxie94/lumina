@@ -68,5 +68,5 @@ python scripts/check_response_contract.py --verbose
 ```
 
 ## NOTES
-- `docker-compose.yml` runs `worker.py` directly from the venv.
+- `docker-compose.yml` runs `worker.py` with system Python in container.
 - `pyproject.toml` now includes both flat `py-modules` and `app.*` packages.

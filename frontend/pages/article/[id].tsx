@@ -1845,7 +1845,7 @@ export default function ArticleDetailPage() {
 							</div>
 						) : similarStatus === "disabled" ? (
 							<div className="text-sm text-text-3" aria-live="polite">
-								{t("文章推荐已关闭")}
+								{t("文章推荐暂不可用")}
 							</div>
 						) : similarArticles.length === 0 ? (
 							<div className="text-sm text-text-3" aria-live="polite">

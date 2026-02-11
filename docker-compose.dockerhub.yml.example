@@ -1,6 +1,7 @@
 services:
   web:
-    image: docker.io/${DOCKERHUB_NAMESPACE}/lumina-web:${LUMINA_IMAGE_TAG}
+    image: docker.io/${DOCKERHUB_NAMESPACE:-xiexiao064}/lumina-web:${LUMINA_IMAGE_TAG}
+    platform: linux/amd64
     restart: unless-stopped
     ports:
       - "3000:3000"
@@ -13,7 +14,8 @@ services:
       - app-network
 
   api:
-    image: docker.io/${DOCKERHUB_NAMESPACE}/lumina-api:${LUMINA_IMAGE_TAG}
+    image: docker.io/${DOCKERHUB_NAMESPACE:-xiexiao064}/lumina-api:${LUMINA_IMAGE_TAG}
+    platform: linux/amd64
     restart: unless-stopped
     ports:
       - "8000:8000"
@@ -29,9 +31,10 @@ services:
       - app-network
 
   worker:
-    image: docker.io/${DOCKERHUB_NAMESPACE}/lumina-worker:${LUMINA_IMAGE_TAG}
+    image: docker.io/${DOCKERHUB_NAMESPACE:-xiexiao064}/lumina-worker:${LUMINA_IMAGE_TAG}
+    platform: linux/amd64
     restart: unless-stopped
-    command: /app/.venv/bin/python worker.py
+    command: python worker.py
     environment:
       - DATABASE_URL=sqlite:///./data/articles.db
       - INTERNAL_API_TOKEN=${INTERNAL_API_TOKEN}
