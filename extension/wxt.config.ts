@@ -1,5 +1,14 @@
 import { defineConfig } from 'wxt';
 
+const connectableMatches = [
+  'http://localhost:3000/*',
+  'http://127.0.0.1:3000/*',
+  'http://localhost/*',
+  'http://127.0.0.1/*',
+  'https://*/*',
+  'http://*/*',
+];
+
 export default defineConfig({
   manifest: {
   name: 'Lumina 采集器',
@@ -8,7 +17,7 @@ export default defineConfig({
     permissions: ['activeTab', 'scripting', 'storage', 'contextMenus', 'notifications'],
     host_permissions: ['<all_urls>'],
     externally_connectable: {
-      matches: ['http://localhost:3000/*', 'http://127.0.0.1:3000/*'],
+      matches: connectableMatches,
     },
     action: {
       default_popup: 'popup.html',

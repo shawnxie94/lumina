@@ -6,21 +6,57 @@ const STORAGE_KEY = 'apiHost';
 const TOKEN_KEY = 'adminToken';
 const API_PREFIX = '/backend';
 
+const isLocalAddress = (host: string): boolean =>
+  host === 'localhost' || host === '127.0.0.1';
+
+const normalizeApiOrigin = (value: string): string => {
+  const trimmed = value.trim().replace(/\/+$/, '');
+  if (!trimmed) {
+    return 'http://localhost:8000';
+  }
+
+  const hasProtocol = /^https?:\/\//i.test(trimmed);
+  const withProtocol = hasProtocol
+    ? trimmed
+    : (() => {
+        const hostPart = trimmed.split('/')[0] || '';
+        const hostname = hostPart.split(':')[0] || '';
+        const protocol = isLocalAddress(hostname) ? 'http' : 'https';
+        return `${protocol}://${trimmed}`;
+      })();
+
+  try {
+    const parsed = new URL(withProtocol);
+    return parsed.origin;
+  } catch {
+    return 'http://localhost:8000';
+  }
+};
+
 export class ApiClient {
   private apiHost: string;
+  private apiOrigin: string;
   private token: string | null = null;
 
   constructor(apiHost?: string) {
     this.apiHost = apiHost || DEFAULT_API_HOST;
+    this.apiOrigin = normalizeApiOrigin(this.apiHost);
   }
 
   get baseUrl(): string {
-    return `http://${this.apiHost}`;
+    return this.apiOrigin;
   }
 
   get frontendUrl(): string {
-    const host = this.apiHost.replace(':8000', ':3000');
-    return `http://${host}`;
+    try {
+      const parsed = new URL(this.apiOrigin);
+      if (isLocalAddress(parsed.hostname) && parsed.port === '8000') {
+        parsed.port = '3000';
+      }
+      return parsed.origin;
+    } catch {
+      return 'http://localhost:3000';
+    }
   }
 
   setToken(token: string | null) {
