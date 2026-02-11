@@ -67,10 +67,12 @@ class ArticleAIPipelineService:
             ModelAPIConfig.id.asc(),
         )
 
-    def get_ai_config(
-        self, db, category_id: str | None = None, prompt_type: str = "summary"
+    def _get_prompt_config(
+        self,
+        db,
+        category_id: str | None = None,
+        prompt_type: str = "summary",
     ):
-        model_query = db.query(ModelAPIConfig).filter(ModelAPIConfig.is_enabled == True)
         prompt_query = db.query(PromptConfig).filter(
             PromptConfig.is_enabled == True,
             PromptConfig.type == prompt_type,
@@ -86,6 +88,16 @@ class ArticleAIPipelineService:
             prompt_config = self._prompt_ordering(
                 prompt_query.filter(PromptConfig.category_id.is_(None))
             ).first()
+
+        return prompt_config
+
+    def get_ai_config(
+        self, db, category_id: str | None = None, prompt_type: str = "summary"
+    ):
+        model_query = db.query(ModelAPIConfig).filter(ModelAPIConfig.is_enabled == True)
+        prompt_config = self._get_prompt_config(
+            db, category_id=category_id, prompt_type=prompt_type
+        )
 
         model_config = None
         if prompt_config and prompt_config.model_api_config_id:
@@ -376,6 +388,28 @@ class ArticleAIPipelineService:
                 cleaned_md_candidate = (ai_analysis.cleaned_md_draft or "").strip()
             if not cleaned_md_candidate:
                 raise TaskDataError("缺少待校验内容，请先执行内容清洗")
+
+            prompt_config = self._get_prompt_config(
+                db,
+                category_id=category_id,
+                prompt_type="content_validation",
+            )
+            if not prompt_config:
+                article.content_md = cleaned_md_candidate
+                article.updated_at = now_str()
+                ai_analysis.error_message = None
+                ai_analysis.cleaned_md_draft = None
+                ai_analysis.updated_at = now_str()
+                db.commit()
+
+                self._enqueue_task(
+                    db,
+                    task_type="process_article_classification",
+                    article_id=article_id,
+                    content_type="classification",
+                    payload={"category_id": category_id},
+                )
+                return
 
             validation_config = self.get_ai_config(
                 db, category_id, prompt_type="content_validation"
@@ -935,7 +969,7 @@ class ArticleAIPipelineService:
                 )
                 article.ai_analysis.updated_at = now_str()
                 db.commit()
-                return
+                raise TaskConfigError("未配置AI服务，请先在配置页面设置AI参数")
 
             ai_client = self.create_ai_client(ai_config)
             parameters = ai_config.get("parameters") or {}
@@ -1051,5 +1085,7 @@ class ArticleAIPipelineService:
                 article.ai_analysis.error_message = str(exc)
                 article.ai_analysis.updated_at = now_str()
                 db.commit()
+            if isinstance(exc, TaskConfigError):
+                raise
         finally:
             db.close()
