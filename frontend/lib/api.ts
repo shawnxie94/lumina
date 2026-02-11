@@ -493,7 +493,7 @@ export const articleApi = {
 
 	getSimilarArticles: async (
 		slug: string,
-		limit = 4,
+		limit = 5,
 	): Promise<SimilarArticleResponse> => {
 		const response = await api.get(`/api/articles/${slug}/similar`, {
 			params: { limit },

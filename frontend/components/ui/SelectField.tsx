@@ -6,11 +6,35 @@ interface SelectFieldProps extends SelectProps {
 	compact?: boolean;
 }
 
+const normalizeText = (value: unknown) =>
+	String(value ?? "")
+		.toLowerCase()
+		.replace(/\s+/g, "");
+
+const defaultFilterOption: NonNullable<SelectProps["filterOption"]> = (
+	input,
+	option,
+) => {
+	if (!option || typeof option !== "object") return false;
+	const record = option as {
+		label?: unknown;
+		children?: unknown;
+		value?: unknown;
+	};
+	const optionText = normalizeText(record.label ?? record.children ?? record.value);
+	const query = normalizeText(input);
+	if (!query) return true;
+	return optionText.includes(query);
+};
+
 export default function SelectField({
 	compact = false,
 	className = "",
 	popupClassName = "",
 	style,
+	showSearch,
+	optionFilterProp,
+	filterOption,
 	...props
 }: SelectFieldProps) {
 	const height = compact ? 32 : 36;
@@ -27,6 +51,9 @@ export default function SelectField({
 			className={resolvedClassName}
 			popupClassName={resolvedPopupClassName}
 			style={resolvedStyle}
+			showSearch={showSearch ?? true}
+			optionFilterProp={optionFilterProp ?? "label"}
+			filterOption={filterOption ?? defaultFilterOption}
 		/>
 	);
 }

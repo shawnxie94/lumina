@@ -115,11 +115,8 @@ class ArticleQueryService:
                 markdown_content += f"### [{article.title}]({article.source_url or ''})\n\n"
                 if article.top_image:
                     markdown_content += f"![]({article.top_image})\n\n"
-                if article.ai_analysis:
-                    if article.ai_analysis.key_points:
-                        markdown_content += f"{article.ai_analysis.key_points}\n\n"
-                    elif article.ai_analysis.summary:
-                        markdown_content += f"{article.ai_analysis.summary}\n\n"
+                if article.ai_analysis and article.ai_analysis.summary:
+                    markdown_content += f"{article.ai_analysis.summary}\n\n"
 
         if uncategorized:
             markdown_content += "## 未分类\n\n"
@@ -127,10 +124,7 @@ class ArticleQueryService:
                 markdown_content += f"### [{article.title}]({article.source_url or ''})\n\n"
                 if article.top_image:
                     markdown_content += f"![]({article.top_image})\n\n"
-                if article.ai_analysis:
-                    if article.ai_analysis.key_points:
-                        markdown_content += f"{article.ai_analysis.key_points}\n\n"
-                    elif article.ai_analysis.summary:
-                        markdown_content += f"{article.ai_analysis.summary}\n\n"
+                if article.ai_analysis and article.ai_analysis.summary:
+                    markdown_content += f"{article.ai_analysis.summary}\n\n"
 
         return markdown_content

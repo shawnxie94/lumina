@@ -219,7 +219,7 @@ async def get_article(
 @router.get("/api/articles/{article_slug}/similar")
 async def get_similar_articles(
     article_slug: str,
-    limit: int = 4,
+    limit: int = 5,
     db: Session = Depends(get_db),
     is_admin: bool = Depends(check_is_admin),
 ):

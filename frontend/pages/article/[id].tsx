@@ -62,7 +62,7 @@ import { signIn, signOut, useSession } from "next-auth/react";
 
 // 轮询间隔（毫秒）
 const POLLING_INTERVAL = 3000;
-const SIMILAR_ARTICLE_LIMIT = 4;
+const SIMILAR_ARTICLE_LIMIT = 5;
 
 interface AIContentSectionProps {
 	title: string;
