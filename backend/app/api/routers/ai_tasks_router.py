@@ -3,7 +3,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import or_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, load_only
 
 from app.schemas import AITaskCancelRequest, AITaskRetryRequest
 from auth import get_current_admin
@@ -32,6 +32,9 @@ async def list_ai_tasks(
     db: Session = Depends(get_db),
     _: bool = Depends(get_current_admin),
 ):
+    page = max(page, 1)
+    size = max(1, min(size, 100))
+
     query = db.query(AITask)
 
     if status:
@@ -52,7 +55,26 @@ async def list_ai_tasks(
 
     total = query.count()
     tasks = (
-        query.order_by(AITask.created_at.desc())
+        query.options(
+            load_only(
+                AITask.id,
+                AITask.article_id,
+                AITask.task_type,
+                AITask.content_type,
+                AITask.status,
+                AITask.attempts,
+                AITask.max_attempts,
+                AITask.run_at,
+                AITask.locked_at,
+                AITask.locked_by,
+                AITask.last_error,
+                AITask.last_error_type,
+                AITask.created_at,
+                AITask.updated_at,
+                AITask.finished_at,
+            )
+        )
+        .order_by(AITask.created_at.desc())
         .offset((page - 1) * size)
         .limit(size)
         .all()

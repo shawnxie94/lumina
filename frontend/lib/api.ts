@@ -93,6 +93,22 @@ export const normalizeMediaHtml = (html: string): string => {
 	}
 };
 
+const sleep = (ms: number): Promise<void> =>
+	new Promise((resolve) => setTimeout(resolve, ms));
+
+const isTransientNetworkError = (error: unknown): boolean => {
+	if (!axios.isAxiosError(error)) return false;
+	if (error.response) return false;
+	const normalized = `${error.code || ""} ${error.message || ""}`.toLowerCase();
+	return (
+		normalized.includes("network error") ||
+		normalized.includes("err_connection_closed") ||
+		normalized.includes("econnreset") ||
+		normalized.includes("socket hang up") ||
+		normalized.includes("timeout")
+	);
+};
+
 const API_URL = getApiBaseUrl();
 
 const api = axios.create({
@@ -630,8 +646,17 @@ export const articleApi = {
 		content_type?: string;
 		article_title?: string;
 	}) => {
-		const response = await api.get("/api/ai-tasks", { params });
-		return response.data;
+		try {
+			const response = await api.get("/api/ai-tasks", { params });
+			return response.data;
+		} catch (error) {
+			if (isTransientNetworkError(error)) {
+				await sleep(250);
+				const retryResponse = await api.get("/api/ai-tasks", { params });
+				return retryResponse.data;
+			}
+			throw error;
+		}
 	},
 
 	getAITask: async (taskId: string) => {
