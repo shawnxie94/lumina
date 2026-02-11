@@ -31,7 +31,6 @@ jobs:
       release_tag: ${{ steps.vars.outputs.release_tag }}
       short_sha: ${{ steps.vars.outputs.short_sha }}
       is_prerelease: ${{ steps.vars.outputs.is_prerelease }}
-      dockerhub_namespace: ${{ steps.vars.outputs.dockerhub_namespace }}
       run_precheck: ${{ steps.vars.outputs.run_precheck }}
       run_backend: ${{ steps.vars.outputs.run_backend }}
       run_web: ${{ steps.vars.outputs.run_web }}
@@ -40,8 +39,6 @@ jobs:
       - name: Prepare release metadata
         id: vars
         env:
-          DOCKERHUB_NAMESPACE: ${{ vars.DOCKERHUB_NAMESPACE }}
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           INPUT_TARGET: ${{ github.event.inputs.target }}
           INPUT_RELEASE_TAG: ${{ github.event.inputs.release_tag }}
           EVENT_NAME: ${{ github.event_name }}
@@ -94,23 +91,10 @@ jobs:
             IS_PRERELEASE=false
           fi
 
-          NAMESPACE="${DOCKERHUB_NAMESPACE}"
-          if [[ -z "${NAMESPACE}" ]]; then
-            NAMESPACE="${DOCKERHUB_USERNAME}"
-          fi
-          if [[ -z "${NAMESPACE}" && "${RUN_PRECHECK}" == "true" ]]; then
-            echo "Missing Docker Hub namespace. Please set repository variable DOCKERHUB_NAMESPACE or secret DOCKERHUB_USERNAME." >&2
-            exit 1
-          fi
-          if [[ -n "${NAMESPACE}" ]]; then
-            NAMESPACE="$(echo "${NAMESPACE}" | tr '[:upper:]' '[:lower:]')"
-          fi
-
           echo "target=${TARGET}" >> "${GITHUB_OUTPUT}"
           echo "release_tag=${RELEASE_TAG}" >> "${GITHUB_OUTPUT}"
           echo "short_sha=${SHORT_SHA}" >> "${GITHUB_OUTPUT}"
           echo "is_prerelease=${IS_PRERELEASE}" >> "${GITHUB_OUTPUT}"
-          echo "dockerhub_namespace=${NAMESPACE}" >> "${GITHUB_OUTPUT}"
           echo "run_precheck=${RUN_PRECHECK}" >> "${GITHUB_OUTPUT}"
           echo "run_backend=${RUN_BACKEND}" >> "${GITHUB_OUTPUT}"
           echo "run_web=${RUN_WEB}" >> "${GITHUB_OUTPUT}"
@@ -127,7 +111,7 @@ jobs:
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-          DOCKERHUB_NAMESPACE: ${{ needs.prepare.outputs.dockerhub_namespace }}
+          DOCKERHUB_NAMESPACE: ${{ vars.DOCKERHUB_NAMESPACE || secrets.DOCKERHUB_USERNAME }}
         run: |
           if [[ -z "${DOCKERHUB_USERNAME}" ]]; then
             echo "Missing secret DOCKERHUB_USERNAME." >&2
@@ -139,10 +123,15 @@ jobs:
           fi
 
           USERNAME_LC="$(echo "${DOCKERHUB_USERNAME}" | tr '[:upper:]' '[:lower:]')"
+          NAMESPACE="$(echo "${DOCKERHUB_NAMESPACE}" | tr '[:upper:]' '[:lower:]')"
+          if [[ -z "${NAMESPACE}" ]]; then
+            echo "Missing Docker Hub namespace. Set variable DOCKERHUB_NAMESPACE or secret DOCKERHUB_USERNAME." >&2
+            exit 1
+          fi
           echo "Docker Hub username: ${DOCKERHUB_USERNAME}"
-          echo "Docker Hub namespace: ${DOCKERHUB_NAMESPACE}"
-          if [[ "${USERNAME_LC}" != "${DOCKERHUB_NAMESPACE}" ]]; then
-            echo "::warning::Namespace (${DOCKERHUB_NAMESPACE}) differs from username (${USERNAME_LC}). Ensure this user has write access to that namespace."
+          echo "Docker Hub namespace: ${NAMESPACE}"
+          if [[ "${USERNAME_LC}" != "${NAMESPACE}" ]]; then
+            echo "::warning::Namespace (${NAMESPACE}) differs from username (${USERNAME_LC}). Ensure this user has write access to that namespace."
           fi
 
           AUTH_RESPONSE="$(curl -fsSL -X POST https://hub.docker.com/v2/users/login/ -H 'Content-Type: application/json' -d "{\"username\":\"${DOCKERHUB_USERNAME}\",\"password\":\"${DOCKERHUB_TOKEN}\"}")"
@@ -153,10 +142,10 @@ jobs:
           fi
 
           for repo in lumina-api lumina-worker lumina-web; do
-            API_URL="https://hub.docker.com/v2/repositories/${DOCKERHUB_NAMESPACE}/${repo}/"
+            API_URL="https://hub.docker.com/v2/repositories/${NAMESPACE}/${repo}/"
             HTTP_STATUS="$(curl -sS -o /tmp/dockerhub-repo-check.json -w "%{http_code}" -H "Authorization: JWT ${JWT_TOKEN}" "${API_URL}")"
             if [[ "${HTTP_STATUS}" != "200" ]]; then
-              echo "Cannot access docker.io/${DOCKERHUB_NAMESPACE}/${repo} (HTTP ${HTTP_STATUS})." >&2
+              echo "Cannot access docker.io/${NAMESPACE}/${repo} (HTTP ${HTTP_STATUS})." >&2
               echo "Please confirm repository exists and ${DOCKERHUB_USERNAME} has write permission." >&2
               cat /tmp/dockerhub-repo-check.json >&2 || true
               exit 1
@@ -171,6 +160,8 @@ jobs:
       - prepare
       - dockerhub-precheck
     if: ${{ needs.prepare.outputs.run_backend == 'true' }}
+    env:
+      DOCKERHUB_NAMESPACE: ${{ vars.DOCKERHUB_NAMESPACE || secrets.DOCKERHUB_USERNAME }}
     permissions:
       contents: read
     steps:
@@ -192,8 +183,8 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: |
-            docker.io/${{ needs.prepare.outputs.dockerhub_namespace }}/lumina-api
-            docker.io/${{ needs.prepare.outputs.dockerhub_namespace }}/lumina-worker
+            docker.io/${{ env.DOCKERHUB_NAMESPACE }}/lumina-api
+            docker.io/${{ env.DOCKERHUB_NAMESPACE }}/lumina-worker
           tags: |
             type=raw,value=${{ needs.prepare.outputs.release_tag }}
             type=raw,value=sha-${{ needs.prepare.outputs.short_sha }}
@@ -216,6 +207,8 @@ jobs:
       - prepare
       - dockerhub-precheck
     if: ${{ needs.prepare.outputs.run_web == 'true' }}
+    env:
+      DOCKERHUB_NAMESPACE: ${{ vars.DOCKERHUB_NAMESPACE || secrets.DOCKERHUB_USERNAME }}
     permissions:
       contents: read
     steps:
@@ -236,7 +229,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: docker.io/${{ needs.prepare.outputs.dockerhub_namespace }}/lumina-web
+          images: docker.io/${{ env.DOCKERHUB_NAMESPACE }}/lumina-web
           tags: |
             type=raw,value=${{ needs.prepare.outputs.release_tag }}
             type=raw,value=sha-${{ needs.prepare.outputs.short_sha }}
@@ -297,7 +290,7 @@ jobs:
 
       - name: Build release note body
         env:
-          DOCKERHUB_NAMESPACE: ${{ needs.prepare.outputs.dockerhub_namespace }}
+          DOCKERHUB_NAMESPACE: ${{ vars.DOCKERHUB_NAMESPACE || secrets.DOCKERHUB_USERNAME }}
           RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
           RUN_BACKEND: ${{ needs.prepare.outputs.run_backend }}
           RUN_WEB: ${{ needs.prepare.outputs.run_web }}
