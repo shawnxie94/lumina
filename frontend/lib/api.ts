@@ -2,13 +2,17 @@ import axios from "axios";
 import { notificationStore } from "@/lib/notifications";
 
 export const getApiBaseUrl = (): string => {
-	if (process.env.NEXT_PUBLIC_API_URL) {
-		return process.env.NEXT_PUBLIC_API_URL;
+	const envBaseUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
+	if (envBaseUrl) {
+		return envBaseUrl.replace(/\/+$/, "");
 	}
 	if (typeof window !== "undefined") {
-		return `${window.location.protocol}//${window.location.hostname}:8000`;
+		return window.location.origin;
 	}
-	return "http://localhost:8000";
+	if (process.env.NODE_ENV === "development") {
+		return "http://localhost:8000";
+	}
+	return "http://api:8000";
 };
 
 export const resolveMediaUrl = (url?: string | null): string => {
