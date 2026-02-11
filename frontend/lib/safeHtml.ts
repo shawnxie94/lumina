@@ -37,6 +37,7 @@ const SANITIZE_OPTIONS: IOptions = {
 	allowedAttributes: {
 		a: ["href", "title", "target", "rel"],
 		img: ["src", "alt", "title", "width", "height", "loading", "decoding"],
+		mark: ["data-annotation-id"],
 		"*": ["class"],
 	},
 	allowedSchemes: ["http", "https", "mailto"],
