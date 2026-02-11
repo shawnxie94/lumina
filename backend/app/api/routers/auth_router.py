@@ -48,12 +48,9 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
     if admin is None:
         raise HTTPException(status_code=400, detail="系统未初始化，请先设置管理员密码")
 
-    is_valid, needs_upgrade = verify_password(request.password, admin.password_hash)
+    is_valid = verify_password(request.password, admin.password_hash)
     if not is_valid:
         raise HTTPException(status_code=401, detail="密码错误")
-
-    if needs_upgrade:
-        update_admin_password(db, admin, request.password)
 
     token = create_token(admin.jwt_secret)
     return LoginResponse(token=token, message="登录成功")
@@ -74,7 +71,7 @@ async def change_password(
     """修改管理员密码（需要登录）"""
     admin = get_admin_settings(db)
 
-    is_valid, _ = verify_password(request.old_password, admin.password_hash)
+    is_valid = verify_password(request.old_password, admin.password_hash)
     if not is_valid:
         raise HTTPException(status_code=401, detail="原密码错误")
 

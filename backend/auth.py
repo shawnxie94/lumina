@@ -3,7 +3,6 @@
 """
 
 import secrets
-import hashlib
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -49,14 +48,9 @@ class SetupRequest(BaseModel):
 # ============ 密码工具函数 ============
 
 
-PASSWORD_HASH_VERSION_SHA256 = "sha256$"
 PASSWORD_HASH_VERSION_BCRYPT = "bcrypt$"
 MAX_BCRYPT_PASSWORD_BYTES = 72
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-
-def _hash_password_sha256(password: str) -> str:
-    return hashlib.sha256(password.encode()).hexdigest()
 
 
 def hash_password(password: str) -> str:
@@ -66,28 +60,21 @@ def hash_password(password: str) -> str:
     return f"{PASSWORD_HASH_VERSION_BCRYPT}{pwd_context.hash(password)}"
 
 
-def verify_password(password: str, password_hash: str) -> tuple[bool, bool]:
-    """验证密码。返回 (是否匹配, 是否需要升级哈希)"""
+def verify_password(password: str, password_hash: str) -> bool:
+    """验证密码（仅支持 bcrypt 版本哈希）"""
     if not password_hash:
-        return False, False
+        return False
 
     if password_hash.startswith(PASSWORD_HASH_VERSION_BCRYPT):
         hashed = password_hash[len(PASSWORD_HASH_VERSION_BCRYPT) :]
         if len(password.encode("utf-8")) > MAX_BCRYPT_PASSWORD_BYTES:
-            return False, False
+            return False
         try:
-            return pwd_context.verify(password, hashed), False
+            return pwd_context.verify(password, hashed)
         except Exception:
-            return False, False
+            return False
 
-    if password_hash.startswith(PASSWORD_HASH_VERSION_SHA256):
-        hashed = password_hash[len(PASSWORD_HASH_VERSION_SHA256) :]
-        return _hash_password_sha256(password) == hashed, True
-
-    if len(password_hash) == 64:
-        return _hash_password_sha256(password) == password_hash, True
-
-    return False, False
+    return False
 
 
 def generate_jwt_secret() -> str:
