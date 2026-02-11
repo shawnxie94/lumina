@@ -6,7 +6,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - NEXT_PUBLIC_API_URL=http://api:8000
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-https://your-domain.com}
       - INTERNAL_API_TOKEN=${INTERNAL_API_TOKEN}
     depends_on:
       - api
