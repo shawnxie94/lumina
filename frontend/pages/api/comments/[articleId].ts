@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth/next';
 
 import { getAuthOptions } from '../auth/[...nextauth]';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const API_URL = process.env.BACKEND_API_URL || 'http://api:8000';
 const INTERNAL_API_TOKEN = process.env.INTERNAL_API_TOKEN || '';
 const SETTINGS_URL = `${API_URL}/api/settings/comments/public`;
 

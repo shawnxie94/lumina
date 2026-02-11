@@ -1,12 +1,13 @@
 services:
   web:
-    image: docker.io/${DOCKERHUB_NAMESPACE:-xiexiao064}/lumina-web:${LUMINA_IMAGE_TAG}
+    image: docker.io/xiexiao064/lumina-web:${LUMINA_IMAGE_TAG}
     platform: linux/amd64
     restart: unless-stopped
     ports:
       - "3000:3000"
     environment:
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-https://your-domain.com}
+      - API_BASE_URL=${API_BASE_URL:-}
+      - BACKEND_API_URL=${BACKEND_API_URL:-http://api:8000}
       - INTERNAL_API_TOKEN=${INTERNAL_API_TOKEN}
     depends_on:
       - api
@@ -14,7 +15,7 @@ services:
       - app-network
 
   api:
-    image: docker.io/${DOCKERHUB_NAMESPACE:-xiexiao064}/lumina-api:${LUMINA_IMAGE_TAG}
+    image: docker.io/xiexiao064/lumina-api:${LUMINA_IMAGE_TAG}
     platform: linux/amd64
     restart: unless-stopped
     ports:
@@ -24,6 +25,7 @@ services:
       - INTERNAL_API_TOKEN=${INTERNAL_API_TOKEN}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-*}
       - MEDIA_ROOT=/app/data/media
+      - MEDIA_PUBLIC_BASE_URL=${MEDIA_PUBLIC_BASE_URL:-}
     volumes:
       - ./data:/app/data
       - ./data/media:/app/data/media
@@ -31,7 +33,7 @@ services:
       - app-network
 
   worker:
-    image: docker.io/${DOCKERHUB_NAMESPACE:-xiexiao064}/lumina-worker:${LUMINA_IMAGE_TAG}
+    image: docker.io/xiexiao064/lumina-worker:${LUMINA_IMAGE_TAG}
     platform: linux/amd64
     restart: unless-stopped
     command: python worker.py

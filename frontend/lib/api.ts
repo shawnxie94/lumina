@@ -1,13 +1,40 @@
 import axios from "axios";
 import { notificationStore } from "@/lib/notifications";
 
+declare global {
+	interface Window {
+		__LUMINA_RUNTIME_CONFIG__?: {
+			apiBaseUrl?: string;
+		};
+	}
+}
+
+const normalizeBaseUrl = (value?: string | null): string => {
+	const trimmed = value?.trim();
+	if (!trimmed) return "";
+	return trimmed.replace(/\/+$/, "");
+};
+
+const getRuntimeApiBaseUrl = (): string => {
+	if (typeof window === "undefined") return "";
+	return normalizeBaseUrl(window.__LUMINA_RUNTIME_CONFIG__?.apiBaseUrl);
+};
+
 export const getApiBaseUrl = (): string => {
-	const envBaseUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
-	if (envBaseUrl) {
-		return envBaseUrl.replace(/\/+$/, "");
+	const runtimeBaseUrl = getRuntimeApiBaseUrl();
+	if (runtimeBaseUrl) {
+		return runtimeBaseUrl;
 	}
 	if (typeof window !== "undefined") {
 		return window.location.origin;
+	}
+	const apiBaseUrl = normalizeBaseUrl(process.env.API_BASE_URL);
+	if (apiBaseUrl) {
+		return apiBaseUrl;
+	}
+	const backendApiUrl = normalizeBaseUrl(process.env.BACKEND_API_URL);
+	if (backendApiUrl) {
+		return backendApiUrl;
 	}
 	if (process.env.NODE_ENV === "development") {
 		return "http://localhost:8000";
@@ -87,6 +114,7 @@ export const removeToken = (): void => {
 
 api.interceptors.request.use(
 	(config) => {
+		config.baseURL = getApiBaseUrl();
 		const token = getToken();
 		if (token) {
 			config.headers.Authorization = `Bearer ${token}`;

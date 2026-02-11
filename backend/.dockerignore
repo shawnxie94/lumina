@@ -16,6 +16,10 @@ env/
 *.swo
 *~
 
+# Env files
+.env
+.env.*
+
 # Data
 *.db
 *.sqlite

@@ -130,7 +130,7 @@ On first run, open `/login` and set the admin password before normal login.
 
 ### Why does frontend API return 404 (for example `/api/articles`)?
 
-Rebuild the frontend image and make sure `NEXT_PUBLIC_API_URL` points to a backend URL reachable by the browser (local default is `http://localhost:8000`).
+This should not happen in same-origin deployments; for cross-origin setups, check whether `API_BASE_URL` points to a backend URL reachable by the browser.
 
 ### Why does the extension fail to submit article?
 

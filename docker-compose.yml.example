@@ -1,14 +1,12 @@
 services:
   web:
-    build:
-      context: ./frontend
-      args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    build: ./frontend
     ports:
       - "3000:3000"
     environment:
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8000}
-      - INTERNAL_API_TOKEN=034c6ac483ecbb6dbe15889df3584868566c1acfb64d33a297022b4af5044f00
+      - API_BASE_URL=${API_BASE_URL:-http://localhost:8000}
+      - BACKEND_API_URL=${BACKEND_API_URL:-http://api:8000}
+      - INTERNAL_API_TOKEN=${INTERNAL_API_TOKEN:-dev-internal-token-change-me}
     depends_on:
       - api
     networks:
@@ -20,9 +18,9 @@ services:
       - "8000:8000"
     environment:
       - DATABASE_URL=sqlite:///./data/articles.db
-      - INTERNAL_API_TOKEN=034c6ac483ecbb6dbe15889df3584868566c1acfb64d33a297022b4af5044f00
+      - INTERNAL_API_TOKEN=${INTERNAL_API_TOKEN:-dev-internal-token-change-me}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
-      - MEDIA_PUBLIC_BASE_URL=${MEDIA_PUBLIC_BASE_URL:-https://your-domain.com}
+      - MEDIA_PUBLIC_BASE_URL=${MEDIA_PUBLIC_BASE_URL:-http://localhost:8000}
     volumes:
       - ./data:/app/data
     networks:
@@ -33,7 +31,7 @@ services:
     command: python worker.py
     environment:
       - DATABASE_URL=sqlite:///./data/articles.db
-      - INTERNAL_API_TOKEN=034c6ac483ecbb6dbe15889df3584868566c1acfb64d33a297022b4af5044f00
+      - INTERNAL_API_TOKEN=${INTERNAL_API_TOKEN:-dev-internal-token-change-me}
       - AI_WORKER_POLL_INTERVAL=3
       - AI_TASK_LOCK_TIMEOUT=300
     volumes:
