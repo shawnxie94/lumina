@@ -65,20 +65,25 @@ class ArticleEmbeddingService:
             if article.ai_analysis and article.ai_analysis.summary
             else ""
         )
-        if summary:
-            source = f"{title}\n\n{summary}" if title else summary
-        elif article.content_md:
-            source = f"{title}\n\n{article.content_md}" if title else article.content_md
-        else:
-            html = article.content_html or ""
-            cleaned = re.sub(r"<[^>]+>", " ", html) if html else ""
-            source = f"{title}\n\n{cleaned}" if title else cleaned
+        if not summary:
+            return ""
+
+        source = f"{title}\n\n{summary}" if title else summary
 
         source = (source or "").strip()
         if not source:
             return ""
         compact = re.sub(r"\s+", " ", source)
         return compact[:EMBEDDING_TEXT_LIMIT]
+
+    def has_summary_source(self, article: Article) -> bool:
+        return bool(self.get_embedding_source_text(article))
+
+    def get_embedding_source_hash(self, article: Article) -> str | None:
+        source_text = self.get_embedding_source_text(article)
+        if not source_text:
+            return None
+        return hashlib.sha256(source_text.encode("utf-8")).hexdigest()
 
     def cosine_similarity(self, vector_a: list[float], vector_b: list[float]) -> float:
         if not vector_a or not vector_b or len(vector_a) != len(vector_b):
@@ -109,7 +114,7 @@ class ArticleEmbeddingService:
 
         source_text = self.get_embedding_source_text(article)
         if not source_text:
-            raise TaskDataError("文章内容为空，无法生成向量")
+            raise TaskDataError("摘要未生成，暂无法生成向量")
 
         use_local = bool(config.get("use_local"))
         model_name = LOCAL_EMBEDDING_MODEL_NAME if use_local else config["model_name"]

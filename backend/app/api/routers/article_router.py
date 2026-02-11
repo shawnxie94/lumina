@@ -234,12 +234,23 @@ async def get_similar_articles(
     if not is_admin and not article.is_visible:
         raise HTTPException(status_code=404, detail="文章不存在")
 
+    summary_status = article.ai_analysis.summary_status if article.ai_analysis else None
+    summary_ready = article_embedding_service.has_summary_source(article)
+    if not summary_ready:
+        if article.status in ("pending", "processing") or summary_status in (
+            "pending",
+            "processing",
+        ):
+            return {"status": "pending", "items": []}
+        return {"status": "ready", "items": []}
+
     embedding = (
         db.query(ArticleEmbedding)
         .filter(ArticleEmbedding.article_id == article.id)
         .first()
     )
-    if not embedding:
+    expected_source_hash = article_embedding_service.get_embedding_source_hash(article)
+    if not embedding or embedding.source_hash != expected_source_hash:
         ai_task_service.enqueue_task(
             db,
             task_type="process_article_embedding",
@@ -251,6 +262,12 @@ async def get_similar_articles(
     try:
         base_vector = json.loads(embedding.embedding)
     except Exception:
+        ai_task_service.enqueue_task(
+            db,
+            task_type="process_article_embedding",
+            article_id=article.id,
+            content_type="embedding",
+        )
         return {"status": "pending", "items": []}
 
     query = (
@@ -312,6 +329,8 @@ async def regenerate_article_embedding(
     article = article_query_service.get_article_by_slug(db, article_slug)
     if not article:
         raise HTTPException(status_code=404, detail="文章不存在")
+    if not article_embedding_service.has_summary_source(article):
+        raise HTTPException(status_code=409, detail="请先完成摘要生成后再执行向量化")
 
     task_id = ai_task_service.enqueue_task(
         db,

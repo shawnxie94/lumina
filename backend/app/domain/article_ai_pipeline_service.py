@@ -1,7 +1,9 @@
 import asyncio
 import json
+import logging
 
 from ai_client import ConfigurableAIClient, is_english_content
+from media_service import maybe_ingest_article_images_with_stats
 from models import (
     AIAnalysis,
     AIUsageLog,
@@ -12,7 +14,12 @@ from models import (
     SessionLocal,
     now_str,
 )
+from task_state import append_task_event
 from task_errors import TaskConfigError, TaskDataError, TaskTimeoutError
+
+
+logger = logging.getLogger("article_ai_pipeline")
+
 
 def build_parameters(model) -> dict:
     if not model:
@@ -208,6 +215,29 @@ class ArticleAIPipelineService:
             )
         )
 
+    def _append_media_ingest_event(self, db, stats: dict, stage: str) -> None:
+        if not self.current_task_id:
+            return
+        total = int(stats.get("total", 0))
+        success = int(stats.get("success", 0))
+        failed = int(stats.get("failed", 0))
+        updated = bool(stats.get("updated", False))
+        append_task_event(
+            db,
+            task_id=self.current_task_id,
+            event_type="media_ingest",
+            from_status=None,
+            to_status=None,
+            message=f"图片转储统计（{stage}）：成功 {success}，失败 {failed}",
+            details={
+                "stage": stage,
+                "total": total,
+                "success": success,
+                "failed": failed,
+                "updated": updated,
+            },
+        )
+
     async def process_article_cleaning(self, article_id: str, category_id: str | None):
         db = SessionLocal()
         try:
@@ -401,6 +431,20 @@ class ArticleAIPipelineService:
                 ai_analysis.cleaned_md_draft = None
                 ai_analysis.updated_at = now_str()
                 db.commit()
+                try:
+                    ingest_stats = await maybe_ingest_article_images_with_stats(
+                        db, article
+                    )
+                    self._append_media_ingest_event(
+                        db, ingest_stats, stage="validation_fallback"
+                    )
+                except Exception as exc:
+                    logger.warning("article_images_ingest_failed: %s", str(exc))
+                    self._append_media_ingest_event(
+                        db,
+                        {"total": 0, "success": 0, "failed": 0, "updated": False},
+                        stage="validation_fallback_error",
+                    )
 
                 self._enqueue_task(
                     db,
@@ -532,6 +576,18 @@ class ArticleAIPipelineService:
             ai_analysis.cleaned_md_draft = None
             ai_analysis.updated_at = now_str()
             db.commit()
+            try:
+                ingest_stats = await maybe_ingest_article_images_with_stats(db, article)
+                self._append_media_ingest_event(
+                    db, ingest_stats, stage="validation_passed"
+                )
+            except Exception as exc:
+                logger.warning("article_images_ingest_failed: %s", str(exc))
+                self._append_media_ingest_event(
+                    db,
+                    {"total": 0, "success": 0, "failed": 0, "updated": False},
+                    stage="validation_passed_error",
+                )
 
             self._enqueue_task(
                 db,
@@ -1014,12 +1070,14 @@ class ArticleAIPipelineService:
                 article.ai_analysis.updated_at = now_str()
                 print(f"{content_type} 生成完成: {article.title}")
                 if content_type == "summary":
-                    self._enqueue_task(
-                        db,
-                        task_type="process_article_embedding",
-                        article_id=article_id,
-                        content_type="embedding",
-                    )
+                    summary_text = (result or "").strip()
+                    if summary_text:
+                        self._enqueue_task(
+                            db,
+                            task_type="process_article_embedding",
+                            article_id=article_id,
+                            content_type="embedding",
+                        )
             except asyncio.TimeoutError:
                 self._log_ai_usage(
                     db,

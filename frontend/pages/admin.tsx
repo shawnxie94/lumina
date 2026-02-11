@@ -1877,6 +1877,7 @@ export default function AdminPage() {
 		if (eventType === "cancelled_by_api") return t("手动取消");
 		if (eventType === "stale_lock_requeued") return t("锁过期重排");
 		if (eventType === "stale_lock_failed") return t("锁过期失败");
+		if (eventType === "media_ingest") return t("图片转储");
 		return eventType;
 	};
 

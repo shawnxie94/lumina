@@ -277,26 +277,38 @@ async def maybe_ingest_top_image(db: Session, article) -> str | None:
     return url
 
 
-async def maybe_ingest_article_images(db: Session, article) -> bool:
+def _merge_ingest_stats(
+    target: dict[str, int], source: dict[str, int]
+) -> dict[str, int]:
+    target["total"] += source.get("total", 0)
+    target["success"] += source.get("success", 0)
+    target["failed"] += source.get("failed", 0)
+    return target
+
+
+async def maybe_ingest_article_images_with_stats(db: Session, article) -> dict:
+    stats = {"total": 0, "success": 0, "failed": 0, "updated": False}
     if not article:
-        return False
+        return stats
     if not is_media_enabled(db):
-        return False
+        return stats
 
     updated = False
 
     if article.content_md:
-        updated_md = await _ingest_images_in_markdown(
+        updated_md, md_stats = await _ingest_images_in_markdown(
             db, article.id, article.content_md
         )
+        _merge_ingest_stats(stats, md_stats)
         if updated_md != article.content_md:
             article.content_md = updated_md
             updated = True
 
     if article.content_html:
-        updated_html = await _ingest_images_in_html(
+        updated_html, html_stats = await _ingest_images_in_html(
             db, article.id, article.content_html
         )
+        _merge_ingest_stats(stats, html_stats)
         if updated_html != article.content_html:
             article.content_html = updated_html
             updated = True
@@ -305,14 +317,21 @@ async def maybe_ingest_article_images(db: Session, article) -> bool:
         article.updated_at = now_str()
         db.commit()
         db.refresh(article)
-    return updated
+    stats["updated"] = updated
+    return stats
+
+
+async def maybe_ingest_article_images(db: Session, article) -> bool:
+    stats = await maybe_ingest_article_images_with_stats(db, article)
+    return bool(stats.get("updated"))
 
 
 async def _ingest_images_in_markdown(
     db: Session, article_id: str, markdown: str
-) -> str:
+) -> tuple[str, dict[str, int]]:
+    stats = {"total": 0, "success": 0, "failed": 0}
     if not markdown:
-        return markdown
+        return markdown, stats
 
     pattern = re.compile(
         r"!\[([^\]]*)\]\((\S+?)(?:\s+\"([^\"]*)\")?\)"
@@ -326,11 +345,14 @@ async def _ingest_images_in_markdown(
             return match.group(0)
         if not url.startswith(("http://", "https://")):
             return match.group(0)
+        stats["total"] += 1
         try:
             _, new_url = await ingest_external_image(db, article_id, url)
         except Exception as exc:
             logger.warning("markdown_image_ingest_failed: %s", str(exc))
+            stats["failed"] += 1
             return match.group(0)
+        stats["success"] += 1
         title_part = f' "{title}"' if title else ""
         return f"![{alt}]({new_url}{title_part})"
 
@@ -341,14 +363,15 @@ async def _ingest_images_in_markdown(
         parts.append(await replace(match))
         last = match.end()
     parts.append(markdown[last:])
-    return "".join(parts)
+    return "".join(parts), stats
 
 
 async def _ingest_images_in_html(
     db: Session, article_id: str, html: str
-) -> str:
+) -> tuple[str, dict[str, int]]:
+    stats = {"total": 0, "success": 0, "failed": 0}
     if not html:
-        return html
+        return html, stats
 
     pattern = re.compile(r"(<img[^>]+src=[\"'])([^\"']+)([\"'])", re.IGNORECASE)
 
@@ -360,11 +383,14 @@ async def _ingest_images_in_html(
             return match.group(0)
         if not url.startswith(("http://", "https://")):
             return match.group(0)
+        stats["total"] += 1
         try:
             _, new_url = await ingest_external_image(db, article_id, url)
         except Exception as exc:
             logger.warning("html_image_ingest_failed: %s", str(exc))
+            stats["failed"] += 1
             return match.group(0)
+        stats["success"] += 1
         return f"{prefix}{new_url}{suffix}"
 
     parts = []
@@ -374,7 +400,7 @@ async def _ingest_images_in_html(
         parts.append(await replace(match))
         last = match.end()
     parts.append(html[last:])
-    return "".join(parts)
+    return "".join(parts), stats
 
 
 def cleanup_media_assets(db: Session, article_ids: list[str]) -> int:
