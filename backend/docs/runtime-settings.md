@@ -22,7 +22,7 @@
 | security | `INTERNAL_API_TOKEN` | 无（必填） | 内部请求校验 token；未设置将导致启动失败 |
 | cors | `ALLOWED_ORIGINS` | 空字符串 | 为空时允许 localhost:3000/127.0.0.1:3000 |
 | media | `MEDIA_ROOT` | `backend/data/media` | 媒体文件存储目录 |
-| media | `MEDIA_BASE_URL` | `/media` | 媒体静态路由前缀 |
+| media | `MEDIA_BASE_URL` | `/backend/media` | 媒体静态路由前缀 |
 | media | `MEDIA_PUBLIC_BASE_URL` | 空字符串 | 对外访问域名前缀（可选） |
 | media | `MAX_MEDIA_SIZE` | `8388608` | 上传文件最大字节数（8MB） |
 | ai_worker | `AI_WORKER_POLL_INTERVAL` | `3.0` | 任务轮询间隔（秒） |

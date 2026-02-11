@@ -4,8 +4,8 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - API_BASE_URL=${API_BASE_URL:-http://localhost:8000}
-      - BACKEND_API_URL=${BACKEND_API_URL:-http://api:8000}
+      - API_BASE_URL=${API_BASE_URL:-http://localhost:8000/backend}
+      - BACKEND_API_URL=${BACKEND_API_URL:-http://api:8000/backend}
       - INTERNAL_API_TOKEN=${INTERNAL_API_TOKEN:-dev-internal-token-change-me}
     depends_on:
       - api
@@ -20,7 +20,8 @@ services:
       - DATABASE_URL=sqlite:///./data/articles.db
       - INTERNAL_API_TOKEN=${INTERNAL_API_TOKEN:-dev-internal-token-change-me}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
-      - MEDIA_PUBLIC_BASE_URL=${MEDIA_PUBLIC_BASE_URL:-http://localhost:8000}
+      - MEDIA_BASE_URL=${MEDIA_BASE_URL:-/backend/media}
+      - MEDIA_PUBLIC_BASE_URL=${MEDIA_PUBLIC_BASE_URL:-}
     volumes:
       - ./data:/app/data
     networks:

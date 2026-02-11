@@ -128,9 +128,10 @@ npm run dev
 
 On first run, open `/login` and set the admin password before normal login.
 
-### Why does frontend API return 404 (for example `/api/articles`)?
+### Why does frontend API return 404 (for example `/backend/api/articles`)?
 
-This should not happen in same-origin deployments; for cross-origin setups, check whether `API_BASE_URL` points to a backend URL reachable by the browser.
+Check `API_BASE_URL`. In same-origin production it should normally be `/backend`; in local split-port setups it can be `http://localhost:8000/backend`.
+
 
 ### Why does the extension fail to submit article?
 

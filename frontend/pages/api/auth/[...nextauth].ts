@@ -3,7 +3,7 @@ import GithubProvider from 'next-auth/providers/github';
 import GoogleProvider from 'next-auth/providers/google';
 import CredentialsProvider from 'next-auth/providers/credentials';
 
-const API_URL = process.env.BACKEND_API_URL || 'http://api:8000';
+const API_URL = process.env.BACKEND_API_URL || 'http://api:8000/backend';
 const INTERNAL_API_TOKEN = process.env.INTERNAL_API_TOKEN || '';
 
 type CommentAuthSettings = {

@@ -6,8 +6,8 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - API_BASE_URL=${API_BASE_URL:-}
-      - BACKEND_API_URL=${BACKEND_API_URL:-http://api:8000}
+      - API_BASE_URL=${API_BASE_URL:-/backend}
+      - BACKEND_API_URL=${BACKEND_API_URL:-http://api:8000/backend}
       - INTERNAL_API_TOKEN=${INTERNAL_API_TOKEN}
     depends_on:
       - api
@@ -25,6 +25,7 @@ services:
       - INTERNAL_API_TOKEN=${INTERNAL_API_TOKEN}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-*}
       - MEDIA_ROOT=/app/data/media
+      - MEDIA_BASE_URL=${MEDIA_BASE_URL:-/backend/media}
       - MEDIA_PUBLIC_BASE_URL=${MEDIA_PUBLIC_BASE_URL:-}
     volumes:
       - ./data:/app/data

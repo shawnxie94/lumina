@@ -26,7 +26,13 @@ export const getApiBaseUrl = (): string => {
 		return runtimeBaseUrl;
 	}
 	if (typeof window !== "undefined") {
-		return window.location.origin;
+		const isLocalhost =
+			window.location.hostname === "localhost" ||
+			window.location.hostname === "127.0.0.1";
+		if (isLocalhost && window.location.port === "3000") {
+			return "http://localhost:8000/backend";
+		}
+		return `${window.location.origin}/backend`;
 	}
 	const apiBaseUrl = normalizeBaseUrl(process.env.API_BASE_URL);
 	if (apiBaseUrl) {
@@ -37,9 +43,9 @@ export const getApiBaseUrl = (): string => {
 		return backendApiUrl;
 	}
 	if (process.env.NODE_ENV === "development") {
-		return "http://localhost:8000";
+		return "http://localhost:8000/backend";
 	}
-	return "http://api:8000";
+	return "http://api:8000/backend";
 };
 
 export const resolveMediaUrl = (url?: string | null): string => {
@@ -53,9 +59,14 @@ export const resolveMediaUrl = (url?: string | null): string => {
 			const parsed = new URL(url, apiBase);
 			const isLocalhost =
 				parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1";
-			const isMediaPath = parsed.pathname.startsWith("/media/");
+			const isMediaPath =
+				parsed.pathname.startsWith("/media/") ||
+				parsed.pathname.startsWith("/backend/media/");
 			if (isLocalhost && isMediaPath) {
-				return `${apiBase}${parsed.pathname}`;
+				const normalizedPath = parsed.pathname.startsWith("/backend/")
+					? parsed.pathname.replace("/backend", "")
+					: parsed.pathname;
+				return `${apiBase}${normalizedPath}`;
 			}
 		} catch {
 			return url;

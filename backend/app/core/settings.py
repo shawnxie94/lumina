@@ -28,10 +28,10 @@ class MediaSettings:
 
     @property
     def normalized_base_url(self) -> str:
-        base = self.base_url.strip() or "/media"
+        base = self.base_url.strip() or "/backend/media"
         if not base.startswith("/"):
             base = f"/{base}"
-        return base.rstrip("/") or "/media"
+        return base.rstrip("/") or "/backend/media"
 
 
 @dataclass(frozen=True)
@@ -55,7 +55,7 @@ class AppSettings(BaseSettings):
     allowed_origins: str = Field(default="", alias="ALLOWED_ORIGINS")
 
     media_root: str = Field(default=DEFAULT_MEDIA_ROOT, alias="MEDIA_ROOT")
-    media_base_url: str = Field(default="/media", alias="MEDIA_BASE_URL")
+    media_base_url: str = Field(default="/backend/media", alias="MEDIA_BASE_URL")
     media_public_base_url: str = Field(default="", alias="MEDIA_PUBLIC_BASE_URL")
     max_media_size: int = Field(default=8 * 1024 * 1024, alias="MAX_MEDIA_SIZE")
 

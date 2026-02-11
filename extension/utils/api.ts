@@ -4,6 +4,7 @@ import { logError } from './errorLogger';
 const DEFAULT_API_HOST = 'localhost:8000';
 const STORAGE_KEY = 'apiHost';
 const TOKEN_KEY = 'adminToken';
+const API_PREFIX = '/backend';
 
 export class ApiClient {
   private apiHost: string;
@@ -93,7 +94,7 @@ export class ApiClient {
       return { valid: false, role: 'guest' };
     }
     try {
-      const response = await fetch(`${this.baseUrl}/api/auth/verify`, {
+      const response = await fetch(`${this.baseUrl}${API_PREFIX}/api/auth/verify`, {
         method: 'GET',
         headers: this.getHeaders(),
       });
@@ -109,7 +110,7 @@ export class ApiClient {
 
   async createArticle(data: CreateArticleRequest): Promise<CreateArticleResponse> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/articles`, {
+      const response = await fetch(`${this.baseUrl}${API_PREFIX}/api/articles`, {
         method: 'POST',
         headers: this.getHeaders(),
         body: JSON.stringify(data),
@@ -138,7 +139,7 @@ export class ApiClient {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 3000);
       
-      const response = await fetch(`${this.baseUrl}/api/categories`, {
+      const response = await fetch(`${this.baseUrl}${API_PREFIX}/api/categories`, {
         method: 'GET',
         signal: controller.signal,
       });

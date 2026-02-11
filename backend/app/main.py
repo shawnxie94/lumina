@@ -18,11 +18,23 @@ def create_app() -> FastAPI:
 
     app = FastAPI(title="文章知识库API", version="1.0.0")
 
+    media_base = media.normalized_base_url
     app.mount(
-        media.normalized_base_url,
+        media_base,
         StaticFiles(directory=media.root, check_dir=False),
         name="media",
     )
+    prefixed_media_base = (
+        media_base
+        if media_base.startswith("/backend/")
+        else f"/backend{media_base}"
+    )
+    if prefixed_media_base != media_base:
+        app.mount(
+            prefixed_media_base,
+            StaticFiles(directory=media.root, check_dir=False),
+            name="media_prefixed",
+        )
 
     configure_request_middleware(app)
     configure_cors(app)

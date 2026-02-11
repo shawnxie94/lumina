@@ -13,17 +13,22 @@ from app.api.routers.model_api_router import router as model_api_router
 from app.api.routers.prompt_config_router import router as prompt_config_router
 from app.api.routers.settings_router import router as settings_router
 
+BACKEND_PREFIX = "/backend"
+
 
 def register_routers(app: FastAPI) -> None:
-    app.include_router(auth_router)
-    app.include_router(settings_router)
-    app.include_router(media_router)
-    app.include_router(article_router)
-    app.include_router(comment_router)
-    app.include_router(ai_tasks_router)
-    app.include_router(ai_usage_router)
-    app.include_router(category_router)
-    app.include_router(export_router)
-    app.include_router(model_api_router)
-    app.include_router(prompt_config_router)
+    for prefix in ("", BACKEND_PREFIX):
+        app.include_router(auth_router, prefix=prefix)
+        app.include_router(settings_router, prefix=prefix)
+        app.include_router(media_router, prefix=prefix)
+        app.include_router(article_router, prefix=prefix)
+        app.include_router(comment_router, prefix=prefix)
+        app.include_router(ai_tasks_router, prefix=prefix)
+        app.include_router(ai_usage_router, prefix=prefix)
+        app.include_router(category_router, prefix=prefix)
+        app.include_router(export_router, prefix=prefix)
+        app.include_router(model_api_router, prefix=prefix)
+        app.include_router(prompt_config_router, prefix=prefix)
+
     app.include_router(health_router)
+    app.include_router(health_router, prefix=BACKEND_PREFIX)

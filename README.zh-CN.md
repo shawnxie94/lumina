@@ -125,9 +125,9 @@ npm run dev
 
 首次使用需要先访问 `/login` 设置管理员密码，之后再正常登录。
 
-### 为什么前端请求接口返回 404（如 `/api/articles`）？
+### 为什么前端请求接口返回 404（如 `/backend/api/articles`）？
 
-同源部署默认不会出现该问题；若为非同源部署，请检查 `API_BASE_URL` 是否配置为浏览器可访问的后端地址。
+优先检查 `API_BASE_URL`。同源环境通常应为 `/backend`；本地前后端分端口时可设置为 `http://localhost:8000/backend`。
 
 ### 扩展为什么无法提交文章？
 
