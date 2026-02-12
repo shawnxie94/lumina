@@ -58,6 +58,11 @@ def build_parameters(model) -> dict:
 
 class ArticleAIPipelineService:
     DEFAULT_SAFETY_MARGIN_TOKENS = 1000
+    DEFAULT_CLEANING_MAX_TOKENS = 16000
+    DEFAULT_AI_CONTENT_MAX_TOKENS = {
+        "key_points": 1000,
+        "outline": 1000,
+    }
 
     def __init__(
         self,
@@ -829,6 +834,7 @@ class ArticleAIPipelineService:
                     chunk_content,
                     prompt=current_prompt,
                     parameters=parameters,
+                    max_tokens=self.DEFAULT_CLEANING_MAX_TOKENS,
                 )
             except asyncio.TimeoutError:
                 self._log_ai_usage(
@@ -914,6 +920,119 @@ class ArticleAIPipelineService:
 
             if continue_round >= max_continue_rounds:
                 raise TaskExternalError("内容清洗输出被截断，请稍后重试")
+
+            current_prompt = self._build_continue_prompt(prompt, merged_result)
+
+        return merged_result.strip()
+
+    async def _translate_markdown_chunk(
+        self,
+        db,
+        ai_client,
+        chunk_content: str,
+        prompt: str | None,
+        parameters: dict,
+        pricing: dict,
+        article_id: str,
+        chunk_index: int,
+        max_continue_rounds: int,
+    ) -> str:
+        estimated_tokens = self._estimate_tokens(chunk_content)
+        merged_result = ""
+        current_prompt = prompt
+
+        for continue_round in range(max_continue_rounds + 1):
+            try:
+                result = await ai_client.translate_to_chinese(
+                    chunk_content,
+                    prompt=current_prompt,
+                    parameters=parameters,
+                    max_tokens=self.DEFAULT_CLEANING_MAX_TOKENS,
+                )
+            except asyncio.TimeoutError:
+                self._log_ai_usage(
+                    db,
+                    model_config_id=pricing.get("model_api_config_id"),
+                    article_id=article_id,
+                    task_type="process_article_translation",
+                    content_type="translation",
+                    usage=None,
+                    latency_ms=None,
+                    status="failed",
+                    error_message="翻译超时，请稍后重试",
+                    price_input_per_1k=pricing.get("price_input_per_1k"),
+                    price_output_per_1k=pricing.get("price_output_per_1k"),
+                    currency=pricing.get("currency"),
+                    finish_reason=None,
+                    truncated=None,
+                    chunk_index=chunk_index,
+                    continue_round=continue_round,
+                    estimated_input_tokens=estimated_tokens,
+                )
+                raise TaskTimeoutError("翻译超时，请稍后重试")
+            except Exception as exc:
+                self._log_ai_usage(
+                    db,
+                    model_config_id=pricing.get("model_api_config_id"),
+                    article_id=article_id,
+                    task_type="process_article_translation",
+                    content_type="translation",
+                    usage=None,
+                    latency_ms=None,
+                    status="failed",
+                    error_message=str(exc),
+                    price_input_per_1k=pricing.get("price_input_per_1k"),
+                    price_output_per_1k=pricing.get("price_output_per_1k"),
+                    currency=pricing.get("currency"),
+                    finish_reason=None,
+                    truncated=None,
+                    chunk_index=chunk_index,
+                    continue_round=continue_round,
+                    estimated_input_tokens=estimated_tokens,
+                )
+                raise
+
+            finish_reason = result.get("finish_reason") if isinstance(result, dict) else None
+            partial = (
+                (result.get("content") if isinstance(result, dict) else result) or ""
+            ).strip()
+            truncated = finish_reason == "length"
+
+            self._log_ai_usage(
+                db,
+                model_config_id=pricing.get("model_api_config_id"),
+                article_id=article_id,
+                task_type="process_article_translation",
+                content_type="translation",
+                usage=result.get("usage") if isinstance(result, dict) else None,
+                latency_ms=result.get("latency_ms") if isinstance(result, dict) else None,
+                status="completed",
+                error_message=None,
+                price_input_per_1k=pricing.get("price_input_per_1k"),
+                price_output_per_1k=pricing.get("price_output_per_1k"),
+                currency=pricing.get("currency"),
+                request_payload=result.get("request_payload")
+                if isinstance(result, dict)
+                else None,
+                response_payload=result.get("response_payload")
+                if isinstance(result, dict)
+                else None,
+                finish_reason=finish_reason,
+                truncated=truncated,
+                chunk_index=chunk_index,
+                continue_round=continue_round,
+                estimated_input_tokens=estimated_tokens,
+            )
+
+            if not partial and continue_round == 0:
+                raise TaskDataError("翻译失败：输出为空")
+
+            merged_result = self._merge_with_overlap(merged_result, partial)
+            if finish_reason != "length":
+                return merged_result.strip()
+
+            if continue_round >= max_continue_rounds:
+                raise TaskExternalError("翻译输出被截断，请稍后重试")
 
             current_prompt = self._build_continue_prompt(prompt, merged_result)
 
@@ -1084,6 +1203,7 @@ class ArticleAIPipelineService:
                         source_content,
                         prompt=prompt,
                         parameters=parameters,
+                        max_tokens=self.DEFAULT_CLEANING_MAX_TOKENS,
                     )
                     finish_reason = (
                         result.get("finish_reason") if isinstance(result, dict) else None
@@ -1699,6 +1819,8 @@ class ArticleAIPipelineService:
         category_id: str | None,
         model_config_id: str | None = None,
         prompt_config_id: str | None = None,
+        strategy: str | None = None,
+        chunk_cursor: int | None = None,
     ):
         db = SessionLocal()
         try:
@@ -1706,12 +1828,27 @@ class ArticleAIPipelineService:
             if not article:
                 return
 
+            source_content = self._normalize_markdown_whitespace(article.content_md or "")
+            if not source_content:
+                article.translation_status = "failed"
+                article.translation_error = "文章内容为空，无法翻译"
+                article.updated_at = now_str()
+                db.commit()
+                return
+
             article.translation_status = "processing"
             article.translation_error = None
+            article.updated_at = now_str()
             db.commit()
 
+            try:
+                start_cursor = max(0, int(chunk_cursor or 0))
+            except Exception:
+                start_cursor = 0
+
             trans_prompt = None
-            trans_parameters = {}
+            prompt_parameters = {}
+            has_custom_prompt = False
             prompt_bound_model_id = None
             if prompt_config_id:
                 prompt_config = (
@@ -1726,7 +1863,8 @@ class ArticleAIPipelineService:
                 if not prompt_config:
                     raise TaskConfigError("指定翻译提示词不存在、已禁用或类型不匹配")
                 trans_prompt = prompt_config.prompt
-                trans_parameters = build_parameters(prompt_config)
+                prompt_parameters = build_parameters(prompt_config)
+                has_custom_prompt = True
                 prompt_bound_model_id = prompt_config.model_api_config_id
 
             ai_config = None
@@ -1750,6 +1888,8 @@ class ArticleAIPipelineService:
                     "price_input_per_1k": model_config.price_input_per_1k,
                     "price_output_per_1k": model_config.price_output_per_1k,
                     "currency": model_config.currency,
+                    "context_window_tokens": model_config.context_window_tokens,
+                    "reserve_output_tokens": model_config.reserve_output_tokens,
                 }
 
             if prompt_bound_model_id and not ai_config:
@@ -1772,6 +1912,8 @@ class ArticleAIPipelineService:
                     "price_input_per_1k": model_config.price_input_per_1k,
                     "price_output_per_1k": model_config.price_output_per_1k,
                     "currency": model_config.currency,
+                    "context_window_tokens": model_config.context_window_tokens,
+                    "reserve_output_tokens": model_config.reserve_output_tokens,
                 }
 
             default_translation_config = self.get_ai_config(
@@ -1781,7 +1923,6 @@ class ArticleAIPipelineService:
             )
             if not trans_prompt and default_translation_config:
                 trans_prompt = default_translation_config.get("prompt_template")
-                trans_parameters = default_translation_config.get("parameters") or {}
 
             if not ai_config:
                 ai_config = default_translation_config or self.get_ai_config(
@@ -1797,6 +1938,11 @@ class ArticleAIPipelineService:
                 return
 
             trans_client = self.create_ai_client(ai_config)
+            parameters = ai_config.get("parameters") or {}
+            if prompt_parameters:
+                parameters = {**parameters, **prompt_parameters}
+            elif not parameters and default_translation_config and not has_custom_prompt:
+                parameters = default_translation_config.get("parameters") or {}
             pricing = {
                 "model_api_config_id": ai_config.get("model_api_config_id"),
                 "price_input_per_1k": ai_config.get("price_input_per_1k"),
@@ -1804,79 +1950,202 @@ class ArticleAIPipelineService:
                 "currency": ai_config.get("currency"),
             }
 
-            try:
-                content_trans = await trans_client.translate_to_chinese(
-                    article.content_md,
-                    prompt=trans_prompt,
-                    parameters=trans_parameters,
-                )
-                if isinstance(content_trans, dict):
+            strategy_value = (strategy or "auto").strip().lower() or "auto"
+            estimated_tokens = self._estimate_tokens(source_content)
+            advanced_options = self._resolve_cleaning_advanced_options(
+                ai_config,
+                parameters,
+            )
+
+            if not advanced_options:
+                try:
+                    content_trans = await trans_client.translate_to_chinese(
+                        source_content,
+                        prompt=trans_prompt,
+                        parameters=parameters,
+                        max_tokens=self.DEFAULT_CLEANING_MAX_TOKENS,
+                    )
+                    finish_reason = (
+                        content_trans.get("finish_reason")
+                        if isinstance(content_trans, dict)
+                        else None
+                    )
+                    truncated = finish_reason == "length"
+                    if isinstance(content_trans, dict):
+                        self._log_ai_usage(
+                            db,
+                            model_config_id=pricing.get("model_api_config_id"),
+                            article_id=article_id,
+                            task_type="process_article_translation",
+                            content_type="translation",
+                            usage=content_trans.get("usage"),
+                            latency_ms=content_trans.get("latency_ms"),
+                            status="completed",
+                            error_message=None,
+                            price_input_per_1k=pricing.get("price_input_per_1k"),
+                            price_output_per_1k=pricing.get("price_output_per_1k"),
+                            currency=pricing.get("currency"),
+                            request_payload=content_trans.get("request_payload"),
+                            response_payload=content_trans.get("response_payload"),
+                            finish_reason=finish_reason,
+                            truncated=truncated,
+                            chunk_index=None,
+                            continue_round=None,
+                            estimated_input_tokens=estimated_tokens,
+                        )
+                        content_trans = (content_trans.get("content") or "").strip()
+                    else:
+                        content_trans = (content_trans or "").strip()
+                except asyncio.TimeoutError:
                     self._log_ai_usage(
                         db,
                         model_config_id=pricing.get("model_api_config_id"),
                         article_id=article_id,
                         task_type="process_article_translation",
                         content_type="translation",
-                        usage=content_trans.get("usage"),
-                        latency_ms=content_trans.get("latency_ms"),
-                        status="completed",
-                        error_message=None,
+                        usage=None,
+                        latency_ms=None,
+                        status="failed",
+                        error_message="翻译超时，请稍后重试",
                         price_input_per_1k=pricing.get("price_input_per_1k"),
                         price_output_per_1k=pricing.get("price_output_per_1k"),
                         currency=pricing.get("currency"),
-                        request_payload=content_trans.get("request_payload"),
-                        response_payload=content_trans.get("response_payload"),
+                        finish_reason=None,
+                        truncated=None,
+                        chunk_index=None,
+                        continue_round=None,
+                        estimated_input_tokens=estimated_tokens,
                     )
-                    content_trans = content_trans.get("content")
-
-                article.content_trans = content_trans
-                article.translation_status = "completed"
-                article.translation_error = None
-                print(f"翻译完成: {article.title}")
-            except asyncio.TimeoutError:
-                self._log_ai_usage(
-                    db,
-                    model_config_id=pricing.get("model_api_config_id"),
-                    article_id=article_id,
-                    task_type="process_article_translation",
-                    content_type="translation",
-                    usage=None,
-                    latency_ms=None,
-                    status="failed",
-                    error_message="翻译超时，请稍后重试",
-                    price_input_per_1k=pricing.get("price_input_per_1k"),
-                    price_output_per_1k=pricing.get("price_output_per_1k"),
-                    currency=pricing.get("currency"),
+                    raise TaskTimeoutError("翻译超时，请稍后重试")
+                except Exception as exc:
+                    self._log_ai_usage(
+                        db,
+                        model_config_id=pricing.get("model_api_config_id"),
+                        article_id=article_id,
+                        task_type="process_article_translation",
+                        content_type="translation",
+                        usage=None,
+                        latency_ms=None,
+                        status="failed",
+                        error_message=str(exc),
+                        price_input_per_1k=pricing.get("price_input_per_1k"),
+                        price_output_per_1k=pricing.get("price_output_per_1k"),
+                        currency=pricing.get("currency"),
+                        finish_reason=None,
+                        truncated=None,
+                        chunk_index=None,
+                        continue_round=None,
+                        estimated_input_tokens=estimated_tokens,
+                    )
+                    raise
+                if not content_trans:
+                    raise TaskDataError("翻译失败：输出为空")
+            else:
+                should_chunk, input_budget = self._determine_cleaning_strategy(
+                    estimated_tokens,
+                    strategy,
+                    advanced_options=advanced_options,
                 )
-                article.translation_status = "failed"
-                article.translation_error = "翻译超时，请稍后重试"
-                print(f"翻译超时: {article.title}")
-            except Exception as exc:
-                self._log_ai_usage(
-                    db,
-                    model_config_id=pricing.get("model_api_config_id"),
-                    article_id=article_id,
-                    task_type="process_article_translation",
-                    content_type="translation",
-                    usage=None,
-                    latency_ms=None,
-                    status="failed",
-                    error_message=str(exc),
-                    price_input_per_1k=pricing.get("price_input_per_1k"),
-                    price_output_per_1k=pricing.get("price_output_per_1k"),
-                    currency=pricing.get("currency"),
+                chunk_size_tokens = int(advanced_options["chunk_size_tokens"])
+                chunk_overlap_tokens = int(advanced_options["chunk_overlap_tokens"])
+                max_continue_rounds = int(advanced_options["max_continue_rounds"])
+                chunks = (
+                    self._chunk_markdown_content(
+                        source_content,
+                        chunk_size_tokens=chunk_size_tokens,
+                        overlap_tokens=chunk_overlap_tokens,
+                    )
+                    if should_chunk
+                    else [source_content]
                 )
-                article.translation_status = "failed"
-                article.translation_error = str(exc)
-                print(f"翻译失败: {article.title}, 错误: {exc}")
+                if not chunks:
+                    raise TaskDataError("翻译失败：输入内容为空")
 
+                self._update_current_task_payload(
+                    db,
+                    strategy=strategy_value,
+                    chunk_cursor=start_cursor,
+                )
+
+                if self.current_task_id:
+                    append_task_event(
+                        db,
+                        task_id=self.current_task_id,
+                        event_type="chunking_plan",
+                        from_status=None,
+                        to_status=None,
+                        message=f"翻译分块计划：{len(chunks)}块",
+                        details={
+                            "stage": "translation",
+                            "strategy": strategy_value,
+                            "chunked": should_chunk,
+                            "chunk_count": len(chunks),
+                            "chunk_size_tokens": chunk_size_tokens,
+                            "chunk_overlap_tokens": chunk_overlap_tokens,
+                            "estimated_tokens": estimated_tokens,
+                            "input_budget": input_budget,
+                            "context_window_tokens": advanced_options.get(
+                                "context_window_tokens"
+                            ),
+                            "reserve_output_tokens": advanced_options.get(
+                                "reserve_output_tokens"
+                            ),
+                        },
+                    )
+                    db.commit()
+
+                if start_cursor > len(chunks):
+                    start_cursor = len(chunks)
+
+                assembled = ""
+                if start_cursor > 0 and article.content_trans:
+                    assembled = (article.content_trans or "").strip()
+                else:
+                    start_cursor = 0
+                    article.content_trans = None
+                    article.updated_at = now_str()
+                    db.commit()
+                    self._update_current_task_payload(db, chunk_cursor=0)
+
+                for index in range(start_cursor, len(chunks)):
+                    translated_chunk = await self._translate_markdown_chunk(
+                        db=db,
+                        ai_client=trans_client,
+                        chunk_content=chunks[index],
+                        prompt=trans_prompt,
+                        parameters=parameters,
+                        pricing=pricing,
+                        article_id=article_id,
+                        chunk_index=index,
+                        max_continue_rounds=max_continue_rounds,
+                    )
+                    if not translated_chunk:
+                        raise TaskDataError("翻译失败：输出为空")
+                    assembled = self._merge_with_overlap(assembled, translated_chunk)
+                    article.content_trans = assembled
+                    article.updated_at = now_str()
+                    db.commit()
+                    self._update_current_task_payload(db, chunk_cursor=index + 1)
+
+                content_trans = self._finalize_markdown(assembled)
+                if not content_trans:
+                    raise TaskDataError("翻译失败：输出为空")
+
+            article.content_trans = content_trans
+            article.translation_status = "completed"
+            article.translation_error = None
+            article.updated_at = now_str()
             db.commit()
+            if advanced_options:
+                self._update_current_task_payload(db, chunk_cursor=0)
+            print(f"翻译完成: {article.title}")
         except Exception as exc:
             print(f"翻译处理失败: {exc}")
             article = db.query(Article).filter(Article.id == article_id).first()
             if article:
                 article.translation_status = "failed"
                 article.translation_error = str(exc)
+                article.updated_at = now_str()
                 db.commit()
         finally:
             try:
@@ -2007,8 +2276,14 @@ class ArticleAIPipelineService:
             }
 
             try:
+                default_max_tokens = self.DEFAULT_AI_CONTENT_MAX_TOKENS.get(
+                    content_type, 500
+                )
                 result = await ai_client.generate_summary(
-                    article.content_md, prompt=prompt, parameters=parameters
+                    article.content_md,
+                    prompt=prompt,
+                    parameters=parameters,
+                    max_tokens=default_max_tokens,
                 )
                 if isinstance(result, dict):
                     self._log_ai_usage(

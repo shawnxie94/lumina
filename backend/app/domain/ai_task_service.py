@@ -275,6 +275,8 @@ class AITaskService:
             category_id,
             model_config_id=payload.get("model_config_id"),
             prompt_config_id=payload.get("prompt_config_id"),
+            strategy=payload.get("strategy"),
+            chunk_cursor=payload.get("chunk_cursor"),
         )
 
     async def _handle_process_ai_content(

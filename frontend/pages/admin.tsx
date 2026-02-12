@@ -250,6 +250,12 @@ const PROMPT_TYPES = [
 	{ value: "quotes" as PromptType, labelKey: "金句" },
 ];
 
+const supportsChunkOptionsForPromptType = (
+	promptType: string | null | undefined,
+): boolean => {
+	return promptType === "content_cleaning" || promptType === "translation";
+};
+
 const PRESET_COLORS = [
 	"#EF4444",
 	"#F97316",
@@ -328,6 +334,151 @@ interface TaskTimelineNode {
 	event?: AITaskTimelineEvent;
 	usage?: AITaskTimelineUsage;
 }
+
+interface TaskTimelineChain {
+	id: string;
+	index: number;
+	trigger_event_type: string | null;
+	start_at: string;
+	events: AITaskTimelineEvent[];
+	usage: AITaskTimelineUsage[];
+	nodes: TaskTimelineNode[];
+}
+
+const TASK_CHAIN_MARKER_EVENT_TYPES = new Set([
+	"enqueued",
+	"retried",
+	"stale_lock_requeued",
+	"retry_scheduled",
+]);
+
+const TASK_PROGRESS_EVENT_TYPES = new Set([
+	"enqueued",
+	"retried",
+	"claimed",
+	"chunking_plan",
+	"media_ingest",
+	"retry_scheduled",
+	"stale_lock_requeued",
+	"retry_skipped_duplicate",
+]);
+
+const parseTimelineTimestamp = (value: string) => {
+	const timestamp = Date.parse(value);
+	return Number.isNaN(timestamp) ? 0 : timestamp;
+};
+
+const sortTimelineEntries = <T extends { created_at: string }>(entries: T[]) =>
+	[...entries].sort((a, b) => {
+		const timestampA = parseTimelineTimestamp(a.created_at);
+		const timestampB = parseTimelineTimestamp(b.created_at);
+		if (timestampA !== timestampB) return timestampA - timestampB;
+		return a.created_at.localeCompare(b.created_at);
+	});
+
+const buildTimelineNodes = (
+	events: AITaskTimelineEvent[],
+	usage: AITaskTimelineUsage[],
+) => {
+	const eventNodes: TaskTimelineNode[] = events.map((event) => ({
+		id: `event:${event.id}`,
+		kind: "event",
+		created_at: event.created_at,
+		event,
+	}));
+	const usageNodes: TaskTimelineNode[] = usage.map((item) => ({
+		id: `usage:${item.id}`,
+		kind: "usage",
+		created_at: item.created_at,
+		usage: item,
+	}));
+	return [...eventNodes, ...usageNodes].sort((a, b) => {
+		const timestampA = parseTimelineTimestamp(a.created_at);
+		const timestampB = parseTimelineTimestamp(b.created_at);
+		if (timestampA !== timestampB) return timestampA - timestampB;
+		if (a.kind === b.kind) return a.id.localeCompare(b.id);
+		return a.kind === "event" ? -1 : 1;
+	});
+};
+
+const buildTaskTimelineChains = (
+	timeline: AITaskTimelineResponse,
+): TaskTimelineChain[] => {
+	const events = sortTimelineEntries(timeline.events || []);
+	const usage = sortTimelineEntries(timeline.usage || []);
+	if (events.length === 0 && usage.length === 0) return [];
+
+	if (events.length === 0) {
+		return [
+			{
+				id: "chain:0",
+				index: 0,
+				trigger_event_type: null,
+				start_at: usage[0]?.created_at || timeline.task.created_at,
+				events: [],
+				usage,
+				nodes: buildTimelineNodes([], usage),
+			},
+		];
+	}
+
+	const markerIndexes = events
+		.map((event, index) =>
+			TASK_CHAIN_MARKER_EVENT_TYPES.has(event.event_type) ? index : -1,
+		)
+		.filter((index) => index >= 0);
+	if (markerIndexes.length === 0) {
+		markerIndexes.push(0);
+	} else if (markerIndexes[0] !== 0) {
+		markerIndexes.unshift(0);
+	}
+
+	const chains: TaskTimelineChain[] = markerIndexes.map((startIndex, chainIndex) => {
+		const nextStartIndex =
+			chainIndex < markerIndexes.length - 1
+				? markerIndexes[chainIndex + 1]
+				: events.length;
+		const chainEvents = events.slice(startIndex, nextStartIndex);
+		const chainStartAt = chainEvents[0]?.created_at || timeline.task.created_at;
+		const nextChainStartAt = events[nextStartIndex]?.created_at || null;
+		const chainStartTs = parseTimelineTimestamp(chainStartAt);
+		const nextChainStartTs = nextChainStartAt
+			? parseTimelineTimestamp(nextChainStartAt)
+			: null;
+		const chainUsage = usage.filter((item) => {
+			const usageTimestamp = parseTimelineTimestamp(item.created_at);
+			if (usageTimestamp < chainStartTs) return false;
+			if (nextChainStartTs != null && usageTimestamp >= nextChainStartTs) {
+				return false;
+			}
+			return true;
+		});
+		return {
+			id: `chain:${chainEvents[0]?.id || chainIndex}`,
+			index: chainIndex,
+			trigger_event_type: chainEvents[0]?.event_type || null,
+			start_at: chainStartAt,
+			events: chainEvents,
+			usage: chainUsage,
+			nodes: [],
+		};
+	});
+
+	const assignedUsageIds = new Set<string>();
+	chains.forEach((chain) => {
+		chain.usage.forEach((item) => assignedUsageIds.add(item.id));
+	});
+	const orphanUsage = usage.filter((item) => !assignedUsageIds.has(item.id));
+	if (orphanUsage.length > 0) {
+		const targetChain = chains[chains.length - 1];
+		targetChain.usage = sortTimelineEntries([...targetChain.usage, ...orphanUsage]);
+	}
+
+	return chains.map((chain) => ({
+		...chain,
+		nodes: buildTimelineNodes(chain.events, chain.usage),
+	}));
+};
 
 interface SortableCategoryItemProps {
 	category: Category;
@@ -465,9 +616,12 @@ export default function AdminPage() {
 	);
 	const [showTaskTimelineModal, setShowTaskTimelineModal] = useState(false);
 	const [taskTimelineLoading, setTaskTimelineLoading] = useState(false);
+	const [taskTimelineRefreshing, setTaskTimelineRefreshing] = useState(false);
 	const [taskTimelineError, setTaskTimelineError] = useState("");
 	const [selectedTaskTimeline, setSelectedTaskTimeline] =
 		useState<AITaskTimelineResponse | null>(null);
+	const [selectedTaskTimelineChainId, setSelectedTaskTimelineChainId] =
+		useState<string | null>(null);
 	const [selectedTaskTimelineUsageId, setSelectedTaskTimelineUsageId] =
 		useState<string | null>(null);
 	const [selectedTaskEventId, setSelectedTaskEventId] = useState<string | null>(
@@ -667,51 +821,35 @@ export default function AdminPage() {
 			commentReplyFilter,
 	);
 
-	const selectedTaskTimelineUsage = useMemo(() => {
-		if (!selectedTaskTimeline) return null;
-		if (!selectedTaskTimelineUsageId) {
-			return (
-				selectedTaskTimeline.usage[selectedTaskTimeline.usage.length - 1] || null
-			);
+	const taskTimelineChains = useMemo<TaskTimelineChain[]>(() => {
+		if (!selectedTaskTimeline) return [];
+		return buildTaskTimelineChains(selectedTaskTimeline);
+	}, [selectedTaskTimeline]);
+
+	const selectedTaskTimelineChain = useMemo(() => {
+		if (taskTimelineChains.length === 0) return null;
+		if (!selectedTaskTimelineChainId) {
+			return taskTimelineChains[taskTimelineChains.length - 1];
 		}
 		return (
-			selectedTaskTimeline.usage.find(
-				(usage) => usage.id === selectedTaskTimelineUsageId,
-			) ||
-			selectedTaskTimeline.usage[selectedTaskTimeline.usage.length - 1] ||
-			null
+			taskTimelineChains.find((chain) => chain.id === selectedTaskTimelineChainId) ||
+			taskTimelineChains[taskTimelineChains.length - 1]
 		);
-	}, [selectedTaskTimeline, selectedTaskTimelineUsageId]);
+	}, [taskTimelineChains, selectedTaskTimelineChainId]);
 
-	const taskTimelineNodes = useMemo<TaskTimelineNode[]>(() => {
-		if (!selectedTaskTimeline) return [];
-		const eventNodes: TaskTimelineNode[] = selectedTaskTimeline.events.map(
-			(event) => ({
-				id: `event:${event.id}`,
-				kind: "event",
-				created_at: event.created_at,
-				event,
-			}),
+	const selectedTaskTimelineUsage = useMemo(() => {
+		const usageList = selectedTaskTimelineChain?.usage || [];
+		if (usageList.length === 0) return null;
+		if (!selectedTaskTimelineUsageId) {
+			return usageList[usageList.length - 1];
+		}
+		return (
+			usageList.find((usage) => usage.id === selectedTaskTimelineUsageId) ||
+			usageList[usageList.length - 1]
 		);
-		const usageNodes: TaskTimelineNode[] = selectedTaskTimeline.usage.map(
-			(usage) => ({
-				id: `usage:${usage.id}`,
-				kind: "usage",
-				created_at: usage.created_at,
-				usage,
-			}),
-		);
-		return [...eventNodes, ...usageNodes].sort((a, b) => {
-			const timestampA = Date.parse(a.created_at);
-			const timestampB = Date.parse(b.created_at);
-			if (Number.isNaN(timestampA) || Number.isNaN(timestampB)) {
-				return a.created_at.localeCompare(b.created_at);
-			}
-			if (timestampA !== timestampB) return timestampA - timestampB;
-			if (a.kind === b.kind) return a.id.localeCompare(b.id);
-			return a.kind === "event" ? -1 : 1;
-		});
-	}, [selectedTaskTimeline]);
+	}, [selectedTaskTimelineChain, selectedTaskTimelineUsageId]);
+
+	const taskTimelineNodes = selectedTaskTimelineChain?.nodes || [];
 
 	const selectedTaskTimelineNode = useMemo(() => {
 		if (taskTimelineNodes.length === 0) {
@@ -926,6 +1064,9 @@ export default function AdminPage() {
 		is_default: false,
 	});
 	const [showPromptAdvanced, setShowPromptAdvanced] = useState(false);
+	const promptTypeSupportsChunkOptions = supportsChunkOptionsForPromptType(
+		promptFormData.type,
+	);
 	const promptImportInputRef = useRef<HTMLInputElement>(null);
 	const [modelOptions, setModelOptions] = useState<string[]>([]);
 	const [modelOptionsLoading, setModelOptionsLoading] = useState(false);
@@ -1865,9 +2006,10 @@ export default function AdminPage() {
 			return;
 		}
 		const hasAnyChunkOption =
-			Boolean(promptFormData.chunk_size_tokens.trim()) ||
-			Boolean(promptFormData.chunk_overlap_tokens.trim()) ||
-			Boolean(promptFormData.max_continue_rounds.trim());
+			promptTypeSupportsChunkOptions &&
+			(Boolean(promptFormData.chunk_size_tokens.trim()) ||
+				Boolean(promptFormData.chunk_overlap_tokens.trim()) ||
+				Boolean(promptFormData.max_continue_rounds.trim()));
 		if (hasAnyChunkOption) {
 			if (
 				!promptFormData.chunk_size_tokens.trim() ||
@@ -1933,13 +2075,16 @@ export default function AdminPage() {
 					? Number(promptFormData.max_tokens)
 					: undefined,
 				top_p: promptFormData.top_p ? Number(promptFormData.top_p) : undefined,
-				chunk_size_tokens: promptFormData.chunk_size_tokens
+				chunk_size_tokens:
+					promptTypeSupportsChunkOptions && promptFormData.chunk_size_tokens
 					? Number(promptFormData.chunk_size_tokens)
 					: undefined,
-				chunk_overlap_tokens: promptFormData.chunk_overlap_tokens
+				chunk_overlap_tokens:
+					promptTypeSupportsChunkOptions && promptFormData.chunk_overlap_tokens
 					? Number(promptFormData.chunk_overlap_tokens)
 					: undefined,
-				max_continue_rounds: promptFormData.max_continue_rounds
+				max_continue_rounds:
+					promptTypeSupportsChunkOptions && promptFormData.max_continue_rounds
 					? Number(promptFormData.max_continue_rounds)
 					: undefined,
 			};
@@ -2089,35 +2234,29 @@ export default function AdminPage() {
 		setShowTaskTimelineModal(true);
 		setTaskTimelineLoading(true);
 		setTaskTimelineError("");
+		setSelectedTaskTimelineChainId(null);
 		setSelectedTaskTimelineUsageId(null);
 		setSelectedTaskEventId(null);
 		try {
 			const data = await articleApi.getAITaskTimeline(taskId);
 			setSelectedTaskTimeline(data);
-			const preferredUsage = preferredUsageId
-				? data.usage.find((usage) => usage.id === preferredUsageId)
+			const chains = buildTaskTimelineChains(data);
+			const preferredChain = preferredUsageId
+				? chains.find((chain) =>
+						chain.usage.some((usage) => usage.id === preferredUsageId),
+					)
 				: null;
-			setSelectedTaskTimelineUsageId(
-				preferredUsage?.id || data.usage[data.usage.length - 1]?.id || null,
+			const targetChain = preferredChain || chains[chains.length - 1] || null;
+			setSelectedTaskTimelineChainId(targetChain?.id || null);
+			const selectedUsageId =
+				preferredUsageId &&
+				targetChain?.usage.some((usage) => usage.id === preferredUsageId)
+					? preferredUsageId
+					: targetChain?.usage[targetChain.usage.length - 1]?.id || null;
+			setSelectedTaskTimelineUsageId(selectedUsageId);
+			setSelectedTaskEventId(
+				targetChain?.nodes[targetChain.nodes.length - 1]?.id || null,
 			);
-			const timelineNodes = [
-				...data.events.map((event) => ({
-					id: `event:${event.id}`,
-					created_at: event.created_at,
-				})),
-				...data.usage.map((usage) => ({
-					id: `usage:${usage.id}`,
-					created_at: usage.created_at,
-				})),
-			].sort((a, b) => {
-				const timestampA = Date.parse(a.created_at);
-				const timestampB = Date.parse(b.created_at);
-				if (Number.isNaN(timestampA) || Number.isNaN(timestampB)) {
-					return a.created_at.localeCompare(b.created_at);
-				}
-				return timestampA - timestampB;
-			});
-			setSelectedTaskEventId(timelineNodes[timelineNodes.length - 1]?.id || null);
 		} catch (error: any) {
 			console.error("Failed to fetch task timeline:", error);
 			setSelectedTaskTimeline(null);
@@ -2130,6 +2269,51 @@ export default function AdminPage() {
 		}
 	};
 
+	const handleRefreshTaskTimeline = async () => {
+		const taskId = selectedTaskTimeline?.task.id;
+		if (!taskId || taskTimelineLoading || taskTimelineRefreshing) return;
+		setTaskTimelineRefreshing(true);
+		setTaskTimelineError("");
+		try {
+			const data = await articleApi.getAITaskTimeline(taskId);
+			setSelectedTaskTimeline(data);
+			const chains = buildTaskTimelineChains(data);
+			const selectedChain =
+				(selectedTaskTimelineChainId
+					? chains.find((chain) => chain.id === selectedTaskTimelineChainId)
+					: null) ||
+				(selectedTaskTimelineUsageId
+					? chains.find((chain) =>
+							chain.usage.some((usage) => usage.id === selectedTaskTimelineUsageId),
+						)
+					: null) ||
+				chains[chains.length - 1] ||
+				null;
+			setSelectedTaskTimelineChainId(selectedChain?.id || null);
+			const selectedUsageId =
+				selectedTaskTimelineUsageId &&
+				selectedChain?.usage.some(
+					(usage) => usage.id === selectedTaskTimelineUsageId,
+				)
+					? selectedTaskTimelineUsageId
+					: selectedChain?.usage[selectedChain.usage.length - 1]?.id || null;
+			setSelectedTaskTimelineUsageId(selectedUsageId);
+			const selectedNodeId =
+				selectedTaskEventId &&
+				selectedChain?.nodes.some((node) => node.id === selectedTaskEventId)
+					? selectedTaskEventId
+					: selectedChain?.nodes[selectedChain.nodes.length - 1]?.id || null;
+			setSelectedTaskEventId(selectedNodeId);
+		} catch (error: any) {
+			console.error("Failed to refresh task timeline:", error);
+			setTaskTimelineError(
+				error?.response?.data?.detail || t("任务详情刷新失败"),
+			);
+		} finally {
+			setTaskTimelineRefreshing(false);
+		}
+	};
+
 	const handleOpenUsageRelatedTask = (taskId: string, usageId?: string) => {
 		setActiveSection("monitoring");
 		setMonitoringSubSection("tasks");
@@ -2139,8 +2323,10 @@ export default function AdminPage() {
 	const closeTaskTimelineModal = () => {
 		setShowTaskTimelineModal(false);
 		setSelectedTaskTimeline(null);
+		setSelectedTaskTimelineChainId(null);
 		setSelectedTaskTimelineUsageId(null);
 		setSelectedTaskEventId(null);
+		setTaskTimelineRefreshing(false);
 		setTaskTimelineError("");
 	};
 
@@ -2205,6 +2391,7 @@ export default function AdminPage() {
 
 	const getTaskEventVisual = (
 		event: AITaskTimelineEvent,
+		statusOverride?: string | null,
 	): {
 		tagTone: "neutral" | "info" | "success" | "warning" | "danger";
 		tagClassName?: string;
@@ -2212,21 +2399,12 @@ export default function AdminPage() {
 		lineClassName: string;
 		cardClassName: string;
 	} => {
-		const status = getTaskEventStatus(event);
+		const status = statusOverride ?? getTaskEventStatus(event);
 		const isRetryEvent =
 			event.event_type === "retry_scheduled" ||
 			event.event_type === "retried" ||
 			event.event_type === "retry_skipped_duplicate";
 
-		if (isRetryEvent) {
-			return {
-				tagTone: "warning",
-				dotClassName: "bg-warning-ink",
-				lineClassName: "bg-warning-soft",
-				cardClassName:
-					"border-warning-soft/70 bg-warning-soft/20 hover:border-warning-soft",
-			};
-		}
 		if (status === "completed") {
 			return {
 				tagTone: "success",
@@ -2265,6 +2443,15 @@ export default function AdminPage() {
 			};
 		}
 		if (status === "pending") {
+			if (isRetryEvent) {
+				return {
+					tagTone: "warning",
+					dotClassName: "bg-warning-ink",
+					lineClassName: "bg-warning-soft",
+					cardClassName:
+						"border-warning-soft/70 bg-warning-soft/20 hover:border-warning-soft",
+				};
+			}
 			return {
 				tagTone: "neutral",
 				dotClassName: "bg-text-3",
@@ -2280,8 +2467,11 @@ export default function AdminPage() {
 		};
 	};
 
-	const getTaskEventStatusLabel = (event: AITaskTimelineEvent) => {
-		const status = getTaskEventStatus(event);
+	const getTaskEventStatusLabel = (
+		event: AITaskTimelineEvent,
+		statusOverride?: string | null,
+	) => {
+		const status = statusOverride ?? getTaskEventStatus(event);
 		if (status) return getTaskStatusLabel(status);
 		if (event.event_type === "media_ingest") return t("信息");
 		return t("未知");
@@ -2295,8 +2485,52 @@ export default function AdminPage() {
 		return t("无附加说明");
 	};
 
+	const getTaskTimelineChainModelLabel = (chain: TaskTimelineChain) => {
+		const modelNames = Array.from(
+			new Set(
+				chain.usage
+					.map((usage) => usage.model_api_config_name?.trim())
+					.filter((name): name is string => Boolean(name)),
+			),
+		);
+		if (modelNames.length === 0) return t("未知模型");
+		if (modelNames.length === 1) return modelNames[0];
+		return `${modelNames[0]} +${modelNames.length - 1}`;
+	};
+
+	const getTaskTimelineNodeDisplayStatus = (
+		node: TaskTimelineNode,
+		nodes: TaskTimelineNode[],
+	): string | null => {
+		if (node.kind === "usage" && node.usage) {
+			return node.usage.status;
+		}
+		const event = node.event as AITaskTimelineEvent;
+		const baseStatus = getTaskEventStatus(event);
+		if (
+			baseStatus === "completed" ||
+			baseStatus === "failed" ||
+			baseStatus === "cancelled"
+		) {
+			return baseStatus;
+		}
+		const nodeIndex = nodes.findIndex((item) => item.id === node.id);
+		const hasLaterNode = nodeIndex >= 0 && nodeIndex < nodes.length - 1;
+		if (hasLaterNode && TASK_PROGRESS_EVENT_TYPES.has(event.event_type)) {
+			return "completed";
+		}
+		return baseStatus;
+	};
+
+	const getTaskTimelineChainStatus = (chain: TaskTimelineChain) => {
+		const latestNode = chain.nodes[chain.nodes.length - 1];
+		if (!latestNode) return null;
+		return getTaskTimelineNodeDisplayStatus(latestNode, chain.nodes);
+	};
+
 	const getTaskUsageVisual = (
 		usage: AITaskTimelineUsage,
+		statusOverride?: string | null,
 	): {
 		tagTone: "neutral" | "info" | "success" | "warning" | "danger";
 		tagClassName?: string;
@@ -2304,7 +2538,8 @@ export default function AdminPage() {
 		lineClassName: string;
 		cardClassName: string;
 	} => {
-		if (usage.status === "completed") {
+		const status = statusOverride ?? usage.status;
+		if (status === "completed") {
 			return {
 				tagTone: "success",
 				dotClassName: "bg-success-ink",
@@ -2313,7 +2548,7 @@ export default function AdminPage() {
 					"border-success-soft/70 bg-success-soft/20 hover:border-success-soft",
 			};
 		}
-		if (usage.status === "failed") {
+		if (status === "failed") {
 			return {
 				tagTone: "danger",
 				dotClassName: "bg-danger-ink",
@@ -2322,7 +2557,7 @@ export default function AdminPage() {
 					"border-danger-soft/70 bg-danger-soft/20 hover:border-danger-soft",
 			};
 		}
-		if (usage.status === "processing") {
+		if (status === "processing") {
 			return {
 				tagTone: "info",
 				dotClassName: "bg-info-ink",
@@ -2339,18 +2574,18 @@ export default function AdminPage() {
 		};
 	};
 
-	const getTaskTimelineNodeVisual = (node: TaskTimelineNode) => {
+	const getTaskTimelineNodeVisual = (
+		node: TaskTimelineNode,
+		nodes: TaskTimelineNode[],
+	) => {
+		const displayStatus = getTaskTimelineNodeDisplayStatus(node, nodes);
 		if (node.kind === "usage" && node.usage) {
-			return getTaskUsageVisual(node.usage);
+			return getTaskUsageVisual(node.usage, displayStatus);
 		}
-		return getTaskEventVisual(node.event as AITaskTimelineEvent);
-	};
-
-	const getTaskTimelineNodeStatusLabel = (node: TaskTimelineNode) => {
-		if (node.kind === "usage" && node.usage) {
-			return getUsageStatusLabel(node.usage.status);
-		}
-		return getTaskEventStatusLabel(node.event as AITaskTimelineEvent);
+		return getTaskEventVisual(
+			node.event as AITaskTimelineEvent,
+			displayStatus,
+		);
 	};
 
 	const getTaskTimelineNodeLabel = (node: TaskTimelineNode) => {
@@ -2376,6 +2611,22 @@ export default function AdminPage() {
 				.join(" · ");
 		}
 		return getTaskEventSummary(node.event as AITaskTimelineEvent);
+	};
+
+	const getTaskTimelineNodeStatusFlow = (
+		node: TaskTimelineNode,
+		nodes: TaskTimelineNode[],
+	) => {
+		if (
+			node.kind === "event" &&
+			node.event?.from_status &&
+			node.event?.to_status
+		) {
+			return `${node.event.from_status} → ${node.event.to_status}`;
+		}
+		const displayStatus = getTaskTimelineNodeDisplayStatus(node, nodes);
+		if (!displayStatus) return t("状态未知");
+		return `${t("状态")}: ${getTaskStatusLabel(displayStatus)}`;
 	};
 
 	const formatTimelineDateTime = (value: string) => {
@@ -3870,9 +4121,10 @@ export default function AdminPage() {
 																		config.temperature != null ||
 																		config.max_tokens != null ||
 																		config.top_p != null ||
-																		config.chunk_size_tokens != null ||
-																		config.chunk_overlap_tokens != null ||
-																		config.max_continue_rounds != null) && (
+																		(supportsChunkOptionsForPromptType(config.type) &&
+																			(config.chunk_size_tokens != null ||
+																				config.chunk_overlap_tokens != null ||
+																				config.max_continue_rounds != null))) && (
 																		<div className="flex flex-wrap gap-2 pt-1">
 																			{config.response_format && (
 																				<StatusTag tone="neutral">
@@ -3896,18 +4148,21 @@ export default function AdminPage() {
 																					Top P: {config.top_p}
 																				</StatusTag>
 																			)}
-																			{config.chunk_size_tokens != null && (
+																			{supportsChunkOptionsForPromptType(config.type) &&
+																				config.chunk_size_tokens != null && (
 																				<StatusTag tone="neutral">
 																					{t("分块大小")}: {config.chunk_size_tokens}
 																				</StatusTag>
 																			)}
-																			{config.chunk_overlap_tokens != null && (
+																			{supportsChunkOptionsForPromptType(config.type) &&
+																				config.chunk_overlap_tokens != null && (
 																				<StatusTag tone="neutral">
 																					{t("分块重叠")}:{" "}
 																					{config.chunk_overlap_tokens}
 																				</StatusTag>
 																			)}
-																			{config.max_continue_rounds != null && (
+																			{supportsChunkOptionsForPromptType(config.type) &&
+																				config.max_continue_rounds != null && (
 																				<StatusTag tone="neutral">
 																					{t("续写轮次")}:{" "}
 																					{config.max_continue_rounds}
@@ -5990,41 +6245,51 @@ export default function AdminPage() {
 										<span className="text-sm font-semibold text-text-1">
 											{t("调用链")}
 										</span>
-										{selectedTaskTimeline.usage.length === 0 ? (
+										{taskTimelineChains.length === 0 ? (
 											<span className="text-xs text-text-3">
 												{t("暂无调用记录")}
 											</span>
 										) : (
-											selectedTaskTimeline.usage.map((usage, index) => (
+											taskTimelineChains.map((chain) => (
 												<SelectableButton
-													key={usage.id}
+													key={chain.id}
 													onClick={() => {
-														setSelectedTaskTimelineUsageId(usage.id);
-														setSelectedTaskEventId(`usage:${usage.id}`);
+														setSelectedTaskTimelineChainId(chain.id);
+														setSelectedTaskTimelineUsageId(
+															chain.usage[chain.usage.length - 1]?.id || null,
+														);
+														setSelectedTaskEventId(
+															chain.nodes[chain.nodes.length - 1]?.id || null,
+														);
 													}}
-													active={selectedTaskTimelineUsage?.id === usage.id}
+													active={selectedTaskTimelineChain?.id === chain.id}
 													variant="pill"
-												>
-													{usage.model_api_config_name ||
-														`${t("调用链")} ${index + 1}`}{" "}
-													·{" "}
-													{new Date(usage.created_at).toLocaleTimeString(
-														"zh-CN",
-														{
+													>
+														{new Date(chain.start_at).toLocaleTimeString(
+															"zh-CN",
+															{
 															hour12: false,
 														},
-													)}
+													)}{" "}
+														· {getTaskTimelineChainModelLabel(chain)}
 												</SelectableButton>
 											))
 										)}
 									</div>
-									{selectedTaskTimelineUsage && (
+									{selectedTaskTimelineChain && (
 										<div className="rounded-sm border border-border bg-muted px-3 py-2 text-xs text-text-2">
 											<div>
-												{t("当前调用状态")}:{" "}
-												{getUsageStatusLabel(selectedTaskTimelineUsage.status)}
+												{t("当前链路状态")}:{" "}
+												{getTaskStatusLabel(
+													getTaskTimelineChainStatus(selectedTaskTimelineChain) ||
+														"pending",
+												)}
 											</div>
-											{selectedTaskTimelineUsage.error_message && (
+											<div>
+												{t("节点数")}: {selectedTaskTimelineChain.nodes.length} ·{" "}
+												{t("AI调用")}: {selectedTaskTimelineChain.usage.length}
+											</div>
+											{selectedTaskTimelineUsage?.error_message && (
 												<div className="text-danger-ink">
 													{selectedTaskTimelineUsage.error_message}
 												</div>
@@ -6034,9 +6299,25 @@ export default function AdminPage() {
 								</div>
 
 								<div>
-									<h4 className="mb-2 text-sm font-semibold text-text-1">
-										{t("状态时间线")}
-									</h4>
+									<div className="mb-2 flex items-center justify-between gap-2">
+										<h4 className="text-sm font-semibold text-text-1">
+											{t("状态时间线")}
+										</h4>
+										<IconButton
+											type="button"
+											onClick={handleRefreshTaskTimeline}
+											variant="ghost"
+											size="sm"
+											title={t("刷新时间线")}
+											disabled={taskTimelineLoading || taskTimelineRefreshing}
+										>
+											<IconRefresh
+												className={`h-4 w-4 ${
+													taskTimelineRefreshing ? "animate-spin" : ""
+												}`}
+											/>
+										</IconButton>
+									</div>
 									{taskTimelineNodes.length === 0 ? (
 										<div className="rounded-sm border border-border bg-muted px-4 py-4 text-sm text-text-3">
 											{t("暂无事件与调用记录")}
@@ -6046,11 +6327,17 @@ export default function AdminPage() {
 											<div className="rounded-lg border border-border bg-muted p-3">
 												<div className="space-y-2">
 													{taskTimelineNodes.map((node, index) => {
-														const visual = getTaskTimelineNodeVisual(node);
+														const visual = getTaskTimelineNodeVisual(
+															node,
+															taskTimelineNodes,
+														);
 														const isActive =
 															selectedTaskTimelineNode?.id === node.id;
 														const summary = getTaskTimelineNodeSummary(node);
-														const nodeEvent = node.event;
+														const statusFlow = getTaskTimelineNodeStatusFlow(
+															node,
+															taskTimelineNodes,
+														);
 														return (
 															<button
 																key={node.id}
@@ -6080,26 +6367,17 @@ export default function AdminPage() {
 																		)}
 																	</div>
 																	<div className="min-w-0 flex-1">
-																		<div className="flex flex-wrap items-center gap-2">
+																		<div className="flex flex-wrap items-center gap-2 text-text-2">
 																			<div className="font-medium text-text-1">
 																				{getTaskTimelineNodeLabel(node)}
 																			</div>
-																			<StatusTag
-																				tone={visual.tagTone}
-																				className={visual.tagClassName}
-																			>
-																				{getTaskTimelineNodeStatusLabel(node)}
-																			</StatusTag>
-																		</div>
-																		<div className="mt-1 text-text-3">
-																			{formatTimelineDateTime(node.created_at)}
-																		</div>
-																		{nodeEvent?.from_status &&
-																			nodeEvent?.to_status && (
-																			<div className="mt-1 text-text-2">
-																				{nodeEvent.from_status} → {nodeEvent.to_status}
+																			<span className="text-text-3">·</span>
+																			<div className="text-text-3">
+																				{formatTimelineDateTime(node.created_at)}
 																			</div>
-																		)}
+																			<span className="text-text-3">·</span>
+																			<div>{statusFlow}</div>
+																		</div>
 																		<div className="mt-1 text-text-2">
 																			{summary.length > 120
 																				? `${summary.slice(0, 120)}...`
@@ -6115,8 +6393,15 @@ export default function AdminPage() {
 											<div className="rounded-lg border border-border bg-muted p-4 text-xs text-text-2">
 												{selectedTaskTimelineNode ? (
 													(() => {
-														const visual =
-															getTaskTimelineNodeVisual(selectedTaskTimelineNode);
+														const visual = getTaskTimelineNodeVisual(
+															selectedTaskTimelineNode,
+															taskTimelineNodes,
+														);
+														const nodeDisplayStatus =
+															getTaskTimelineNodeDisplayStatus(
+																selectedTaskTimelineNode,
+																taskTimelineNodes,
+															);
 														if (
 															selectedTaskTimelineNode.kind === "event" &&
 															selectedTaskTimelineNode.event
@@ -6137,7 +6422,10 @@ export default function AdminPage() {
 																					tone={visual.tagTone}
 																					className={visual.tagClassName}
 																				>
-																					{getTaskEventStatusLabel(event)}
+																					{getTaskEventStatusLabel(
+																						event,
+																						nodeDisplayStatus,
+																					)}
 																				</StatusTag>
 																			</div>
 																			<div>
@@ -6200,7 +6488,9 @@ export default function AdminPage() {
 															selectedTaskTimelineNode.usage as AITaskTimelineUsage;
 														const usageMeta = {
 															model: usage.model_api_config_name || t("未知模型"),
-															status: getUsageStatusLabel(usage.status),
+															status: getUsageStatusLabel(
+																nodeDisplayStatus || usage.status,
+															),
 															prompt_tokens: usage.prompt_tokens,
 															completion_tokens: usage.completion_tokens,
 															total_tokens: usage.total_tokens,
@@ -6225,7 +6515,9 @@ export default function AdminPage() {
 																				tone={visual.tagTone}
 																				className={visual.tagClassName}
 																			>
-																				{getUsageStatusLabel(usage.status)}
+																				{getUsageStatusLabel(
+																					nodeDisplayStatus || usage.status,
+																				)}
 																			</StatusTag>
 																		</div>
 																		<div>
@@ -6309,87 +6601,6 @@ export default function AdminPage() {
 									)}
 								</div>
 
-								<div>
-									<div className="mb-2 flex flex-wrap items-center gap-2">
-										<h4 className="text-sm font-semibold text-text-1">
-											{t("AI调用记录")}
-										</h4>
-										<div className="flex flex-wrap items-center gap-2">
-											<IconButton
-												type="button"
-												onClick={() =>
-													openUsagePayload(
-														`${t("请求输入")} · ${selectedTaskTimelineUsage?.model_api_config_name || t("未知模型")}`,
-														selectedTaskTimelineUsage?.request_payload || null,
-													)
-												}
-												variant="ghost"
-												size="sm"
-												title={t("查看所选入参")}
-												disabled={!selectedTaskTimelineUsage?.request_payload}
-											>
-												<IconArrowDown className="h-4 w-4" />
-											</IconButton>
-											<IconButton
-												type="button"
-												onClick={() =>
-													openUsagePayload(
-														`${t("响应输出")} · ${selectedTaskTimelineUsage?.model_api_config_name || t("未知模型")}`,
-														selectedTaskTimelineUsage?.response_payload || null,
-													)
-												}
-												variant="ghost"
-												size="sm"
-												title={t("查看所选出参")}
-												disabled={!selectedTaskTimelineUsage?.response_payload}
-											>
-												<IconArrowUp className="h-4 w-4" />
-											</IconButton>
-										</div>
-									</div>
-									{selectedTaskTimeline.usage.length === 0 ? (
-										<div className="rounded-sm border border-border bg-muted px-4 py-4 text-sm text-text-3">
-											{t("暂无调用记录")}
-										</div>
-									) : (
-										<div className="space-y-3">
-											{selectedTaskTimelineUsage && (
-												<div className="rounded-md border border-border p-3 text-xs text-text-2">
-													<div className="font-medium text-text-1">
-														{selectedTaskTimelineUsage.model_api_config_name ||
-															t("未知模型")}
-													</div>
-													<div>
-														{new Date(
-															selectedTaskTimelineUsage.created_at,
-														).toLocaleString("zh-CN")}
-													</div>
-													<div>
-														{t("状态")}:{" "}
-														{getUsageStatusLabel(
-															selectedTaskTimelineUsage.status,
-														)}
-													</div>
-													<div>
-														{t("tokens")}:{" "}
-														{selectedTaskTimelineUsage.total_tokens ?? 0}
-													</div>
-													{selectedTaskTimelineUsage.latency_ms != null && (
-														<div>
-															{t("耗时")}:{" "}
-															{selectedTaskTimelineUsage.latency_ms}ms
-														</div>
-													)}
-													{selectedTaskTimelineUsage.error_message && (
-														<div className="text-danger-ink">
-															{selectedTaskTimelineUsage.error_message}
-														</div>
-													)}
-												</div>
-											)}
-										</div>
-									)}
-								</div>
 							</div>
 						) : null}
 					</ModalShell>
@@ -6701,57 +6912,59 @@ export default function AdminPage() {
 											</FormField>
 										</div>
 
-											<div className="rounded-lg border border-border p-3">
-											<div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-												<FormField label={t("分块大小")}>
-													<TextInput
-														type="number"
-														min="1"
-														value={promptFormData.chunk_size_tokens}
-														onChange={(e) =>
-															setPromptFormData({
-																...promptFormData,
-																chunk_size_tokens: e.target.value,
-															})
-														}
-														placeholder={t("例如 12000")}
-													/>
-												</FormField>
-												<FormField label={t("分块重叠")}>
-													<TextInput
-														type="number"
-														min="0"
-														value={promptFormData.chunk_overlap_tokens}
-														onChange={(e) =>
-															setPromptFormData({
-																...promptFormData,
-																chunk_overlap_tokens: e.target.value,
-															})
-														}
-														placeholder={t("例如 800")}
-													/>
-												</FormField>
-												<FormField label={t("最多续写轮次")}>
-													<TextInput
-														type="number"
-														min="0"
-														value={promptFormData.max_continue_rounds}
-														onChange={(e) =>
-															setPromptFormData({
-																...promptFormData,
-																max_continue_rounds: e.target.value,
-															})
-														}
-														placeholder={t("例如 2")}
-													/>
-												</FormField>
-											</div>
-											<p className="mt-2 text-xs text-text-3">
-												{t(
-													"该三项需同时填写；并且关联模型需配置上下文窗口与输出预留，否则后端会拒绝保存。",
-												)}
-											</p>
-										</div>
+											{promptTypeSupportsChunkOptions && (
+												<div className="rounded-lg border border-border p-3">
+													<div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+														<FormField label={t("分块大小")}>
+															<TextInput
+																type="number"
+																min="1"
+																value={promptFormData.chunk_size_tokens}
+																onChange={(e) =>
+																	setPromptFormData({
+																		...promptFormData,
+																		chunk_size_tokens: e.target.value,
+																	})
+																}
+																placeholder={t("例如 12000")}
+															/>
+														</FormField>
+														<FormField label={t("分块重叠")}>
+															<TextInput
+																type="number"
+																min="0"
+																value={promptFormData.chunk_overlap_tokens}
+																onChange={(e) =>
+																	setPromptFormData({
+																		...promptFormData,
+																		chunk_overlap_tokens: e.target.value,
+																	})
+																}
+																placeholder={t("例如 800")}
+															/>
+														</FormField>
+														<FormField label={t("最多续写轮次")}>
+															<TextInput
+																type="number"
+																min="0"
+																value={promptFormData.max_continue_rounds}
+																onChange={(e) =>
+																	setPromptFormData({
+																		...promptFormData,
+																		max_continue_rounds: e.target.value,
+																	})
+																}
+																placeholder={t("例如 2")}
+															/>
+														</FormField>
+													</div>
+													<p className="mt-2 text-xs text-text-3">
+														{t(
+															"该三项需同时填写；并且关联模型需配置上下文窗口与输出预留，否则后端会拒绝保存。",
+														)}
+													</p>
+												</div>
+											)}
 									</div>
 								)}
 							</div>
@@ -6973,18 +7186,28 @@ export default function AdminPage() {
 								<div className="text-xs text-text-3">Top P</div>
 								<div>{showPromptPreview.top_p ?? t("默认")}</div>
 							</div>
-							<div className="rounded-lg border border-border bg-muted p-3 text-sm text-text-2">
-								<div className="text-xs text-text-3">{t("分块大小")}</div>
-								<div>{showPromptPreview.chunk_size_tokens ?? t("默认")}</div>
-							</div>
-							<div className="rounded-lg border border-border bg-muted p-3 text-sm text-text-2">
-								<div className="text-xs text-text-3">{t("分块重叠")}</div>
-								<div>{showPromptPreview.chunk_overlap_tokens ?? t("默认")}</div>
-							</div>
-							<div className="rounded-lg border border-border bg-muted p-3 text-sm text-text-2">
-								<div className="text-xs text-text-3">{t("最多续写轮次")}</div>
-								<div>{showPromptPreview.max_continue_rounds ?? t("默认")}</div>
-							</div>
+							{supportsChunkOptionsForPromptType(showPromptPreview.type) && (
+								<>
+									<div className="rounded-lg border border-border bg-muted p-3 text-sm text-text-2">
+										<div className="text-xs text-text-3">{t("分块大小")}</div>
+										<div>{showPromptPreview.chunk_size_tokens ?? t("默认")}</div>
+									</div>
+									<div className="rounded-lg border border-border bg-muted p-3 text-sm text-text-2">
+										<div className="text-xs text-text-3">{t("分块重叠")}</div>
+										<div>
+											{showPromptPreview.chunk_overlap_tokens ?? t("默认")}
+										</div>
+									</div>
+									<div className="rounded-lg border border-border bg-muted p-3 text-sm text-text-2">
+										<div className="text-xs text-text-3">
+											{t("最多续写轮次")}
+										</div>
+										<div>
+											{showPromptPreview.max_continue_rounds ?? t("默认")}
+										</div>
+									</div>
+								</>
+							)}
 						</div>
 					</ModalShell>
 				)}
