@@ -9,6 +9,7 @@ node_modules
 __pycache__
 *.db
 *.log
+.pytest_cache/
 .DS_Store
 data/
 dist/
