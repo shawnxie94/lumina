@@ -494,6 +494,11 @@ export interface AITaskTimelineUsage {
 	cost_total: number | null;
 	currency: string | null;
 	latency_ms: number | null;
+	finish_reason: string | null;
+	truncated: boolean | null;
+	chunk_index: number | null;
+	continue_round: number | null;
+	estimated_input_tokens: number | null;
 	error_message: string | null;
 	request_payload: string | null;
 	response_payload: string | null;
@@ -704,9 +709,17 @@ export const articleApi = {
 		return response.data;
 	},
 
-	retryAITasks: async (taskIds: string[]) => {
+	retryAITasks: async (
+		taskIds: string[],
+		options?: {
+			model_config_id?: string;
+			prompt_config_id?: string;
+		},
+	) => {
 		const response = await api.post("/api/ai-tasks/retry", {
 			task_ids: taskIds,
+			model_config_id: options?.model_config_id,
+			prompt_config_id: options?.prompt_config_id,
 		});
 		return response.data;
 	},

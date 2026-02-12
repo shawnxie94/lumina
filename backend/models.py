@@ -199,7 +199,7 @@ class AITask(Base):
     status = Column(String, default="pending")
     payload = Column(Text, nullable=True)
     attempts = Column(Integer, default=0)
-    max_attempts = Column(Integer, default=3)
+    max_attempts = Column(Integer, default=1)
     run_at = Column(String, default=now_str)
     locked_at = Column(String, nullable=True)
     locked_by = Column(String, nullable=True)

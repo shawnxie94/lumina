@@ -6,6 +6,7 @@ from html import unescape
 
 from ai_client import ConfigurableAIClient, is_english_content
 from media_service import maybe_ingest_article_images_with_stats
+from sqlalchemy import or_
 from models import (
     AIAnalysis,
     AITask,
@@ -117,7 +118,10 @@ class ArticleAIPipelineService:
     ):
         model_query = db.query(ModelAPIConfig).filter(
             ModelAPIConfig.is_enabled == True,
-            ModelAPIConfig.model_type != "vector",
+            or_(
+                ModelAPIConfig.model_type.is_(None),
+                ModelAPIConfig.model_type != "vector",
+            ),
         )
         prompt_config = self._get_prompt_config(
             db, category_id=category_id, prompt_type=prompt_type
@@ -125,9 +129,17 @@ class ArticleAIPipelineService:
 
         model_config = None
         if prompt_config and prompt_config.model_api_config_id:
-            model_config = model_query.filter(
-                ModelAPIConfig.id == prompt_config.model_api_config_id
-            ).first()
+            bound_model = (
+                db.query(ModelAPIConfig)
+                .filter(ModelAPIConfig.id == prompt_config.model_api_config_id)
+                .first()
+            )
+            if not bound_model:
+                raise TaskConfigError("提示词绑定的模型不存在，请检查模型配置")
+            if not bound_model.is_enabled:
+                raise TaskConfigError("提示词绑定的模型已禁用，请启用后再试")
+            self._assert_general_model(bound_model)
+            model_config = bound_model
 
         if not model_config:
             model_config = self._model_ordering(

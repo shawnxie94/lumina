@@ -67,7 +67,9 @@ import {
 	type AIUsageListResponse,
 	type AIUsageLogItem,
 	type AIUsageSummaryResponse,
+	type AITaskTimelineEvent,
 	type AITaskTimelineResponse,
+	type AITaskTimelineUsage,
 	type ArticleComment,
 	aiUsageApi,
 	articleApi,
@@ -319,6 +321,14 @@ interface UsageCostBreakdown {
 	totalCost: number | null;
 }
 
+interface TaskTimelineNode {
+	id: string;
+	kind: "event" | "usage";
+	created_at: string;
+	event?: AITaskTimelineEvent;
+	usage?: AITaskTimelineUsage;
+}
+
 interface SortableCategoryItemProps {
 	category: Category;
 	onEdit: (category: Category) => void;
@@ -460,6 +470,23 @@ export default function AdminPage() {
 		useState<AITaskTimelineResponse | null>(null);
 	const [selectedTaskTimelineUsageId, setSelectedTaskTimelineUsageId] =
 		useState<string | null>(null);
+	const [selectedTaskEventId, setSelectedTaskEventId] = useState<string | null>(
+		null,
+	);
+	const [showTaskRetryModal, setShowTaskRetryModal] = useState(false);
+	const [retryTargetTask, setRetryTargetTask] = useState<AITaskItem | null>(null);
+	const [retryTaskPromptType, setRetryTaskPromptType] =
+		useState<PromptType | null>(null);
+	const [retryTaskModelConfigId, setRetryTaskModelConfigId] = useState("");
+	const [retryTaskPromptConfigId, setRetryTaskPromptConfigId] = useState("");
+	const [retryTaskModelOptions, setRetryTaskModelOptions] = useState<
+		ModelAPIConfig[]
+	>([]);
+	const [retryTaskPromptOptions, setRetryTaskPromptOptions] = useState<
+		PromptConfig[]
+	>([]);
+	const [retryTaskOptionsLoading, setRetryTaskOptionsLoading] = useState(false);
+	const [retryTaskSubmitting, setRetryTaskSubmitting] = useState(false);
 
 	const [usageLogs, setUsageLogs] = useState<AIUsageLogItem[]>([]);
 	const [usageSummary, setUsageSummary] = useState<
@@ -643,16 +670,61 @@ export default function AdminPage() {
 	const selectedTaskTimelineUsage = useMemo(() => {
 		if (!selectedTaskTimeline) return null;
 		if (!selectedTaskTimelineUsageId) {
-			return selectedTaskTimeline.usage[0] || null;
+			return (
+				selectedTaskTimeline.usage[selectedTaskTimeline.usage.length - 1] || null
+			);
 		}
 		return (
 			selectedTaskTimeline.usage.find(
 				(usage) => usage.id === selectedTaskTimelineUsageId,
 			) ||
-			selectedTaskTimeline.usage[0] ||
+			selectedTaskTimeline.usage[selectedTaskTimeline.usage.length - 1] ||
 			null
 		);
 	}, [selectedTaskTimeline, selectedTaskTimelineUsageId]);
+
+	const taskTimelineNodes = useMemo<TaskTimelineNode[]>(() => {
+		if (!selectedTaskTimeline) return [];
+		const eventNodes: TaskTimelineNode[] = selectedTaskTimeline.events.map(
+			(event) => ({
+				id: `event:${event.id}`,
+				kind: "event",
+				created_at: event.created_at,
+				event,
+			}),
+		);
+		const usageNodes: TaskTimelineNode[] = selectedTaskTimeline.usage.map(
+			(usage) => ({
+				id: `usage:${usage.id}`,
+				kind: "usage",
+				created_at: usage.created_at,
+				usage,
+			}),
+		);
+		return [...eventNodes, ...usageNodes].sort((a, b) => {
+			const timestampA = Date.parse(a.created_at);
+			const timestampB = Date.parse(b.created_at);
+			if (Number.isNaN(timestampA) || Number.isNaN(timestampB)) {
+				return a.created_at.localeCompare(b.created_at);
+			}
+			if (timestampA !== timestampB) return timestampA - timestampB;
+			if (a.kind === b.kind) return a.id.localeCompare(b.id);
+			return a.kind === "event" ? -1 : 1;
+		});
+	}, [selectedTaskTimeline]);
+
+	const selectedTaskTimelineNode = useMemo(() => {
+		if (taskTimelineNodes.length === 0) {
+			return null;
+		}
+		if (!selectedTaskEventId) {
+			return taskTimelineNodes[taskTimelineNodes.length - 1];
+		}
+		return (
+			taskTimelineNodes.find((node) => node.id === selectedTaskEventId) ||
+			taskTimelineNodes[taskTimelineNodes.length - 1]
+		);
+	}, [taskTimelineNodes, selectedTaskEventId]);
 
 	const [editingModelAPIConfig, setEditingModelAPIConfig] =
 		useState<ModelAPIConfig | null>(null);
@@ -1889,21 +1961,97 @@ export default function AdminPage() {
 		}
 	};
 
-	const handleRetryTask = async (taskId: string) => {
+	const getRetryPromptTypeForTask = (task: AITaskItem): PromptType | null => {
+		if (task.task_type === "process_article_cleaning") return "content_cleaning";
+		if (task.task_type === "process_article_validation")
+			return "content_validation";
+		if (task.task_type === "process_article_classification")
+			return "classification";
+		if (task.task_type === "process_article_translation") return "translation";
+		if (
+			task.task_type === "process_ai_content" &&
+			task.content_type &&
+			([
+				"summary",
+				"key_points",
+				"outline",
+				"quotes",
+			] as string[]).includes(task.content_type)
+		) {
+			return task.content_type as PromptType;
+		}
+		return null;
+	};
+
+	const closeTaskRetryModal = () => {
+		setShowTaskRetryModal(false);
+		setRetryTargetTask(null);
+		setRetryTaskPromptType(null);
+		setRetryTaskModelConfigId("");
+		setRetryTaskPromptConfigId("");
+		setRetryTaskModelOptions([]);
+		setRetryTaskPromptOptions([]);
+		setRetryTaskOptionsLoading(false);
+		setRetryTaskSubmitting(false);
+	};
+
+	const handleOpenTaskRetryModal = async (task: AITaskItem) => {
+		if (pendingTaskActionIds.has(task.id)) return;
+		const promptType = getRetryPromptTypeForTask(task);
+		setRetryTargetTask(task);
+		setRetryTaskPromptType(promptType);
+		setRetryTaskModelConfigId("");
+		setRetryTaskPromptConfigId("");
+		setRetryTaskModelOptions([]);
+		setRetryTaskPromptOptions([]);
+		setRetryTaskOptionsLoading(true);
+		setShowTaskRetryModal(true);
+		try {
+			const [models, prompts] = await Promise.all([
+				articleApi.getModelAPIConfigs(),
+				articleApi.getPromptConfigs(),
+			]);
+			const enabledGeneralModels = (models as ModelAPIConfig[]).filter(
+				(config) => config.is_enabled && config.model_type !== "vector",
+			);
+			const enabledPrompts = (prompts as PromptConfig[]).filter(
+				(config) =>
+					config.is_enabled && (!promptType || config.type === promptType),
+			);
+			setRetryTaskModelOptions(enabledGeneralModels);
+			setRetryTaskPromptOptions(enabledPrompts);
+		} catch (error) {
+			console.error("Failed to load retry configs:", error);
+			showToast(t("加载重试配置失败"), "error");
+		} finally {
+			setRetryTaskOptionsLoading(false);
+		}
+	};
+
+	const handleSubmitTaskRetry = async () => {
+		if (!retryTargetTask) return;
+		const taskId = retryTargetTask.id;
 		if (pendingTaskActionIds.has(taskId)) return;
+		setRetryTaskSubmitting(true);
 		setTaskActionPending(taskId, true);
 		try {
-			const result = await articleApi.retryAITasks([taskId]);
+			const result = await articleApi.retryAITasks([taskId], {
+				model_config_id: retryTaskModelConfigId || undefined,
+				prompt_config_id: retryTaskPromptConfigId || undefined,
+			});
 			if ((result?.updated || 0) > 0) {
 				showToast(t("任务已重试"));
+				closeTaskRetryModal();
 			} else {
-				showToast(t("当前任务状态不支持重试"), "info");
+				const skipReason = result?.skipped_reasons?.[taskId];
+				showToast(skipReason || t("当前任务状态不支持重试"), "info");
 			}
 			await fetchTasks();
 		} catch (error: any) {
 			console.error("Failed to retry task:", error);
 			showToast(error?.response?.data?.detail || t("重试失败"), "error");
 		} finally {
+			setRetryTaskSubmitting(false);
 			setTaskActionPending(taskId, false);
 		}
 	};
@@ -1942,6 +2090,7 @@ export default function AdminPage() {
 		setTaskTimelineLoading(true);
 		setTaskTimelineError("");
 		setSelectedTaskTimelineUsageId(null);
+		setSelectedTaskEventId(null);
 		try {
 			const data = await articleApi.getAITaskTimeline(taskId);
 			setSelectedTaskTimeline(data);
@@ -1949,8 +2098,26 @@ export default function AdminPage() {
 				? data.usage.find((usage) => usage.id === preferredUsageId)
 				: null;
 			setSelectedTaskTimelineUsageId(
-				preferredUsage?.id || data.usage[0]?.id || null,
+				preferredUsage?.id || data.usage[data.usage.length - 1]?.id || null,
 			);
+			const timelineNodes = [
+				...data.events.map((event) => ({
+					id: `event:${event.id}`,
+					created_at: event.created_at,
+				})),
+				...data.usage.map((usage) => ({
+					id: `usage:${usage.id}`,
+					created_at: usage.created_at,
+				})),
+			].sort((a, b) => {
+				const timestampA = Date.parse(a.created_at);
+				const timestampB = Date.parse(b.created_at);
+				if (Number.isNaN(timestampA) || Number.isNaN(timestampB)) {
+					return a.created_at.localeCompare(b.created_at);
+				}
+				return timestampA - timestampB;
+			});
+			setSelectedTaskEventId(timelineNodes[timelineNodes.length - 1]?.id || null);
 		} catch (error: any) {
 			console.error("Failed to fetch task timeline:", error);
 			setSelectedTaskTimeline(null);
@@ -1973,6 +2140,7 @@ export default function AdminPage() {
 		setShowTaskTimelineModal(false);
 		setSelectedTaskTimeline(null);
 		setSelectedTaskTimelineUsageId(null);
+		setSelectedTaskEventId(null);
 		setTaskTimelineError("");
 	};
 
@@ -2014,6 +2182,227 @@ export default function AdminPage() {
 		if (eventType === "stale_lock_failed") return t("锁过期失败");
 		if (eventType === "media_ingest") return t("图片转储");
 		return eventType;
+	};
+
+	const getTaskEventStatus = (event: AITaskTimelineEvent): string | null => {
+		if (event.to_status) return event.to_status;
+		if (event.event_type === "completed") return "completed";
+		if (event.event_type === "failed" || event.event_type === "stale_lock_failed")
+			return "failed";
+		if (event.event_type === "claimed") return "processing";
+		if (event.event_type === "cancelled_by_api") return "cancelled";
+		if (
+			event.event_type === "enqueued" ||
+			event.event_type === "retry_scheduled" ||
+			event.event_type === "retried" ||
+			event.event_type === "retry_skipped_duplicate" ||
+			event.event_type === "stale_lock_requeued"
+		) {
+			return "pending";
+		}
+		return null;
+	};
+
+	const getTaskEventVisual = (
+		event: AITaskTimelineEvent,
+	): {
+		tagTone: "neutral" | "info" | "success" | "warning" | "danger";
+		tagClassName?: string;
+		dotClassName: string;
+		lineClassName: string;
+		cardClassName: string;
+	} => {
+		const status = getTaskEventStatus(event);
+		const isRetryEvent =
+			event.event_type === "retry_scheduled" ||
+			event.event_type === "retried" ||
+			event.event_type === "retry_skipped_duplicate";
+
+		if (isRetryEvent) {
+			return {
+				tagTone: "warning",
+				dotClassName: "bg-warning-ink",
+				lineClassName: "bg-warning-soft",
+				cardClassName:
+					"border-warning-soft/70 bg-warning-soft/20 hover:border-warning-soft",
+			};
+		}
+		if (status === "completed") {
+			return {
+				tagTone: "success",
+				dotClassName: "bg-success-ink",
+				lineClassName: "bg-success-soft",
+				cardClassName:
+					"border-success-soft/70 bg-success-soft/20 hover:border-success-soft",
+			};
+		}
+		if (status === "failed") {
+			return {
+				tagTone: "danger",
+				dotClassName: "bg-danger-ink",
+				lineClassName: "bg-danger-soft",
+				cardClassName:
+					"border-danger-soft/70 bg-danger-soft/20 hover:border-danger-soft",
+			};
+		}
+		if (status === "processing") {
+			return {
+				tagTone: "info",
+				dotClassName: "bg-info-ink",
+				lineClassName: "bg-info-soft",
+				cardClassName:
+					"border-info-soft/70 bg-info-soft/20 hover:border-info-soft",
+			};
+		}
+		if (status === "cancelled") {
+			return {
+				tagTone: "neutral",
+				tagClassName: "bg-violet-100 text-violet-700",
+				dotClassName: "bg-violet-500",
+				lineClassName: "bg-violet-200",
+				cardClassName:
+					"border-violet-200 bg-violet-50 hover:border-violet-300",
+			};
+		}
+		if (status === "pending") {
+			return {
+				tagTone: "neutral",
+				dotClassName: "bg-text-3",
+				lineClassName: "bg-border",
+				cardClassName: "border-border bg-surface hover:border-text-3/40",
+			};
+		}
+		return {
+			tagTone: "neutral",
+			dotClassName: "bg-text-3",
+			lineClassName: "bg-border",
+			cardClassName: "border-border bg-surface hover:border-text-3/40",
+		};
+	};
+
+	const getTaskEventStatusLabel = (event: AITaskTimelineEvent) => {
+		const status = getTaskEventStatus(event);
+		if (status) return getTaskStatusLabel(status);
+		if (event.event_type === "media_ingest") return t("信息");
+		return t("未知");
+	};
+
+	const getTaskEventSummary = (event: AITaskTimelineEvent) => {
+		if (event.message?.trim()) return event.message.trim();
+		if (event.from_status && event.to_status) {
+			return `${event.from_status} -> ${event.to_status}`;
+		}
+		return t("无附加说明");
+	};
+
+	const getTaskUsageVisual = (
+		usage: AITaskTimelineUsage,
+	): {
+		tagTone: "neutral" | "info" | "success" | "warning" | "danger";
+		tagClassName?: string;
+		dotClassName: string;
+		lineClassName: string;
+		cardClassName: string;
+	} => {
+		if (usage.status === "completed") {
+			return {
+				tagTone: "success",
+				dotClassName: "bg-success-ink",
+				lineClassName: "bg-success-soft",
+				cardClassName:
+					"border-success-soft/70 bg-success-soft/20 hover:border-success-soft",
+			};
+		}
+		if (usage.status === "failed") {
+			return {
+				tagTone: "danger",
+				dotClassName: "bg-danger-ink",
+				lineClassName: "bg-danger-soft",
+				cardClassName:
+					"border-danger-soft/70 bg-danger-soft/20 hover:border-danger-soft",
+			};
+		}
+		if (usage.status === "processing") {
+			return {
+				tagTone: "info",
+				dotClassName: "bg-info-ink",
+				lineClassName: "bg-info-soft",
+				cardClassName:
+					"border-info-soft/70 bg-info-soft/20 hover:border-info-soft",
+			};
+		}
+		return {
+			tagTone: "neutral",
+			dotClassName: "bg-text-3",
+			lineClassName: "bg-border",
+			cardClassName: "border-border bg-surface hover:border-text-3/40",
+		};
+	};
+
+	const getTaskTimelineNodeVisual = (node: TaskTimelineNode) => {
+		if (node.kind === "usage" && node.usage) {
+			return getTaskUsageVisual(node.usage);
+		}
+		return getTaskEventVisual(node.event as AITaskTimelineEvent);
+	};
+
+	const getTaskTimelineNodeStatusLabel = (node: TaskTimelineNode) => {
+		if (node.kind === "usage" && node.usage) {
+			return getUsageStatusLabel(node.usage.status);
+		}
+		return getTaskEventStatusLabel(node.event as AITaskTimelineEvent);
+	};
+
+	const getTaskTimelineNodeLabel = (node: TaskTimelineNode) => {
+		if (node.kind === "usage") return t("AI调用");
+		return getTaskEventLabel((node.event as AITaskTimelineEvent).event_type);
+	};
+
+	const getTaskTimelineNodeSummary = (node: TaskTimelineNode) => {
+		if (node.kind === "usage" && node.usage) {
+			const modelLabel = node.usage.model_api_config_name || t("未知模型");
+			const tokenLabel =
+				node.usage.total_tokens != null ? `${node.usage.total_tokens} tokens` : "-";
+			const chunkLabel =
+				node.usage.chunk_index != null
+					? `${t("分块")} #${node.usage.chunk_index + 1}`
+					: null;
+			const continueLabel =
+				node.usage.continue_round != null
+					? `${t("续写")} #${node.usage.continue_round + 1}`
+					: null;
+			return [modelLabel, tokenLabel, chunkLabel, continueLabel]
+				.filter(Boolean)
+				.join(" · ");
+		}
+		return getTaskEventSummary(node.event as AITaskTimelineEvent);
+	};
+
+	const formatTimelineDateTime = (value: string) => {
+		const timestamp = new Date(value);
+		if (Number.isNaN(timestamp.getTime())) return value;
+		return timestamp.toLocaleString("zh-CN", {
+			hour12: false,
+			year: "numeric",
+			month: "2-digit",
+			day: "2-digit",
+			hour: "2-digit",
+			minute: "2-digit",
+			second: "2-digit",
+		});
+	};
+
+	const formatTaskEventDetails = (details: AITaskTimelineEvent["details"]) => {
+		if (!details) return "";
+		if (typeof details === "string") {
+			try {
+				const parsed = JSON.parse(details);
+				return JSON.stringify(parsed, null, 2);
+			} catch {
+				return details;
+			}
+		}
+		return JSON.stringify(details, null, 2);
 	};
 
 	const getUsageStatusLabel = (status: string) => {
@@ -2188,6 +2577,34 @@ export default function AdminPage() {
 	const handleCopyPayload = async () => {
 		try {
 			await navigator.clipboard.writeText(usagePayloadContent);
+			showToast(t("已复制"));
+		} catch (error) {
+			console.error(t("复制失败"), error);
+			showToast(t("复制失败"), "error");
+		}
+	};
+
+	const handleCopyTaskEventDetails = async () => {
+		const detailContent =
+			selectedTaskTimelineNode?.kind === "event"
+				? formatTaskEventDetails(selectedTaskTimelineNode.event?.details || null)
+				: selectedTaskTimelineNode?.kind === "usage"
+					? JSON.stringify(
+							{
+								request_payload: selectedTaskTimelineNode.usage?.request_payload,
+								response_payload:
+									selectedTaskTimelineNode.usage?.response_payload,
+							},
+							null,
+							2,
+						)
+					: "";
+		if (!detailContent || detailContent === "{}") {
+			showToast(t("暂无可复制参数"), "info");
+			return;
+		}
+		try {
+			await navigator.clipboard.writeText(detailContent);
 			showToast(t("已复制"));
 		} catch (error) {
 			console.error(t("复制失败"), error);
@@ -4525,7 +4942,9 @@ export default function AdminPage() {
 																<td className="px-4 py-3 text-right">
 																	<div className="flex items-center justify-end gap-2">
 																		<IconButton
-																			onClick={() => handleRetryTask(task.id)}
+																			onClick={() =>
+																				handleOpenTaskRetryModal(task)
+																			}
 																			variant="ghost"
 																			size="sm"
 																			title={t("重试")}
@@ -4534,6 +4953,7 @@ export default function AdminPage() {
 																			)}
 																			disabled={
 																				task.status === "processing" ||
+																				task.status === "pending" ||
 																				pendingTaskActionIds.has(task.id)
 																			}
 																		>
@@ -5415,6 +5835,94 @@ export default function AdminPage() {
 					</ModalShell>
 				)}
 
+				{showTaskRetryModal && (
+					<ModalShell
+						isOpen={showTaskRetryModal}
+						onClose={closeTaskRetryModal}
+						title={t("重试任务")}
+						widthClassName="max-w-md"
+						footerClassName="border-t border-border bg-muted p-6"
+						footer={
+							<div className="flex justify-end gap-2">
+								<Button
+									type="button"
+									variant="secondary"
+									onClick={closeTaskRetryModal}
+									disabled={retryTaskSubmitting}
+								>
+									{t("取消")}
+								</Button>
+								<Button
+									type="button"
+									variant="primary"
+									onClick={handleSubmitTaskRetry}
+									loading={retryTaskSubmitting}
+									disabled={retryTaskOptionsLoading || retryTaskSubmitting}
+								>
+									{t("提交重试")}
+								</Button>
+							</div>
+						}
+					>
+						<div className="space-y-4">
+							{retryTargetTask && (
+								<div className="rounded-sm border border-border bg-muted px-3 py-2 text-xs text-text-2">
+									<div className="font-medium text-text-1">
+										{getTaskTypeLabel(
+											retryTargetTask.task_type,
+											retryTargetTask.content_type,
+										)}
+									</div>
+									<div className="mt-1 text-text-3">#{retryTargetTask.id.slice(0, 8)}</div>
+								</div>
+							)}
+							{retryTaskOptionsLoading ? (
+								<div className="rounded-sm border border-border bg-muted px-4 py-8 text-center text-sm text-text-3">
+									{t("加载中")}
+								</div>
+							) : (
+								<>
+									<FormField label={t("模型配置")}>
+										<SelectField
+											value={retryTaskModelConfigId}
+											onChange={(value) => setRetryTaskModelConfigId(value)}
+											className="w-full"
+											options={[
+												{ value: "", label: t("沿用原任务配置") },
+												...retryTaskModelOptions.map((config) => ({
+													value: config.id,
+													label: `${config.name} (${config.model_name})`,
+												})),
+											]}
+										/>
+									</FormField>
+
+									<FormField label={t("提示词配置")}>
+										<SelectField
+											value={retryTaskPromptConfigId}
+											onChange={(value) => setRetryTaskPromptConfigId(value)}
+											className="w-full"
+											disabled={!retryTaskPromptType}
+											options={[
+												{ value: "", label: t("沿用原任务配置") },
+												...retryTaskPromptOptions.map((config) => ({
+													value: config.id,
+													label: config.name,
+												})),
+											]}
+										/>
+									</FormField>
+									{!retryTaskPromptType && (
+										<p className="text-xs text-text-3">
+											{t("当前任务类型不支持覆盖提示词，将沿用原任务配置。")}
+										</p>
+									)}
+								</>
+							)}
+						</div>
+					</ModalShell>
+				)}
+
 				{showTaskTimelineModal && (
 					<ModalShell
 						isOpen={showTaskTimelineModal}
@@ -5490,9 +5998,10 @@ export default function AdminPage() {
 											selectedTaskTimeline.usage.map((usage, index) => (
 												<SelectableButton
 													key={usage.id}
-													onClick={() =>
-														setSelectedTaskTimelineUsageId(usage.id)
-													}
+													onClick={() => {
+														setSelectedTaskTimelineUsageId(usage.id);
+														setSelectedTaskEventId(`usage:${usage.id}`);
+													}}
 													active={selectedTaskTimelineUsage?.id === usage.id}
 													variant="pill"
 												>
@@ -5528,38 +6037,274 @@ export default function AdminPage() {
 									<h4 className="mb-2 text-sm font-semibold text-text-1">
 										{t("状态时间线")}
 									</h4>
-									{selectedTaskTimeline.events.length === 0 ? (
+									{taskTimelineNodes.length === 0 ? (
 										<div className="rounded-sm border border-border bg-muted px-4 py-4 text-sm text-text-3">
-											{t("暂无事件")}
+											{t("暂无事件与调用记录")}
 										</div>
 									) : (
-										<div className="space-y-2">
-											{selectedTaskTimeline.events.map((event) => (
-												<div
-													key={event.id}
-													className="rounded-md border border-border p-3 text-xs text-text-2"
-												>
-													<div className="font-medium text-text-1">
-														{getTaskEventLabel(event.event_type)}
-													</div>
-													<div>
-														{new Date(event.created_at).toLocaleString("zh-CN")}
-													</div>
-													{event.from_status && event.to_status && (
-														<div>
-															{event.from_status} → {event.to_status}
-														</div>
-													)}
-													{event.message && <div>{event.message}</div>}
-													{event.details && (
-														<pre className="mt-1 whitespace-pre-wrap rounded bg-surface p-2 text-[11px]">
-															{typeof event.details === "string"
-																? event.details
-																: JSON.stringify(event.details, null, 2)}
-														</pre>
-													)}
+										<div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+											<div className="rounded-lg border border-border bg-muted p-3">
+												<div className="space-y-2">
+													{taskTimelineNodes.map((node, index) => {
+														const visual = getTaskTimelineNodeVisual(node);
+														const isActive =
+															selectedTaskTimelineNode?.id === node.id;
+														const summary = getTaskTimelineNodeSummary(node);
+														const nodeEvent = node.event;
+														return (
+															<button
+																key={node.id}
+																type="button"
+																onClick={() => {
+																	setSelectedTaskEventId(node.id);
+																	if (node.kind === "usage" && node.usage) {
+																		setSelectedTaskTimelineUsageId(node.usage.id);
+																	}
+																}}
+																className={`w-full rounded-md border p-3 text-left text-xs transition ${
+																	isActive
+																		? `${visual.cardClassName} shadow-sm`
+																		: "border-border bg-surface hover:border-text-3/40"
+																}`}
+															>
+																<div className="flex items-start gap-3">
+																	<div className="flex min-h-[52px] flex-col items-center pt-1">
+																		<span
+																			className={`h-2.5 w-2.5 rounded-full ${visual.dotClassName}`}
+																		/>
+																		{index <
+																			taskTimelineNodes.length - 1 && (
+																			<span
+																				className={`mt-1 h-full min-h-[32px] w-px ${visual.lineClassName}`}
+																			/>
+																		)}
+																	</div>
+																	<div className="min-w-0 flex-1">
+																		<div className="flex flex-wrap items-center gap-2">
+																			<div className="font-medium text-text-1">
+																				{getTaskTimelineNodeLabel(node)}
+																			</div>
+																			<StatusTag
+																				tone={visual.tagTone}
+																				className={visual.tagClassName}
+																			>
+																				{getTaskTimelineNodeStatusLabel(node)}
+																			</StatusTag>
+																		</div>
+																		<div className="mt-1 text-text-3">
+																			{formatTimelineDateTime(node.created_at)}
+																		</div>
+																		{nodeEvent?.from_status &&
+																			nodeEvent?.to_status && (
+																			<div className="mt-1 text-text-2">
+																				{nodeEvent.from_status} → {nodeEvent.to_status}
+																			</div>
+																		)}
+																		<div className="mt-1 text-text-2">
+																			{summary.length > 120
+																				? `${summary.slice(0, 120)}...`
+																				: summary}
+																		</div>
+																	</div>
+																</div>
+															</button>
+														);
+													})}
 												</div>
-											))}
+											</div>
+											<div className="rounded-lg border border-border bg-muted p-4 text-xs text-text-2">
+												{selectedTaskTimelineNode ? (
+													(() => {
+														const visual =
+															getTaskTimelineNodeVisual(selectedTaskTimelineNode);
+														if (
+															selectedTaskTimelineNode.kind === "event" &&
+															selectedTaskTimelineNode.event
+														) {
+															const event = selectedTaskTimelineNode.event;
+															const detailsText = formatTaskEventDetails(
+																event.details,
+															);
+															return (
+																<div className="space-y-3">
+																	<div className="flex items-start justify-between gap-2">
+																		<div className="space-y-1">
+																			<div className="flex flex-wrap items-center gap-2">
+																				<div className="text-sm font-semibold text-text-1">
+																					{getTaskEventLabel(event.event_type)}
+																				</div>
+																				<StatusTag
+																					tone={visual.tagTone}
+																					className={visual.tagClassName}
+																				>
+																					{getTaskEventStatusLabel(event)}
+																				</StatusTag>
+																			</div>
+																			<div>
+																				{formatTimelineDateTime(event.created_at)}
+																			</div>
+																		</div>
+																		<IconButton
+																			type="button"
+																			onClick={handleCopyTaskEventDetails}
+																			variant="ghost"
+																			size="sm"
+																			title={t("复制参数")}
+																			disabled={!event.details}
+																		>
+																			<IconCopy className="h-4 w-4" />
+																		</IconButton>
+																	</div>
+
+																	{event.from_status && event.to_status && (
+																		<div>
+																			<span className="text-text-3">
+																				{t("状态流转")}:
+																			</span>{" "}
+																			{event.from_status} → {event.to_status}
+																		</div>
+																	)}
+																	{event.message && (
+																		<div>
+																			<span className="text-text-3">
+																				{t("说明")}:
+																			</span>{" "}
+																			{event.message}
+																		</div>
+																	)}
+																	{event.error_type && (
+																		<div>
+																			<span className="text-text-3">
+																				Error Type:
+																			</span>{" "}
+																			{event.error_type}
+																		</div>
+																	)}
+
+																	<div className="space-y-1">
+																		<div className="text-text-3">{t("参数详情")}</div>
+																		{event.details ? (
+																			<pre className="max-h-[260px] overflow-auto whitespace-pre-wrap rounded-md border border-border bg-surface p-3 text-[11px] text-text-1">
+																				{detailsText}
+																			</pre>
+																		) : (
+																			<div className="rounded-md border border-dashed border-border bg-surface px-3 py-4 text-center text-text-3">
+																				{t("该节点无附加参数")}
+																			</div>
+																		)}
+																	</div>
+																</div>
+															);
+														}
+														const usage =
+															selectedTaskTimelineNode.usage as AITaskTimelineUsage;
+														const usageMeta = {
+															model: usage.model_api_config_name || t("未知模型"),
+															status: getUsageStatusLabel(usage.status),
+															prompt_tokens: usage.prompt_tokens,
+															completion_tokens: usage.completion_tokens,
+															total_tokens: usage.total_tokens,
+															latency_ms: usage.latency_ms,
+															finish_reason: usage.finish_reason,
+															truncated: usage.truncated,
+															chunk_index: usage.chunk_index,
+															continue_round: usage.continue_round,
+															estimated_input_tokens:
+																usage.estimated_input_tokens,
+															error_message: usage.error_message,
+														};
+														return (
+															<div className="space-y-3">
+																<div className="flex items-start justify-between gap-2">
+																	<div className="space-y-1">
+																		<div className="flex flex-wrap items-center gap-2">
+																			<div className="text-sm font-semibold text-text-1">
+																				{t("AI调用")}
+																			</div>
+																			<StatusTag
+																				tone={visual.tagTone}
+																				className={visual.tagClassName}
+																			>
+																				{getUsageStatusLabel(usage.status)}
+																			</StatusTag>
+																		</div>
+																		<div>
+																			{formatTimelineDateTime(usage.created_at)}
+																		</div>
+																	</div>
+																	<IconButton
+																		type="button"
+																		onClick={handleCopyTaskEventDetails}
+																		variant="ghost"
+																		size="sm"
+																		title={t("复制参数")}
+																		disabled={
+																			!usage.request_payload &&
+																			!usage.response_payload
+																		}
+																	>
+																		<IconCopy className="h-4 w-4" />
+																	</IconButton>
+																</div>
+
+																<div>
+																	<span className="text-text-3">{t("模型")}:</span>{" "}
+																	{usage.model_api_config_name || t("未知模型")}
+																</div>
+																{usage.error_message && (
+																	<div className="text-danger-ink">
+																		{usage.error_message}
+																	</div>
+																)}
+
+																<div className="flex flex-wrap items-center gap-2">
+																	<IconButton
+																		type="button"
+																		onClick={() =>
+																			openUsagePayload(
+																				`${t("请求输入")} · ${usage.model_api_config_name || t("未知模型")}`,
+																				usage.request_payload || null,
+																			)
+																		}
+																		variant="ghost"
+																		size="sm"
+																		title={t("查看入参")}
+																		disabled={!usage.request_payload}
+																	>
+																		<IconArrowDown className="h-4 w-4" />
+																	</IconButton>
+																	<IconButton
+																		type="button"
+																		onClick={() =>
+																			openUsagePayload(
+																				`${t("响应输出")} · ${usage.model_api_config_name || t("未知模型")}`,
+																				usage.response_payload || null,
+																			)
+																		}
+																		variant="ghost"
+																		size="sm"
+																		title={t("查看出参")}
+																		disabled={!usage.response_payload}
+																	>
+																		<IconArrowUp className="h-4 w-4" />
+																	</IconButton>
+																</div>
+
+																<div className="space-y-1">
+																	<div className="text-text-3">{t("参数详情")}</div>
+																	<pre className="max-h-[260px] overflow-auto whitespace-pre-wrap rounded-md border border-border bg-surface p-3 text-[11px] text-text-1">
+																		{JSON.stringify(usageMeta, null, 2)}
+																	</pre>
+																</div>
+															</div>
+														);
+													})()
+												) : (
+													<div className="rounded-md border border-dashed border-border bg-surface px-3 py-4 text-center text-text-3">
+														{t("请选择时间线节点")}
+													</div>
+												)}
+											</div>
 										</div>
 									)}
 								</div>

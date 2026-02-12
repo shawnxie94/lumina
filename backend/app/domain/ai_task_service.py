@@ -21,10 +21,6 @@ def get_now_iso() -> str:
     return now_str()
 
 
-def get_future_iso(seconds: int) -> str:
-    return (datetime.now(timezone.utc) + timedelta(seconds=seconds)).isoformat()
-
-
 def get_stale_lock_iso() -> str:
     return (datetime.now(timezone.utc) - timedelta(seconds=LOCK_TIMEOUT_SECONDS)).isoformat()
 
@@ -77,6 +73,7 @@ class AITaskService:
             payload=payload_json,
             status="pending",
             attempts=0,
+            max_attempts=1,
             run_at=now_iso,
             updated_at=now_iso,
         )
@@ -187,26 +184,14 @@ class AITaskService:
                 }
             )
         else:
-            max_attempts = task.max_attempts or 3
-            if (not retryable) or task.attempts >= max_attempts:
-                target_status = "failed"
-                event_type = "failed"
-                updates.update(
-                    {
-                        "status": "failed",
-                        "finished_at": now_iso,
-                    }
-                )
-            else:
-                target_status = "pending"
-                event_type = "retry_scheduled"
-                backoff_seconds = min(60 * task.attempts, 300)
-                updates.update(
-                    {
-                        "status": "pending",
-                        "run_at": get_future_iso(backoff_seconds),
-                    }
-                )
+            target_status = "failed"
+            event_type = "failed"
+            updates.update(
+                {
+                    "status": "failed",
+                    "finished_at": now_iso,
+                }
+            )
             updates["last_error"] = error
             updates["last_error_type"] = error_type
 
@@ -234,7 +219,6 @@ class AITaskService:
                     "attempts": task.attempts,
                     "max_attempts": task.max_attempts,
                     "retryable": retryable,
-                    "run_at": updates.get("run_at"),
                 },
             )
         db.commit()
@@ -381,18 +365,11 @@ class AITaskService:
             from_status = task.status
             task.locked_at = None
             task.locked_by = None
-            if task.attempts >= (task.max_attempts or 3):
-                target_status = "failed"
-                ensure_task_status_transition(from_status, target_status)
-                task.status = target_status
-                task.finished_at = now_iso
-                event_type = "stale_lock_failed"
-            else:
-                target_status = "pending"
-                ensure_task_status_transition(from_status, target_status)
-                task.status = target_status
-                task.run_at = now_iso
-                event_type = "stale_lock_requeued"
+            target_status = "failed"
+            ensure_task_status_transition(from_status, target_status)
+            task.status = target_status
+            task.finished_at = now_iso
+            event_type = "stale_lock_failed"
             task.last_error = "任务超时或锁过期已重置"
             task.last_error_type = "timeout"
             task.updated_at = now_iso

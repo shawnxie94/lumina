@@ -13,6 +13,7 @@ from models import (
     AITaskEvent,
     Article,
     ModelAPIConfig,
+    PromptConfig,
     get_db,
     now_str,
 )
@@ -301,15 +302,77 @@ async def retry_ai_tasks(
     if not request.task_ids:
         raise HTTPException(status_code=400, detail="请选择任务")
 
+    def normalize_optional(value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        trimmed = value.strip()
+        return trimmed or None
+
+    def resolve_prompt_type(task: AITask) -> Optional[str]:
+        if task.task_type == "process_article_cleaning":
+            return "content_cleaning"
+        if task.task_type == "process_article_translation":
+            return "translation"
+        if task.task_type == "process_article_validation":
+            return "content_validation"
+        if task.task_type == "process_article_classification":
+            return "classification"
+        if task.task_type == "process_ai_content":
+            return task.content_type
+        return None
+
+    def parse_task_payload(task: AITask) -> dict:
+        if not task.payload:
+            return {}
+        try:
+            payload = json.loads(task.payload)
+        except Exception:
+            return {}
+        return payload if isinstance(payload, dict) else {}
+
+    def serialize_payload(payload: dict) -> str:
+        return json.dumps(
+            payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        )
+
     task_ids = list(dict.fromkeys(request.task_ids))
     tasks = db.query(AITask).filter(AITask.id.in_(task_ids)).all()
     task_map = {task.id: task for task in tasks}
     now_iso = now_str()
+    override_model_id = normalize_optional(request.model_config_id)
+    override_prompt_id = normalize_optional(request.prompt_config_id)
+
+    if override_model_id:
+        model_config = (
+            db.query(ModelAPIConfig)
+            .filter(
+                ModelAPIConfig.id == override_model_id,
+                ModelAPIConfig.is_enabled == True,
+            )
+            .first()
+        )
+        if not model_config:
+            raise HTTPException(status_code=400, detail="所选模型不存在或未启用")
+        if model_config.model_type == "vector":
+            raise HTTPException(status_code=400, detail="重试仅支持通用模型")
+
+    if override_prompt_id:
+        prompt_config = (
+            db.query(PromptConfig)
+            .filter(
+                PromptConfig.id == override_prompt_id,
+                PromptConfig.is_enabled == True,
+            )
+            .first()
+        )
+        if not prompt_config:
+            raise HTTPException(status_code=400, detail="所选提示词不存在或未启用")
 
     updated_ids: list[str] = []
     skipped_ids: list[str] = []
+    skipped_reasons: dict[str, str] = {}
 
-    def find_active_duplicate(task: AITask) -> str | None:
+    def find_active_duplicate(task: AITask, payload_json: str) -> str | None:
         duplicate_query = db.query(AITask.id).filter(
             AITask.id != task.id,
             AITask.status.in_(["pending", "processing"]),
@@ -325,10 +388,7 @@ async def retry_ai_tasks(
         else:
             duplicate_query = duplicate_query.filter(AITask.content_type == task.content_type)
 
-        if task.payload is None:
-            duplicate_query = duplicate_query.filter(AITask.payload.is_(None))
-        else:
-            duplicate_query = duplicate_query.filter(AITask.payload == task.payload)
+        duplicate_query = duplicate_query.filter(AITask.payload == payload_json)
 
         duplicate = (
             duplicate_query.order_by(AITask.created_at.desc(), AITask.id.desc()).first()
@@ -339,9 +399,38 @@ async def retry_ai_tasks(
         task = task_map.get(task_id)
         if not task:
             skipped_ids.append(task_id)
+            skipped_reasons[task_id] = "任务不存在"
             continue
 
-        duplicate_id = find_active_duplicate(task)
+        payload = parse_task_payload(task)
+
+        if override_prompt_id:
+            prompt_type = resolve_prompt_type(task)
+            if not prompt_type:
+                skipped_ids.append(task_id)
+                skipped_reasons[task_id] = "该任务类型不支持提示词覆盖"
+                continue
+            prompt_match = (
+                db.query(PromptConfig.id)
+                .filter(
+                    PromptConfig.id == override_prompt_id,
+                    PromptConfig.is_enabled == True,
+                    PromptConfig.type == prompt_type,
+                )
+                .first()
+            )
+            if not prompt_match:
+                skipped_ids.append(task_id)
+                skipped_reasons[task_id] = "提示词类型与任务不匹配"
+                continue
+            payload["prompt_config_id"] = override_prompt_id
+
+        if override_model_id:
+            payload["model_config_id"] = override_model_id
+
+        payload_json = serialize_payload(payload)
+
+        duplicate_id = find_active_duplicate(task, payload_json)
         if duplicate_id:
             append_task_event(
                 db,
@@ -350,20 +439,29 @@ async def retry_ai_tasks(
                 from_status=task.status,
                 to_status=task.status,
                 message="重试被跳过：存在活跃重复任务",
-                details={"source": "api", "duplicate_task_id": duplicate_id},
+                details={
+                    "source": "api",
+                    "duplicate_task_id": duplicate_id,
+                    "model_config_id": override_model_id,
+                    "prompt_config_id": override_prompt_id,
+                },
             )
             skipped_ids.append(task_id)
+            skipped_reasons[task_id] = "存在活跃重复任务"
             continue
 
         try:
             ensure_task_status_transition(task.status, "pending")
         except ValueError:
             skipped_ids.append(task_id)
+            skipped_reasons[task_id] = "当前任务状态不支持重试"
             continue
 
         from_status = task.status
         task.status = "pending"
         task.attempts = 0
+        task.max_attempts = 1
+        task.payload = payload_json
         task.run_at = now_iso
         task.locked_at = None
         task.locked_by = None
@@ -378,7 +476,13 @@ async def retry_ai_tasks(
             from_status=from_status,
             to_status="pending",
             message="任务已重试",
-            details={"source": "api", "attempts_reset": True},
+            details={
+                "source": "api",
+                "attempts_reset": True,
+                "manual_intervention": True,
+                "model_config_id": override_model_id,
+                "prompt_config_id": override_prompt_id,
+            },
         )
         updated_ids.append(task_id)
 
@@ -388,6 +492,7 @@ async def retry_ai_tasks(
         "updated_ids": updated_ids,
         "skipped": len(skipped_ids),
         "skipped_ids": skipped_ids,
+        "skipped_reasons": skipped_reasons,
     }
 
 
