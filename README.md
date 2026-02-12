@@ -8,12 +8,14 @@ Lumina is an information management workspace that combines a web app, FastAPI b
 
 ## Core Features
 
-- **One-click full-page or selection capture**: capture page title, content, metadata, and images from the browser extension.
-- **AI reading enhancement**: generate summary, outline, key points, translation, and related reading recommendations.
-- **Structured article library**: filter by category, author, source, and time, with batch management actions.
-- **Immersive reading on detail pages**: switch original/translated content and review AI insight panels.
-- **Centralized admin configuration**: manage model APIs, prompts, task monitoring, comments, and categories.
-- **Reusable content export**: export organized content for writing and knowledge workflows.
+- **Browser capture workflow**: one-click full-page or selection capture via popup/context menu, with built-in capture history and error logs.
+- **Structured article library**: advanced filtering by category/author/source/time plus batch actions for efficient content management.
+- **Deep reading experience**: detail page supports original/translated views, immersive mode, TOC, annotations, and comments.
+- **AI insight pipeline**: generate summary, outline, key points, translation, and similar-article recommendations with retryable background tasks.
+- **Admin control center**: configure model APIs (general/vector), prompts, recommendation strategy, categories, and site-level settings.
+- **Operations and observability**: monitor AI tasks and usage (calls/tokens/cost), comment status, and key backend health signals.
+- **Content lifecycle management**: local media storage/compression/cleanup plus JSON backup export/import for migration and recovery.
+- **Localized UI and access model**: built-in Chinese/English UI support with guest browsing and admin-authenticated management flows.
 
 ## Product Flow
 
