@@ -1,20 +1,21 @@
 # PROJECT KNOWLEDGE BASE
 
-**Generated:** 2026-02-05 13:19 Asia/Shanghai
-**Commit:** 0d035de
+**Generated:** 2026-02-12 20:22 Asia/Shanghai
+**Commit:** 827a834
 **Branch:** main
 
 ## OVERVIEW
-Article Database System: Next.js 14 frontend (pages router) + FastAPI backend + WXT extension for capture and AI summarization.
+Lumina is a content workspace with a Next.js 14 frontend (pages router), FastAPI backend, and WXT extension for web capture + AI reading workflows.
 
 ## STRUCTURE
 ```
 ./
-├── backend/              # FastAPI app, models, worker
-├── frontend/             # Next.js pages router (CSR)
+├── backend/              # FastAPI app, models, worker, migrations
+├── frontend/             # Next.js pages router app (web UI + API routes)
 ├── extension/            # WXT browser extension
-├── docs/                 # TRD and project plans
-└── data/                 # SQLite database volume
+├── docs/                 # Product docs and screenshots
+├── scripts/              # Repo-level scripts (docker healthcheck, etc.)
+└── data/                 # SQLite database + media volume
 ```
 
 ## WHERE TO LOOK
@@ -22,6 +23,7 @@ Article Database System: Next.js 14 frontend (pages router) + FastAPI backend + 
 |------|----------|-------|
 | Backend app entry | `backend/main.py` `backend/app/main.py` | `main.py` exports app; app factory in `backend/app/main.py` |
 | Backend API routers | `backend/app/api/routers/` | Routers split by domain, URLs unchanged |
+| Backend router wiring | `backend/app/api/router_registry.py` | Routers are mounted for both `/api/*` and `/backend/api/*` |
 | Backend dependencies/middleware | `backend/app/core/dependencies.py` `backend/app/core/http.py` | Shared auth/internal/cors/request-id logic |
 | Backend runtime settings | `backend/app/core/settings.py` | Central env loading + startup fail-fast validation |
 | Backend settings reference | `backend/docs/runtime-settings.md` | Runtime env defaults and validation constraints |
@@ -31,18 +33,25 @@ Article Database System: Next.js 14 frontend (pages router) + FastAPI backend + 
 | Response contract baseline | `backend/scripts/response_contract_baseline.json` | Key API response shape regression baseline |
 | DB models + init | `backend/models.py` | Models + DB setup + defaults |
 | AI worker loop | `backend/worker.py` | Background task processor |
+| Frontend home page | `frontend/pages/index.tsx` | Hero + latest-article cards |
 | Frontend list page | `frontend/pages/list.tsx` | Filters, batch ops, pagination |
 | Frontend detail page | `frontend/pages/article/[id].tsx` | AI panels, polling, TOC |
 | Frontend admin settings | `frontend/pages/admin.tsx` | Model/prompt/admin config UI |
+| Frontend login/setup | `frontend/pages/login.tsx` | Admin setup + login gate |
+| Frontend comment auth API | `frontend/pages/api/auth/[...nextauth].ts` | OAuth provider config from backend settings |
+| Frontend comment proxy API | `frontend/pages/api/comments/[articleId].ts` | Reads posts comments via Next API route |
 | Frontend API client | `frontend/lib/api.ts` | Axios base + typed exports |
+| Frontend i18n dictionary | `frontend/lib/i18n.ts` | zh-CN/en string map used across pages |
 | Extension API client | `extension/utils/api.ts` | Fetch wrapper + auth headers |
 | Extension popup UI | `extension/entrypoints/popup/main.js` | Main capture flow |
 | Extension extraction | `extension/entrypoints/content.ts` `extension/utils/siteAdapters.ts` | Content parsing + adapters |
+| Extension shared helpers | `extension/utils/` | History/error/i18n/markdown helper modules |
 | Product docs | `docs/trd/trd-optimized.md` `docs/trd/trd-minimal.md` | TRD baselines |
 
 ## CODE MAP
 | Symbol | Type | Location | Role |
 |--------|------|----------|------|
+| HomePage | Function | `frontend/pages/index.tsx` | Landing page + latest content feed |
 | Home | Function | `frontend/pages/list.tsx` | Article list page controller |
 | PopupController | Class | `extension/entrypoints/popup/main.js` | Extension popup UI logic |
 
@@ -50,13 +59,15 @@ Article Database System: Next.js 14 frontend (pages router) + FastAPI backend + 
 - Next.js config sets `reactStrictMode: false` and `images.unoptimized: true`.
 - TypeScript uses `strict: true`, `moduleResolution: "bundler"`, `target: "es5"`, `noEmit: true`, `@/*` path alias.
 - Backend requires Python 3.11 and keeps runtime entrypoint as `uvicorn main:app`.
+- Backend startup requires `INTERNAL_API_TOKEN`; app/worker fail fast on invalid runtime settings.
+- Frontend API base resolves at runtime and defaults to `/backend` in same-origin environments.
 - WXT manifest enables `<all_urls>` host permissions and devtools; build target `esnext`.
 - Biome disables `noUnknownAtRules` in `biome.json` and `frontend/biome.json` (Tailwind).
-- User-facing text is Chinese; keep alerts and UI strings in Chinese.
+- UI language supports `zh-CN` and `en`, with `ui_language` stored client-side.
 - Tests are not configured; no `test` scripts or test configs are present.
 
 ## ANTI-PATTERNS (THIS PROJECT)
-- No explicit DO NOT/NEVER/ALWAYS/DEPRECATED guidance found.
+- Avoid broad refactors in very large files (`frontend/pages/admin.tsx`, `frontend/pages/article/[id].tsx`, `frontend/pages/list.tsx`) unless task-scoped.
 
 ## UNIQUE STYLES
 - Extension uses multi-entrypoint pages (`entrypoints/*/index.html` + `main.js`).

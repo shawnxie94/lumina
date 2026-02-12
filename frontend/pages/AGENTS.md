@@ -1,31 +1,39 @@
 # FRONTEND PAGES AGENTS
 
 ## OVERVIEW
-Next.js pages router; page files hold most UI state and API calls.
+Next.js pages-router entry layer; major page files contain most UI state, data fetching, and admin workflows.
 
 ## STRUCTURE
 ```
 frontend/pages/
-├── list.tsx            # Article list + filters + batch ops
-├── article/[id].tsx    # Article detail + AI panels
-├── admin.tsx           # Admin settings + monitoring + model/prompt config UI
-└── auth/extension.tsx  # Extension auth handoff
+├── index.tsx                 # Landing page + latest content cards
+├── list.tsx                  # Article list + filters + batch ops
+├── article/[id].tsx          # Article detail + AI panels + comments
+├── admin.tsx                 # Admin settings + monitoring + model/prompt/comment/storage
+├── login.tsx                 # Admin setup/login page
+├── auth/extension.tsx        # Extension auth handoff
+└── api/                      # Next API routes (auth + comments proxy)
 ```
 
 ## WHERE TO LOOK
 | Task | Location | Notes |
 |------|----------|-------|
+| Landing page hero/latest | `frontend/pages/index.tsx` | Uses basic settings and latest articles |
 | List filters/batch actions | `frontend/pages/list.tsx` | Large, state-heavy page |
-| Article detail + AI results | `frontend/pages/article/[id].tsx` | Polling + panels |
-| Model/prompt config | `frontend/pages/admin.tsx` | Admin config flows |
+| Article detail + AI/comments | `frontend/pages/article/[id].tsx` | Polling + panels + comments + immersive mode |
+| Admin console modules | `frontend/pages/admin.tsx` | Basic/AI/categories/monitoring/comments/storage |
+| Admin setup/login flow | `frontend/pages/login.tsx` | First-time setup + normal login |
 | Extension auth flow | `frontend/pages/auth/extension.tsx` | Token handoff |
+| NextAuth bootstrap | `frontend/pages/api/auth/[...nextauth].ts` | OAuth providers from backend comment settings |
+| Comment API proxy | `frontend/pages/api/comments/[articleId].ts` | Guest reads + logged-in posting flow |
 
 ## CONVENTIONS
 - Use `articleApi`/`categoryApi` from `frontend/lib/api.ts` for all requests.
-- User-facing text is Chinese; keep alerts and empty states localized.
+- Prefer `useI18n().t(...)` for page text to keep zh-CN/en parity.
+- For server-side API routes under `pages/api`, read backend origin from `BACKEND_API_URL`.
 
 ## ANTI-PATTERNS
-- None documented in code comments.
+- Do not introduce new direct `fetch` calls to backend in page components when typed API helpers already exist.
 
 ## NOTES
-- `list.tsx` and `article/[id].tsx` are >500 lines; keep edits minimal and scoped.
+- `frontend/pages/list.tsx`, `frontend/pages/article/[id].tsx`, and `frontend/pages/admin.tsx` are very large; keep edits minimal and task-scoped.

@@ -1,30 +1,40 @@
 # EXTENSION UTILS AGENTS
 
 ## OVERVIEW
-Shared extension helpers for API calls, extraction, and site adapters.
+Shared helper layer for extension API calls, extraction pipeline, popup state utilities, and language/error tooling.
 
 ## STRUCTURE
 ```
 extension/utils/
-├── api.ts            # Fetch wrapper + auth headers
-├── articleQuality.ts # Content quality scoring
-├── siteAdapters.ts   # Site-specific parsing rules
-├── siteConfig.ts     # Host rules + selectors
-└── urlUtils.ts       # URL helpers
+├── api.ts               # Fetch wrapper + auth headers + health checks
+├── articleExtractor.ts  # Readability + selection extraction
+├── contentScript.ts     # Content script loader/injection helpers
+├── dateParser.ts        # Date normalization helpers
+├── errorLogger.ts       # Error capture + persistence
+├── history.ts           # Recent capture history helpers
+├── i18n.ts              # zh-CN/en translation and language storage
+├── markdownConverter.ts # HTML-to-markdown conversion
+├── markdownImages.ts    # Markdown image normalization helpers
+└── siteAdapters.ts      # Site-specific parsing rules
 ```
 
 ## WHERE TO LOOK
 | Task | Location | Notes |
 |------|----------|-------|
 | API requests | `extension/utils/api.ts` | Uses chrome storage for token |
+| Extraction entry | `extension/utils/articleExtractor.ts` | Main extraction behavior before upload |
+| Content-script readiness | `extension/utils/contentScript.ts` | Inject/reuse content script bridge |
 | Site parsing rules | `extension/utils/siteAdapters.ts` | Large, per-site logic |
-| Quality warnings | `extension/utils/articleQuality.ts` | Extraction heuristics |
-| Host config | `extension/utils/siteConfig.ts` | Adapter mappings |
-| URL normalization | `extension/utils/urlUtils.ts` | Shared URL helpers |
+| Markdown conversion | `extension/utils/markdownConverter.ts` | Shared HTML -> markdown conversion |
+| Markdown image handling | `extension/utils/markdownImages.ts` | URL/media cleanup helpers |
+| Error logging | `extension/utils/errorLogger.ts` | Popup-visible error timeline |
+| Capture history | `extension/utils/history.ts` | Popup "recent captures" list |
+| Language handling | `extension/utils/i18n.ts` | Translate UI strings and persist setting |
 
 ## CONVENTIONS
 - Keep adapter logic isolated per site; avoid cross-site coupling.
 - Favor pure helpers in utils; side effects belong in entrypoints.
+- Keep storage keys stable (`apiHost`, `adminToken`, `ui_language`) for popup compatibility.
 
 ## ANTI-PATTERNS
-- None documented in code comments.
+- Avoid direct DOM/UI coupling inside util modules.
