@@ -1,6 +1,6 @@
 services:
   web:
-    image: docker.io/xiexiao064/lumina-web:${LUMINA_IMAGE_TAG}
+    image: docker.io/xiexiao064/lumina-web:${LUMINA_IMAGE_TAG:-latest}
     platform: linux/amd64
     restart: unless-stopped
     ports:
@@ -16,7 +16,7 @@ services:
       - app-network
 
   api:
-    image: docker.io/xiexiao064/lumina-api:${LUMINA_IMAGE_TAG}
+    image: docker.io/xiexiao064/lumina-api:${LUMINA_IMAGE_TAG:-latest}
     platform: linux/amd64
     restart: unless-stopped
     ports:
@@ -39,7 +39,7 @@ services:
       - app-network
 
   worker:
-    image: docker.io/xiexiao064/lumina-worker:${LUMINA_IMAGE_TAG}
+    image: docker.io/xiexiao064/lumina-worker:${LUMINA_IMAGE_TAG:-latest}
     platform: linux/amd64
     restart: unless-stopped
     command: python worker.py

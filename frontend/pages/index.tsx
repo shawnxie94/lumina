@@ -236,7 +236,7 @@ export default function HomePage() {
               variant="secondary"
               className="rounded-full px-6 py-2.5 hover:bg-primary hover:text-white hover:border-primary"
             >
-              {t('查看更多')}
+              {t('查看更多...')}
             </LinkButton>
           </div>
         </section>
