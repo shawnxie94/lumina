@@ -47,6 +47,125 @@ const toDayjsRange = (range: [Date | null, Date | null]): [Dayjs | null, Dayjs |
 const getArticleLanguageTag = (article: Article): string =>
   article.original_language === 'zh' ? '中文' : '英文';
 
+type MediaInsertKind = 'video' | 'audio';
+type PastedMediaKind = 'image' | MediaInsertKind;
+
+interface PastedMediaLink {
+  kind: PastedMediaKind;
+  url: string;
+}
+
+const IMAGE_LINK_PATTERN = /\.(png|jpe?g|gif|webp|svg|bmp|avif)(\?.*)?$/i;
+const VIDEO_LINK_PATTERN = /\.(mp4|webm|mov|m4v|ogv|ogg)(\?.*)?$/i;
+const AUDIO_LINK_PATTERN = /\.(mp3|wav|m4a|aac|ogg|flac|opus)(\?.*)?$/i;
+const VIDEO_HOST_PATTERN = /(youtube\.com|youtu\.be|bilibili\.com|vimeo\.com)/i;
+
+const buildMediaMarkdownTemplate = (kind: MediaInsertKind): string => {
+  if (kind === 'video') {
+    return '[▶ 视频标题](https://www.youtube.com/watch?v=)';
+  }
+  return '[🎧 音频标题](https://example.com/audio.mp3)';
+};
+
+const insertTextAtCursor = (
+  target: HTMLTextAreaElement,
+  text: string,
+  onChange: (value: string) => void,
+) => {
+  const start = target.selectionStart ?? target.value.length;
+  const end = target.selectionEnd ?? target.value.length;
+  const nextValue = `${target.value.slice(0, start)}${text}${target.value.slice(end)}`;
+  onChange(nextValue);
+  requestAnimationFrame(() => {
+    const cursor = start + text.length;
+    target.setSelectionRange(cursor, cursor);
+    target.focus();
+  });
+};
+
+const insertMediaTemplateAtCursor = (
+  target: HTMLTextAreaElement,
+  kind: MediaInsertKind,
+  onChange: (value: string) => void,
+) => {
+  const start = target.selectionStart ?? target.value.length;
+  const prevChar = start > 0 ? target.value[start - 1] : '';
+  const prefix = prevChar && prevChar !== '\n' ? '\n\n' : '';
+  const suffix = '\n';
+  insertTextAtCursor(
+    target,
+    `${prefix}${buildMediaMarkdownTemplate(kind)}${suffix}`,
+    onChange,
+  );
+};
+
+const cleanupPastedUrl = (url: string): string =>
+  (url || '')
+    .trim()
+    .replace(/^<|>$/g, '')
+    .replace(/[),.;:!?]+$/, '');
+
+const detectMediaKindFromUrl = (url: string): PastedMediaKind | null => {
+  const normalized = cleanupPastedUrl(url);
+  if (!normalized || !/^https?:\/\//i.test(normalized)) return null;
+  if (IMAGE_LINK_PATTERN.test(normalized)) return 'image';
+  if (AUDIO_LINK_PATTERN.test(normalized)) return 'audio';
+  if (VIDEO_LINK_PATTERN.test(normalized)) return 'video';
+  if (VIDEO_HOST_PATTERN.test(normalized)) return 'video';
+  return null;
+};
+
+const toPastedMediaLink = (url?: string | null): PastedMediaLink | null => {
+  const normalized = cleanupPastedUrl(url || '');
+  const kind = detectMediaKindFromUrl(normalized);
+  if (!kind) return null;
+  return { kind, url: normalized };
+};
+
+const extractMediaLinkFromHtml = (html: string): PastedMediaLink | null => {
+  if (!html) return null;
+  try {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const candidates = [
+      doc.querySelector('img')?.getAttribute('src'),
+      doc.querySelector('video')?.getAttribute('src'),
+      doc.querySelector('video source')?.getAttribute('src'),
+      doc.querySelector('audio')?.getAttribute('src'),
+      doc.querySelector('audio source')?.getAttribute('src'),
+      doc.querySelector('iframe')?.getAttribute('src'),
+      doc.querySelector('a')?.getAttribute('href'),
+    ];
+    for (const candidate of candidates) {
+      const link = toPastedMediaLink(candidate);
+      if (link) return link;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+};
+
+const extractMediaLinkFromText = (text: string): PastedMediaLink | null => {
+  if (!text) return null;
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  if (/!\[[^\]]*\]\([^)]+\)/.test(trimmed)) return null;
+  if (/\[[^\]]+\]\([^)]+\)/.test(trimmed)) return null;
+  const urlMatch = trimmed.match(/https?:\/\/[^\s)]+/);
+  if (!urlMatch?.[0]) return null;
+  return toPastedMediaLink(urlMatch[0]);
+};
+
+const buildMarkdownFromMediaLink = (link: PastedMediaLink): string => {
+  if (link.kind === 'image') {
+    return `![](${link.url})`;
+  }
+  if (link.kind === 'video') {
+    return `[▶ 视频标题](${link.url})`;
+  }
+  return `[🎧 音频标题](${link.url})`;
+};
+
 
 const getDateRangeFromQuickOption = (option: QuickDateOption): [Date | null, Date | null] => {
   if (!option) return [null, null];
@@ -1010,6 +1129,35 @@ export default function Home() {
     }
   };
 
+  const handleCreatePaste = (
+    event: React.ClipboardEvent<HTMLTextAreaElement>,
+  ) => {
+    const clipboard = event.clipboardData;
+    if (!clipboard) return;
+    const mediaLink =
+      extractMediaLinkFromHtml(clipboard.getData('text/html')) ||
+      extractMediaLinkFromText(clipboard.getData('text/plain'));
+    if (!mediaLink) return;
+    event.preventDefault();
+    insertTextAtCursor(
+      event.currentTarget,
+      buildMarkdownFromMediaLink(mediaLink),
+      setCreateContent,
+    );
+  };
+
+  const handleInsertCreateVideo = () => {
+    const target = createTextareaRef.current;
+    if (!target) return;
+    insertMediaTemplateAtCursor(target, 'video', setCreateContent);
+  };
+
+  const handleInsertCreateAudio = () => {
+    const target = createTextareaRef.current;
+    if (!target) return;
+    insertMediaTemplateAtCursor(target, 'audio', setCreateContent);
+  };
+
   const handleCreateArticle = async () => {
     if (!createTitle.trim()) {
       showToast(t('请输入标题'), 'error');
@@ -1690,10 +1838,31 @@ export default function Home() {
                   </div>
 
                   <FormField label={t('内容（Markdown）')} required className="mt-4 flex-1 min-h-0 flex flex-col">
+                    <div className="mb-2 flex items-center justify-end gap-2">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleInsertCreateVideo}
+                        className="px-2"
+                      >
+                        {t('插入视频')}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleInsertCreateAudio}
+                        className="px-2"
+                      >
+                        {t('插入音频')}
+                      </Button>
+                    </div>
                     <TextArea
                       ref={createTextareaRef}
                       value={createContent}
                       onChange={(e) => setCreateContent(e.target.value)}
+                      onPaste={handleCreatePaste}
                       onScroll={() => {
                         if (createTextareaRef.current && createPreviewRef.current) {
                           const textarea = createTextareaRef.current;
@@ -1755,7 +1924,11 @@ export default function Home() {
                     <article className="p-6">
                       <div
                         className="prose prose-sm max-w-none"
-                        dangerouslySetInnerHTML={{ __html: renderSafeMarkdown(createContent || '') }}
+                        dangerouslySetInnerHTML={{
+                          __html: renderSafeMarkdown(createContent || '', {
+                            enableMediaEmbed: true,
+                          }),
+                        }}
                       />
                     </article>
                   </div>

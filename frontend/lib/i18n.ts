@@ -110,6 +110,8 @@ const translations: Record<Language, Record<string | number, string>> = {
 		复制内容: "Copy content",
 		未分类: "Uncategorized",
 		"内容（Markdown）": "Content (Markdown)",
+		插入视频: "Insert video",
+		插入音频: "Insert audio",
 		划线批注内容: "Highlight annotation",
 		批注内容: "Annotation",
 		"输入批注内容，支持 Markdown": "Enter annotation, Markdown supported",

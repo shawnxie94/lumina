@@ -187,26 +187,84 @@ function splitArticleAuthors(value?: string | null): string[] {
 	return Array.from(new Set(authors));
 }
 
-function extractImageUrlFromHtml(html: string): string | null {
-	if (!html) return null;
-	const doc = new DOMParser().parseFromString(html, "text/html");
-	const img = doc.querySelector("img");
-	const src = img?.getAttribute("src");
-	return src || null;
+type PastedMediaKind = "image" | "video" | "audio";
+
+interface PastedMediaLink {
+	kind: PastedMediaKind;
+	url: string;
 }
 
-function extractImageUrlFromText(text: string): string | null {
+const IMAGE_LINK_PATTERN = /\.(png|jpe?g|gif|webp|svg|bmp|avif)(\?.*)?$/i;
+const VIDEO_LINK_PATTERN = /\.(mp4|webm|mov|m4v|ogv|ogg)(\?.*)?$/i;
+const AUDIO_LINK_PATTERN = /\.(mp3|wav|m4a|aac|ogg|flac|opus)(\?.*)?$/i;
+const VIDEO_HOST_PATTERN = /(youtube\.com|youtu\.be|bilibili\.com|vimeo\.com)/i;
+
+function cleanupPastedUrl(url: string): string {
+	return (url || "")
+		.trim()
+		.replace(/^<|>$/g, "")
+		.replace(/[),.;:!?]+$/, "");
+}
+
+function detectMediaKindFromUrl(url: string): PastedMediaKind | null {
+	const normalized = cleanupPastedUrl(url);
+	if (!normalized || !/^https?:\/\//i.test(normalized)) return null;
+	if (IMAGE_LINK_PATTERN.test(normalized)) return "image";
+	if (AUDIO_LINK_PATTERN.test(normalized)) return "audio";
+	if (VIDEO_LINK_PATTERN.test(normalized)) return "video";
+	if (VIDEO_HOST_PATTERN.test(normalized)) return "video";
+	return null;
+}
+
+function buildMarkdownFromMediaLink(link: PastedMediaLink): string {
+	if (link.kind === "image") {
+		return `![](${link.url})`;
+	}
+	if (link.kind === "video") {
+		return `[▶ 视频标题](${link.url})`;
+	}
+	return `[🎧 音频标题](${link.url})`;
+}
+
+function toPastedMediaLink(url?: string | null): PastedMediaLink | null {
+	const normalized = cleanupPastedUrl(url || "");
+	const kind = detectMediaKindFromUrl(normalized);
+	if (!kind) return null;
+	return { kind, url: normalized };
+}
+
+function extractMediaLinkFromHtml(html: string): PastedMediaLink | null {
+	if (!html) return null;
+	try {
+		const doc = new DOMParser().parseFromString(html, "text/html");
+		const candidates = [
+			doc.querySelector("img")?.getAttribute("src"),
+			doc.querySelector("video")?.getAttribute("src"),
+			doc.querySelector("video source")?.getAttribute("src"),
+			doc.querySelector("audio")?.getAttribute("src"),
+			doc.querySelector("audio source")?.getAttribute("src"),
+			doc.querySelector("iframe")?.getAttribute("src"),
+			doc.querySelector("a")?.getAttribute("href"),
+		];
+		for (const candidate of candidates) {
+			const link = toPastedMediaLink(candidate);
+			if (link) return link;
+		}
+		return null;
+	} catch {
+		return null;
+	}
+}
+
+function extractMediaLinkFromText(text: string): PastedMediaLink | null {
 	if (!text) return null;
 	const trimmed = text.trim();
 	if (!trimmed) return null;
-	if (trimmed.includes("![](")) return null;
+	if (/!\[[^\]]*\]\([^)]+\)/.test(trimmed)) return null;
+	if (/\[[^\]]+\]\([^)]+\)/.test(trimmed)) return null;
 	const urlMatch = trimmed.match(/https?:\/\/[^\s)]+/);
-	const url = urlMatch ? urlMatch[0] : "";
-	if (!url) return null;
-	if (/\.(png|jpe?g|gif|webp|svg|bmp|avif)(\?.*)?$/i.test(url)) {
-		return url;
-	}
-	return null;
+	if (!urlMatch?.[0]) return null;
+	return toPastedMediaLink(urlMatch[0]);
 }
 
 function insertTextAtCursor(
@@ -223,6 +281,31 @@ function insertTextAtCursor(
 		target.setSelectionRange(cursor, cursor);
 		target.focus();
 	});
+}
+
+type MediaInsertKind = "video" | "audio";
+
+function buildMediaMarkdownTemplate(kind: MediaInsertKind): string {
+	if (kind === "video") {
+		return "[▶ 视频标题](https://www.youtube.com/watch?v=)";
+	}
+	return "[🎧 音频标题](https://example.com/audio.mp3)";
+}
+
+function insertMediaTemplateAtCursor(
+	target: HTMLTextAreaElement,
+	kind: MediaInsertKind,
+	onChange: (value: string) => void,
+) {
+	const start = target.selectionStart ?? target.value.length;
+	const prevChar = start > 0 ? target.value[start - 1] : "";
+	const prefix = prevChar && prevChar !== "\n" ? "\n\n" : "";
+	const suffix = "\n";
+	insertTextAtCursor(
+		target,
+		`${prefix}${buildMediaMarkdownTemplate(kind)}${suffix}`,
+		onChange,
+	);
 }
 
 function extractMarkdownImageUrls(markdown: string): string[] {
@@ -672,8 +755,11 @@ function applyAnnotations(html: string, annotations: ArticleAnnotation[]) {
 	return doc.body.innerHTML;
 }
 
-function renderMarkdown(content: string) {
-	return renderSafeMarkdown(content);
+function renderMarkdown(
+	content: string,
+	options?: { enableMediaEmbed?: boolean },
+) {
+	return renderSafeMarkdown(content, options);
 }
 
 interface ArticleNeighbor {
@@ -944,9 +1030,9 @@ export default function ArticleDetailPage() {
 		if (!article) return "";
 		const baseHtml =
 			showTranslation && article.content_trans
-				? renderMarkdown(article.content_trans)
+				? renderMarkdown(article.content_trans, { enableMediaEmbed: true })
 				: article.content_md
-					? renderMarkdown(article.content_md)
+					? renderMarkdown(article.content_md, { enableMediaEmbed: true })
 					: sanitizeRichHtml(article.content_html || "");
 		const normalizedHtml = sanitizeRichHtml(normalizeMediaHtml(baseHtml));
 		const htmlWithAnnotations = immersiveMode
@@ -2671,21 +2757,32 @@ export default function ArticleDetailPage() {
 
 		const html = clipboard.getData("text/html");
 		const text = clipboard.getData("text/plain");
-		const imageUrl =
-			extractImageUrlFromHtml(html) || extractImageUrlFromText(text);
-		if (!imageUrl) return;
+		const mediaLink =
+			extractMediaLinkFromHtml(html) || extractMediaLinkFromText(text);
+		if (!mediaLink) return;
 
 		event.preventDefault();
+		if (mediaLink.kind !== "image") {
+			if (target) {
+				insertTextAtCursor(
+					target,
+					buildMarkdownFromMediaLink(mediaLink),
+					setEditContent,
+				);
+			}
+			return;
+		}
+
 		if (!mediaStorageEnabled) {
 			if (target) {
-				insertTextAtCursor(target, `![](${imageUrl})`, setEditContent);
+				insertTextAtCursor(target, buildMarkdownFromMediaLink(mediaLink), setEditContent);
 			}
 			return;
 		}
 
 		setMediaUploading(true);
 		try {
-			const result = await mediaApi.ingest(article.id, imageUrl);
+			const result = await mediaApi.ingest(article.id, mediaLink.url);
 			if (target) {
 				insertTextAtCursor(target, `![](${result.url})`, setEditContent);
 			}
@@ -2780,6 +2877,18 @@ export default function ArticleDetailPage() {
 		} finally {
 			setMediaUploading(false);
 		}
+	};
+
+	const handleInsertEditVideo = () => {
+		const target = editTextareaRef.current;
+		if (!target) return;
+		insertMediaTemplateAtCursor(target, "video", setEditContent);
+	};
+
+	const handleInsertEditAudio = () => {
+		const target = editTextareaRef.current;
+		if (!target) return;
+		insertMediaTemplateAtCursor(target, "audio", setEditContent);
 	};
 
 	const openEditModal = (mode: "original" | "translation") => {
@@ -4192,6 +4301,24 @@ export default function ArticleDetailPage() {
 													)}
 												</span>
 												<div className="flex items-center gap-2">
+													<Button
+														type="button"
+														variant="ghost"
+														size="sm"
+														onClick={handleInsertEditVideo}
+														className="px-2"
+													>
+														{t("插入视频")}
+													</Button>
+													<Button
+														type="button"
+														variant="ghost"
+														size="sm"
+														onClick={handleInsertEditAudio}
+														className="px-2"
+													>
+														{t("插入音频")}
+													</Button>
 													<IconButton
 														onClick={handleBatchConvertMarkdownImages}
 														disabled={mediaUploading || !mediaStorageEnabled}
@@ -4288,7 +4415,9 @@ export default function ArticleDetailPage() {
 											<div
 												className="prose prose-sm max-w-none"
 												dangerouslySetInnerHTML={{
-													__html: renderSafeMarkdown(editContent || ""),
+													__html: renderSafeMarkdown(editContent || "", {
+														enableMediaEmbed: true,
+													}),
 												}}
 											/>
 										</article>
