@@ -48,6 +48,18 @@
     ]
   },
   {
+    "path": "/api/backup/export",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/backup/import",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/articles",
     "methods": [
       "GET"

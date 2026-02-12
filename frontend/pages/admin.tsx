@@ -73,6 +73,8 @@ import {
 	type ArticleComment,
 	aiUsageApi,
 	articleApi,
+	backupApi,
+	type BackupImportResult,
 	type BasicSettings,
 	basicSettingsApi,
 	categoryApi,
@@ -1142,6 +1144,9 @@ export default function AdminPage() {
 	const [promptSaving, setPromptSaving] = useState(false);
 	const [categorySaving, setCategorySaving] = useState(false);
 	const [promptImporting, setPromptImporting] = useState(false);
+	const backupImportInputRef = useRef<HTMLInputElement>(null);
+	const [backupExporting, setBackupExporting] = useState(false);
+	const [backupImporting, setBackupImporting] = useState(false);
 	const [pendingTaskActionIds, setPendingTaskActionIds] = useState<Set<string>>(
 		new Set(),
 	);
@@ -3136,6 +3141,127 @@ export default function AdminPage() {
 		}
 	};
 
+	const buildBackupSummary = (result: BackupImportResult) => {
+		const sections: Array<[string, keyof BackupImportResult["stats"]]> = [
+			["分类", "categories"],
+			["模型配置", "model_api_configs"],
+			["提示词配置", "prompt_configs"],
+			["文章", "articles"],
+			["AI分析", "ai_analyses"],
+			["系统设置", "settings"],
+		];
+		return sections
+			.map(([label, key]) => {
+				const current = result.stats[key];
+				return `${label}: +${current.created}/跳过${current.skipped}/错误${current.errors}`;
+			})
+			.join("；");
+	};
+
+	const handleExportBackup = async () => {
+		if (backupExporting) return;
+		setBackupExporting(true);
+		try {
+			const data = await backupApi.exportBackup();
+			const blob = new Blob([JSON.stringify(data, null, 2)], {
+				type: "application/json",
+			});
+			const url = URL.createObjectURL(blob);
+			const link = document.createElement("a");
+			const now = new Date();
+			const timestamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(
+				2,
+				"0",
+			)}${String(now.getDate()).padStart(2, "0")}_${String(
+				now.getHours(),
+			).padStart(2, "0")}${String(now.getMinutes()).padStart(2, "0")}${String(
+				now.getSeconds(),
+			).padStart(2, "0")}`;
+			link.href = url;
+			link.download = `lumina-backup-${timestamp}.json`;
+			document.body.appendChild(link);
+			link.click();
+			document.body.removeChild(link);
+			URL.revokeObjectURL(url);
+			showToast(t("备份导出成功"));
+		} catch (error) {
+			console.error("Failed to export backup:", error);
+			showToast(t("备份导出失败"), "error");
+		} finally {
+			setBackupExporting(false);
+		}
+	};
+
+	const handleImportBackup = async (
+		event: React.ChangeEvent<HTMLInputElement>,
+	) => {
+		if (backupImporting) return;
+		const file = event.target.files?.[0];
+		if (!file) return;
+		try {
+			const text = await file.text();
+			const parsed = JSON.parse(text) as Record<string, unknown>;
+			if (
+				typeof parsed !== "object" ||
+				parsed === null ||
+				!("meta" in parsed) ||
+				!("data" in parsed)
+			) {
+				showToast(t("导入失败：格式不正确"), "error");
+				return;
+			}
+			const parsedPayload =
+				parsed as unknown as Parameters<typeof backupApi.importBackup>[0];
+
+			setConfirmState({
+				isOpen: true,
+				title: t("导入备份数据"),
+				message: t("将按严格增量导入，冲突数据会自动跳过，是否继续？"),
+				confirmText: t("开始导入"),
+				cancelText: t("取消"),
+				onConfirm: async () => {
+					setBackupImporting(true);
+					try {
+						const result = await backupApi.importBackup(parsedPayload);
+						showToast(
+							t("导入完成：{summary}，共跳过 {count} 条")
+								.replace("{summary}", buildBackupSummary(result))
+								.replace("{count}", String(result.skipped_total)),
+						);
+						await Promise.all([
+							fetchCategories(),
+							fetchModelAPIConfigs(),
+							fetchPromptConfigs(),
+							fetchStorageSettings(),
+							fetchBasicSettings(),
+							fetchCommentSettings(),
+							fetchRecommendationSettings(),
+						]);
+					} catch (importError) {
+						console.error("Failed to import backup:", importError);
+						showToast(t("导入失败，请检查备份文件或版本"), "error");
+					} finally {
+						setBackupImporting(false);
+						if (backupImportInputRef.current) {
+							backupImportInputRef.current.value = "";
+						}
+					}
+				},
+				onCancel: () => {
+					if (backupImportInputRef.current) {
+						backupImportInputRef.current.value = "";
+					}
+				},
+			});
+		} catch (error) {
+			console.error("Failed to parse backup file:", error);
+			showToast(t("导入失败：格式不正确"), "error");
+			if (backupImportInputRef.current) {
+				backupImportInputRef.current.value = "";
+			}
+		}
+	};
+
 	// Category handlers
 	const handleCreateCategoryNew = () => {
 		setEditingCategory(null);
@@ -5050,6 +5176,57 @@ export default function AdminPage() {
 														placeholder={t("WEBP 压缩质量")}
 													/>
 												</div>
+											</div>
+
+											<div className="rounded-sm border border-border bg-muted/40 p-4 space-y-3">
+												<div className="flex flex-wrap items-start justify-between gap-3">
+													<div>
+														<div className="text-sm font-medium text-text-1">
+															{t("数据备份与恢复")}
+														</div>
+														<p className="mt-1 text-xs text-text-3">
+															{t(
+																"备份文章与配置；导入按增量模式执行，冲突数据自动跳过。",
+															)}
+														</p>
+													</div>
+													<div className="flex flex-wrap items-center gap-2">
+														<Button
+															onClick={handleExportBackup}
+															disabled={backupExporting || backupImporting}
+															variant="secondary"
+														>
+															{backupExporting
+																? t("导出中...")
+																: t("导出备份")}
+														</Button>
+														<Button
+															onClick={() =>
+																backupImportInputRef.current?.click()
+															}
+															disabled={backupImporting || backupExporting}
+															loading={backupImporting}
+															variant="secondary"
+														>
+															{backupImporting
+																? t("导入中...")
+																: t("导入备份")}
+														</Button>
+													</div>
+												</div>
+												<p className="text-xs text-text-3">
+													{t(
+														"说明：仅支持 JSON 备份文件；不会覆盖已有冲突数据。",
+													)}
+												</p>
+												<TextInput
+													ref={backupImportInputRef}
+													type="file"
+													accept="application/json"
+													className="hidden"
+													onChange={handleImportBackup}
+													disabled={backupImporting}
+												/>
 											</div>
 										</div>
 									)}

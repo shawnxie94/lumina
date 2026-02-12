@@ -382,6 +382,45 @@ export interface BasicSettings {
 	home_secondary_button_url: string;
 }
 
+export interface BackupPayload {
+	meta: {
+		schema_version: number;
+		exported_at: string;
+		app: string;
+		policy: string;
+	};
+	data: {
+		categories: Record<string, unknown>[];
+		model_api_configs: Record<string, unknown>[];
+		prompt_configs: Record<string, unknown>[];
+		settings: Record<string, unknown>;
+		articles: Record<string, unknown>[];
+		ai_analyses: Record<string, unknown>[];
+	};
+}
+
+export interface BackupImportResult {
+	meta: {
+		schema_version: number;
+		imported_at: string;
+		policy: string;
+	};
+	stats: {
+		categories: { created: number; skipped: number; errors: number };
+		model_api_configs: { created: number; skipped: number; errors: number };
+		prompt_configs: { created: number; skipped: number; errors: number };
+		articles: { created: number; skipped: number; errors: number };
+		ai_analyses: { created: number; skipped: number; errors: number };
+		settings: { created: number; skipped: number; errors: number };
+	};
+	skipped_total: number;
+	skipped_items: Array<{
+		section: string;
+		identifier: string;
+		reason: string;
+	}>;
+}
+
 export interface CommentListResponse {
 	items: ArticleComment[];
 	pagination: {
@@ -938,6 +977,21 @@ export const articleApi = {
 	deletePromptConfig: async (configId: string) => {
 		const response = await api.delete(`/api/prompt-configs/${configId}`);
 		return response.data;
+	},
+};
+
+export const backupApi = {
+	exportBackup: async (): Promise<BackupPayload> => {
+		const response = await api.get("/api/backup/export", {
+			responseType: "text",
+			transformResponse: [(data) => data],
+		});
+		const raw = typeof response.data === "string" ? response.data : "";
+		return JSON.parse(raw) as BackupPayload;
+	},
+	importBackup: async (payload: BackupPayload): Promise<BackupImportResult> => {
+		const response = await api.post("/api/backup/import", payload);
+		return response.data as BackupImportResult;
 	},
 };
 
