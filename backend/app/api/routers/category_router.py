@@ -1,9 +1,15 @@
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.core.public_cache import (
+    CACHE_KEY_CATEGORIES_PUBLIC,
+    apply_public_cache_headers,
+    get_public_cached,
+    invalidate_public_cache,
+)
 from app.schemas import CategoryCreate, CategorySortRequest
 from auth import get_current_admin
 from models import Article, Category, get_db
@@ -11,20 +17,51 @@ from models import Article, Category, get_db
 router = APIRouter()
 
 
-@router.get("/api/categories")
-async def get_categories(db: Session = Depends(get_db)):
-    categories = db.query(Category).order_by(Category.sort_order).all()
+def _list_categories_with_count(db: Session) -> list[dict]:
+    rows = (
+        db.query(
+            Category.id,
+            Category.name,
+            Category.description,
+            Category.color,
+            Category.sort_order,
+            func.count(Article.id).label("article_count"),
+        )
+        .outerjoin(Article, Article.category_id == Category.id)
+        .group_by(
+            Category.id,
+            Category.name,
+            Category.description,
+            Category.color,
+            Category.sort_order,
+        )
+        .order_by(Category.sort_order)
+        .all()
+    )
     return [
         {
-            "id": c.id,
-            "name": c.name,
-            "description": c.description,
-            "color": c.color,
-            "sort_order": c.sort_order,
-            "article_count": len(c.articles),
+            "id": row.id,
+            "name": row.name,
+            "description": row.description,
+            "color": row.color,
+            "sort_order": row.sort_order,
+            "article_count": row.article_count,
         }
-        for c in categories
+        for row in rows
     ]
+
+
+@router.get("/api/categories")
+async def get_categories(
+    response: Response,
+    db: Session = Depends(get_db),
+):
+    data = get_public_cached(
+        CACHE_KEY_CATEGORIES_PUBLIC,
+        lambda: _list_categories_with_count(db),
+    )
+    apply_public_cache_headers(response)
+    return data
 
 
 @router.get("/api/categories/stats")
@@ -99,6 +136,7 @@ async def create_category(
         db.add(new_category)
         db.commit()
         db.refresh(new_category)
+        invalidate_public_cache(CACHE_KEY_CATEGORIES_PUBLIC)
         return {"id": new_category.id, "name": new_category.name}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -116,6 +154,7 @@ async def update_categories_sort(
             if category:
                 category.sort_order = item.sort_order
         db.commit()
+        invalidate_public_cache(CACHE_KEY_CATEGORIES_PUBLIC)
         return {"message": "排序更新成功"}
     except Exception as e:
         db.rollback()
@@ -145,6 +184,7 @@ async def update_category(
 
         db.commit()
         db.refresh(existing_category)
+        invalidate_public_cache(CACHE_KEY_CATEGORIES_PUBLIC)
         return {
             "id": existing_category.id,
             "name": existing_category.name,
@@ -168,4 +208,5 @@ async def delete_category(
 
     db.delete(category)
     db.commit()
+    invalidate_public_cache(CACHE_KEY_CATEGORIES_PUBLIC)
     return {"message": "删除成功"}

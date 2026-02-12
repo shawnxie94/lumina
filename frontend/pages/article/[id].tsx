@@ -845,6 +845,7 @@ export default function ArticleDetailPage() {
 	const [editingCommentDraft, setEditingCommentDraft] = useState("");
 	const [editingCommentPrefix, setEditingCommentPrefix] = useState("");
 	const [commentsEnabled, setCommentsEnabled] = useState(true);
+	const [commentSettingsLoaded, setCommentSettingsLoaded] = useState(false);
 	const [commentProviders, setCommentProviders] = useState({
 		github: false,
 		google: false,
@@ -1265,10 +1266,10 @@ export default function ArticleDetailPage() {
 	}, [article?.slug, similarStatus]);
 
 	useEffect(() => {
-		if (id && commentsEnabled) {
+		if (id && commentsEnabled && commentSettingsLoaded) {
 			fetchComments();
 		}
-	}, [id, commentsEnabled]);
+	}, [id, commentsEnabled, commentSettingsLoaded]);
 
 	useEffect(() => {
 		fetchCommentSettings();
@@ -1554,6 +1555,9 @@ export default function ArticleDetailPage() {
 			});
 		} catch (error) {
 			console.error("Failed to fetch comment settings:", error);
+			setCommentsEnabled(true);
+		} finally {
+			setCommentSettingsLoaded(true);
 		}
 	};
 

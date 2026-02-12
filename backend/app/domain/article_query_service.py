@@ -1,7 +1,29 @@
-from sqlalchemy import func, literal
-from sqlalchemy.orm import Session
+from datetime import datetime, timedelta
 
-from models import Article
+from sqlalchemy import func, literal
+from sqlalchemy.orm import Session, joinedload, load_only
+
+from models import AIAnalysis, Article, Category
+
+
+def _normalize_start_date_bound(value: str | None) -> str | None:
+    if not value:
+        return None
+    return value.strip() or None
+
+
+def _normalize_end_date_bound(value: str | None) -> str | None:
+    if not value:
+        return None
+    raw = value.strip()
+    if not raw:
+        return None
+    try:
+        day = datetime.strptime(raw, "%Y-%m-%d")
+    except ValueError:
+        return raw
+    next_day = day + timedelta(days=1)
+    return next_day.strftime("%Y-%m-%d")
 
 
 class ArticleQueryService:
@@ -11,7 +33,15 @@ class ArticleQueryService:
         article: Article,
         is_admin: bool = False,
     ):
-        query = db.query(Article)
+        query = db.query(Article).options(
+            load_only(
+                Article.id,
+                Article.slug,
+                Article.title,
+                Article.created_at,
+                Article.is_visible,
+            )
+        )
         if not is_admin:
             query = query.filter(Article.is_visible == True)
 
@@ -27,8 +57,31 @@ class ArticleQueryService:
         )
         return prev_article, next_article
 
-    def get_article_by_slug(self, db: Session, slug: str) -> Article | None:
-        return db.query(Article).filter(Article.slug == slug).first()
+    def get_article_by_slug(
+        self,
+        db: Session,
+        slug: str,
+        include_relations: bool = False,
+    ) -> Article | None:
+        query = db.query(Article)
+        if include_relations:
+            query = query.options(
+                joinedload(Article.category).load_only(Category.id, Category.name, Category.color),
+                joinedload(Article.ai_analysis).load_only(
+                    AIAnalysis.summary,
+                    AIAnalysis.summary_status,
+                    AIAnalysis.key_points,
+                    AIAnalysis.key_points_status,
+                    AIAnalysis.outline,
+                    AIAnalysis.outline_status,
+                    AIAnalysis.quotes,
+                    AIAnalysis.quotes_status,
+                    AIAnalysis.classification_status,
+                    AIAnalysis.error_message,
+                    AIAnalysis.updated_at,
+                ),
+            )
+        return query.filter(Article.slug == slug).first()
 
     def get_articles(
         self,
@@ -74,24 +127,39 @@ class ArticleQueryService:
                 query = query.filter(
                     wrapped_article_authors.like(f"%,{normalized_author},%")
                 )
-        if published_at_start:
-            query = query.filter(
-                func.substr(Article.published_at, 1, 10) >= published_at_start
-            )
-        if published_at_end:
-            query = query.filter(
-                func.substr(Article.published_at, 1, 10) <= published_at_end
-            )
-        if created_at_start:
-            query = query.filter(
-                func.substr(Article.created_at, 1, 10) >= created_at_start
-            )
-        if created_at_end:
-            query = query.filter(
-                func.substr(Article.created_at, 1, 10) <= created_at_end
-            )
+        published_start_bound = _normalize_start_date_bound(published_at_start)
+        if published_start_bound:
+            query = query.filter(Article.published_at >= published_start_bound)
+        published_end_bound = _normalize_end_date_bound(published_at_end)
+        if published_end_bound:
+            query = query.filter(Article.published_at < published_end_bound)
+        created_start_bound = _normalize_start_date_bound(created_at_start)
+        if created_start_bound:
+            query = query.filter(Article.created_at >= created_start_bound)
+        created_end_bound = _normalize_end_date_bound(created_at_end)
+        if created_end_bound:
+            query = query.filter(Article.created_at < created_end_bound)
 
         total = query.count()
+
+        query = query.options(
+            load_only(
+                Article.id,
+                Article.slug,
+                Article.title,
+                Article.top_image,
+                Article.author,
+                Article.status,
+                Article.source_domain,
+                Article.published_at,
+                Article.created_at,
+                Article.is_visible,
+                Article.original_language,
+                Article.category_id,
+            ),
+            joinedload(Article.category).load_only(Category.id, Category.name, Category.color),
+            joinedload(Article.ai_analysis).load_only(AIAnalysis.summary),
+        )
 
         if sort_by == "created_at_desc":
             query = query.order_by(Article.created_at.desc())

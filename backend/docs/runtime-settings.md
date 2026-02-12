@@ -19,6 +19,10 @@
 | 分组 | 变量名 | 默认值 | 说明 |
 |---|---|---|---|
 | database | `DATABASE_URL` | `sqlite:///./data/articles.db` | SQLAlchemy 连接串 |
+| database | `SQLITE_WAL_ENABLED` | `true` | SQLite 是否启用 WAL（仅 SQLite 生效） |
+| database | `SQLITE_SYNCHRONOUS` | `NORMAL` | SQLite 同步级别（OFF/NORMAL/FULL/EXTRA） |
+| database | `SQLITE_BUSY_TIMEOUT_MS` | `5000` | SQLite 锁等待超时（毫秒） |
+| database | `SQLITE_TEMP_STORE` | `2` | SQLite 临时存储位置（0/1/2） |
 | security | `INTERNAL_API_TOKEN` | 无（必填） | 内部请求校验 token；未设置将导致启动失败 |
 | cors | `ALLOWED_ORIGINS` | 空字符串 | 为空时允许 localhost:3000/127.0.0.1:3000 |
 | media | `MEDIA_ROOT` | `backend/data/media` | 媒体文件存储目录 |
@@ -33,6 +37,9 @@
 ## 约束校验规则
 
 - `DATABASE_URL`、`MEDIA_ROOT` 不能为空。
+- `SQLITE_SYNCHRONOUS` 仅支持 `OFF/NORMAL/FULL/EXTRA`。
+- `SQLITE_BUSY_TIMEOUT_MS` 必须大于 0。
+- `SQLITE_TEMP_STORE` 仅支持 `0/1/2`。
 - `MAX_MEDIA_SIZE` 必须大于 0。
 - `AI_WORKER_POLL_INTERVAL`、`AI_TASK_LOCK_TIMEOUT`、`AI_TASK_TIMEOUT` 必须大于 0。
 - `AI_TASK_TIMEOUT` 不能小于 `AI_TASK_LOCK_TIMEOUT`。

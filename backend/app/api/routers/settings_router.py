@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import (
@@ -8,6 +8,13 @@ from app.core.dependencies import (
     ensure_nextauth_secret,
     get_admin_or_internal,
     validate_home_button_url,
+)
+from app.core.public_cache import (
+    CACHE_KEY_SETTINGS_BASIC_PUBLIC,
+    CACHE_KEY_SETTINGS_COMMENTS_PUBLIC,
+    apply_public_cache_headers,
+    get_public_cached,
+    invalidate_public_cache,
 )
 from app.schemas import (
     BasicSettingsUpdate,
@@ -29,6 +36,17 @@ def validate_recommendation_model_config(db: Session, config_id: str) -> None:
         raise HTTPException(status_code=400, detail="所选向量模型已禁用，请重新选择")
     if (model_config.model_type or "general") != "vector":
         raise HTTPException(status_code=400, detail="所选模型不是向量模型，请重新选择")
+
+
+def build_comment_settings_public_payload(db: Session) -> dict:
+    admin = get_admin_settings(db)
+    return {
+        "comments_enabled": bool(admin.comments_enabled) if admin else True,
+        "providers": {
+            "github": bool(admin.github_client_id) if admin else False,
+            "google": bool(admin.google_client_id) if admin else False,
+        },
+    }
 
 
 @router.get("/api/settings/basic")
@@ -82,13 +100,21 @@ async def update_basic_settings(
     admin.updated_at = now_str()
     db.commit()
     db.refresh(admin)
+    invalidate_public_cache(CACHE_KEY_SETTINGS_BASIC_PUBLIC)
     return {"success": True}
 
 
 @router.get("/api/settings/basic/public")
-async def get_basic_settings_public(db: Session = Depends(get_db)):
-    admin = get_admin_settings(db)
-    return build_basic_settings(admin)
+async def get_basic_settings_public(
+    response: Response,
+    db: Session = Depends(get_db),
+):
+    data = get_public_cached(
+        CACHE_KEY_SETTINGS_BASIC_PUBLIC,
+        lambda: build_basic_settings(get_admin_settings(db)),
+    )
+    apply_public_cache_headers(response)
+    return data
 
 
 @router.get("/api/settings/comments")
@@ -142,19 +168,21 @@ async def update_comment_settings(
     admin.updated_at = now_str()
     db.commit()
     db.refresh(admin)
+    invalidate_public_cache(CACHE_KEY_SETTINGS_COMMENTS_PUBLIC)
     return {"success": True}
 
 
 @router.get("/api/settings/comments/public")
-async def get_comment_settings_public(db: Session = Depends(get_db)):
-    admin = get_admin_settings(db)
-    return {
-        "comments_enabled": bool(admin.comments_enabled) if admin else True,
-        "providers": {
-            "github": bool(admin.github_client_id) if admin else False,
-            "google": bool(admin.google_client_id) if admin else False,
-        },
-    }
+async def get_comment_settings_public(
+    response: Response,
+    db: Session = Depends(get_db),
+):
+    data = get_public_cached(
+        CACHE_KEY_SETTINGS_COMMENTS_PUBLIC,
+        lambda: build_comment_settings_public_payload(db),
+    )
+    apply_public_cache_headers(response)
+    return data
 
 
 @router.get("/api/settings/storage")

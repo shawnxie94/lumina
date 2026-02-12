@@ -7,6 +7,7 @@ from sqlalchemy import (
     ForeignKey,
     Float,
     create_engine,
+    event,
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker
@@ -20,8 +21,31 @@ Base = declarative_base()
 settings = get_settings()
 DATABASE_URL = settings.database_url
 
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+IS_SQLITE = DATABASE_URL.startswith("sqlite")
+engine_connect_args = {}
+if IS_SQLITE:
+    engine_connect_args = {
+        "check_same_thread": False,
+        "timeout": max(settings.sqlite_busy_timeout_ms, 1000) / 1000,
+    }
+
+engine = create_engine(DATABASE_URL, connect_args=engine_connect_args)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+
+if IS_SQLITE:
+
+    @event.listens_for(engine, "connect")
+    def _apply_sqlite_pragmas(dbapi_connection, _connection_record):
+        cursor = dbapi_connection.cursor()
+        try:
+            if settings.sqlite_wal_enabled:
+                cursor.execute("PRAGMA journal_mode=WAL")
+            cursor.execute(f"PRAGMA synchronous={settings.sqlite_synchronous.upper()}")
+            cursor.execute(f"PRAGMA busy_timeout={settings.sqlite_busy_timeout_ms}")
+            cursor.execute(f"PRAGMA temp_store={settings.sqlite_temp_store}")
+        finally:
+            cursor.close()
 
 
 def get_db():

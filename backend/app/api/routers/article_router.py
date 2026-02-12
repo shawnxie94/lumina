@@ -1,7 +1,7 @@
 import json
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 
 from app.schemas import (
@@ -20,6 +20,14 @@ from app.domain.article_embedding_service import (
     ArticleEmbeddingService,
 )
 from app.domain.article_query_service import ArticleQueryService
+from app.core.public_cache import (
+    CACHE_KEY_AUTHORS_PUBLIC,
+    CACHE_KEY_CATEGORIES_PUBLIC,
+    CACHE_KEY_SOURCES_PUBLIC,
+    apply_public_cache_headers,
+    get_public_cached,
+    invalidate_public_cache,
+)
 from auth import check_is_admin, get_admin_settings, get_current_admin
 from media_service import cleanup_media_assets
 from models import Article, ArticleComment, ArticleEmbedding, Category, get_db, now_str
@@ -32,6 +40,15 @@ article_embedding_service = ArticleEmbeddingService()
 
 SIMILAR_ARTICLE_CANDIDATE_LIMIT = 500
 CATEGORY_SIMILARITY_BOOST = 0.05
+MAX_PUBLIC_PAGE_SIZE = 100
+
+
+def invalidate_public_article_meta_cache() -> None:
+    invalidate_public_cache(
+        CACHE_KEY_AUTHORS_PUBLIC,
+        CACHE_KEY_SOURCES_PUBLIC,
+        CACHE_KEY_CATEGORIES_PUBLIC,
+    )
 
 
 @router.post("/api/articles")
@@ -44,6 +61,7 @@ async def create_article(
         article_id = await article_command_service.create_article(article.dict(), db)
         article_obj = db.query(Article).filter(Article.id == article_id).first()
         slug = article_obj.slug if article_obj else article_id
+        invalidate_public_article_meta_cache()
         return {"id": article_id, "slug": slug, "status": "processing"}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -51,6 +69,7 @@ async def create_article(
 
 @router.get("/api/articles")
 async def get_articles(
+    response: Response,
     page: int = 1,
     size: int = 20,
     category_id: Optional[str] = None,
@@ -66,6 +85,8 @@ async def get_articles(
     db: Session = Depends(get_db),
     is_admin: bool = Depends(check_is_admin),
 ):
+    page = max(1, page)
+    size = min(max(1, size), MAX_PUBLIC_PAGE_SIZE)
     articles, total = article_query_service.get_articles(
         db=db,
         page=page,
@@ -82,6 +103,8 @@ async def get_articles(
         sort_by=sort_by,
         is_admin=is_admin,
     )
+    if not is_admin:
+        apply_public_cache_headers(response)
     return {
         "data": [
             {
@@ -140,15 +163,22 @@ async def search_articles(
 @router.get("/api/articles/{article_slug}")
 async def get_article(
     article_slug: str,
+    response: Response,
     db: Session = Depends(get_db),
     is_admin: bool = Depends(check_is_admin),
 ):
-    article = article_query_service.get_article_by_slug(db, article_slug)
+    article = article_query_service.get_article_by_slug(
+        db,
+        article_slug,
+        include_relations=True,
+    )
     if not article:
         raise HTTPException(status_code=404, detail="文章不存在")
 
     if not is_admin and not article.is_visible:
         raise HTTPException(status_code=404, detail="文章不存在")
+    if not is_admin and response is not None:
+        apply_public_cache_headers(response)
 
     prev_article, next_article = article_query_service.get_article_neighbors(
         db, article, is_admin=is_admin
@@ -383,6 +413,7 @@ async def delete_article(
         db.delete(article.ai_analysis)
     db.delete(article)
     db.commit()
+    invalidate_public_article_meta_cache()
     return {"message": "删除成功"}
 
 
@@ -419,6 +450,7 @@ async def update_article(
 
         db.commit()
         db.refresh(article)
+        invalidate_public_article_meta_cache()
 
         return {
             "id": article.id,
@@ -450,6 +482,7 @@ async def batch_update_visibility(
         .update({"is_visible": request.is_visible}, synchronize_session=False)
     )
     db.commit()
+    invalidate_public_article_meta_cache()
     return {"updated": updated}
 
 
@@ -471,6 +504,7 @@ async def batch_update_category(
         .update({"category_id": request.category_id}, synchronize_session=False)
     )
     db.commit()
+    invalidate_public_article_meta_cache()
     return {"updated": updated}
 
 
@@ -500,6 +534,7 @@ async def batch_delete_articles(
         .delete(synchronize_session=False)
     )
     db.commit()
+    invalidate_public_article_meta_cache()
     return {"deleted": deleted}
 
 
@@ -517,6 +552,7 @@ async def update_article_visibility(
     article.is_visible = data.is_visible
     article.updated_at = now_str()
     db.commit()
+    invalidate_public_article_meta_cache()
 
     return {"id": article.id, "is_visible": article.is_visible}
 
@@ -604,8 +640,7 @@ async def generate_ai_content(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.get("/api/authors")
-async def get_authors(db: Session = Depends(get_db)):
+def _list_authors(db: Session) -> list[str]:
     rows = (
         db.query(Article.author)
         .filter(Article.author.isnot(None))
@@ -622,14 +657,32 @@ async def get_authors(db: Session = Depends(get_db)):
     return sorted(author_set)
 
 
+@router.get("/api/authors")
+async def get_authors(
+    response: Response,
+    db: Session = Depends(get_db),
+):
+    data = get_public_cached(CACHE_KEY_AUTHORS_PUBLIC, lambda: _list_authors(db))
+    apply_public_cache_headers(response)
+    return data
+
+
 @router.get("/api/sources")
-async def get_sources(db: Session = Depends(get_db)):
-    sources = (
-        db.query(Article.source_domain)
-        .filter(Article.source_domain.isnot(None))
-        .filter(Article.source_domain != "")
-        .distinct()
-        .order_by(Article.source_domain)
-        .all()
-    )
-    return [s[0] for s in sources]
+async def get_sources(
+    response: Response,
+    db: Session = Depends(get_db),
+):
+    def load_sources() -> list[str]:
+        sources = (
+            db.query(Article.source_domain)
+            .filter(Article.source_domain.isnot(None))
+            .filter(Article.source_domain != "")
+            .distinct()
+            .order_by(Article.source_domain)
+            .all()
+        )
+        return [s[0] for s in sources]
+
+    data = get_public_cached(CACHE_KEY_SOURCES_PUBLIC, load_sources)
+    apply_public_cache_headers(response)
+    return data

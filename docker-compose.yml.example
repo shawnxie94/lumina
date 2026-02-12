@@ -18,6 +18,10 @@ services:
       - "8000:8000"
     environment:
       - DATABASE_URL=sqlite:///./data/articles.db
+      - SQLITE_WAL_ENABLED=${SQLITE_WAL_ENABLED:-true}
+      - SQLITE_SYNCHRONOUS=${SQLITE_SYNCHRONOUS:-NORMAL}
+      - SQLITE_BUSY_TIMEOUT_MS=${SQLITE_BUSY_TIMEOUT_MS:-5000}
+      - SQLITE_TEMP_STORE=${SQLITE_TEMP_STORE:-2}
       - INTERNAL_API_TOKEN=${INTERNAL_API_TOKEN:-dev-internal-token-change-me}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
       - MEDIA_BASE_URL=${MEDIA_BASE_URL:-/backend/media}
@@ -32,6 +36,10 @@ services:
     command: python worker.py
     environment:
       - DATABASE_URL=sqlite:///./data/articles.db
+      - SQLITE_WAL_ENABLED=${SQLITE_WAL_ENABLED:-true}
+      - SQLITE_SYNCHRONOUS=${SQLITE_SYNCHRONOUS:-NORMAL}
+      - SQLITE_BUSY_TIMEOUT_MS=${SQLITE_BUSY_TIMEOUT_MS:-5000}
+      - SQLITE_TEMP_STORE=${SQLITE_TEMP_STORE:-2}
       - INTERNAL_API_TOKEN=${INTERNAL_API_TOKEN:-dev-internal-token-change-me}
       - AI_WORKER_POLL_INTERVAL=3
       - AI_TASK_LOCK_TIMEOUT=300

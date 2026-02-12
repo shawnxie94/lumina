@@ -205,6 +205,9 @@ export default function Home() {
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const hydratedQueryRef = useRef('');
   const syncedQueryRef = useRef('');
+  const suppressNextPageFetchRef = useRef(false);
+  const authorsLoadingRef = useRef(false);
+  const sourcesLoadingRef = useRef(false);
   const articleRequestIdRef = useRef(0);
   const categoryStatsRequestIdRef = useRef(0);
   const routerQueryState = useMemo(
@@ -315,20 +318,28 @@ export default function Home() {
   };
 
   const fetchAuthors = async () => {
+    if (authorsLoadingRef.current) return;
+    authorsLoadingRef.current = true;
     try {
       const data = await articleApi.getAuthors();
       setAuthors(data);
     } catch (error) {
       console.error('Failed to fetch authors:', error);
+    } finally {
+      authorsLoadingRef.current = false;
     }
   };
 
   const fetchSources = async () => {
+    if (sourcesLoadingRef.current) return;
+    sourcesLoadingRef.current = true;
     try {
       const data = await articleApi.getSources();
       setSources(data);
     } catch (error) {
       console.error('Failed to fetch sources:', error);
+    } finally {
+      sourcesLoadingRef.current = false;
     }
   };
 
@@ -351,6 +362,7 @@ export default function Home() {
 
   useEffect(() => {
     if (!initialized || authLoading) return;
+    suppressNextPageFetchRef.current = true;
     setHasMore(true);
     setIsAppending(false);
     if (debounceRef.current) {
@@ -397,6 +409,10 @@ export default function Home() {
 
   useEffect(() => {
     if (!initialized || authLoading) return;
+    if (suppressNextPageFetchRef.current) {
+      suppressNextPageFetchRef.current = false;
+      return;
+    }
     fetchArticles();
   }, [initialized, authLoading, page, pageSize]);
 
@@ -535,9 +551,17 @@ export default function Home() {
 
   useEffect(() => {
     fetchCategories();
-    fetchAuthors();
-    fetchSources();
   }, []);
+
+  useEffect(() => {
+    if (!showFilters && !showMobileFilters) return;
+    if (authors.length === 0) {
+      fetchAuthors();
+    }
+    if (sources.length === 0) {
+      fetchSources();
+    }
+  }, [showFilters, showMobileFilters, authors.length, sources.length]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;

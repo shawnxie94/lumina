@@ -1,6 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.core.public_cache import (
+    CACHE_KEY_SETTINGS_BASIC_PUBLIC,
+    CACHE_KEY_SETTINGS_COMMENTS_PUBLIC,
+    invalidate_public_cache,
+)
 from auth import (
     ChangePasswordRequest,
     LoginRequest,
@@ -37,6 +42,10 @@ async def setup_admin(request: SetupRequest, db: Session = Depends(get_db)):
         admin = create_admin_settings(db, request.password)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+    invalidate_public_cache(
+        CACHE_KEY_SETTINGS_BASIC_PUBLIC,
+        CACHE_KEY_SETTINGS_COMMENTS_PUBLIC,
+    )
     token = create_token(admin.jwt_secret)
     return LoginResponse(token=token, message="管理员密码设置成功")
 

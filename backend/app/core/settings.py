@@ -50,6 +50,10 @@ class AppSettings(BaseSettings):
     )
 
     database_url: str = Field(default="sqlite:///./data/articles.db", alias="DATABASE_URL")
+    sqlite_wal_enabled: bool = Field(default=True, alias="SQLITE_WAL_ENABLED")
+    sqlite_synchronous: str = Field(default="NORMAL", alias="SQLITE_SYNCHRONOUS")
+    sqlite_busy_timeout_ms: int = Field(default=5000, alias="SQLITE_BUSY_TIMEOUT_MS")
+    sqlite_temp_store: int = Field(default=2, alias="SQLITE_TEMP_STORE")
     internal_api_token: str = Field(default="", alias="INTERNAL_API_TOKEN")
 
     allowed_origins: str = Field(default="", alias="ALLOWED_ORIGINS")
@@ -110,6 +114,13 @@ def validate_startup_settings(settings: AppSettings) -> None:
 
     if not settings.database_url.strip():
         errors.append("DATABASE_URL 不能为空")
+    sqlite_sync = settings.sqlite_synchronous.strip().upper()
+    if sqlite_sync not in {"OFF", "NORMAL", "FULL", "EXTRA"}:
+        errors.append("SQLITE_SYNCHRONOUS 仅支持 OFF/NORMAL/FULL/EXTRA")
+    if settings.sqlite_busy_timeout_ms <= 0:
+        errors.append("SQLITE_BUSY_TIMEOUT_MS 必须大于 0")
+    if settings.sqlite_temp_store not in (0, 1, 2):
+        errors.append("SQLITE_TEMP_STORE 仅支持 0/1/2")
 
     if not settings.internal_api_token.strip():
         errors.append("INTERNAL_API_TOKEN 不能为空")
