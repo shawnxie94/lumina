@@ -123,12 +123,14 @@ class ConfigurableAIClient:
                 "content": response.choices[0].message.content,
                 "usage": getattr(response, "usage", None),
                 "model": getattr(response, "model", self.model_name),
+                "finish_reason": getattr(response.choices[0], "finish_reason", None),
                 "latency_ms": latency_ms,
                 "request_payload": request_params,
                 "response_payload": {
                     "content": response.choices[0].message.content,
                     "model": getattr(response, "model", self.model_name),
                     "usage": usage_data,
+                    "finish_reason": getattr(response.choices[0], "finish_reason", None),
                 },
             }
         except Exception as e:
@@ -218,12 +220,14 @@ class ConfigurableAIClient:
                 "content": result,
                 "usage": getattr(response, "usage", None),
                 "model": getattr(response, "model", self.model_name),
+                "finish_reason": getattr(response.choices[0], "finish_reason", None),
                 "latency_ms": latency_ms,
                 "request_payload": request_params,
                 "response_payload": {
                     "content": result,
                     "model": getattr(response, "model", self.model_name),
                     "usage": usage_data,
+                    "finish_reason": getattr(response.choices[0], "finish_reason", None),
                 },
             }
         except Exception as e:

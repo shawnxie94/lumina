@@ -411,6 +411,8 @@ export interface ModelAPIConfig {
 	price_input_per_1k?: number | null;
 	price_output_per_1k?: number | null;
 	currency?: string | null;
+	context_window_tokens?: number | null;
+	reserve_output_tokens?: number | null;
 	is_enabled: boolean;
 	is_default: boolean;
 	created_at: string;
@@ -534,6 +536,9 @@ export interface PromptConfig {
 	temperature?: number | null;
 	max_tokens?: number | null;
 	top_p?: number | null;
+	chunk_size_tokens?: number | null;
+	chunk_overlap_tokens?: number | null;
+	max_continue_rounds?: number | null;
 	model_api_config_id: string | null;
 	model_api_config_name: string | null;
 	is_enabled: boolean;
@@ -792,7 +797,14 @@ export const articleApi = {
 		name: string;
 		base_url: string;
 		api_key: string;
+		provider?: string;
 		model_name?: string;
+		model_type?: string;
+		price_input_per_1k?: number;
+		price_output_per_1k?: number;
+		currency?: string;
+		context_window_tokens?: number;
+		reserve_output_tokens?: number;
 		is_enabled?: boolean;
 		is_default?: boolean;
 	}) => {
@@ -806,7 +818,14 @@ export const articleApi = {
 			name?: string;
 			base_url?: string;
 			api_key?: string;
+			provider?: string;
 			model_name?: string;
+			model_type?: string;
+			price_input_per_1k?: number;
+			price_output_per_1k?: number;
+			currency?: string;
+			context_window_tokens?: number;
+			reserve_output_tokens?: number;
 			is_enabled?: boolean;
 			is_default?: boolean;
 		},
@@ -867,6 +886,9 @@ export const articleApi = {
 		temperature?: number | null;
 		max_tokens?: number | null;
 		top_p?: number | null;
+		chunk_size_tokens?: number | null;
+		chunk_overlap_tokens?: number | null;
+		max_continue_rounds?: number | null;
 		model_api_config_id?: string;
 		is_enabled?: boolean;
 		is_default?: boolean;
@@ -887,6 +909,9 @@ export const articleApi = {
 			temperature?: number | null;
 			max_tokens?: number | null;
 			top_p?: number | null;
+			chunk_size_tokens?: number | null;
+			chunk_overlap_tokens?: number | null;
+			max_continue_rounds?: number | null;
 			model_api_config_id?: string;
 			is_enabled?: boolean;
 			is_default?: boolean;

@@ -34,6 +34,8 @@ class ModelAPIConfigBase(BaseModel):
     price_input_per_1k: Optional[float] = None
     price_output_per_1k: Optional[float] = None
     currency: Optional[str] = None
+    context_window_tokens: Optional[int] = None
+    reserve_output_tokens: Optional[int] = None
     is_enabled: bool = True
     is_default: bool = False
 
@@ -57,6 +59,9 @@ class PromptConfigBase(BaseModel):
     temperature: Optional[float] = None
     max_tokens: Optional[int] = None
     top_p: Optional[float] = None
+    chunk_size_tokens: Optional[int] = None
+    chunk_overlap_tokens: Optional[int] = None
+    max_continue_rounds: Optional[int] = None
     model_api_config_id: Optional[str] = None
     is_enabled: bool = True
     is_default: bool = False

@@ -22,6 +22,8 @@ def serialize_model_api_config(config: ModelAPIConfig) -> dict:
         "price_input_per_1k": config.price_input_per_1k,
         "price_output_per_1k": config.price_output_per_1k,
         "currency": config.currency,
+        "context_window_tokens": config.context_window_tokens,
+        "reserve_output_tokens": config.reserve_output_tokens,
         "is_enabled": config.is_enabled,
         "is_default": config.is_default,
         "created_at": config.created_at,
@@ -100,6 +102,8 @@ async def update_model_api_config(
         existing_config.price_input_per_1k = config.price_input_per_1k
         existing_config.price_output_per_1k = config.price_output_per_1k
         existing_config.currency = config.currency
+        existing_config.context_window_tokens = config.context_window_tokens
+        existing_config.reserve_output_tokens = config.reserve_output_tokens
         existing_config.is_enabled = config.is_enabled
         existing_config.is_default = config.is_default
 

@@ -830,6 +830,8 @@ export default function AdminPage() {
 		price_input_per_1k: "",
 		price_output_per_1k: "",
 		currency: "USD",
+		context_window_tokens: "",
+		reserve_output_tokens: "",
 		is_enabled: true,
 		is_default: false,
 	});
@@ -844,6 +846,9 @@ export default function AdminPage() {
 		temperature: "",
 		max_tokens: "",
 		top_p: "",
+		chunk_size_tokens: "",
+		chunk_overlap_tokens: "",
+		max_continue_rounds: "",
 		model_api_config_id: "",
 		is_enabled: true,
 		is_default: false,
@@ -1508,6 +1513,8 @@ export default function AdminPage() {
 			price_input_per_1k: "",
 			price_output_per_1k: "",
 			currency: "USD",
+			context_window_tokens: "",
+			reserve_output_tokens: "",
 			is_enabled: true,
 			is_default: false,
 		});
@@ -1533,6 +1540,8 @@ export default function AdminPage() {
 			price_input_per_1k: config.price_input_per_1k?.toString() || "",
 			price_output_per_1k: config.price_output_per_1k?.toString() || "",
 			currency: config.currency || "USD",
+			context_window_tokens: config.context_window_tokens?.toString() || "",
+			reserve_output_tokens: config.reserve_output_tokens?.toString() || "",
 			is_enabled: config.is_enabled,
 			is_default: config.is_default,
 		});
@@ -1550,6 +1559,28 @@ export default function AdminPage() {
 			showToast(t("请填写配置名称"), "error");
 			return;
 		}
+		const contextWindowTokens = modelAPIFormData.context_window_tokens
+			? Number(modelAPIFormData.context_window_tokens)
+			: undefined;
+		const reserveOutputTokens = modelAPIFormData.reserve_output_tokens
+			? Number(modelAPIFormData.reserve_output_tokens)
+			: undefined;
+		if (contextWindowTokens != null && contextWindowTokens <= 0) {
+			showToast(t("上下文窗口必须大于 0"), "error");
+			return;
+		}
+		if (reserveOutputTokens != null && reserveOutputTokens < 0) {
+			showToast(t("输出预留不能小于 0"), "error");
+			return;
+		}
+		if (
+			contextWindowTokens != null &&
+			reserveOutputTokens != null &&
+			reserveOutputTokens >= contextWindowTokens
+		) {
+			showToast(t("输出预留必须小于上下文窗口"), "error");
+			return;
+		}
 		const payload = {
 			...modelAPIFormData,
 			name: modelApiName,
@@ -1560,6 +1591,8 @@ export default function AdminPage() {
 				? Number(modelAPIFormData.price_output_per_1k)
 				: undefined,
 			currency: modelAPIFormData.currency || undefined,
+			context_window_tokens: contextWindowTokens,
+			reserve_output_tokens: reserveOutputTokens,
 		};
 		setModelAPISaving(true);
 		try {
@@ -1715,6 +1748,9 @@ export default function AdminPage() {
 			temperature: "",
 			max_tokens: "",
 			top_p: "",
+			chunk_size_tokens: "",
+			chunk_overlap_tokens: "",
+			max_continue_rounds: "",
 			model_api_config_id: "",
 			is_enabled: true,
 			is_default: false,
@@ -1735,6 +1771,9 @@ export default function AdminPage() {
 			temperature: config.temperature?.toString() || "",
 			max_tokens: config.max_tokens?.toString() || "",
 			top_p: config.top_p?.toString() || "",
+			chunk_size_tokens: config.chunk_size_tokens?.toString() || "",
+			chunk_overlap_tokens: config.chunk_overlap_tokens?.toString() || "",
+			max_continue_rounds: config.max_continue_rounds?.toString() || "",
 			model_api_config_id: config.model_api_config_id || "",
 			is_enabled: config.is_enabled,
 			is_default: config.is_default,
@@ -1753,6 +1792,59 @@ export default function AdminPage() {
 			showToast("请填写提示词", "error");
 			return;
 		}
+		const hasAnyChunkOption =
+			Boolean(promptFormData.chunk_size_tokens.trim()) ||
+			Boolean(promptFormData.chunk_overlap_tokens.trim()) ||
+			Boolean(promptFormData.max_continue_rounds.trim());
+		if (hasAnyChunkOption) {
+			if (
+				!promptFormData.chunk_size_tokens.trim() ||
+				!promptFormData.chunk_overlap_tokens.trim() ||
+				!promptFormData.max_continue_rounds.trim()
+			) {
+				showToast(
+					t("启用分块参数时，需同时填写分块大小、分块重叠、最多续写轮次"),
+					"error",
+				);
+				return;
+			}
+			if (!promptFormData.model_api_config_id) {
+				showToast(t("启用分块参数时，请先绑定模型配置"), "error");
+				return;
+			}
+			const boundModel = modelAPIConfigs.find(
+				(config) => config.id === promptFormData.model_api_config_id,
+			);
+			if (!boundModel) {
+				showToast(t("绑定模型不存在，请重新选择"), "error");
+				return;
+			}
+			if (
+				boundModel.context_window_tokens == null ||
+				boundModel.reserve_output_tokens == null
+			) {
+				showToast(
+					t("绑定模型缺少上下文窗口或输出预留，无法启用分块参数"),
+					"error",
+				);
+				return;
+			}
+			const chunkSizeValue = Number(promptFormData.chunk_size_tokens);
+			const chunkOverlapValue = Number(promptFormData.chunk_overlap_tokens);
+			const continueRoundsValue = Number(promptFormData.max_continue_rounds);
+			if (!Number.isFinite(chunkSizeValue) || chunkSizeValue <= 0) {
+				showToast(t("分块大小必须大于 0"), "error");
+				return;
+			}
+			if (!Number.isFinite(chunkOverlapValue) || chunkOverlapValue < 0) {
+				showToast(t("分块重叠不能小于 0"), "error");
+				return;
+			}
+			if (!Number.isFinite(continueRoundsValue) || continueRoundsValue < 0) {
+				showToast(t("最多续写轮次不能小于 0"), "error");
+				return;
+			}
+		}
 
 		setPromptSaving(true);
 		try {
@@ -1769,6 +1861,15 @@ export default function AdminPage() {
 					? Number(promptFormData.max_tokens)
 					: undefined,
 				top_p: promptFormData.top_p ? Number(promptFormData.top_p) : undefined,
+				chunk_size_tokens: promptFormData.chunk_size_tokens
+					? Number(promptFormData.chunk_size_tokens)
+					: undefined,
+				chunk_overlap_tokens: promptFormData.chunk_overlap_tokens
+					? Number(promptFormData.chunk_overlap_tokens)
+					: undefined,
+				max_continue_rounds: promptFormData.max_continue_rounds
+					? Number(promptFormData.max_continue_rounds)
+					: undefined,
 			};
 
 			if (editingPromptConfig) {
@@ -2229,6 +2330,9 @@ export default function AdminPage() {
 					temperature: item.temperature ?? undefined,
 					max_tokens: item.max_tokens ?? undefined,
 					top_p: item.top_p ?? undefined,
+					chunk_size_tokens: item.chunk_size_tokens ?? undefined,
+					chunk_overlap_tokens: item.chunk_overlap_tokens ?? undefined,
+					max_continue_rounds: item.max_continue_rounds ?? undefined,
 					is_enabled: item.is_enabled ?? true,
 					is_default: item.is_default ?? false,
 				};
@@ -3107,22 +3211,41 @@ export default function AdminPage() {
 																	</div>
 																	{(config.model_type || "general") !==
 																		"vector" && (
-																		<div>
-																			<span className="font-medium">
-																				{t("计费")}：
-																			</span>
-																			<span>
-																				{t("输入")}{" "}
-																				{formatPrice(config.price_input_per_1k)}
-																				/ {t("输出")}{" "}
-																				{formatPrice(
-																					config.price_output_per_1k,
-																				)}
-																				{config.currency
-																					? ` ${config.currency}`
-																					: ""}
-																			</span>
-																		</div>
+																		<>
+																			<div>
+																				<span className="font-medium">
+																					{t("计费")}：
+																				</span>
+																				<span>
+																					{t("输入")}{" "}
+																					{formatPrice(config.price_input_per_1k)}
+																					/ {t("输出")}{" "}
+																					{formatPrice(
+																						config.price_output_per_1k,
+																					)}
+																					{config.currency
+																						? ` ${config.currency}`
+																						: ""}
+																				</span>
+																			</div>
+																			{(config.context_window_tokens != null ||
+																				config.reserve_output_tokens != null) && (
+																				<div>
+																					<span className="font-medium">
+																						{t("上下文预算")}：
+																					</span>
+																					<span>
+																						{config.context_window_tokens != null
+																							? `${t("窗口")} ${config.context_window_tokens}`
+																							: `${t("窗口")} -`}
+																						{" / "}
+																						{config.reserve_output_tokens != null
+																							? `${t("预留")} ${config.reserve_output_tokens}`
+																							: `${t("预留")} -`}
+																					</span>
+																				</div>
+																			)}
+																		</>
 																	)}
 																	<div>
 																		<span className="font-medium">
@@ -3329,7 +3452,10 @@ export default function AdminPage() {
 																		config.response_format ||
 																		config.temperature != null ||
 																		config.max_tokens != null ||
-																		config.top_p != null) && (
+																		config.top_p != null ||
+																		config.chunk_size_tokens != null ||
+																		config.chunk_overlap_tokens != null ||
+																		config.max_continue_rounds != null) && (
 																		<div className="flex flex-wrap gap-2 pt-1">
 																			{config.response_format && (
 																				<StatusTag tone="neutral">
@@ -3351,6 +3477,23 @@ export default function AdminPage() {
 																			{config.top_p != null && (
 																				<StatusTag tone="neutral">
 																					Top P: {config.top_p}
+																				</StatusTag>
+																			)}
+																			{config.chunk_size_tokens != null && (
+																				<StatusTag tone="neutral">
+																					{t("分块大小")}: {config.chunk_size_tokens}
+																				</StatusTag>
+																			)}
+																			{config.chunk_overlap_tokens != null && (
+																				<StatusTag tone="neutral">
+																					{t("分块重叠")}:{" "}
+																					{config.chunk_overlap_tokens}
+																				</StatusTag>
+																			)}
+																			{config.max_continue_rounds != null && (
+																				<StatusTag tone="neutral">
+																					{t("续写轮次")}:{" "}
+																					{config.max_continue_rounds}
 																				</StatusTag>
 																			)}
 																		</div>
@@ -5139,7 +5282,7 @@ export default function AdminPage() {
 						{modelAPIFormData.model_type !== "vector" && (
 							<div className="rounded-lg border border-border">
 								<SectionToggleButton
-									label={t("计费设置（可选）")}
+									label={t("高级设置（可选）")}
 									expanded={showModelAPIAdvanced}
 									onToggle={() =>
 										setShowModelAPIAdvanced(!showModelAPIAdvanced)
@@ -5180,8 +5323,8 @@ export default function AdminPage() {
 											</FormField>
 										</div>
 
-										<FormField label={t("币种")}>
-											<SelectField
+											<FormField label={t("币种")}>
+												<SelectField
 												value={modelAPIFormData.currency || ""}
 												onChange={(value) =>
 													setModelAPIFormData({
@@ -5195,11 +5338,47 @@ export default function AdminPage() {
 													...option,
 													label: t(option.labelKey),
 												}))}
-											/>
-										</FormField>
-									</div>
-								)}
-							</div>
+												/>
+											</FormField>
+
+											<div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+												<FormField label={t("上下文窗口（tokens）")}>
+													<TextInput
+														type="number"
+														min="1"
+														value={modelAPIFormData.context_window_tokens}
+														onChange={(e) =>
+															setModelAPIFormData({
+																...modelAPIFormData,
+																context_window_tokens: e.target.value,
+															})
+														}
+														placeholder={t("例如 128000")}
+													/>
+												</FormField>
+												<FormField label={t("输出预留（tokens）")}>
+													<TextInput
+														type="number"
+														min="0"
+														value={modelAPIFormData.reserve_output_tokens}
+														onChange={(e) =>
+															setModelAPIFormData({
+																...modelAPIFormData,
+																reserve_output_tokens: e.target.value,
+															})
+														}
+														placeholder={t("例如 16000")}
+													/>
+												</FormField>
+											</div>
+											<p className="text-xs text-text-3">
+												{t(
+													"留空表示不启用清洗分块预算能力；需与提示词中的分块参数搭配使用。",
+												)}
+											</p>
+										</div>
+									)}
+								</div>
 						)}
 
 						<div className="flex items-center gap-4">
@@ -5707,7 +5886,7 @@ export default function AdminPage() {
 							/>
 							{showPromptAdvanced && (
 								<div className="space-y-4 border-t border-border p-4">
-									<div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+										<div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
 										<FormField label={t("响应格式")}>
 											<SelectField
 												value={promptFormData.response_format}
@@ -5759,7 +5938,7 @@ export default function AdminPage() {
 											/>
 										</FormField>
 
-										<FormField label="Top P">
+											<FormField label="Top P">
 											<TextInput
 												type="number"
 												step="0.1"
@@ -5774,11 +5953,63 @@ export default function AdminPage() {
 												}
 												placeholder={t("1.0")}
 											/>
-										</FormField>
+											</FormField>
+										</div>
+
+											<div className="rounded-lg border border-border p-3">
+											<div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+												<FormField label={t("分块大小")}>
+													<TextInput
+														type="number"
+														min="1"
+														value={promptFormData.chunk_size_tokens}
+														onChange={(e) =>
+															setPromptFormData({
+																...promptFormData,
+																chunk_size_tokens: e.target.value,
+															})
+														}
+														placeholder={t("例如 12000")}
+													/>
+												</FormField>
+												<FormField label={t("分块重叠")}>
+													<TextInput
+														type="number"
+														min="0"
+														value={promptFormData.chunk_overlap_tokens}
+														onChange={(e) =>
+															setPromptFormData({
+																...promptFormData,
+																chunk_overlap_tokens: e.target.value,
+															})
+														}
+														placeholder={t("例如 800")}
+													/>
+												</FormField>
+												<FormField label={t("最多续写轮次")}>
+													<TextInput
+														type="number"
+														min="0"
+														value={promptFormData.max_continue_rounds}
+														onChange={(e) =>
+															setPromptFormData({
+																...promptFormData,
+																max_continue_rounds: e.target.value,
+															})
+														}
+														placeholder={t("例如 2")}
+													/>
+												</FormField>
+											</div>
+											<p className="mt-2 text-xs text-text-3">
+												{t(
+													"该三项需同时填写；并且关联模型需配置上下文窗口与输出预留，否则后端会拒绝保存。",
+												)}
+											</p>
+										</div>
 									</div>
-								</div>
-							)}
-						</div>
+								)}
+							</div>
 
 						<FormField label={t("关联模型API配置（可选）")}>
 							<SelectField
@@ -5996,6 +6227,18 @@ export default function AdminPage() {
 							<div className="rounded-lg border border-border bg-muted p-3 text-sm text-text-2">
 								<div className="text-xs text-text-3">Top P</div>
 								<div>{showPromptPreview.top_p ?? t("默认")}</div>
+							</div>
+							<div className="rounded-lg border border-border bg-muted p-3 text-sm text-text-2">
+								<div className="text-xs text-text-3">{t("分块大小")}</div>
+								<div>{showPromptPreview.chunk_size_tokens ?? t("默认")}</div>
+							</div>
+							<div className="rounded-lg border border-border bg-muted p-3 text-sm text-text-2">
+								<div className="text-xs text-text-3">{t("分块重叠")}</div>
+								<div>{showPromptPreview.chunk_overlap_tokens ?? t("默认")}</div>
+							</div>
+							<div className="rounded-lg border border-border bg-muted p-3 text-sm text-text-2">
+								<div className="text-xs text-text-3">{t("最多续写轮次")}</div>
+								<div>{showPromptPreview.max_continue_rounds ?? t("默认")}</div>
 							</div>
 						</div>
 					</ModalShell>

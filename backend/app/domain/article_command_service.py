@@ -83,7 +83,14 @@ class ArticleCommandService:
             task_type="process_article_cleaning",
             article_id=article.id,
             content_type="content_cleaning",
-            payload={"category_id": article_data.get("category_id")},
+            payload={
+                "category_id": article_data.get("category_id"),
+                "source_format": "html"
+                if article_data.get("content_html")
+                else "markdown",
+                "strategy": "auto",
+                "chunk_cursor": 0,
+            },
         )
 
         return article.id
@@ -113,6 +120,9 @@ class ArticleCommandService:
                 "category_id": article.category_id,
                 "model_config_id": model_config_id,
                 "prompt_config_id": prompt_config_id,
+                "source_format": "html" if article.content_html else "markdown",
+                "strategy": "auto",
+                "chunk_cursor": 0,
             },
         )
 
