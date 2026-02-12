@@ -160,6 +160,92 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+.panel-raised {
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow 0.2s ease, border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.panel-subtle {
+  background: linear-gradient(180deg, var(--bg-surface) 0%, var(--bg-muted) 100%);
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow 0.2s ease, border-color 0.2s ease, background-color 0.2s ease;
+}
+
+html[data-theme="dark"] .panel-subtle {
+  background: linear-gradient(180deg, #171b24 0%, #111720 100%);
+}
+
+.filter-chip {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  border: 1px solid rgba(59, 130, 246, 0.18);
+}
+
+html[data-theme="dark"] .filter-chip {
+  border-color: rgba(147, 197, 253, 0.32);
+}
+
+.language-tag {
+  border-radius: 9999px;
+  background: rgba(15, 23, 42, 0.72);
+  color: #f8fafc;
+  border: 1px solid rgba(248, 250, 252, 0.24);
+  font-weight: 600;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+html[data-theme="dark"] .language-tag {
+  background: rgba(30, 41, 59, 0.78);
+  border-color: rgba(148, 163, 184, 0.45);
+}
+
+.category-chip {
+  border: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+.skeleton-shimmer {
+  position: relative;
+  overflow: hidden;
+  background: var(--bg-muted);
+}
+
+.skeleton-shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.55) 50%,
+    transparent 100%
+  );
+  animation: skeleton-shimmer-slide 1.4s ease-in-out infinite;
+}
+
+html[data-theme="dark"] .skeleton-shimmer::after {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(148, 163, 184, 0.3) 50%,
+    transparent 100%
+  );
+}
+
+@keyframes skeleton-shimmer-slide {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-shimmer::after {
+    animation: none;
+  }
+}
+
 .prose {
   color: var(--text-2);
 }

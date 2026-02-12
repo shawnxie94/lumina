@@ -22,7 +22,7 @@ import TextArea from '@/components/ui/TextArea';
 import TextInput from '@/components/ui/TextInput';
 import { useToast } from '@/components/Toast';
 import { BackToTop } from '@/components/BackToTop';
-import { IconEye, IconEyeOff, IconSearch, IconTag, IconTrash, IconPlus, IconRefresh } from '@/components/icons';
+import { IconEye, IconEyeOff, IconSearch, IconTag, IconTrash, IconPlus } from '@/components/icons';
 import { useAuth } from '@/contexts/AuthContext';
 import { useBasicSettings } from '@/contexts/BasicSettingsContext';
 import { useI18n } from '@/lib/i18n';
@@ -43,9 +43,6 @@ const toDayjsRange = (range: [Date | null, Date | null]): [Dayjs | null, Dayjs |
   range[0] ? dayjs(range[0]) : null,
   range[1] ? dayjs(range[1]) : null,
 ];
-
-const getArticleLanguageTag = (article: Article): string =>
-  article.original_language === 'zh' ? '中文' : '英文';
 
 type MediaInsertKind = 'video' | 'audio';
 type PastedMediaKind = 'image' | MediaInsertKind;
@@ -351,6 +348,10 @@ export default function Home() {
     const from = `${currentListPath}#article-${slug}`;
     return `/article/${slug}?from=${encodeURIComponent(from)}`;
   };
+  const getArticleLanguageTag = (article: Article): string =>
+    article.original_language === 'zh' ? t('中文') : t('英文');
+  const articleLinkTarget = isMobile ? undefined : '_blank';
+  const articleLinkRel = isMobile ? undefined : 'noopener noreferrer';
 
   const fetchArticles = async () => {
     const requestId = articleRequestIdRef.current + 1;
@@ -950,7 +951,7 @@ export default function Home() {
         activeFilters.map((filter) => (
           <span
             key={filter}
-            className="px-2 py-1 text-sm bg-primary-soft text-primary-ink rounded-xs"
+            className="filter-chip px-2.5 py-1 text-sm rounded-sm"
           >
             {filter}
           </span>
@@ -1277,6 +1278,53 @@ export default function Home() {
       </div>
     </div>
   );
+  const skeletonCount = isMobile ? 4 : 6;
+  const listSkeleton = (
+    <div className="space-y-4" aria-live="polite" aria-busy="true">
+      {showAdminDesktop && (
+        <div className="mb-4">
+          <div className="flex items-center gap-2">
+            <span className="skeleton-shimmer motion-safe:animate-pulse h-4 w-4 rounded-xs" />
+            <span className="skeleton-shimmer motion-safe:animate-pulse h-4 w-44 rounded-xs" />
+          </div>
+        </div>
+      )}
+      {Array.from({ length: skeletonCount }).map((_, index) => (
+        <div
+          key={`list-skeleton-${index}`}
+          className="panel-raised rounded-lg border border-border p-4 sm:p-6 min-h-[184px] relative overflow-hidden"
+        >
+          {showAdminDesktop && (
+            <div className="absolute top-3 right-3 flex items-center gap-1">
+              <span className="skeleton-shimmer motion-safe:animate-pulse h-6 w-6 rounded-sm" />
+              <span className="skeleton-shimmer motion-safe:animate-pulse h-6 w-6 rounded-sm" />
+            </div>
+          )}
+          <div className="flex flex-col sm:flex-row gap-4">
+            {showAdminDesktop && (
+              <span className="skeleton-shimmer motion-safe:animate-pulse mt-1 h-4 w-4 rounded-xs shrink-0" />
+            )}
+            <div className="skeleton-shimmer motion-safe:animate-pulse w-full sm:w-40 aspect-video sm:aspect-square rounded-lg shrink-0" />
+            <div className="flex-1 space-y-3 sm:pr-6">
+              <div className="space-y-2">
+                <div className="skeleton-shimmer motion-safe:animate-pulse h-6 w-4/5 rounded-sm" />
+                <div className="skeleton-shimmer motion-safe:animate-pulse h-6 w-3/5 rounded-sm" />
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="skeleton-shimmer motion-safe:animate-pulse h-5 w-16 rounded-full" />
+                <span className="skeleton-shimmer motion-safe:animate-pulse h-4 w-24 rounded-sm" />
+                <span className="skeleton-shimmer motion-safe:animate-pulse h-4 w-36 rounded-sm" />
+              </div>
+              <div className="space-y-2 pt-1">
+                <div className="skeleton-shimmer motion-safe:animate-pulse h-4 w-full rounded-sm" />
+                <div className="skeleton-shimmer motion-safe:animate-pulse h-4 w-5/6 rounded-sm" />
+              </div>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-app flex flex-col">
@@ -1287,7 +1335,7 @@ export default function Home() {
       </Head>
       <AppHeader />
 
-      <div className="lg:hidden border-b border-border bg-surface">
+      <div className="lg:hidden border-b border-border bg-surface panel-subtle">
         <div className="max-w-7xl mx-auto px-4 py-3">
           <div className="flex items-center gap-2 overflow-x-auto">
             <button type="button"
@@ -1296,7 +1344,7 @@ export default function Home() {
                 selectedCategory === '' ? 'bg-primary-soft text-primary-ink' : 'bg-muted text-text-2'
               }`}
             >
-              {t('全部')} ({categoryStats.reduce((sum, c) => sum + c.article_count, 0)})
+              {t('全部文章')} ({categoryStats.reduce((sum, c) => sum + c.article_count, 0)})
             </button>
             {categoryStats.map((category) => (
               <button type="button"
@@ -1325,7 +1373,7 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-4 py-6 sm:py-8">
           <div className="flex flex-col lg:flex-row gap-6">
           <aside className={`hidden lg:block flex-shrink-0 w-full transition-all duration-300 ${sidebarCollapsed ? 'lg:w-12' : 'lg:w-56'}`}>
-            <div className="bg-surface rounded-sm shadow-sm border border-border p-4 max-h-none overflow-visible lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">
+            <div className="panel-raised rounded-sm border border-border p-4 max-h-none overflow-visible lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">
               <div className="flex items-center justify-between mb-4">
                 {!sidebarCollapsed && (
                   <h2 className="font-semibold text-text-1 inline-flex items-center gap-2">
@@ -1351,7 +1399,7 @@ export default function Home() {
                       selectedCategory === '' ? 'bg-primary-soft text-primary-ink' : 'hover:bg-muted'
                     }`}
                   >
-                    {t('全部内容')} ({categoryStats.reduce((sum, c) => sum + c.article_count, 0)})
+                    {t('全部文章')} ({categoryStats.reduce((sum, c) => sum + c.article_count, 0)})
                   </button>
                   {categoryStats.map((category) => (
                     <button type="button"
@@ -1371,7 +1419,7 @@ export default function Home() {
 
           <main className="flex-1" aria-busy={!listContentReady}>
             {!isMobile && (
-              <div className="bg-surface rounded-sm shadow-sm border border-border p-4 sm:p-6 mb-6">
+              <div className="panel-raised rounded-sm border border-border p-4 sm:p-6 mb-6">
                 {!isMobile && (
                   <>
                     <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
@@ -1457,18 +1505,9 @@ export default function Home() {
             )}
 
             {!listContentReady ? (
-              <div
-                className="rounded-sm border border-border bg-surface min-h-[420px] flex items-center justify-center"
-                aria-live="polite"
-                aria-busy="true"
-              >
-                <div className="inline-flex items-center gap-2 text-text-3">
-                  <IconRefresh className="h-5 w-5 animate-spin" />
-                  <span>{t('加载中...')}</span>
-                </div>
-              </div>
+              listSkeleton
             ) : articles.length === 0 ? (
-              <div className="text-center py-12 text-text-3">{t('暂无文章')}</div>
+              <div className="panel-subtle rounded-sm border border-border text-center py-12 text-text-3">{t('暂无文章')}</div>
              ) : (
                 <> 
                   {showAdminDesktop && (
@@ -1499,15 +1538,15 @@ export default function Home() {
                               loading="lazy"
                               decoding="async"
                             />
-                            <span className="absolute left-2 top-2 rounded-sm bg-black/60 px-2 py-0.5 text-xs text-white">
+                            <span className="language-tag absolute left-2 top-2 px-2 py-0.5 text-xs">
                               {getArticleLanguageTag(article)}
                             </span>
                           </div>
                         ) : (
                           <Link
                             href={articleHref}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                            target={articleLinkTarget}
+                            rel={articleLinkRel}
                             className="relative block w-full sm:w-40 aspect-video sm:aspect-square overflow-hidden rounded-lg bg-muted"
                           >
                             <img
@@ -1517,7 +1556,7 @@ export default function Home() {
                               loading="lazy"
                               decoding="async"
                             />
-                            <span className="absolute left-2 top-2 rounded-sm bg-black/60 px-2 py-0.5 text-xs text-white">
+                            <span className="language-tag absolute left-2 top-2 px-2 py-0.5 text-xs">
                               {getArticleLanguageTag(article)}
                             </span>
                           </Link>
@@ -1534,11 +1573,11 @@ export default function Home() {
                           tabIndex={showAdminDesktop ? 0 : undefined}
                           aria-label={showAdminDesktop ? t('选择文章') : undefined}
                           aria-pressed={showAdminDesktop ? selected : undefined}
-                          className={`bg-surface rounded-lg shadow-sm p-4 sm:p-6 min-h-[184px] transition relative scroll-mt-24 ${
+                          className={`panel-raised rounded-lg border border-border p-4 sm:p-6 min-h-[184px] transition relative scroll-mt-24 ${
                             showAdminDesktop
-                              ? 'cursor-pointer hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40'
-                              : 'hover:shadow-sm'
-                          } ${!article.is_visible && isAdmin ? 'opacity-60' : ''} ${selected ? 'ring-2 ring-primary ring-offset-2' : ''}`}
+                              ? 'cursor-pointer hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40'
+                              : 'hover:shadow-md'
+                          } ${!article.is_visible && isAdmin ? 'opacity-60' : ''} ${selected ? 'ring-2 ring-primary/70 ring-offset-2 bg-primary-soft/25' : ''}`}
                         >
                           {showAdminDesktop && (
                             <div className="absolute top-3 right-3 flex items-center gap-1">
@@ -1584,8 +1623,8 @@ export default function Home() {
                               <Link
                                 href={articleHref}
                                 onClick={(e) => e.stopPropagation()}
-                                target="_blank"
-                                rel="noopener noreferrer"
+                                target={articleLinkTarget}
+                                rel={articleLinkRel}
                               >
                                 <h3 className="text-xl font-semibold text-text-1 hover:text-primary transition cursor-pointer">
                                   {article.title}
@@ -1594,7 +1633,7 @@ export default function Home() {
                               <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-text-2">
                                 {article.category && (
                                   <span
-                                    className="px-2 py-1 rounded"
+                                    className="category-chip px-2 py-1 rounded-sm"
                                     style={{
                                       backgroundColor: article.category.color ? `${article.category.color}20` : 'var(--bg-muted)',
                                       color: article.category.color || 'var(--text-2)',

@@ -947,6 +947,8 @@ export default function ArticleDetailPage() {
 	});
 	const [showUserMenu, setShowUserMenu] = useState(false);
 	const userMenuRef = useRef<HTMLDivElement | null>(null);
+	const [showMoreActions, setShowMoreActions] = useState(false);
+	const moreActionsRef = useRef<HTMLDivElement | null>(null);
 	const commentInputRef = useRef<HTMLTextAreaElement | null>(null);
 	const [replyToId, setReplyToId] = useState<string | null>(null);
 	const [replyToUser, setReplyToUser] = useState<string>("");
@@ -1149,6 +1151,10 @@ export default function ArticleDetailPage() {
 	}, [id, isMobile]);
 
 	useEffect(() => {
+		setShowMoreActions(false);
+	}, [id]);
+
+	useEffect(() => {
 		if (!isAdmin) {
 			setArticleTasks([]);
 		}
@@ -1172,8 +1178,29 @@ export default function ArticleDetailPage() {
 	}, [showUserMenu]);
 
 	useEffect(() => {
+		const handleClickOutside = (event: MouseEvent) => {
+			if (
+				moreActionsRef.current &&
+				!moreActionsRef.current.contains(event.target as Node)
+			) {
+				setShowMoreActions(false);
+			}
+		};
+		if (showMoreActions) {
+			document.addEventListener("mousedown", handleClickOutside);
+		}
+		return () => {
+			document.removeEventListener("mousedown", handleClickOutside);
+		};
+	}, [showMoreActions]);
+
+	useEffect(() => {
 		const handleKeyDown = (event: KeyboardEvent) => {
 			if (event.key !== "Escape") return;
+			if (showMoreActions) {
+				setShowMoreActions(false);
+				return;
+			}
 			if (showAnnotationModal) {
 				setShowAnnotationModal(false);
 				return;
@@ -1222,6 +1249,7 @@ export default function ArticleDetailPage() {
 		};
 	}, [
 		immersiveMode,
+		showMoreActions,
 		showAnnotationModal,
 		showDeleteNoteModal,
 		showNoteModal,
@@ -2439,6 +2467,38 @@ export default function ArticleDetailPage() {
 			showToast(t("操作失败"), "error");
 		}
 	};
+	const moreActionItems = isAdmin && article
+		? [
+				{
+					key: "note",
+					label: t("编辑批注"),
+					danger: false,
+					icon: <IconNote className="h-4 w-4" />,
+					onClick: () => {
+						setNoteDraft(noteContent);
+						setShowNoteModal(true);
+					},
+				},
+				{
+					key: "visibility",
+					label: article.is_visible ? t("设为隐藏") : t("设为显示"),
+					danger: false,
+					icon: article.is_visible ? (
+						<IconEyeOff className="h-4 w-4" />
+					) : (
+						<IconEye className="h-4 w-4" />
+					),
+					onClick: handleToggleVisibility,
+				},
+				{
+					key: "delete",
+					label: t("删除文章"),
+					danger: true,
+					icon: <IconTrash className="h-4 w-4" />,
+					onClick: () => setShowDeleteModal(true),
+				},
+			]
+		: [];
 
 	const handleCopyContent = async (content: string | null | undefined) => {
 		if (!content) return;
@@ -2946,22 +3006,80 @@ export default function ArticleDetailPage() {
 		}
 	};
 
-	if (loading) {
-		return (
-			<div className="min-h-screen bg-app flex flex-col">
-				<AppHeader />
-				<div className="flex-1 flex items-center justify-center">
-					<div
-						className="inline-flex items-center gap-2 text-text-3"
-						aria-live="polite"
-					>
-						<IconRefresh className="h-4 w-4 animate-spin" />
-						<span>{t("加载中...")}</span>
+	const articleDetailSkeleton = (
+		<div className="min-h-screen bg-app flex flex-col" aria-busy="true">
+			<AppHeader />
+			<div className="flex-1">
+				<section className="bg-surface border-b border-border">
+					<div className="max-w-7xl mx-auto px-4 py-5 sm:py-6">
+						<div className="mx-auto max-w-4xl space-y-3">
+							<div className="skeleton-shimmer motion-safe:animate-pulse h-8 w-4/5 rounded-sm mx-auto" />
+							<div className="flex flex-wrap items-center justify-center gap-3 pb-2">
+								<span className="skeleton-shimmer motion-safe:animate-pulse h-4 w-20 rounded-sm" />
+								<span className="skeleton-shimmer motion-safe:animate-pulse h-4 w-24 rounded-sm" />
+								<span className="skeleton-shimmer motion-safe:animate-pulse h-4 w-24 rounded-sm" />
+								<span className="skeleton-shimmer motion-safe:animate-pulse h-4 w-16 rounded-sm" />
+							</div>
+						</div>
+					</div>
+				</section>
+
+				<div className="max-w-7xl w-full mx-auto px-4 py-6 sm:py-8">
+					<div className="flex flex-col lg:flex-row gap-6">
+						<div className="flex-1 w-full bg-surface rounded-sm shadow-sm border border-border p-4 sm:p-6 max-w-4xl mx-auto lg:mx-0">
+							<div className="flex items-center justify-between mb-6">
+								<span className="skeleton-shimmer motion-safe:animate-pulse h-6 w-24 rounded-sm" />
+								<div className="flex items-center gap-2">
+									<span className="skeleton-shimmer motion-safe:animate-pulse h-8 w-8 rounded-sm" />
+									<span className="skeleton-shimmer motion-safe:animate-pulse h-8 w-8 rounded-sm" />
+									<span className="skeleton-shimmer motion-safe:animate-pulse h-8 w-8 rounded-sm" />
+								</div>
+							</div>
+							<div className="space-y-3">
+								<div className="skeleton-shimmer motion-safe:animate-pulse h-4 w-full rounded-sm" />
+								<div className="skeleton-shimmer motion-safe:animate-pulse h-4 w-5/6 rounded-sm" />
+								<div className="skeleton-shimmer motion-safe:animate-pulse h-4 w-full rounded-sm" />
+								<div className="skeleton-shimmer motion-safe:animate-pulse h-4 w-3/4 rounded-sm" />
+								<div className="skeleton-shimmer motion-safe:animate-pulse h-36 w-full rounded-lg mt-4" />
+								<div className="skeleton-shimmer motion-safe:animate-pulse h-4 w-11/12 rounded-sm" />
+								<div className="skeleton-shimmer motion-safe:animate-pulse h-4 w-4/5 rounded-sm" />
+							</div>
+							<div className="mt-10 border border-border rounded-sm p-5 space-y-4">
+								<span className="skeleton-shimmer motion-safe:animate-pulse h-5 w-20 rounded-sm block" />
+								<div className="space-y-3">
+									<div className="skeleton-shimmer motion-safe:animate-pulse h-20 w-full rounded-lg" />
+									<div className="skeleton-shimmer motion-safe:animate-pulse h-20 w-full rounded-lg" />
+								</div>
+							</div>
+						</div>
+						{!isMobile && (
+							<aside className="hidden lg:block w-full max-w-sm space-y-4">
+								<div className="bg-surface rounded-lg border border-border p-4 shadow-sm">
+									<div className="skeleton-shimmer motion-safe:animate-pulse h-5 w-16 rounded-sm mb-4" />
+									<div className="space-y-2">
+										<div className="skeleton-shimmer motion-safe:animate-pulse h-4 w-full rounded-sm" />
+										<div className="skeleton-shimmer motion-safe:animate-pulse h-4 w-5/6 rounded-sm" />
+										<div className="skeleton-shimmer motion-safe:animate-pulse h-4 w-4/5 rounded-sm" />
+									</div>
+								</div>
+								<div className="bg-surface rounded-lg border border-border p-4 shadow-sm">
+									<div className="skeleton-shimmer motion-safe:animate-pulse h-5 w-20 rounded-sm mb-4" />
+									<div className="space-y-3">
+										<div className="skeleton-shimmer motion-safe:animate-pulse h-16 w-full rounded-lg" />
+										<div className="skeleton-shimmer motion-safe:animate-pulse h-16 w-full rounded-lg" />
+									</div>
+								</div>
+							</aside>
+						)}
 					</div>
 				</div>
-				<AppFooter />
 			</div>
-		);
+			<AppFooter />
+		</div>
+	);
+
+	if (loading) {
+		return articleDetailSkeleton;
 	}
 
 	if (!article) {
@@ -3138,63 +3256,6 @@ export default function ArticleDetailPage() {
 									)}
 								</div>
 								<div className="flex flex-wrap items-center gap-2">
-									{isAdmin && (
-										<>
-											<button
-												type="button"
-												onClick={() => {
-													setNoteDraft(noteContent);
-													setShowNoteModal(true);
-												}}
-												className="flex items-center justify-center w-8 h-8 rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
-												title={t("编辑批注")}
-												aria-label={t("编辑批注")}
-											>
-												<IconNote className="h-4 w-4" />
-											</button>
-											<button
-												type="button"
-												onClick={handleToggleVisibility}
-												className="flex items-center justify-center w-8 h-8 rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
-												title={
-													article.is_visible ? t("设为隐藏") : t("设为显示")
-												}
-												aria-label={
-													article.is_visible ? t("设为隐藏") : t("设为显示")
-												}
-											>
-												{article.is_visible ? (
-													<IconEye className="h-4 w-4" />
-												) : (
-													<IconEyeOff className="h-4 w-4" />
-												)}
-											</button>
-											<button
-												type="button"
-												onClick={() =>
-													openEditModal(
-														showTranslation && article.content_trans
-															? "translation"
-															: "original",
-													)
-												}
-												className="flex items-center justify-center w-8 h-8 rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
-												title={t("编辑文章")}
-												aria-label={t("编辑文章")}
-											>
-												<IconEdit className="h-4 w-4" />
-											</button>
-											<button
-												type="button"
-												onClick={() => setShowDeleteModal(true)}
-												className="flex items-center justify-center w-8 h-8 rounded-sm text-text-2 hover:text-danger-ink hover:bg-danger-soft transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger"
-												title={t("删除文章")}
-												aria-label={t("删除文章")}
-											>
-												<IconTrash className="h-4 w-4" />
-											</button>
-										</>
-									)}
 									{article.content_trans && (
 										<button
 											type="button"
@@ -3221,6 +3282,70 @@ export default function ArticleDetailPage() {
 									>
 										<IconBook className="h-4 w-4" />
 									</button>
+									{isAdmin && (
+										<button
+											type="button"
+											onClick={() => {
+												setShowMoreActions(false);
+												openEditModal(
+													showTranslation && article.content_trans
+														? "translation"
+														: "original",
+												);
+											}}
+											className="flex items-center justify-center w-8 h-8 rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
+											title={t("编辑文章")}
+											aria-label={t("编辑文章")}
+										>
+											<IconEdit className="h-4 w-4" />
+										</button>
+									)}
+										{isAdmin && (
+											<div className="relative" ref={moreActionsRef}>
+												<button
+												type="button"
+												onClick={() => setShowMoreActions((prev) => !prev)}
+													className="inline-flex items-center gap-1 h-8 px-2 rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
+													aria-haspopup="menu"
+													aria-expanded={showMoreActions}
+													aria-label={t("更多")}
+													title={t("更多")}
+												>
+													<span className="text-xs">{t("更多")}</span>
+													<IconChevronDown
+														className={`h-3.5 w-3.5 transition-transform ${
+															showMoreActions ? "rotate-180" : ""
+													}`}
+												/>
+											</button>
+											{showMoreActions && (
+												<div
+													role="menu"
+													className="absolute right-0 top-10 min-w-[156px] rounded-sm border border-border bg-surface shadow-md p-1 z-20"
+												>
+													{moreActionItems.map((item) => (
+														<button
+															key={item.key}
+															type="button"
+															role="menuitem"
+															onClick={() => {
+																setShowMoreActions(false);
+																item.onClick();
+															}}
+															className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-sm text-sm transition ${
+																item.danger
+																	? "text-danger-ink hover:bg-danger-soft"
+																	: "text-text-2 hover:text-text-1 hover:bg-muted"
+															}`}
+														>
+															{item.icon}
+															<span>{item.label}</span>
+														</button>
+													))}
+												</div>
+											)}
+										</div>
+									)}
 								</div>
 							</div>
 						)}
@@ -3457,10 +3582,13 @@ export default function ArticleDetailPage() {
 												const isDeletingComment = commentDeletingIds.has(
 													comment.id,
 												);
-												const isTogglingComment = commentTogglingIds.has(
-													comment.id,
-												);
-												return (
+													const isTogglingComment = commentTogglingIds.has(
+														comment.id,
+													);
+													const replyToggleLabel = `${
+														isExpanded ? t("收起回复") : t("查看回复")
+													} (${replies.length})`;
+													return (
 													<div
 														key={comment.id}
 														id={`comment-${comment.id}`}
@@ -3722,33 +3850,29 @@ export default function ArticleDetailPage() {
 															</div>
 														)}
 
-														{replies.length > 0 && (
-															<div className="mt-4 border-t border-border pt-3">
-																<button
-																	type="button"
-																	onClick={() =>
-																		setExpandedReplies((prev) => ({
-																			...prev,
-																			[comment.id]: !isExpanded,
-																		}))
-																	}
-																	className="inline-flex items-center gap-1 text-xs text-text-3 hover:text-text-1 transition"
-																	title={
-																		isExpanded ? t("收起回复") : t("查看回复")
-																	}
-																	aria-label={
-																		isExpanded ? t("收起回复") : t("查看回复")
-																	}
-																>
-																	{isExpanded ? (
-																		<IconChevronUp className="h-3.5 w-3.5" />
-																	) : (
-																		<IconChevronDown className="h-3.5 w-3.5" />
-																	)}
-																	<span>{replies.length}</span>
-																</button>
-																{isExpanded && (
-																	<div className="mt-3 space-y-3">
+															{replies.length > 0 && (
+																<div className="mt-4 border-t border-border pt-3">
+																	<button
+																		type="button"
+																		onClick={() =>
+																			setExpandedReplies((prev) => ({
+																				...prev,
+																				[comment.id]: !isExpanded,
+																			}))
+																		}
+																		className="inline-flex items-center gap-1 text-xs text-text-3 hover:text-text-1 transition"
+																		title={replyToggleLabel}
+																		aria-label={replyToggleLabel}
+																	>
+																		{isExpanded ? (
+																			<IconChevronUp className="h-3.5 w-3.5" />
+																		) : (
+																			<IconChevronDown className="h-3.5 w-3.5" />
+																		)}
+																		<span>{replyToggleLabel}</span>
+																	</button>
+																	{isExpanded && (
+																		<div className="mt-3 border-l border-border pl-3 ml-1 space-y-3">
 																		{replies.map((reply) => {
 																			const isReplyUpdating =
 																				commentUpdatingIds.has(reply.id);

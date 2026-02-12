@@ -569,6 +569,8 @@ const translations: Record<Language, Record<string | number, string>> = {
 		输入: "Input",
 		"输入文章名称搜索...": "Search by article name...",
 		输出: "Output",
+		更多: "More",
+		更多操作: "More actions",
 		限制图片最长边: "Max image edge",
 		信息灯塔: "Information Beacon",
 		站点概览: "Site overview",
