@@ -276,6 +276,12 @@
     ]
   },
   {
+    "path": "/api/media/stats",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
     "path": "/api/media/upload",
     "methods": [
       "POST"

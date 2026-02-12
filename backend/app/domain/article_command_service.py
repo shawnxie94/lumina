@@ -88,7 +88,13 @@ class ArticleCommandService:
 
         return article.id
 
-    async def retry_article_ai(self, db: Session, article_id: str) -> str:
+    async def retry_article_ai(
+        self,
+        db: Session,
+        article_id: str,
+        model_config_id: str | None = None,
+        prompt_config_id: str | None = None,
+    ) -> str:
         article = db.query(Article).filter(Article.id == article_id).first()
         if not article:
             raise ValueError("Article not found")
@@ -103,12 +109,22 @@ class ArticleCommandService:
             task_type="process_article_cleaning",
             article_id=article_id,
             content_type="content_cleaning",
-            payload={"category_id": article.category_id},
+            payload={
+                "category_id": article.category_id,
+                "model_config_id": model_config_id,
+                "prompt_config_id": prompt_config_id,
+            },
         )
 
         return article_id
 
-    async def retry_article_translation(self, db: Session, article_id: str) -> str:
+    async def retry_article_translation(
+        self,
+        db: Session,
+        article_id: str,
+        model_config_id: str | None = None,
+        prompt_config_id: str | None = None,
+    ) -> str:
         article = db.query(Article).filter(Article.id == article_id).first()
         if not article:
             raise ValueError("文章不存在")
@@ -127,7 +143,11 @@ class ArticleCommandService:
             db,
             task_type="process_article_translation",
             article_id=article_id,
-            payload={"category_id": article.category_id},
+            payload={
+                "category_id": article.category_id,
+                "model_config_id": model_config_id,
+                "prompt_config_id": prompt_config_id,
+            },
         )
 
         return article_id

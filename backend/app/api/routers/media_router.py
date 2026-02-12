@@ -7,6 +7,7 @@ from app.schemas import MediaIngestRequest
 from auth import get_current_admin
 from media_service import (
     cleanup_orphan_media,
+    get_media_storage_stats,
     ingest_external_image,
     is_media_enabled,
     save_upload_image,
@@ -68,3 +69,12 @@ async def cleanup_media(
 ):
     result = cleanup_orphan_media(db)
     return {"success": True, **result}
+
+
+@router.get("/api/media/stats")
+async def get_media_stats(
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
+    stats = get_media_storage_stats(db)
+    return {"success": True, **stats}

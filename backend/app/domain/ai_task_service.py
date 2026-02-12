@@ -244,8 +244,19 @@ class AITaskService:
             raise TaskDataError("缺少文章ID")
         return article_id
 
-    async def _handle_process_article_cleaning(self, pipeline, article_id: str, category_id):
-        await pipeline.process_article_cleaning(article_id, category_id)
+    async def _handle_process_article_cleaning(
+        self,
+        pipeline,
+        article_id: str,
+        category_id,
+        payload: dict,
+    ):
+        await pipeline.process_article_cleaning(
+            article_id,
+            category_id,
+            model_config_id=payload.get("model_config_id"),
+            prompt_config_id=payload.get("prompt_config_id"),
+        )
 
     async def _handle_process_article_validation(
         self,
@@ -265,8 +276,19 @@ class AITaskService:
     ):
         await pipeline.process_article_classification(article_id, category_id)
 
-    async def _handle_process_article_translation(self, pipeline, article_id: str, category_id):
-        await pipeline.process_article_translation(article_id, category_id)
+    async def _handle_process_article_translation(
+        self,
+        pipeline,
+        article_id: str,
+        category_id,
+        payload: dict,
+    ):
+        await pipeline.process_article_translation(
+            article_id,
+            category_id,
+            model_config_id=payload.get("model_config_id"),
+            prompt_config_id=payload.get("prompt_config_id"),
+        )
 
     async def _handle_process_ai_content(
         self,
@@ -304,6 +326,7 @@ class AITaskService:
                 pipeline,
                 self._require_article_id(article_id),
                 category_id,
+                payload,
             ),
             "process_article_validation": lambda: self._handle_process_article_validation(
                 pipeline,
@@ -320,6 +343,7 @@ class AITaskService:
                 pipeline,
                 self._require_article_id(article_id),
                 category_id,
+                payload,
             ),
             "process_ai_content": lambda: self._handle_process_ai_content(
                 pipeline,

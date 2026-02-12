@@ -690,8 +690,38 @@ export const articleApi = {
 		return response.data;
 	},
 
+	retryArticleWithConfig: async (
+		id: string,
+		modelConfigId?: string,
+		promptConfigId?: string,
+	) => {
+		const params = new URLSearchParams();
+		if (modelConfigId) params.append("model_config_id", modelConfigId);
+		if (promptConfigId) params.append("prompt_config_id", promptConfigId);
+		const queryString = params.toString();
+		const url = `/api/articles/${id}/retry${queryString ? `?${queryString}` : ""}`;
+		const response = await api.post(url);
+		return response.data;
+	},
+
 	retryTranslation: async (id: string) => {
 		const response = await api.post(`/api/articles/${id}/retry-translation`);
+		return response.data;
+	},
+
+	retryTranslationWithConfig: async (
+		id: string,
+		modelConfigId?: string,
+		promptConfigId?: string,
+	) => {
+		const params = new URLSearchParams();
+		if (modelConfigId) params.append("model_config_id", modelConfigId);
+		if (promptConfigId) params.append("prompt_config_id", promptConfigId);
+		const queryString = params.toString();
+		const url = `/api/articles/${id}/retry-translation${
+			queryString ? `?${queryString}` : ""
+		}`;
+		const response = await api.post(url);
 		return response.data;
 	},
 
@@ -1087,6 +1117,16 @@ export const mediaApi = {
 			removed_records: number;
 			removed_files: number;
 			kept: number;
+		};
+	},
+	getStats: async () => {
+		const response = await api.get("/api/media/stats");
+		return response.data as {
+			success: boolean;
+			asset_count: number;
+			asset_total_size: number;
+			disk_file_count: number;
+			disk_total_size: number;
 		};
 	},
 };

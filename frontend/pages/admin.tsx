@@ -568,6 +568,18 @@ export default function AdminPage() {
 	const [basicSettingsSaving, setBasicSettingsSaving] = useState(false);
 	const [storageSettingsLoading, setStorageSettingsLoading] = useState(false);
 	const [storageSettingsSaving, setStorageSettingsSaving] = useState(false);
+	const [storageStatsLoading, setStorageStatsLoading] = useState(false);
+	const [storageStats, setStorageStats] = useState<{
+		asset_count: number;
+		asset_total_size: number;
+		disk_file_count: number;
+		disk_total_size: number;
+	}>({
+		asset_count: 0,
+		asset_total_size: 0,
+		disk_file_count: 0,
+		disk_total_size: 0,
+	});
 	const [recommendationSettingsLoading, setRecommendationSettingsLoading] =
 		useState(false);
 	const [recommendationSettingsSaving, setRecommendationSettingsSaving] =
@@ -1100,14 +1112,25 @@ export default function AdminPage() {
 
 	const fetchStorageSettings = async () => {
 		setStorageSettingsLoading(true);
+		setStorageStatsLoading(true);
 		try {
-			const data = await storageSettingsApi.getSettings();
-			setStorageSettings(data);
+			const [settingsData, statsData] = await Promise.all([
+				storageSettingsApi.getSettings(),
+				mediaApi.getStats(),
+			]);
+			setStorageSettings(settingsData);
+			setStorageStats({
+				asset_count: statsData.asset_count ?? 0,
+				asset_total_size: statsData.asset_total_size ?? 0,
+				disk_file_count: statsData.disk_file_count ?? 0,
+				disk_total_size: statsData.disk_total_size ?? 0,
+			});
 		} catch (error) {
 			console.error("Failed to fetch storage settings:", error);
 			showToast("存储配置加载失败", "error");
 		} finally {
 			setStorageSettingsLoading(false);
+			setStorageStatsLoading(false);
 		}
 	};
 
@@ -1168,7 +1191,8 @@ export default function AdminPage() {
 				t("清理完成：记录 {records}，文件 {files}")
 					.replace("{records}", String(result.removed_records))
 					.replace("{files}", String(result.removed_files)),
-			);
+				);
+			await fetchStorageSettings();
 		} catch (error) {
 			console.error("Failed to cleanup media:", error);
 			showToast(t("清理失败"), "error");
@@ -1950,6 +1974,16 @@ export default function AdminPage() {
 		if (value == null || Number.isNaN(value)) return "-";
 		if (value === 0) return "0";
 		return value.toFixed(digits);
+	};
+
+	const formatFileSize = (value: number | null | undefined) => {
+		if (value == null || Number.isNaN(value)) return "-";
+		if (value < 1024) return `${value} B`;
+		if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+		if (value < 1024 * 1024 * 1024) {
+			return `${(value / (1024 * 1024)).toFixed(2)} MB`;
+		}
+		return `${(value / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 	};
 
 	const stripReplyPrefix = (content: string) => {
@@ -3986,6 +4020,34 @@ export default function AdminPage() {
 										</div>
 									) : (
 										<div className="space-y-4">
+											<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+												<div className="rounded-sm border border-border bg-muted/60 px-4 py-3">
+													<div className="text-xs text-text-3">
+														{t("图片占用空间（记录）")}
+													</div>
+													<div className="mt-1 text-lg font-semibold text-text-1">
+														{storageStatsLoading
+															? t("加载中")
+															: formatFileSize(storageStats.asset_total_size)}
+													</div>
+													<div className="mt-1 text-xs text-text-3">
+														{t("记录数")} {storageStats.asset_count}
+													</div>
+												</div>
+												<div className="rounded-sm border border-border bg-muted/60 px-4 py-3">
+													<div className="text-xs text-text-3">
+														{t("磁盘占用空间（实际）")}
+													</div>
+													<div className="mt-1 text-lg font-semibold text-text-1">
+														{storageStatsLoading
+															? t("加载中")
+															: formatFileSize(storageStats.disk_total_size)}
+													</div>
+													<div className="mt-1 text-xs text-text-3">
+														{t("文件数")} {storageStats.disk_file_count}
+													</div>
+												</div>
+											</div>
 											<div className="flex items-center justify-between border border-border rounded-sm p-4 bg-surface">
 												<div>
 													<div className="text-sm font-medium text-text-1">

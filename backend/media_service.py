@@ -10,6 +10,7 @@ import httpx
 from PIL import Image
 from io import BytesIO
 from fastapi import HTTPException, UploadFile
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.settings import get_settings
@@ -509,4 +510,37 @@ def cleanup_orphan_media(db: Session) -> dict:
         "removed_records": removed_records,
         "removed_files": removed_files,
         "kept": len(keep_paths),
+    }
+
+
+def get_media_storage_stats(db: Session) -> dict:
+    ensure_media_root()
+    total_records, total_size = (
+        db.query(
+            func.count(MediaAsset.id),
+            func.coalesce(func.sum(MediaAsset.size), 0),
+        )
+        .one()
+    )
+
+    file_count = 0
+    disk_size = 0
+    for root, _dirs, files in os.walk(MEDIA_ROOT):
+        for filename in files:
+            full_path = os.path.join(root, filename)
+            try:
+                stat = os.stat(full_path)
+            except FileNotFoundError:
+                continue
+            except Exception as exc:
+                logger.warning("media_stat_failed: %s", str(exc))
+                continue
+            file_count += 1
+            disk_size += int(stat.st_size)
+
+    return {
+        "asset_count": int(total_records or 0),
+        "asset_total_size": int(total_size or 0),
+        "disk_file_count": int(file_count),
+        "disk_total_size": int(disk_size),
     }

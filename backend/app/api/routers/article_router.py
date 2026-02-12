@@ -524,6 +524,8 @@ async def update_article_visibility(
 @router.post("/api/articles/{article_slug}/retry")
 async def retry_article_ai(
     article_slug: str,
+    model_config_id: Optional[str] = None,
+    prompt_config_id: Optional[str] = None,
     db: Session = Depends(get_db),
     _: bool = Depends(get_current_admin),
 ):
@@ -531,7 +533,12 @@ async def retry_article_ai(
         article = article_query_service.get_article_by_slug(db, article_slug)
         if not article:
             raise HTTPException(status_code=404, detail="文章不存在")
-        actual_article_id = await article_command_service.retry_article_ai(db, article.id)
+        actual_article_id = await article_command_service.retry_article_ai(
+            db,
+            article.id,
+            model_config_id=model_config_id,
+            prompt_config_id=prompt_config_id,
+        )
         return {"id": actual_article_id, "status": "processing"}
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -542,6 +549,8 @@ async def retry_article_ai(
 @router.post("/api/articles/{article_slug}/retry-translation")
 async def retry_article_translation(
     article_slug: str,
+    model_config_id: Optional[str] = None,
+    prompt_config_id: Optional[str] = None,
     db: Session = Depends(get_db),
     _: bool = Depends(get_current_admin),
 ):
@@ -549,7 +558,12 @@ async def retry_article_translation(
         article = article_query_service.get_article_by_slug(db, article_slug)
         if not article:
             raise HTTPException(status_code=404, detail="文章不存在")
-        actual_article_id = await article_command_service.retry_article_translation(db, article.id)
+        actual_article_id = await article_command_service.retry_article_translation(
+            db,
+            article.id,
+            model_config_id=model_config_id,
+            prompt_config_id=prompt_config_id,
+        )
         return {"id": actual_article_id, "translation_status": "processing"}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

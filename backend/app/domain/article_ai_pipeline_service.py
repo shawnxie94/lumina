@@ -101,7 +101,10 @@ class ArticleAIPipelineService:
     def get_ai_config(
         self, db, category_id: str | None = None, prompt_type: str = "summary"
     ):
-        model_query = db.query(ModelAPIConfig).filter(ModelAPIConfig.is_enabled == True)
+        model_query = db.query(ModelAPIConfig).filter(
+            ModelAPIConfig.is_enabled == True,
+            ModelAPIConfig.model_type != "vector",
+        )
         prompt_config = self._get_prompt_config(
             db, category_id=category_id, prompt_type=prompt_type
         )
@@ -144,6 +147,10 @@ class ArticleAIPipelineService:
             api_key=config["api_key"],
             model_name=config["model_name"],
         )
+
+    def _assert_general_model(self, model_config: ModelAPIConfig) -> None:
+        if (model_config.model_type or "general") == "vector":
+            raise TaskConfigError("当前任务仅支持通用模型，不能使用向量模型")
 
     def _extract_usage_value(self, usage, key: str):
         if usage is None:
@@ -238,7 +245,13 @@ class ArticleAIPipelineService:
             },
         )
 
-    async def process_article_cleaning(self, article_id: str, category_id: str | None):
+    async def process_article_cleaning(
+        self,
+        article_id: str,
+        category_id: str | None,
+        model_config_id: str | None = None,
+        prompt_config_id: str | None = None,
+    ):
         db = SessionLocal()
         try:
             article = db.query(Article).filter(Article.id == article_id).first()
@@ -272,9 +285,82 @@ class ArticleAIPipelineService:
             ai_analysis.updated_at = now_str()
             db.commit()
 
-            cleaning_config = self.get_ai_config(
-                db, category_id, prompt_type="content_cleaning"
+            cleaning_config = None
+            prompt = None
+            prompt_parameters = {}
+            has_custom_prompt = False
+            default_config = self.get_ai_config(
+                db,
+                category_id,
+                prompt_type="content_cleaning",
             )
+
+            if model_config_id:
+                model_config = (
+                    db.query(ModelAPIConfig)
+                    .filter(
+                        ModelAPIConfig.id == model_config_id,
+                        ModelAPIConfig.is_enabled == True,
+                    )
+                    .first()
+                )
+                if not model_config:
+                    raise TaskConfigError("指定模型配置不存在或已禁用")
+                self._assert_general_model(model_config)
+                cleaning_config = {
+                    "base_url": model_config.base_url,
+                    "api_key": model_config.api_key,
+                    "model_name": model_config.model_name,
+                    "model_api_config_id": model_config.id,
+                    "price_input_per_1k": model_config.price_input_per_1k,
+                    "price_output_per_1k": model_config.price_output_per_1k,
+                    "currency": model_config.currency,
+                }
+
+            if prompt_config_id:
+                prompt_config = (
+                    db.query(PromptConfig)
+                    .filter(
+                        PromptConfig.id == prompt_config_id,
+                        PromptConfig.is_enabled == True,
+                        PromptConfig.type == "content_cleaning",
+                    )
+                    .first()
+                )
+                if not prompt_config:
+                    raise TaskConfigError("指定清洗提示词不存在、已禁用或类型不匹配")
+                prompt = prompt_config.prompt
+                prompt_parameters = build_parameters(prompt_config)
+                has_custom_prompt = True
+                if not cleaning_config and prompt_config.model_api_config_id:
+                    model_config = (
+                        db.query(ModelAPIConfig)
+                        .filter(
+                            ModelAPIConfig.id == prompt_config.model_api_config_id,
+                            ModelAPIConfig.is_enabled == True,
+                        )
+                        .first()
+                    )
+                    if not model_config:
+                        raise TaskConfigError("提示词绑定的模型不存在或已禁用")
+                    self._assert_general_model(model_config)
+                    cleaning_config = {
+                        "base_url": model_config.base_url,
+                        "api_key": model_config.api_key,
+                        "model_name": model_config.model_name,
+                        "model_api_config_id": model_config.id,
+                        "price_input_per_1k": model_config.price_input_per_1k,
+                        "price_output_per_1k": model_config.price_output_per_1k,
+                        "currency": model_config.currency,
+                    }
+
+            if not cleaning_config:
+                if default_config:
+                    cleaning_config = default_config
+
+            if not prompt and default_config:
+                prompt = default_config.get("prompt_template")
+
             if not cleaning_config:
                 article.status = "failed"
                 ai_analysis.error_message = "未配置AI服务，请先在配置页面设置AI参数"
@@ -284,7 +370,10 @@ class ArticleAIPipelineService:
 
             cleaning_client = self.create_ai_client(cleaning_config)
             parameters = cleaning_config.get("parameters") or {}
-            prompt = cleaning_config.get("prompt_template")
+            if prompt_parameters:
+                parameters = {**parameters, **prompt_parameters}
+            elif not parameters and default_config and not has_custom_prompt:
+                parameters = default_config.get("parameters") or {}
             pricing = {
                 "model_api_config_id": cleaning_config.get("model_api_config_id"),
                 "price_input_per_1k": cleaning_config.get("price_input_per_1k"),
@@ -789,6 +878,8 @@ class ArticleAIPipelineService:
         self,
         article_id: str,
         category_id: str | None,
+        model_config_id: str | None = None,
+        prompt_config_id: str | None = None,
     ):
         db = SessionLocal()
         try:
@@ -800,12 +891,86 @@ class ArticleAIPipelineService:
             article.translation_error = None
             db.commit()
 
-            trans_config = self.get_ai_config(
-                db, category_id, prompt_type="translation"
+            trans_prompt = None
+            trans_parameters = {}
+            prompt_bound_model_id = None
+            if prompt_config_id:
+                prompt_config = (
+                    db.query(PromptConfig)
+                    .filter(
+                        PromptConfig.id == prompt_config_id,
+                        PromptConfig.is_enabled == True,
+                        PromptConfig.type == "translation",
+                    )
+                    .first()
+                )
+                if not prompt_config:
+                    raise TaskConfigError("指定翻译提示词不存在、已禁用或类型不匹配")
+                trans_prompt = prompt_config.prompt
+                trans_parameters = build_parameters(prompt_config)
+                prompt_bound_model_id = prompt_config.model_api_config_id
+
+            ai_config = None
+            if model_config_id:
+                model_config = (
+                    db.query(ModelAPIConfig)
+                    .filter(
+                        ModelAPIConfig.id == model_config_id,
+                        ModelAPIConfig.is_enabled == True,
+                    )
+                    .first()
+                )
+                if not model_config:
+                    raise TaskConfigError("指定模型配置不存在或已禁用")
+                self._assert_general_model(model_config)
+                ai_config = {
+                    "base_url": model_config.base_url,
+                    "api_key": model_config.api_key,
+                    "model_name": model_config.model_name,
+                    "model_api_config_id": model_config.id,
+                    "price_input_per_1k": model_config.price_input_per_1k,
+                    "price_output_per_1k": model_config.price_output_per_1k,
+                    "currency": model_config.currency,
+                }
+
+            if prompt_bound_model_id and not ai_config:
+                model_config = (
+                    db.query(ModelAPIConfig)
+                    .filter(
+                        ModelAPIConfig.id == prompt_bound_model_id,
+                        ModelAPIConfig.is_enabled == True,
+                    )
+                    .first()
+                )
+                if not model_config:
+                    raise TaskConfigError("提示词绑定的模型不存在或已禁用")
+                self._assert_general_model(model_config)
+                ai_config = {
+                    "base_url": model_config.base_url,
+                    "api_key": model_config.api_key,
+                    "model_name": model_config.model_name,
+                    "model_api_config_id": model_config.id,
+                    "price_input_per_1k": model_config.price_input_per_1k,
+                    "price_output_per_1k": model_config.price_output_per_1k,
+                    "currency": model_config.currency,
+                }
+
+            default_translation_config = self.get_ai_config(
+                db,
+                category_id,
+                prompt_type="translation",
             )
-            ai_config = trans_config or self.get_ai_config(
-                db, category_id, prompt_type="summary"
-            )
+            if not trans_prompt and default_translation_config:
+                trans_prompt = default_translation_config.get("prompt_template")
+                trans_parameters = default_translation_config.get("parameters") or {}
+
+            if not ai_config:
+                ai_config = default_translation_config or self.get_ai_config(
+                    db,
+                    category_id,
+                    prompt_type="summary",
+                )
+
             if not ai_config:
                 article.translation_status = "failed"
                 article.translation_error = "未配置AI服务，请先在配置页面设置AI参数"
@@ -819,12 +984,6 @@ class ArticleAIPipelineService:
                 "price_output_per_1k": ai_config.get("price_output_per_1k"),
                 "currency": ai_config.get("currency"),
             }
-
-            trans_prompt = None
-            trans_parameters = {}
-            if trans_config:
-                trans_prompt = trans_config.get("prompt_template")
-                trans_parameters = trans_config.get("parameters") or {}
 
             try:
                 content_trans = await trans_client.translate_to_chinese(
@@ -953,6 +1112,7 @@ class ArticleAIPipelineService:
                 )
                 if not model_config:
                     raise TaskConfigError("指定模型配置不存在或已禁用")
+                self._assert_general_model(model_config)
                 ai_config = {
                     "base_url": model_config.base_url,
                     "api_key": model_config.api_key,
@@ -987,6 +1147,7 @@ class ArticleAIPipelineService:
                     )
                     if not model_config:
                         raise TaskConfigError("提示词绑定的模型不存在或已禁用")
+                    self._assert_general_model(model_config)
                     ai_config = {
                         "base_url": model_config.base_url,
                         "api_key": model_config.api_key,

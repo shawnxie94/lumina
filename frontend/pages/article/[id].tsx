@@ -63,6 +63,12 @@ import { signIn, signOut, useSession } from "next-auth/react";
 // 轮询间隔（毫秒）
 const POLLING_INTERVAL = 3000;
 const SIMILAR_ARTICLE_LIMIT = 5;
+type AIContentType = "summary" | "key_points" | "outline" | "quotes";
+type ConfigModalMode =
+	| "generate"
+	| "retry_ai_content"
+	| "retry_cleaning"
+	| "retry_translation";
 
 interface AIContentSectionProps {
 	title: string;
@@ -777,6 +783,8 @@ export default function ArticleDetailPage() {
 	>("key_points");
 
 	const [showConfigModal, setShowConfigModal] = useState(false);
+	const [configModalMode, setConfigModalMode] =
+		useState<ConfigModalMode>("generate");
 	const [configModalContentType, setConfigModalContentType] =
 		useState<string>("");
 	const [modelConfigs, setModelConfigs] = useState<ModelAPIConfig[]>([]);
@@ -948,6 +956,10 @@ export default function ArticleDetailPage() {
 	const editPreviewTopImageUrl = useMemo(
 		() => resolveMediaUrl(editTopImage || basicSettings.site_logo_url || "/logo.png"),
 		[editTopImage, basicSettings.site_logo_url],
+	);
+	const selectableModelConfigs = useMemo(
+		() => modelConfigs.filter((config) => config.model_type !== "vector"),
+		[modelConfigs],
 	);
 
 	const activeAnnotation = annotations.find(
@@ -2004,7 +2016,7 @@ export default function ArticleDetailPage() {
 		showQuotesSection,
 	]);
 
-	const fetchConfigs = async (contentType: string) => {
+	const fetchConfigs = async (promptType: string) => {
 		try {
 			const [models, prompts] = await Promise.all([
 				articleApi.getModelAPIConfigs(),
@@ -2013,7 +2025,7 @@ export default function ArticleDetailPage() {
 			setModelConfigs(models.filter((m: ModelAPIConfig) => m.is_enabled));
 			setPromptConfigs(
 				prompts.filter(
-					(p: PromptConfig) => p.is_enabled && p.type === contentType,
+					(p: PromptConfig) => p.is_enabled && p.type === promptType,
 				),
 			);
 		} catch (error) {
@@ -2021,70 +2033,133 @@ export default function ArticleDetailPage() {
 		}
 	};
 
-	const openConfigModal = (contentType: string) => {
-		setConfigModalContentType(contentType);
+	const openConfigModal = (options: {
+		mode: ConfigModalMode;
+		promptType: string;
+		contentType?: AIContentType;
+	}) => {
+		setConfigModalMode(options.mode);
+		setConfigModalContentType(options.contentType || "");
 		setSelectedModelConfigId("");
 		setSelectedPromptConfigId("");
-		fetchConfigs(contentType);
+		fetchConfigs(options.promptType);
 		setShowConfigModal(true);
 	};
 
-	const handleConfigModalGenerate = async () => {
+	const handleConfigModalSubmit = async () => {
 		if (!id || !article) return;
 		setShowConfigModal(false);
 
 		try {
-			await articleApi.generateAIContent(
+			if (
+				configModalMode === "generate" ||
+				configModalMode === "retry_ai_content"
+			) {
+				await articleApi.generateAIContent(
+					id as string,
+					configModalContentType,
+					selectedModelConfigId || undefined,
+					selectedPromptConfigId || undefined,
+				);
+				if (article.ai_analysis) {
+					setArticle({
+						...article,
+						ai_analysis: {
+							...article.ai_analysis,
+							[`${configModalContentType}_status`]: "pending",
+						},
+					});
+				}
+				showToast(
+					configModalMode === "generate"
+						? t("已提交生成请求")
+						: t("已提交重试请求"),
+				);
+				return;
+			}
+
+			if (configModalMode === "retry_cleaning") {
+				await articleApi.retryArticleWithConfig(
+					id as string,
+					selectedModelConfigId || undefined,
+					selectedPromptConfigId || undefined,
+				);
+				setArticle({
+					...article,
+					status: "pending",
+					ai_analysis: article.ai_analysis
+						? { ...article.ai_analysis, error_message: null }
+						: null,
+				});
+				showToast(t("已重新提交清洗任务"));
+				return;
+			}
+
+			await articleApi.retryTranslationWithConfig(
 				id as string,
-				configModalContentType,
 				selectedModelConfigId || undefined,
 				selectedPromptConfigId || undefined,
 			);
-			if (article.ai_analysis) {
-				setArticle({
-					...article,
-					ai_analysis: {
-						...article.ai_analysis,
-						[`${configModalContentType}_status`]: "pending",
-					},
-				});
-			}
-			showToast(t("已提交生成请求"));
+			setArticle({
+				...article,
+				translation_status: "pending",
+				translation_error: null,
+			});
+			showToast(t("已重新提交翻译请求"));
 		} catch (error: any) {
-			console.error("Failed to generate:", error);
-			showToast(error.response?.data?.detail || t("生成失败"), "error");
+			console.error("Failed to submit config modal:", error);
+			const fallbackError =
+				configModalMode === "generate"
+					? t("生成失败")
+					: configModalMode === "retry_ai_content"
+						? t("重试失败")
+					: configModalMode === "retry_cleaning"
+						? t("重试清洗失败")
+						: t("重试翻译失败");
+			showToast(error.response?.data?.detail || fallbackError, "error");
 		}
 	};
 
 	const handleRetryTranslation = async () => {
 		if (!id || !article) return;
-
-		try {
-			await articleApi.retryTranslation(id as string);
-			setArticle({ ...article, translation_status: "pending" });
-			showToast(t("已重新提交翻译请求"));
-		} catch (error: any) {
-			console.error("Failed to retry translation:", error);
-			showToast(error.response?.data?.detail || t("重试翻译失败"), "error");
-		}
+		openConfigModal({
+			mode: "retry_translation",
+			promptType: "translation",
+		});
 	};
 
 	const handleRetryCleaning = async () => {
 		if (!id || !article) return;
-
-		try {
-			await articleApi.retryArticle(id as string);
-			setArticle({ ...article, status: "pending" });
-			showToast(t("已重新提交清洗任务"));
-		} catch (error: any) {
-			console.error("Failed to retry cleaning:", error);
-			showToast(error.response?.data?.detail || t("重试清洗失败"), "error");
-		}
+		openConfigModal({
+			mode: "retry_cleaning",
+			promptType: "content_cleaning",
+		});
 	};
 
-	const handleGenerateContent = (contentType: string) => {
+	const handleGenerateContent = (contentType: AIContentType) => {
 		if (!id || !article) return;
-		openConfigModal(contentType);
+		const aiAnalysis = article.ai_analysis;
+		const statusMap: Record<AIContentType, string | null | undefined> = {
+			summary: aiAnalysis?.summary_status,
+			key_points: aiAnalysis?.key_points_status,
+			outline: aiAnalysis?.outline_status,
+			quotes: aiAnalysis?.quotes_status,
+		};
+		const contentMap: Record<AIContentType, string | null | undefined> = {
+			summary: aiAnalysis?.summary,
+			key_points: aiAnalysis?.key_points,
+			outline: aiAnalysis?.outline,
+			quotes: aiAnalysis?.quotes,
+		};
+		const status = statusMap[contentType];
+		const hasContent = Boolean(contentMap[contentType]);
+		const isRetryContent =
+			status === "failed" || status === "completed" || hasContent;
+		openConfigModal({
+			mode: isRetryContent ? "retry_ai_content" : "generate",
+			promptType: contentType,
+			contentType,
+		});
 	};
 
 	const handleDelete = async () => {
@@ -3727,14 +3802,22 @@ export default function ArticleDetailPage() {
 				</div>
 			</div>
 
-			{showConfigModal && (
-				<ModalShell
-					isOpen={showConfigModal}
-					onClose={() => setShowConfigModal(false)}
-					title={t("选择生成配置")}
-					widthClassName="max-w-md"
-					footer={
-						<div className="flex justify-end gap-2">
+				{showConfigModal && (
+					<ModalShell
+						isOpen={showConfigModal}
+						onClose={() => setShowConfigModal(false)}
+						title={
+							configModalMode === "generate"
+								? t("选择生成配置")
+								: configModalMode === "retry_ai_content"
+									? t("选择重试配置")
+								: configModalMode === "retry_cleaning"
+									? t("选择清洗重试配置")
+									: t("选择翻译重试配置")
+						}
+						widthClassName="max-w-md"
+						footer={
+							<div className="flex justify-end gap-2">
 							<Button
 								type="button"
 								variant="secondary"
@@ -3742,31 +3825,33 @@ export default function ArticleDetailPage() {
 							>
 								{t("取消")}
 							</Button>
-							<Button
-								type="button"
-								variant="primary"
-								onClick={handleConfigModalGenerate}
-							>
-								{t("生成")}
-							</Button>
-						</div>
-					}
-				>
+								<Button
+									type="button"
+									variant="primary"
+									onClick={handleConfigModalSubmit}
+								>
+									{configModalMode === "generate" ? t("生成") : t("提交重试")}
+								</Button>
+							</div>
+						}
+					>
 					<div className="space-y-4">
 						<FormField label={t("模型配置")}>
 							<SelectField
 								value={selectedModelConfigId}
 								onChange={(value) => setSelectedModelConfigId(value)}
 								className="w-full"
-								options={[
-									{ value: "", label: t("使用默认配置") },
-									...modelConfigs.map((config) => ({
-										value: config.id,
-										label: `${config.name} (${config.model_name})`,
-									})),
-								]}
-							/>
-						</FormField>
+									options={[
+										{ value: "", label: t("使用默认配置") },
+										...selectableModelConfigs.map((config) => ({
+											value: config.id,
+											label: `${config.name} (${config.model_name}) · ${
+												config.model_type === "vector" ? t("向量") : t("通用")
+											}`,
+										})),
+									]}
+								/>
+							</FormField>
 
 						<FormField label={t("提示词配置")}>
 							<SelectField
