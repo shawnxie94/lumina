@@ -159,6 +159,28 @@ function getReplyMeta(content: string): { user: string; link: string } | null {
 	return { user, link };
 }
 
+function toDateInputValue(value?: string | null): string {
+	const raw = (value || "").trim();
+	if (!raw) return "";
+	const match = raw.match(/^(\d{4}-\d{2}-\d{2})/);
+	if (match) return match[1];
+	const parsed = new Date(raw);
+	if (Number.isNaN(parsed.getTime())) return "";
+	const year = parsed.getFullYear();
+	const month = String(parsed.getMonth() + 1).padStart(2, "0");
+	const day = String(parsed.getDate()).padStart(2, "0");
+	return `${year}-${month}-${day}`;
+}
+
+function splitArticleAuthors(value?: string | null): string[] {
+	if (!value) return [];
+	const authors = value
+		.split(",")
+		.map((item) => item.trim())
+		.filter(Boolean);
+	return Array.from(new Set(authors));
+}
+
 function extractImageUrlFromHtml(html: string): string | null {
 	if (!html) return null;
 	const doc = new DOMParser().parseFromString(html, "text/html");
@@ -772,6 +794,7 @@ export default function ArticleDetailPage() {
 	);
 	const [editTitle, setEditTitle] = useState("");
 	const [editAuthor, setEditAuthor] = useState("");
+	const [editPublishedAt, setEditPublishedAt] = useState("");
 	const [editCategoryId, setEditCategoryId] = useState("");
 	const [editTopImage, setEditTopImage] = useState("");
 	const [editContent, setEditContent] = useState("");
@@ -913,6 +936,19 @@ export default function ArticleDetailPage() {
 			: applyAnnotations(normalizedHtml, annotations);
 		return sanitizeRichHtml(htmlWithAnnotations);
 	}, [article, annotations, showTranslation, immersiveMode]);
+
+	const authorItems = useMemo(
+		() => splitArticleAuthors(article?.author),
+		[article?.author],
+	);
+	const fallbackTopImageUrl = useMemo(
+		() => resolveMediaUrl(basicSettings.site_logo_url || "/logo.png"),
+		[basicSettings.site_logo_url],
+	);
+	const editPreviewTopImageUrl = useMemo(
+		() => resolveMediaUrl(editTopImage || basicSettings.site_logo_url || "/logo.png"),
+		[editTopImage, basicSettings.site_logo_url],
+	);
 
 	const activeAnnotation = annotations.find(
 		(item) => item.id === activeAnnotationId,
@@ -2513,6 +2549,7 @@ export default function ArticleDetailPage() {
 		setEditMode(mode);
 		setEditTitle(article.title || "");
 		setEditAuthor(article.author || "");
+		setEditPublishedAt(toDateInputValue(article.published_at));
 		setEditCategoryId(article.category?.id || "");
 		setEditTopImage(article.top_image || "");
 		setEditContent(
@@ -2531,6 +2568,7 @@ export default function ArticleDetailPage() {
 			const updateData: {
 				title?: string;
 				author?: string;
+				published_at?: string | null;
 				category_id?: string | null;
 				top_image?: string;
 				content_md?: string;
@@ -2538,6 +2576,7 @@ export default function ArticleDetailPage() {
 			} = {
 				title: editTitle,
 				author: editAuthor,
+				published_at: editPublishedAt || null,
 				category_id: editCategoryId || null,
 				top_image: editTopImage,
 			};
@@ -2626,17 +2665,24 @@ export default function ArticleDetailPage() {
 								</Link>
 							</div>
 						)}
-						{article.author && (
-							<div>
-								<span className="font-medium text-text-2">{t("作者")}：</span>
-								<Link
-									href={`/list?author=${encodeURIComponent(article.author)}`}
-									className="text-primary hover:underline"
-								>
-									{article.author}
-								</Link>
-							</div>
-						)}
+							{authorItems.length > 0 && (
+								<div>
+									<span className="font-medium text-text-2">{t("作者")}：</span>
+									<span className="inline-flex flex-wrap items-center gap-1">
+										{authorItems.map((authorName, index) => (
+											<span key={`${authorName}-${index}`} className="inline-flex items-center gap-1">
+												{index > 0 && <span className="text-text-3">,</span>}
+												<Link
+													href={`/list?author=${encodeURIComponent(authorName)}`}
+													className="text-primary hover:underline"
+												>
+													{authorName}
+												</Link>
+											</span>
+										))}
+									</span>
+								</div>
+							)}
 						<div>
 							<span className="font-medium text-text-2">{t("发表时间")}：</span>
 							{article.published_at
@@ -3773,72 +3819,82 @@ export default function ArticleDetailPage() {
 											/>
 										</FormField>
 
-										<div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-											<FormField label={t("作者")}>
-												<TextInput
-													type="text"
-													value={editAuthor}
-													onChange={(e) => setEditAuthor(e.target.value)}
-												/>
-											</FormField>
-											<FormField label={t("分类")}>
-												<SelectField
-													value={editCategoryId}
-													onChange={(value) => setEditCategoryId(value)}
-													className="w-full"
-													loading={categoriesLoading}
-													options={[
-														{ value: "", label: t("未分类") },
-														...categories.map((category) => ({
-															value: category.id,
-															label: category.name,
-														})),
-													]}
-												/>
-											</FormField>
-										</div>
-
-										<div>
-											<div className="mb-1.5 flex items-center justify-between gap-2">
-												<span className="flex min-w-0 items-center gap-2 text-sm text-text-2">
-													<span>{t("头图 URL")}</span>
-													{!mediaStorageEnabled && (
-														<span className="text-xs font-normal text-text-3">
-															{t("未开启本地存储，头图将保持外链")}
+											<div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+												<FormField label={t("作者")}>
+													<TextInput
+														type="text"
+														value={editAuthor}
+														onChange={(e) => setEditAuthor(e.target.value)}
+													/>
+												</FormField>
+												<FormField label={t("发表时间")}>
+													<TextInput
+														type="date"
+														value={editPublishedAt}
+														onChange={(e) => setEditPublishedAt(e.target.value)}
+													/>
+												</FormField>
+											</div>
+											<div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+												<FormField label={t("分类")}>
+													<SelectField
+														value={editCategoryId}
+														onChange={(value) => setEditCategoryId(value)}
+														className="w-full"
+														loading={categoriesLoading}
+														options={[
+															{ value: "", label: t("未分类") },
+															...categories.map((category) => ({
+																value: category.id,
+																label: category.name,
+															})),
+														]}
+													/>
+												</FormField>
+												<FormField
+													label={
+														<span className="inline-flex items-center gap-2">
+															<span>{t("头图 URL")}</span>
+															{!mediaStorageEnabled && (
+																<span className="text-xs font-normal text-text-3">
+																	{t("未开启本地存储，头图将保持外链")}
+																</span>
+															)}
 														</span>
-													)}
-												</span>
-											</div>
-											<div className="flex gap-2">
-												<TextInput
-													id="edit-top-image"
-													type="text"
-													value={editTopImage}
-													onChange={(e) => setEditTopImage(e.target.value)}
-													onPaste={handleTopImagePaste}
-													className="flex-1"
-													placeholder={t("输入图片 URL")}
-												/>
-												<IconButton
-													onClick={handleConvertTopImage}
-													disabled={
-														mediaStorageLoading ||
-														mediaUploading ||
-														!mediaStorageEnabled
 													}
-													title={
-														mediaStorageEnabled
-															? t("转存为本地文件")
-															: t("未开启本地图片存储")
-													}
-													variant="ghost"
-													size="md"
-													className="hover:bg-muted"
+													htmlFor="edit-top-image"
 												>
-													<IconLink className="h-4 w-4" />
-												</IconButton>
+													<div className="flex gap-2">
+														<TextInput
+															id="edit-top-image"
+															type="text"
+															value={editTopImage}
+															onChange={(e) => setEditTopImage(e.target.value)}
+															onPaste={handleTopImagePaste}
+															className="flex-1"
+															placeholder={t("输入图片 URL")}
+														/>
+														<IconButton
+															onClick={handleConvertTopImage}
+															disabled={
+																mediaStorageLoading ||
+																mediaUploading ||
+																!mediaStorageEnabled
+															}
+															title={
+																mediaStorageEnabled
+																	? t("转存为本地文件")
+																	: t("未开启本地图片存储")
+															}
+															variant="ghost"
+															size="md"
+															className="hover:bg-muted"
+														>
+															<IconLink className="h-4 w-4" />
+														</IconButton>
+													</div>
+												</FormField>
 											</div>
-										</div>
 
 										<div className="flex-1 flex flex-col">
 											<div className="mb-1.5 flex items-center justify-between gap-2">
@@ -3931,21 +3987,18 @@ export default function ArticleDetailPage() {
 									className="bg-muted overflow-y-auto h-full hidden lg:block"
 								>
 									<div className="max-w-3xl mx-auto bg-surface min-h-full shadow-sm">
-										{editTopImage && (
 											<div className="relative w-full aspect-[21/9] overflow-hidden">
 												<img
-													src={resolveMediaUrl(editTopImage)}
+													src={editPreviewTopImageUrl || fallbackTopImageUrl}
 													alt={editTitle}
 													className="w-full h-full object-cover"
 													loading="lazy"
 													decoding="async"
 													onError={(e) => {
-														(e.target as HTMLImageElement).style.display =
-															"none";
+														(e.target as HTMLImageElement).style.display = "none";
 													}}
 												/>
 											</div>
-										)}
 										<article className="p-6">
 											<div
 												className="prose prose-sm max-w-none"

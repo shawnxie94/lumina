@@ -585,6 +585,8 @@ export const articleApi = {
 		data: {
 			title?: string;
 			author?: string;
+			published_at?: string | null;
+			category_id?: string | null;
 			top_image?: string;
 			content_md?: string;
 			content_trans?: string;

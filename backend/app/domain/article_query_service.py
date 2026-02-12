@@ -1,4 +1,4 @@
-from sqlalchemy import func
+from sqlalchemy import func, literal
 from sqlalchemy.orm import Session
 
 from models import Article
@@ -61,7 +61,19 @@ class ArticleQueryService:
         if source_domain:
             query = query.filter(Article.source_domain == source_domain)
         if author:
-            query = query.filter(Article.author == author)
+            normalized_author = author.strip().replace(" ", "")
+            if normalized_author:
+                normalized_article_authors = func.replace(
+                    func.replace(func.coalesce(Article.author, ""), "，", ","),
+                    " ",
+                    "",
+                )
+                wrapped_article_authors = (
+                    literal(",") + normalized_article_authors + literal(",")
+                )
+                query = query.filter(
+                    wrapped_article_authors.like(f"%,{normalized_author},%")
+                )
         if published_at_start:
             query = query.filter(
                 func.substr(Article.published_at, 1, 10) >= published_at_start

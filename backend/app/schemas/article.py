@@ -19,6 +19,7 @@ class ArticleCreate(BaseModel):
 class ArticleUpdate(BaseModel):
     title: Optional[str] = None
     author: Optional[str] = None
+    published_at: Optional[str] = None
     top_image: Optional[str] = None
     content_md: Optional[str] = None
     content_trans: Optional[str] = None

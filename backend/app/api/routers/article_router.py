@@ -402,6 +402,8 @@ async def update_article(
             article.title = article_data.title
         if article_data.author is not None:
             article.author = article_data.author
+        if "published_at" in article_data.__fields_set__:
+            article.published_at = article_data.published_at
         if article_data.top_image is not None:
             article.top_image = article_data.top_image
         if article_data.content_md is not None:
@@ -422,6 +424,7 @@ async def update_article(
             "id": article.id,
             "title": article.title,
             "author": article.author,
+            "published_at": article.published_at,
             "top_image": article.top_image,
             "content_md": article.content_md,
             "content_trans": article.content_trans,
@@ -589,15 +592,20 @@ async def generate_ai_content(
 
 @router.get("/api/authors")
 async def get_authors(db: Session = Depends(get_db)):
-    authors = (
+    rows = (
         db.query(Article.author)
         .filter(Article.author.isnot(None))
         .filter(Article.author != "")
-        .distinct()
-        .order_by(Article.author)
         .all()
     )
-    return [a[0] for a in authors]
+    author_set: set[str] = set()
+    for row in rows:
+        raw_author = (row[0] or "").replace("，", ",")
+        for item in raw_author.split(","):
+            author_name = item.strip()
+            if author_name:
+                author_set.add(author_name)
+    return sorted(author_set)
 
 
 @router.get("/api/sources")

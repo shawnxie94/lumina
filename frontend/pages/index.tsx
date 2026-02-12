@@ -80,6 +80,7 @@ export default function HomePage() {
   const siteName = basicSettings.site_name || 'Lumina';
   const siteDescription = basicSettings.site_description || t('信息灯塔');
   const logoUrl = basicSettings.site_logo_url || '/logo.png';
+  const fallbackTopImageUrl = resolveMediaUrl(logoUrl);
   const heroBadgeText = basicSettings.home_badge_text || t('信息灯塔');
   const heroTaglineText = basicSettings.home_tagline_text || t('汇流万象，智能提纯，沉淀真知。');
   const primaryButtonText = basicSettings.home_primary_button_text || t('浏览内容');
@@ -188,15 +189,11 @@ export default function HomePage() {
                   className="group overflow-hidden rounded-2xl border border-border-strong bg-surface/80 shadow-md transition hover:border-primary/40 hover:shadow-lg hover:shadow-primary/10"
                 >
                   <div className="relative aspect-video overflow-hidden bg-muted">
-                    {article.top_image ? (
-                      <img
-                        src={resolveMediaUrl(article.top_image)}
-                        alt={article.title}
-                        className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
-                      />
-                    ) : (
-                      <div className="h-full w-full bg-gradient-to-br from-muted to-app" />
-                    )}
+                    <img
+                      src={resolveMediaUrl(article.top_image || logoUrl) || fallbackTopImageUrl}
+                      alt={article.title}
+                      className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
+                    />
                   </div>
                   <div className="p-4">
                     <h3 className="text-base font-semibold text-text-1 truncate group-hover:text-primary transition" title={article.title}>

@@ -215,6 +215,10 @@ export default function Home() {
     () => serializeQuery(routerQueryState),
     [routerQueryState],
   );
+  const defaultTopImageUrl = useMemo(
+    () => resolveMediaUrl(basicSettings.site_logo_url || '/logo.png'),
+    [basicSettings.site_logo_url],
+  );
 
   const currentListPath = useMemo(() => {
     const asPath = router.asPath || '/list';
@@ -1312,11 +1316,12 @@ export default function Home() {
                     {articles.map((article) => {
                       const articleHref = buildArticleHref(article.slug);
                       const selected = showAdminDesktop && selectedArticleSlugs.has(article.slug);
-                      const mediaBlock = article.top_image ? (
+                      const cardTopImageUrl = resolveMediaUrl(article.top_image || basicSettings.site_logo_url || '/logo.png');
+                      const mediaBlock = (
                         showAdminDesktop ? (
                           <div className="relative w-full sm:w-40 aspect-video sm:aspect-square overflow-hidden rounded-lg bg-muted">
                             <img
-                              src={resolveMediaUrl(article.top_image)}
+                              src={cardTopImageUrl || defaultTopImageUrl}
                               alt={article.title}
                               className="absolute inset-0 h-full w-full object-cover"
                               loading="lazy"
@@ -1334,7 +1339,7 @@ export default function Home() {
                             className="relative block w-full sm:w-40 aspect-video sm:aspect-square overflow-hidden rounded-lg bg-muted"
                           >
                             <img
-                              src={resolveMediaUrl(article.top_image)}
+                              src={cardTopImageUrl || defaultTopImageUrl}
                               alt={article.title}
                               className="absolute inset-0 h-full w-full object-cover"
                               loading="lazy"
@@ -1345,7 +1350,7 @@ export default function Home() {
                             </span>
                           </Link>
                         )
-                      ) : null;
+                      );
 
                       return (
                         <article
@@ -1639,23 +1644,25 @@ export default function Home() {
                       </FormField>
                     </div>
 
-                    <FormField label={t('来源 URL')}>
-                      <TextInput
-                        type="text"
-                        value={createSourceUrl}
-                        onChange={(e) => setCreateSourceUrl(e.target.value)}
-                        placeholder={t('请输入来源链接')}
-                      />
-                    </FormField>
+	                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+	                      <FormField label={t('来源 URL')}>
+	                        <TextInput
+	                          type="text"
+	                          value={createSourceUrl}
+	                          onChange={(e) => setCreateSourceUrl(e.target.value)}
+	                          placeholder={t('请输入来源链接')}
+	                        />
+	                      </FormField>
 
-                    <FormField label={t('头图 URL')}>
-                      <TextInput
-                        type="text"
-                        value={createTopImage}
-                        onChange={(e) => setCreateTopImage(e.target.value)}
-                        placeholder={t('输入图片 URL')}
-                      />
-                    </FormField>
+	                      <FormField label={t('头图 URL')}>
+	                        <TextInput
+	                          type="text"
+	                          value={createTopImage}
+	                          onChange={(e) => setCreateTopImage(e.target.value)}
+	                          placeholder={t('输入图片 URL')}
+	                        />
+	                      </FormField>
+	                    </div>
                   </div>
 
                   <FormField label={t('内容（Markdown）')} required className="mt-4 flex-1 min-h-0 flex flex-col">
@@ -1709,20 +1716,18 @@ export default function Home() {
                   className="bg-muted overflow-y-auto h-full hidden lg:block"
                 >
                   <div className="max-w-3xl mx-auto bg-surface min-h-full shadow-sm">
-                    {createTopImage && (
-                      <div className="relative w-full aspect-[21/9] overflow-hidden">
-                        <img
-                          src={resolveMediaUrl(createTopImage)}
-                          alt={createTitle}
-                          className="w-full h-full object-cover"
-                          loading="lazy"
-                          decoding="async"
-                          onError={(e) => {
-                            (e.target as HTMLImageElement).style.display = 'none';
-                          }}
-                        />
-                      </div>
-                    )}
+                    <div className="relative w-full aspect-[21/9] overflow-hidden">
+                      <img
+                        src={resolveMediaUrl(createTopImage || basicSettings.site_logo_url || '/logo.png')}
+                        alt={createTitle}
+                        className="w-full h-full object-cover"
+                        loading="lazy"
+                        decoding="async"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).style.display = 'none';
+                        }}
+                      />
+                    </div>
                     <article className="p-6">
                       <div
                         className="prose prose-sm max-w-none"
