@@ -61,7 +61,7 @@ class AppSettings(BaseSettings):
 
     ai_worker_poll_interval: float = Field(default=3.0, alias="AI_WORKER_POLL_INTERVAL")
     ai_task_lock_timeout: int = Field(default=300, alias="AI_TASK_LOCK_TIMEOUT")
-    ai_task_timeout: int = Field(default=900, alias="AI_TASK_TIMEOUT")
+    ai_task_timeout: int = Field(default=600, alias="AI_TASK_TIMEOUT")
     ai_worker_id: str = Field(default_factory=lambda: str(uuid.uuid4()), alias="AI_WORKER_ID")
 
     @property

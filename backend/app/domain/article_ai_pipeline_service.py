@@ -293,11 +293,8 @@ class ArticleAIPipelineService:
             }
 
             try:
-                result = await asyncio.wait_for(
-                    cleaning_client.generate_summary(
-                        source_content, prompt=prompt, parameters=parameters
-                    ),
-                    timeout=300.0,
+                result = await cleaning_client.generate_summary(
+                    source_content, prompt=prompt, parameters=parameters
                 )
                 if isinstance(result, dict):
                     self._log_ai_usage(
@@ -476,11 +473,8 @@ class ArticleAIPipelineService:
             }
 
             try:
-                result = await asyncio.wait_for(
-                    validation_client.generate_summary(
-                        cleaned_md_candidate, prompt=prompt, parameters=parameters
-                    ),
-                    timeout=300.0,
+                result = await validation_client.generate_summary(
+                    cleaned_md_candidate, prompt=prompt, parameters=parameters
                 )
                 if isinstance(result, dict):
                     self._log_ai_usage(
@@ -678,13 +672,10 @@ class ArticleAIPipelineService:
             }
 
             try:
-                result = await asyncio.wait_for(
-                    self.create_ai_client(classification_config).generate_summary(
-                        article.content_md,
-                        prompt=prompt,
-                        parameters=parameters,
-                    ),
-                    timeout=300.0,
+                result = await self.create_ai_client(classification_config).generate_summary(
+                    article.content_md,
+                    prompt=prompt,
+                    parameters=parameters,
                 )
                 if isinstance(result, dict):
                     self._log_ai_usage(
@@ -836,13 +827,10 @@ class ArticleAIPipelineService:
                 trans_parameters = trans_config.get("parameters") or {}
 
             try:
-                content_trans = await asyncio.wait_for(
-                    trans_client.translate_to_chinese(
-                        article.content_md,
-                        prompt=trans_prompt,
-                        parameters=trans_parameters,
-                    ),
-                    timeout=300.0,
+                content_trans = await trans_client.translate_to_chinese(
+                    article.content_md,
+                    prompt=trans_prompt,
+                    parameters=trans_parameters,
                 )
                 if isinstance(content_trans, dict):
                     self._log_ai_usage(
@@ -1039,11 +1027,8 @@ class ArticleAIPipelineService:
             }
 
             try:
-                result = await asyncio.wait_for(
-                    ai_client.generate_summary(
-                        article.content_md, prompt=prompt, parameters=parameters
-                    ),
-                    timeout=300.0,
+                result = await ai_client.generate_summary(
+                    article.content_md, prompt=prompt, parameters=parameters
                 )
                 if isinstance(result, dict):
                     self._log_ai_usage(

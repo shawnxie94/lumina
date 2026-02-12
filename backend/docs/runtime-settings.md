@@ -27,7 +27,7 @@
 | media | `MAX_MEDIA_SIZE` | `8388608` | 上传文件最大字节数（8MB） |
 | ai_worker | `AI_WORKER_POLL_INTERVAL` | `3.0` | 任务轮询间隔（秒） |
 | ai_worker | `AI_TASK_LOCK_TIMEOUT` | `300` | 任务锁超时（秒） |
-| ai_worker | `AI_TASK_TIMEOUT` | `900` | 单任务执行超时（秒） |
+| ai_worker | `AI_TASK_TIMEOUT` | `600` | 单任务执行超时（秒） |
 | ai_worker | `AI_WORKER_ID` | 随机 UUID | Worker 实例标识 |
 
 ## 约束校验规则

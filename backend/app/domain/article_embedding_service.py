@@ -148,7 +148,7 @@ class ArticleEmbeddingService:
                         "Accept": "application/json",
                     },
                     json={"model": model_name, "input": [source_text]},
-                    timeout=20.0,
+                    timeout=None,
                 )
                 response.raise_for_status()
                 data = response.json()
