@@ -22,6 +22,8 @@ import {
 } from "@/lib/api";
 import AppFooter from "@/components/AppFooter";
 import AppHeader from "@/components/AppHeader";
+import ArticleMetaRow from "@/components/article/ArticleMetaRow";
+import ArticleSplitEditorModal from "@/components/article/ArticleSplitEditorModal";
 import Button from "@/components/Button";
 import IconButton from "@/components/IconButton";
 import FormField from "@/components/ui/FormField";
@@ -216,14 +218,17 @@ function detectMediaKindFromUrl(url: string): PastedMediaKind | null {
 	return null;
 }
 
-function buildMarkdownFromMediaLink(link: PastedMediaLink): string {
+function buildMarkdownFromMediaLink(
+	link: PastedMediaLink,
+	t: (key: string) => string,
+): string {
 	if (link.kind === "image") {
 		return `![](${link.url})`;
 	}
 	if (link.kind === "video") {
-		return `[▶ 视频标题](${link.url})`;
+		return `[▶ ${t("视频")}](${link.url})`;
 	}
-	return `[🎧 音频标题](${link.url})`;
+	return `[🎧 ${t("音频")}](${link.url})`;
 }
 
 function toPastedMediaLink(url?: string | null): PastedMediaLink | null {
@@ -281,31 +286,6 @@ function insertTextAtCursor(
 		target.setSelectionRange(cursor, cursor);
 		target.focus();
 	});
-}
-
-type MediaInsertKind = "video" | "audio";
-
-function buildMediaMarkdownTemplate(kind: MediaInsertKind): string {
-	if (kind === "video") {
-		return "[▶ 视频标题](https://www.youtube.com/watch?v=)";
-	}
-	return "[🎧 音频标题](https://example.com/audio.mp3)";
-}
-
-function insertMediaTemplateAtCursor(
-	target: HTMLTextAreaElement,
-	kind: MediaInsertKind,
-	onChange: (value: string) => void,
-) {
-	const start = target.selectionStart ?? target.value.length;
-	const prevChar = start > 0 ? target.value[start - 1] : "";
-	const prefix = prevChar && prevChar !== "\n" ? "\n\n" : "";
-	const suffix = "\n";
-	insertTextAtCursor(
-		target,
-		`${prefix}${buildMediaMarkdownTemplate(kind)}${suffix}`,
-		onChange,
-	);
 }
 
 function extractMarkdownImageUrls(markdown: string): string[] {
@@ -902,8 +882,6 @@ export default function ArticleDetailPage() {
 	const [editTopImage, setEditTopImage] = useState("");
 	const [editContent, setEditContent] = useState("");
 	const [saving, setSaving] = useState(false);
-	const editTextareaRef = useRef<HTMLTextAreaElement>(null);
-	const editPreviewRef = useRef<HTMLDivElement>(null);
 	const [mediaStorageEnabled, setMediaStorageEnabled] = useState(false);
 	const [mediaStorageLoading, setMediaStorageLoading] = useState(false);
 	const [mediaUploading, setMediaUploading] = useState(false);
@@ -2637,7 +2615,7 @@ export default function ArticleDetailPage() {
 			setPendingScrollId(data.id);
 			showToast(t("评论已发布"));
 		} catch (error: any) {
-			showToast(error?.message || t("发布评论失败"), "error");
+			showToast(t(error?.message || "发布评论失败"), "error");
 		} finally {
 			setCommentSubmitting(false);
 		}
@@ -2679,7 +2657,7 @@ export default function ArticleDetailPage() {
 			setEditingCommentPrefix("");
 			showToast(t("评论已更新"));
 		} catch (error: any) {
-			showToast(error?.message || t("更新评论失败"), "error");
+			showToast(t(error?.message || "更新评论失败"), "error");
 		} finally {
 			setCommentUpdatingIds((prev) => {
 				const next = new Set(prev);
@@ -2697,7 +2675,7 @@ export default function ArticleDetailPage() {
 			setComments((prev) => prev.filter((item) => item.id !== commentId));
 			showToast(t("评论已删除"));
 		} catch (error: any) {
-			showToast(error?.message || t("删除评论失败"), "error");
+			showToast(t(error?.message || "删除评论失败"), "error");
 		} finally {
 			setCommentDeletingIds((prev) => {
 				const next = new Set(prev);
@@ -2728,7 +2706,7 @@ export default function ArticleDetailPage() {
 			);
 			showToast(data.is_hidden ? t("评论已隐藏") : t("评论已显示"));
 		} catch (error: any) {
-			showToast(error?.message || t("操作失败"), "error");
+			showToast(t(error?.message || "操作失败"), "error");
 		} finally {
 			setCommentTogglingIds((prev) => {
 				const next = new Set(prev);
@@ -2826,7 +2804,7 @@ export default function ArticleDetailPage() {
 			if (target) {
 				insertTextAtCursor(
 					target,
-					buildMarkdownFromMediaLink(mediaLink),
+					buildMarkdownFromMediaLink(mediaLink, t),
 					setEditContent,
 				);
 			}
@@ -2835,7 +2813,11 @@ export default function ArticleDetailPage() {
 
 		if (!mediaStorageEnabled) {
 			if (target) {
-				insertTextAtCursor(target, buildMarkdownFromMediaLink(mediaLink), setEditContent);
+				insertTextAtCursor(
+					target,
+					buildMarkdownFromMediaLink(mediaLink, t),
+					setEditContent,
+				);
 			}
 			return;
 		}
@@ -2937,18 +2919,6 @@ export default function ArticleDetailPage() {
 		} finally {
 			setMediaUploading(false);
 		}
-	};
-
-	const handleInsertEditVideo = () => {
-		const target = editTextareaRef.current;
-		if (!target) return;
-		insertMediaTemplateAtCursor(target, "video", setEditContent);
-	};
-
-	const handleInsertEditAudio = () => {
-		const target = editTextareaRef.current;
-		if (!target) return;
-		insertMediaTemplateAtCursor(target, "audio", setEditContent);
 	};
 
 	const openEditModal = (mode: "original" | "translation") => {
@@ -3114,23 +3084,25 @@ export default function ArticleDetailPage() {
 					<h1 className="text-2xl font-bold text-text-1 text-center mb-3">
 						{article.title}
 					</h1>
-					<div
-						className={`flex flex-wrap gap-4 text-sm text-text-2 justify-center ${immersiveMode ? "" : "border-b border-border pb-3"}`}
-					>
-						{article.category && (
-							<div>
-								<span className="font-medium text-text-2">{t("分类")}：</span>
-								<Link
-									href={`/list?category_id=${article.category.id}`}
-									className="inline-flex items-center gap-1"
-								>
-									<span className="text-primary hover:underline">
-										{article.category.name}
-									</span>
-								</Link>
-							</div>
-						)}
-							{authorItems.length > 0 && (
+					<ArticleMetaRow
+						className={`justify-center gap-4 ${immersiveMode ? "" : "border-b border-border pb-3"}`}
+						publishedAt={article.published_at}
+						createdAt={article.created_at}
+						items={[
+							article.category ? (
+								<div>
+									<span className="font-medium text-text-2">{t("分类")}：</span>
+									<Link
+										href={`/list?category_id=${article.category.id}`}
+										className="inline-flex items-center gap-1"
+									>
+										<span className="text-primary hover:underline">
+											{article.category.name}
+										</span>
+									</Link>
+								</div>
+							) : null,
+							authorItems.length > 0 ? (
 								<div>
 									<span className="font-medium text-text-2">{t("作者")}：</span>
 									<span className="inline-flex flex-wrap items-center gap-1">
@@ -3147,31 +3119,22 @@ export default function ArticleDetailPage() {
 										))}
 									</span>
 								</div>
-							)}
-						<div>
-							<span className="font-medium text-text-2">{t("发表时间")}：</span>
-							{article.published_at
-								? new Date(article.published_at).toLocaleDateString(
-										language === "en" ? "en-US" : "zh-CN",
-									)
-								: new Date(article.created_at).toLocaleDateString(
-										language === "en" ? "en-US" : "zh-CN",
-									)}
-						</div>
-						{article.source_url && (
-							<div>
-								<span className="font-medium text-text-2">{t("来源")}：</span>
-								<a
-									href={article.source_url}
-									target="_blank"
-									rel="noopener noreferrer"
-									className="text-primary hover:underline"
-								>
-									{t("跳转")}
-								</a>
-							</div>
-						)}
-					</div>
+							) : null,
+							article.source_url ? (
+								<div>
+									<span className="font-medium text-text-2">{t("来源")}：</span>
+									<a
+										href={article.source_url}
+										target="_blank"
+										rel="noopener noreferrer"
+										className="text-primary hover:underline"
+									>
+										{t("跳转")}
+									</a>
+								</div>
+							) : null,
+						]}
+					/>
 				</div>
 			</section>
 
@@ -4304,254 +4267,135 @@ export default function ArticleDetailPage() {
 				</ModalShell>
 			)}
 
-			{showEditModal && (
-				<div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
-					<div
-						className="bg-surface rounded-lg shadow-xl w-full h-[95vh] flex flex-col"
-						onClick={(event) => event.stopPropagation()}
-					>
-						<div className="flex items-center justify-between p-4 border-b border-border flex-shrink-0">
-							<h3 className="text-lg font-semibold text-text-1">
-								{t("编辑文章")}
-							</h3>
-							<button
-								type="button"
-								onClick={() => setShowEditModal(false)}
-								className="text-text-3 hover:text-text-1 text-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
-								aria-label={t("关闭编辑弹窗")}
+			<ArticleSplitEditorModal
+				isOpen={showEditModal}
+				title={t("编辑文章")}
+				closeAriaLabel={t("关闭编辑弹窗")}
+				onClose={() => setShowEditModal(false)}
+				onSave={handleSaveEdit}
+				topFields={(
+					<>
+						<FormField label={t("标题")}>
+							<TextInput
+								type="text"
+								value={editTitle}
+								onChange={(e) => setEditTitle(e.target.value)}
+							/>
+						</FormField>
+
+						<div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+							<FormField label={t("作者")}>
+								<TextInput
+									type="text"
+									value={editAuthor}
+									onChange={(e) => setEditAuthor(e.target.value)}
+								/>
+							</FormField>
+							<FormField label={t("发表时间")}>
+								<TextInput
+									type="date"
+									value={editPublishedAt}
+									onChange={(e) => setEditPublishedAt(e.target.value)}
+								/>
+							</FormField>
+						</div>
+						<div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+							<FormField label={t("分类")}>
+								<SelectField
+									value={editCategoryId}
+									onChange={(value) => setEditCategoryId(value)}
+									className="w-full"
+									loading={categoriesLoading}
+									options={[
+										{ value: "", label: t("未分类") },
+										...categories.map((category) => ({
+											value: category.id,
+											label: category.name,
+										})),
+									]}
+								/>
+							</FormField>
+							<FormField
+								label={
+									<span className="inline-flex items-center gap-2">
+										<span>{t("头图 URL")}</span>
+										{!mediaStorageEnabled && (
+											<span className="text-xs font-normal text-text-3">
+												{t("未开启本地存储，头图将保持外链")}
+											</span>
+										)}
+									</span>
+								}
+								htmlFor="edit-top-image"
 							>
-								×
-							</button>
-						</div>
-
-						<div className="flex-1 overflow-hidden">
-							<div className="grid grid-cols-1 lg:grid-cols-2 h-full">
-								{/* 左侧编辑区 */}
-								<div className="p-4 flex flex-col h-full border-r border-border">
-									<div className="space-y-4 flex-1 flex flex-col">
-										<FormField label={t("标题")}>
-											<TextInput
-												type="text"
-												value={editTitle}
-												onChange={(e) => setEditTitle(e.target.value)}
-											/>
-										</FormField>
-
-											<div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-												<FormField label={t("作者")}>
-													<TextInput
-														type="text"
-														value={editAuthor}
-														onChange={(e) => setEditAuthor(e.target.value)}
-													/>
-												</FormField>
-												<FormField label={t("发表时间")}>
-													<TextInput
-														type="date"
-														value={editPublishedAt}
-														onChange={(e) => setEditPublishedAt(e.target.value)}
-													/>
-												</FormField>
-											</div>
-											<div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-												<FormField label={t("分类")}>
-													<SelectField
-														value={editCategoryId}
-														onChange={(value) => setEditCategoryId(value)}
-														className="w-full"
-														loading={categoriesLoading}
-														options={[
-															{ value: "", label: t("未分类") },
-															...categories.map((category) => ({
-																value: category.id,
-																label: category.name,
-															})),
-														]}
-													/>
-												</FormField>
-												<FormField
-													label={
-														<span className="inline-flex items-center gap-2">
-															<span>{t("头图 URL")}</span>
-															{!mediaStorageEnabled && (
-																<span className="text-xs font-normal text-text-3">
-																	{t("未开启本地存储，头图将保持外链")}
-																</span>
-															)}
-														</span>
-													}
-													htmlFor="edit-top-image"
-												>
-													<div className="flex gap-2">
-														<TextInput
-															id="edit-top-image"
-															type="text"
-															value={editTopImage}
-															onChange={(e) => setEditTopImage(e.target.value)}
-															onPaste={handleTopImagePaste}
-															className="flex-1"
-															placeholder={t("输入图片 URL")}
-														/>
-														<IconButton
-															onClick={handleConvertTopImage}
-															disabled={
-																mediaStorageLoading ||
-																mediaUploading ||
-																!mediaStorageEnabled
-															}
-															title={
-																mediaStorageEnabled
-																	? t("转存为本地文件")
-																	: t("未开启本地图片存储")
-															}
-															variant="ghost"
-															size="md"
-															className="hover:bg-muted"
-														>
-															<IconLink className="h-4 w-4" />
-														</IconButton>
-													</div>
-												</FormField>
-											</div>
-
-										<div className="flex-1 flex flex-col">
-											<div className="mb-1.5 flex items-center justify-between gap-2">
-												<span className="flex min-w-0 items-center gap-2 text-sm text-text-2">
-													<span>{t("内容（Markdown）")}</span>
-													{!mediaStorageEnabled && (
-														<span className="text-xs font-normal text-text-3">
-															{t("未开启本地存储，外链将保持不变")}
-														</span>
-													)}
-												</span>
-												<div className="flex items-center gap-2">
-													<Button
-														type="button"
-														variant="ghost"
-														size="sm"
-														onClick={handleInsertEditVideo}
-														className="px-2"
-													>
-														{t("插入视频")}
-													</Button>
-													<Button
-														type="button"
-														variant="ghost"
-														size="sm"
-														onClick={handleInsertEditAudio}
-														className="px-2"
-													>
-														{t("插入音频")}
-													</Button>
-													<IconButton
-														onClick={handleBatchConvertMarkdownImages}
-														disabled={mediaUploading || !mediaStorageEnabled}
-														title={
-															mediaStorageEnabled
-																? t("扫描并转存外链图片")
-																: t("未开启本地图片存储")
-														}
-														variant="ghost"
-														size="md"
-														className="hover:bg-muted"
-													>
-														<IconLink className="h-4 w-4" />
-													</IconButton>
-												</div>
-											</div>
-
-											<TextArea
-												ref={editTextareaRef}
-												value={editContent}
-												onChange={(e) => setEditContent(e.target.value)}
-												onPaste={handleEditPaste}
-												onScroll={() => {
-													if (
-														editTextareaRef.current &&
-														editPreviewRef.current
-													) {
-														const textarea = editTextareaRef.current;
-														const preview = editPreviewRef.current;
-														const scrollRatio =
-															textarea.scrollTop /
-															(textarea.scrollHeight - textarea.clientHeight);
-														preview.scrollTop =
-															scrollRatio *
-															(preview.scrollHeight - preview.clientHeight);
-													}
-												}}
-												className="flex-1 font-mono resize-none min-h-[200px]"
-												placeholder={t("在此输入 Markdown 内容...")}
-											/>
-										</div>
-									</div>
-
-									<div className="flex justify-end gap-2 pt-4 border-t flex-shrink-0">
-										<Button
-											type="button"
-											variant="secondary"
-											onClick={() => setShowEditModal(false)}
-											disabled={saving}
-										>
-											{t("取消")}
-										</Button>
-										<Button
-											type="button"
-											variant="primary"
-											onClick={handleSaveEdit}
-											disabled={saving}
-										>
-											{saving ? t("保存中...") : t("保存")}
-										</Button>
-									</div>
-								</div>
-
-								<div
-									ref={editPreviewRef}
-									onScroll={() => {
-										if (editTextareaRef.current && editPreviewRef.current) {
-											const textarea = editTextareaRef.current;
-											const preview = editPreviewRef.current;
-											const scrollRatio =
-												preview.scrollTop /
-												(preview.scrollHeight - preview.clientHeight);
-											textarea.scrollTop =
-												scrollRatio *
-												(textarea.scrollHeight - textarea.clientHeight);
+								<div className="flex gap-2">
+									<TextInput
+										id="edit-top-image"
+										type="text"
+										value={editTopImage}
+										onChange={(e) => setEditTopImage(e.target.value)}
+										onPaste={handleTopImagePaste}
+										className="flex-1"
+										placeholder={t("输入图片 URL")}
+									/>
+									<IconButton
+										onClick={handleConvertTopImage}
+										disabled={
+											mediaStorageLoading ||
+											mediaUploading ||
+											!mediaStorageEnabled
 										}
-									}}
-									className="bg-muted overflow-y-auto h-full hidden lg:block"
-								>
-									<div className="max-w-3xl mx-auto bg-surface min-h-full shadow-sm">
-											<div className="relative w-full aspect-[21/9] overflow-hidden">
-												<img
-													src={editPreviewTopImageUrl || fallbackTopImageUrl}
-													alt={editTitle}
-													className="w-full h-full object-cover"
-													loading="lazy"
-													decoding="async"
-													onError={(e) => {
-														(e.target as HTMLImageElement).style.display = "none";
-													}}
-												/>
-											</div>
-										<article className="p-6">
-											<div
-												className="prose prose-sm max-w-none"
-												dangerouslySetInnerHTML={{
-													__html: renderSafeMarkdown(editContent || "", {
-														enableMediaEmbed: true,
-													}),
-												}}
-											/>
-										</article>
-									</div>
+										title={
+											mediaStorageEnabled
+												? t("转存为本地文件")
+												: t("未开启本地图片存储")
+										}
+										variant="ghost"
+										size="md"
+										className="hover:bg-muted"
+									>
+										<IconLink className="h-4 w-4" />
+									</IconButton>
 								</div>
-							</div>
+							</FormField>
 						</div>
-					</div>
-				</div>
-			)}
+					</>
+				)}
+				contentValue={editContent}
+				onContentChange={setEditContent}
+				onContentPaste={handleEditPaste}
+				extraEditorActions={
+					<IconButton
+						onClick={handleBatchConvertMarkdownImages}
+						disabled={mediaUploading || !mediaStorageEnabled}
+						title={
+							mediaStorageEnabled
+								? t("扫描并转存外链图片")
+								: t("未开启本地图片存储")
+						}
+						variant="ghost"
+						size="md"
+						className="hover:bg-muted"
+					>
+						<IconLink className="h-4 w-4" />
+					</IconButton>
+				}
+				contentLabelAddon={
+					!mediaStorageEnabled ? (
+						<span className="text-xs font-normal text-text-3">
+							{t("未开启本地存储，外链将保持不变")}
+						</span>
+					) : null
+				}
+				saveText={t("保存")}
+				savingText={t("保存中...")}
+				isSaving={saving}
+				previewImageUrl={editPreviewTopImageUrl || fallbackTopImageUrl || ""}
+				previewImageAlt={editTitle}
+				previewHtml={renderSafeMarkdown(editContent || "", {
+					enableMediaEmbed: true,
+				})}
+			/>
 
 			{showSelectionToolbar && selectionToolbarPos && isAdmin && (
 				<div

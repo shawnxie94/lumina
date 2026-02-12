@@ -8,6 +8,10 @@ import dayjs, { type Dayjs } from 'dayjs';
 import { articleApi, categoryApi, Article, Category, resolveMediaUrl } from '@/lib/api';
 import AppFooter from '@/components/AppFooter';
 import AppHeader from '@/components/AppHeader';
+import ArticleLanguageTag from '@/components/article/ArticleLanguageTag';
+import ArticleMetaRow from '@/components/article/ArticleMetaRow';
+import ArticleSplitEditorModal from '@/components/article/ArticleSplitEditorModal';
+import FeedListSkeleton from '@/components/article/FeedListSkeleton';
 import Button from '@/components/Button';
 import DateRangePicker from '@/components/DateRangePicker';
 import FilterInput from '@/components/FilterInput';
@@ -18,7 +22,6 @@ import IconButton from '@/components/IconButton';
 import CheckboxInput from '@/components/ui/CheckboxInput';
 import FormField from '@/components/ui/FormField';
 import SelectField from '@/components/ui/SelectField';
-import TextArea from '@/components/ui/TextArea';
 import TextInput from '@/components/ui/TextInput';
 import { useToast } from '@/components/Toast';
 import { BackToTop } from '@/components/BackToTop';
@@ -44,8 +47,7 @@ const toDayjsRange = (range: [Date | null, Date | null]): [Dayjs | null, Dayjs |
   range[1] ? dayjs(range[1]) : null,
 ];
 
-type MediaInsertKind = 'video' | 'audio';
-type PastedMediaKind = 'image' | MediaInsertKind;
+type PastedMediaKind = 'image' | 'video' | 'audio';
 
 interface PastedMediaLink {
   kind: PastedMediaKind;
@@ -56,13 +58,6 @@ const IMAGE_LINK_PATTERN = /\.(png|jpe?g|gif|webp|svg|bmp|avif)(\?.*)?$/i;
 const VIDEO_LINK_PATTERN = /\.(mp4|webm|mov|m4v|ogv|ogg)(\?.*)?$/i;
 const AUDIO_LINK_PATTERN = /\.(mp3|wav|m4a|aac|ogg|flac|opus)(\?.*)?$/i;
 const VIDEO_HOST_PATTERN = /(youtube\.com|youtu\.be|bilibili\.com|vimeo\.com)/i;
-
-const buildMediaMarkdownTemplate = (kind: MediaInsertKind): string => {
-  if (kind === 'video') {
-    return '[▶ 视频标题](https://www.youtube.com/watch?v=)';
-  }
-  return '[🎧 音频标题](https://example.com/audio.mp3)';
-};
 
 const insertTextAtCursor = (
   target: HTMLTextAreaElement,
@@ -78,22 +73,6 @@ const insertTextAtCursor = (
     target.setSelectionRange(cursor, cursor);
     target.focus();
   });
-};
-
-const insertMediaTemplateAtCursor = (
-  target: HTMLTextAreaElement,
-  kind: MediaInsertKind,
-  onChange: (value: string) => void,
-) => {
-  const start = target.selectionStart ?? target.value.length;
-  const prevChar = start > 0 ? target.value[start - 1] : '';
-  const prefix = prevChar && prevChar !== '\n' ? '\n\n' : '';
-  const suffix = '\n';
-  insertTextAtCursor(
-    target,
-    `${prefix}${buildMediaMarkdownTemplate(kind)}${suffix}`,
-    onChange,
-  );
 };
 
 const cleanupPastedUrl = (url: string): string =>
@@ -153,14 +132,17 @@ const extractMediaLinkFromText = (text: string): PastedMediaLink | null => {
   return toPastedMediaLink(urlMatch[0]);
 };
 
-const buildMarkdownFromMediaLink = (link: PastedMediaLink): string => {
+const buildMarkdownFromMediaLink = (
+  link: PastedMediaLink,
+  t: (key: string) => string,
+): string => {
   if (link.kind === 'image') {
     return `![](${link.url})`;
   }
   if (link.kind === 'video') {
-    return `[▶ 视频标题](${link.url})`;
+    return `[▶ ${t('视频')}](${link.url})`;
   }
-  return `[🎧 音频标题](${link.url})`;
+  return `[🎧 ${t('音频')}](${link.url})`;
 };
 
 
@@ -249,7 +231,7 @@ export default function Home() {
   const router = useRouter();
   const { showToast } = useToast();
   const { isAdmin, isLoading: authLoading } = useAuth();
-  const { t, language } = useI18n();
+  const { t } = useI18n();
   const { basicSettings } = useBasicSettings();
   const [articles, setArticles] = useState<Article[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -307,8 +289,6 @@ export default function Home() {
   const [createContent, setCreateContent] = useState('');
   const [createSourceUrl, setCreateSourceUrl] = useState('');
   const [createSaving, setCreateSaving] = useState(false);
-  const createTextareaRef = useRef<HTMLTextAreaElement>(null);
-  const createPreviewRef = useRef<HTMLDivElement>(null);
 
   const [publishedStartDate, publishedEndDate] = publishedDateRange;
   const [createdStartDate, createdEndDate] = createdDateRange;
@@ -348,8 +328,6 @@ export default function Home() {
     const from = `${currentListPath}#article-${slug}`;
     return `/article/${slug}?from=${encodeURIComponent(from)}`;
   };
-  const getArticleLanguageTag = (article: Article): string =>
-    article.original_language === 'zh' ? t('中文') : t('英文');
   const articleLinkTarget = isMobile ? undefined : '_blank';
   const articleLinkRel = isMobile ? undefined : 'noopener noreferrer';
 
@@ -700,12 +678,14 @@ export default function Home() {
 
   useEffect(() => {
     if (!isMobile) return;
+    if (!listContentReady) return;
     const node = loadMoreRef.current;
     if (!node) return;
-    if (!hasMore || loadingMore || listLoading) return;
+    if (!hasMore || loadingMore || listLoading || isAppending) return;
     const observer = new IntersectionObserver(
       (entries) => {
         if (!entries[0]?.isIntersecting) return;
+        if (loadingMore || listLoading || isAppending) return;
         setIsAppending(true);
         setPage((prev) => prev + 1);
       },
@@ -713,7 +693,7 @@ export default function Home() {
     );
     observer.observe(node);
     return () => observer.disconnect();
-  }, [isMobile, hasMore, loadingMore, listLoading]);
+  }, [isMobile, listContentReady, hasMore, loadingMore, listLoading, isAppending, articles.length]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || articles.length === 0) return;
@@ -1142,21 +1122,9 @@ export default function Home() {
     event.preventDefault();
     insertTextAtCursor(
       event.currentTarget,
-      buildMarkdownFromMediaLink(mediaLink),
+      buildMarkdownFromMediaLink(mediaLink, t),
       setCreateContent,
     );
-  };
-
-  const handleInsertCreateVideo = () => {
-    const target = createTextareaRef.current;
-    if (!target) return;
-    insertMediaTemplateAtCursor(target, 'video', setCreateContent);
-  };
-
-  const handleInsertCreateAudio = () => {
-    const target = createTextareaRef.current;
-    if (!target) return;
-    insertMediaTemplateAtCursor(target, 'audio', setCreateContent);
   };
 
   const handleCreateArticle = async () => {
@@ -1279,52 +1247,7 @@ export default function Home() {
     </div>
   );
   const skeletonCount = isMobile ? 4 : 6;
-  const listSkeleton = (
-    <div className="space-y-4" aria-live="polite" aria-busy="true">
-      {showAdminDesktop && (
-        <div className="mb-4">
-          <div className="flex items-center gap-2">
-            <span className="skeleton-shimmer motion-safe:animate-pulse h-4 w-4 rounded-xs" />
-            <span className="skeleton-shimmer motion-safe:animate-pulse h-4 w-44 rounded-xs" />
-          </div>
-        </div>
-      )}
-      {Array.from({ length: skeletonCount }).map((_, index) => (
-        <div
-          key={`list-skeleton-${index}`}
-          className="panel-raised rounded-lg border border-border p-4 sm:p-6 min-h-[184px] relative overflow-hidden"
-        >
-          {showAdminDesktop && (
-            <div className="absolute top-3 right-3 flex items-center gap-1">
-              <span className="skeleton-shimmer motion-safe:animate-pulse h-6 w-6 rounded-sm" />
-              <span className="skeleton-shimmer motion-safe:animate-pulse h-6 w-6 rounded-sm" />
-            </div>
-          )}
-          <div className="flex flex-col sm:flex-row gap-4">
-            {showAdminDesktop && (
-              <span className="skeleton-shimmer motion-safe:animate-pulse mt-1 h-4 w-4 rounded-xs shrink-0" />
-            )}
-            <div className="skeleton-shimmer motion-safe:animate-pulse w-full sm:w-40 aspect-video sm:aspect-square rounded-lg shrink-0" />
-            <div className="flex-1 space-y-3 sm:pr-6">
-              <div className="space-y-2">
-                <div className="skeleton-shimmer motion-safe:animate-pulse h-6 w-4/5 rounded-sm" />
-                <div className="skeleton-shimmer motion-safe:animate-pulse h-6 w-3/5 rounded-sm" />
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="skeleton-shimmer motion-safe:animate-pulse h-5 w-16 rounded-full" />
-                <span className="skeleton-shimmer motion-safe:animate-pulse h-4 w-24 rounded-sm" />
-                <span className="skeleton-shimmer motion-safe:animate-pulse h-4 w-36 rounded-sm" />
-              </div>
-              <div className="space-y-2 pt-1">
-                <div className="skeleton-shimmer motion-safe:animate-pulse h-4 w-full rounded-sm" />
-                <div className="skeleton-shimmer motion-safe:animate-pulse h-4 w-5/6 rounded-sm" />
-              </div>
-            </div>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
+  const listSkeleton = <FeedListSkeleton count={skeletonCount} showAdminDesktop={showAdminDesktop} />;
 
   return (
     <div className="min-h-screen bg-app flex flex-col">
@@ -1427,7 +1350,7 @@ export default function Home() {
                         <button
                             type="button"
                             onClick={() => setShowFilters(!showFilters)}
-                            className={`hidden lg:inline-flex px-4 py-1 text-sm rounded-sm transition ${showFilters ? 'bg-primary-soft text-primary-ink' : 'bg-muted text-text-2 hover:bg-surface'}`}
+                            className={`hidden lg:inline-flex whitespace-nowrap px-4 py-1 text-sm rounded-sm transition ${showFilters ? 'bg-primary-soft text-primary-ink' : 'bg-muted text-text-2 hover:bg-surface'}`}
                           >
                             <span className="inline-flex items-center gap-2">
                               <IconSearch className="h-4 w-4" />
@@ -1440,7 +1363,7 @@ export default function Home() {
                             onClick={() => setShowCreateModal(true)}
                             variant="primary"
                             size="sm"
-                            className="hidden lg:inline-flex"
+                            className="hidden lg:inline-flex whitespace-nowrap"
                           >
                             <span className="inline-flex items-center gap-2">
                               <IconPlus className="h-4 w-4" />
@@ -1538,9 +1461,7 @@ export default function Home() {
                               loading="lazy"
                               decoding="async"
                             />
-                            <span className="language-tag absolute left-2 top-2 px-2 py-0.5 text-xs">
-                              {getArticleLanguageTag(article)}
-                            </span>
+                            <ArticleLanguageTag article={article} className="absolute left-2 top-2 px-2 py-0.5 text-xs" />
                           </div>
                         ) : (
                           <Link
@@ -1556,9 +1477,7 @@ export default function Home() {
                               loading="lazy"
                               decoding="async"
                             />
-                            <span className="language-tag absolute left-2 top-2 px-2 py-0.5 text-xs">
-                              {getArticleLanguageTag(article)}
-                            </span>
+                            <ArticleLanguageTag article={article} className="absolute left-2 top-2 px-2 py-0.5 text-xs" />
                           </Link>
                         )
                       );
@@ -1630,30 +1549,25 @@ export default function Home() {
                                   {article.title}
                                 </h3>
                               </Link>
-                              <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-text-2">
-                                {article.category && (
-                                  <span
-                                    className="category-chip px-2 py-1 rounded-sm"
-                                    style={{
-                                      backgroundColor: article.category.color ? `${article.category.color}20` : 'var(--bg-muted)',
-                                      color: article.category.color || 'var(--text-2)',
-                                    }}
-                                  >
-                                    {article.category.name}
-                                  </span>
-                                )}
-                                {article.author && <span>{t('作者')}: {article.author}</span>}
-                                <span>
-                                  {t('发表时间')}：
-                                  {article.published_at
-                                    ? new Date(article.published_at).toLocaleDateString(
-                                        language === 'en' ? 'en-US' : 'zh-CN',
-                                      )
-                                    : new Date(article.created_at).toLocaleDateString(
-                                        language === 'en' ? 'en-US' : 'zh-CN',
-                                      )}
-                                </span>
-                              </div>
+                              <ArticleMetaRow
+                                className="mt-2"
+                                publishedAt={article.published_at}
+                                createdAt={article.created_at}
+                                items={[
+                                  article.category ? (
+                                    <span
+                                      className="category-chip px-2 py-1 rounded-sm"
+                                      style={{
+                                        backgroundColor: article.category.color ? `${article.category.color}20` : 'var(--bg-muted)',
+                                        color: article.category.color || 'var(--text-2)',
+                                      }}
+                                    >
+                                      {article.category.name}
+                                    </span>
+                                  ) : null,
+                                  article.author ? <span>{t('作者')}: {article.author}</span> : null,
+                                ]}
+                              />
                               {article.summary && (
                                 <p className="mt-2 text-text-2 line-clamp-3">
                                   {article.summary}
@@ -1704,7 +1618,6 @@ export default function Home() {
                         {t('下一页')}
                       </Button>
                       <div className="ml-2 flex flex-none items-center gap-1 whitespace-nowrap">
-                        <span className="text-sm text-text-2 whitespace-nowrap">{t('跳转')}</span>
                         <TextInput
                           type="number"
                           value={jumpToPage}
@@ -1794,189 +1707,80 @@ export default function Home() {
           )}
         </>
       )}
-      {showCreateModal && (
-        <div
-          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4"
-          onClick={() => setShowCreateModal(false)}
-        >
-          <div
-            className="bg-surface rounded-lg shadow-xl w-full h-[95vh] flex flex-col"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between p-4 border-b border-border flex-shrink-0">
-              <h3 className="text-lg font-semibold text-text-1">
-                {t('创建文章')}
-              </h3>
-              <button
-                type="button"
-                onClick={() => setShowCreateModal(false)}
-                className="text-text-3 hover:text-text-1 text-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
-                aria-label={t('关闭创建文章弹窗')}
-              >
-                ×
-              </button>
+      <ArticleSplitEditorModal
+        isOpen={showCreateModal}
+        title={t('创建文章')}
+        closeAriaLabel={t('关闭创建文章弹窗')}
+        onClose={() => setShowCreateModal(false)}
+        onSave={handleCreateArticle}
+        topFields={(
+          <>
+            <FormField label={t('标题')} required>
+              <TextInput
+                type="text"
+                value={createTitle}
+                onChange={(e) => setCreateTitle(e.target.value)}
+                placeholder={t('请输入文章标题')}
+              />
+            </FormField>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <FormField label={t('作者')}>
+                <TextInput
+                  type="text"
+                  value={createAuthor}
+                  onChange={(e) => setCreateAuthor(e.target.value)}
+                  placeholder={t('请输入作者')}
+                />
+              </FormField>
+              <FormField label={t('分类')}>
+                <SelectField
+                  value={createCategoryId}
+                  onChange={(value) => setCreateCategoryId(value)}
+                  className="w-full"
+                  options={[
+                    { value: '', label: t('未分类') },
+                    ...categories.map((category) => ({
+                      value: category.id,
+                      label: category.name,
+                    })),
+                  ]}
+                />
+              </FormField>
             </div>
 
-            <div className="flex-1 overflow-hidden">
-              <div className="grid grid-cols-1 lg:grid-cols-2 h-full">
-                <div className="p-4 flex flex-col h-full border-r border-border min-h-0">
-                  <div className="space-y-4">
-                    <FormField label={t('标题')} required>
-                      <TextInput
-                        type="text"
-                        value={createTitle}
-                        onChange={(e) => setCreateTitle(e.target.value)}
-                        placeholder={t('请输入文章标题')}
-                      />
-                    </FormField>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <FormField label={t('来源 URL')}>
+                <TextInput
+                  type="text"
+                  value={createSourceUrl}
+                  onChange={(e) => setCreateSourceUrl(e.target.value)}
+                  placeholder={t('请输入来源链接')}
+                />
+              </FormField>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <FormField label={t('作者')}>
-                        <TextInput
-                          type="text"
-                          value={createAuthor}
-                          onChange={(e) => setCreateAuthor(e.target.value)}
-                          placeholder={t('请输入作者')}
-                        />
-                      </FormField>
-                      <FormField label={t('分类')}>
-                        <SelectField
-                          value={createCategoryId}
-                          onChange={(value) => setCreateCategoryId(value)}
-                          className="w-full"
-                          options={[
-                            { value: '', label: t('未分类') },
-                            ...categories.map((category) => ({
-                              value: category.id,
-                              label: category.name,
-                            })),
-                          ]}
-                        />
-                      </FormField>
-                    </div>
-
-	                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-	                      <FormField label={t('来源 URL')}>
-	                        <TextInput
-	                          type="text"
-	                          value={createSourceUrl}
-	                          onChange={(e) => setCreateSourceUrl(e.target.value)}
-	                          placeholder={t('请输入来源链接')}
-	                        />
-	                      </FormField>
-
-	                      <FormField label={t('头图 URL')}>
-	                        <TextInput
-	                          type="text"
-	                          value={createTopImage}
-	                          onChange={(e) => setCreateTopImage(e.target.value)}
-	                          placeholder={t('输入图片 URL')}
-	                        />
-	                      </FormField>
-	                    </div>
-                  </div>
-
-                  <FormField label={t('内容（Markdown）')} required className="mt-4 flex-1 min-h-0 flex flex-col">
-                    <div className="mb-2 flex items-center justify-end gap-2">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={handleInsertCreateVideo}
-                        className="px-2"
-                      >
-                        {t('插入视频')}
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={handleInsertCreateAudio}
-                        className="px-2"
-                      >
-                        {t('插入音频')}
-                      </Button>
-                    </div>
-                    <TextArea
-                      ref={createTextareaRef}
-                      value={createContent}
-                      onChange={(e) => setCreateContent(e.target.value)}
-                      onPaste={handleCreatePaste}
-                      onScroll={() => {
-                        if (createTextareaRef.current && createPreviewRef.current) {
-                          const textarea = createTextareaRef.current;
-                          const preview = createPreviewRef.current;
-                          const scrollRatio = textarea.scrollTop / (textarea.scrollHeight - textarea.clientHeight);
-                          preview.scrollTop = scrollRatio * (preview.scrollHeight - preview.clientHeight);
-                        }
-                      }}
-                      className="flex-1 min-h-0 font-mono resize-none"
-                      placeholder={t('在此输入 Markdown 内容...')}
-                    />
-                  </FormField>
-
-                  <div className="flex justify-end gap-2 pt-4 border-t flex-shrink-0">
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      onClick={() => setShowCreateModal(false)}
-                      disabled={createSaving}
-                    >
-                      {t('取消')}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="primary"
-                      onClick={handleCreateArticle}
-                      disabled={createSaving}
-                    >
-                      {createSaving ? t('保存中...') : t('创建')}
-                    </Button>
-                  </div>
-                </div>
-
-                <div
-                  ref={createPreviewRef}
-                  onScroll={() => {
-                    if (createTextareaRef.current && createPreviewRef.current) {
-                      const textarea = createTextareaRef.current;
-                      const preview = createPreviewRef.current;
-                      const scrollRatio = preview.scrollTop / (preview.scrollHeight - preview.clientHeight);
-                      textarea.scrollTop = scrollRatio * (textarea.scrollHeight - textarea.clientHeight);
-                    }
-                  }}
-                  className="bg-muted overflow-y-auto h-full hidden lg:block"
-                >
-                  <div className="max-w-3xl mx-auto bg-surface min-h-full shadow-sm">
-                    <div className="relative w-full aspect-[21/9] overflow-hidden">
-                      <img
-                        src={resolveMediaUrl(createTopImage || basicSettings.site_logo_url || '/logo.png')}
-                        alt={createTitle}
-                        className="w-full h-full object-cover"
-                        loading="lazy"
-                        decoding="async"
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).style.display = 'none';
-                        }}
-                      />
-                    </div>
-                    <article className="p-6">
-                      <div
-                        className="prose prose-sm max-w-none"
-                        dangerouslySetInnerHTML={{
-                          __html: renderSafeMarkdown(createContent || '', {
-                            enableMediaEmbed: true,
-                          }),
-                        }}
-                      />
-                    </article>
-                  </div>
-                </div>
-              </div>
+              <FormField label={t('头图 URL')}>
+                <TextInput
+                  type="text"
+                  value={createTopImage}
+                  onChange={(e) => setCreateTopImage(e.target.value)}
+                  placeholder={t('输入图片 URL')}
+                />
+              </FormField>
             </div>
-          </div>
-        </div>
-      )}
+          </>
+        )}
+        contentValue={createContent}
+        onContentChange={setCreateContent}
+        onContentPaste={handleCreatePaste}
+        saveText={t('创建')}
+        savingText={t('保存中...')}
+        isSaving={createSaving}
+        previewImageUrl={resolveMediaUrl(createTopImage || basicSettings.site_logo_url || '/logo.png') || ''}
+        previewImageAlt={createTitle}
+        previewHtml={renderSafeMarkdown(createContent || '', { enableMediaEmbed: true })}
+        closeOnBackdrop
+      />
 
       <AppFooter />
       <BackToTop />

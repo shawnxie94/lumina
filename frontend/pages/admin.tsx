@@ -1072,7 +1072,7 @@ export default function AdminPage() {
 				await categoryApi.updateCategoriesSort(sortItems);
 			} catch (error) {
 				console.error("Failed to update sort order:", error);
-				showToast("排序更新失败", "error");
+				showToast(t("排序更新失败"), "error");
 				fetchCategories();
 			}
 		}
@@ -1267,7 +1267,7 @@ export default function AdminPage() {
 			setUsageTotal(response.total || 0);
 		} catch (error) {
 			console.error("Failed to fetch AI usage logs:", error);
-			showToast("调用记录加载失败", "error");
+			showToast(t("调用记录加载失败"), "error");
 		} finally {
 			setUsageLoading(false);
 		}
@@ -1286,7 +1286,7 @@ export default function AdminPage() {
 			setUsageByModel(response.by_model || []);
 		} catch (error) {
 			console.error("Failed to fetch AI usage summary:", error);
-			showToast("计量汇总加载失败", "error");
+			showToast(t("计量汇总加载失败"), "error");
 		}
 	};
 
@@ -1322,7 +1322,7 @@ export default function AdminPage() {
 			setCommentListTotal(response.pagination?.total || 0);
 		} catch (error) {
 			console.error("Failed to fetch comments:", error);
-			showToast("评论列表加载失败", "error");
+			showToast(t("评论列表加载失败"), "error");
 		} finally {
 			setCommentListLoading(false);
 		}
@@ -1335,7 +1335,7 @@ export default function AdminPage() {
 			setCommentSettings(data);
 		} catch (error) {
 			console.error("Failed to fetch comment settings:", error);
-			showToast("评论配置加载失败", "error");
+			showToast(t("评论配置加载失败"), "error");
 		} finally {
 			setCommentSettingsLoading(false);
 		}
@@ -1345,10 +1345,10 @@ export default function AdminPage() {
 		setCommentSettingsSaving(true);
 		try {
 			await commentSettingsApi.updateSettings(commentSettings);
-			showToast("评论配置已保存");
+			showToast(t("评论配置已保存"));
 		} catch (error) {
 			console.error("Failed to save comment settings:", error);
-			showToast("评论配置保存失败", "error");
+			showToast(t("评论配置保存失败"), "error");
 		} finally {
 			setCommentSettingsSaving(false);
 		}
@@ -1398,7 +1398,7 @@ export default function AdminPage() {
 			});
 		} catch (error) {
 			console.error("Failed to fetch storage settings:", error);
-			showToast("存储配置加载失败", "error");
+			showToast(t("存储配置加载失败"), "error");
 		} finally {
 			setStorageSettingsLoading(false);
 			setStorageStatsLoading(false);
@@ -1409,10 +1409,10 @@ export default function AdminPage() {
 		setStorageSettingsSaving(true);
 		try {
 			await storageSettingsApi.updateSettings(storageSettings);
-			showToast("存储配置已保存");
+			showToast(t("存储配置已保存"));
 		} catch (error) {
 			console.error("Failed to save storage settings:", error);
-			showToast("存储配置保存失败", "error");
+			showToast(t("存储配置保存失败"), "error");
 		} finally {
 			setStorageSettingsSaving(false);
 		}
@@ -2053,11 +2053,11 @@ export default function AdminPage() {
 	const handleSavePrompt = async () => {
 		if (promptSaving) return;
 		if (!promptFormData.system_prompt.trim()) {
-			showToast("请填写系统提示词", "error");
+			showToast(t("请填写系统提示词"), "error");
 			return;
 		}
 		if (!promptFormData.prompt.trim()) {
-			showToast("请填写提示词", "error");
+			showToast(t("请填写提示词"), "error");
 			return;
 		}
 		const hasAnyChunkOption =
@@ -3013,11 +3013,11 @@ export default function AdminPage() {
 			onConfirm: async () => {
 				try {
 					await articleApi.deletePromptConfig(id);
-					showToast("删除成功");
+					showToast(t("删除成功"));
 					fetchPromptConfigs();
 				} catch (error) {
 					console.error("Failed to delete prompt config:", error);
-					showToast("删除失败", "error");
+					showToast(t("删除失败"), "error");
 				}
 			},
 		});
@@ -3066,7 +3066,7 @@ export default function AdminPage() {
 			const parsed = JSON.parse(raw);
 			const configs = Array.isArray(parsed) ? parsed : parsed?.configs;
 			if (!Array.isArray(configs)) {
-				showToast("导入失败：格式不正确", "error");
+				showToast(t("导入失败：格式不正确"), "error");
 				return;
 			}
 
@@ -3153,9 +3153,11 @@ export default function AdminPage() {
 		return sections
 			.map(([label, key]) => {
 				const current = result.stats[key];
-				return `${label}: +${current.created}/跳过${current.skipped}/错误${current.errors}`;
+				return `${t(label)}: +${current.created}/${t("跳过")}${current.skipped}/${t(
+					"错误",
+				)}${current.errors}`;
 			})
-			.join("；");
+			.join("; ");
 	};
 
 	const handleExportBackup = async () => {

@@ -188,17 +188,17 @@ html[data-theme="dark"] .filter-chip {
 
 .language-tag {
   border-radius: 9999px;
-  background: rgba(15, 23, 42, 0.72);
+  background: rgba(15, 23, 42, 0.56);
   color: #f8fafc;
-  border: 1px solid rgba(248, 250, 252, 0.24);
+  border: 1px solid rgba(248, 250, 252, 0.18);
   font-weight: 600;
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
 }
 
 html[data-theme="dark"] .language-tag {
-  background: rgba(30, 41, 59, 0.78);
-  border-color: rgba(148, 163, 184, 0.45);
+  background: rgba(30, 41, 59, 0.64);
+  border-color: rgba(148, 163, 184, 0.36);
 }
 
 .category-chip {

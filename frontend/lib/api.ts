@@ -11,6 +11,18 @@ declare global {
 }
 
 export const DEFAULT_ERROR_TASK_POLL_INTERVAL_MS = 10 * 60 * 1000;
+const LANGUAGE_STORAGE_KEY = "ui_language";
+
+const getUiLanguage = (): "zh-CN" | "en" => {
+	if (typeof window === "undefined") return "zh-CN";
+	const stored = localStorage.getItem(LANGUAGE_STORAGE_KEY);
+	if (stored === "zh-CN" || stored === "en") return stored;
+	const browserLang = navigator.language?.toLowerCase() || "";
+	return browserLang.startsWith("en") ? "en" : "zh-CN";
+};
+
+const localize = (zhText: string, enText: string): string =>
+	getUiLanguage() === "en" ? enText : zhText;
 
 const normalizeBaseUrl = (value?: string | null): string => {
 	const trimmed = value?.trim();
@@ -195,18 +207,20 @@ api.interceptors.response.use(
 					error?.response?.data?.detail ||
 					error?.response?.data?.message ||
 					error?.message ||
-					"未知错误";
+					localize("未知错误", "Unknown error");
 				const endpoint = error?.config?.url || "";
-				const method = error?.config?.method?.toUpperCase() || "请求";
+				const method =
+					error?.config?.method?.toUpperCase() ||
+					localize("请求", "REQUEST");
 				notificationStore.add({
 					id: `api:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`,
-					title: "接口请求失败",
+					title: localize("接口请求失败", "API request failed"),
 					message: `${method} ${endpoint} ${
 						status ? `(${status})` : ""
 					} ${detail}`.trim(),
 					level: "error",
 					source: "api",
-					category: "接口错误",
+					category: localize("接口错误", "API error"),
 					createdAt: new Date().toISOString(),
 				});
 			}
@@ -1107,7 +1121,7 @@ export const commentApi = {
 			credentials: "same-origin",
 		});
 		if (!response.ok) {
-			throw new Error("获取评论失败");
+			throw new Error(localize("获取评论失败", "Failed to fetch comments"));
 		}
 		return response.json();
 	},
@@ -1124,7 +1138,7 @@ export const commentApi = {
 		});
 		const data = await response.json();
 		if (!response.ok) {
-			throw new Error(data?.message || "发布评论失败");
+			throw new Error(data?.message || localize("发布评论失败", "Failed to post comment"));
 		}
 		return data as ArticleComment;
 	},
@@ -1137,7 +1151,9 @@ export const commentApi = {
 		});
 		const data = await response.json();
 		if (!response.ok) {
-			throw new Error(data?.message || "更新评论失败");
+			throw new Error(
+				data?.message || localize("更新评论失败", "Failed to update comment"),
+			);
 		}
 		return data as ArticleComment;
 	},
@@ -1148,7 +1164,7 @@ export const commentApi = {
 		});
 		const data = await response.json();
 		if (!response.ok) {
-			throw new Error(data?.message || "删除评论失败");
+			throw new Error(data?.message || localize("删除评论失败", "Failed to delete comment"));
 		}
 		return data as { success: boolean };
 	},

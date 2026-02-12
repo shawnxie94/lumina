@@ -7,6 +7,8 @@ import { articleApi, type Article, resolveMediaUrl } from '@/lib/api';
 import AppFooter from '@/components/AppFooter';
 import AppHeader from '@/components/AppHeader';
 import { BackToTop } from '@/components/BackToTop';
+import ArticleGridSkeleton from '@/components/article/ArticleGridSkeleton';
+import ArticleLanguageTag from '@/components/article/ArticleLanguageTag';
 import LinkButton from '@/components/ui/LinkButton';
 import { useBasicSettings } from '@/contexts/BasicSettingsContext';
 import { useI18n } from '@/lib/i18n';
@@ -87,7 +89,6 @@ export default function HomePage() {
   const primaryButtonUrl = basicSettings.home_primary_button_url || '/list';
   const secondaryButtonText = basicSettings.home_secondary_button_text || t('了解更多');
   const secondaryButtonUrl = basicSettings.home_secondary_button_url || githubUrl;
-
   return (
     <div className="min-h-screen bg-app flex flex-col">
       <Head>
@@ -177,7 +178,7 @@ export default function HomePage() {
 
         <section className="max-w-7xl mx-auto px-4 pb-12">
           {latestLoading ? (
-            <div className="py-12 text-center text-text-3">{t('加载中')}</div>
+            <ArticleGridSkeleton />
           ) : latestArticles.length === 0 ? (
             <div className="py-12 text-center text-text-3">{t('暂无文章')}</div>
           ) : (
@@ -194,6 +195,7 @@ export default function HomePage() {
                       alt={article.title}
                       className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
                     />
+                    <ArticleLanguageTag article={article} className="absolute left-2 top-2 px-2 py-0.5 text-xs" />
                   </div>
                   <div className="p-4">
                     <h3 className="text-base font-semibold text-text-1 truncate group-hover:text-primary transition" title={article.title}>
@@ -234,7 +236,7 @@ export default function HomePage() {
               variant="secondary"
               className="rounded-full px-6 py-2.5 hover:bg-primary hover:text-white hover:border-primary"
             >
-              {t('查看更多...')}
+              {t('查看更多')}
             </LinkButton>
           </div>
         </section>

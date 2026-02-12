@@ -4,8 +4,8 @@ import sanitizeHtml, { type IOptions } from "sanitize-html";
 const LINK_REL_TOKENS = ["noopener", "noreferrer", "nofollow"];
 const VIDEO_MARKER = "▶";
 const AUDIO_MARKER = "🎧";
-const DEFAULT_VIDEO_TITLE = "视频";
-const DEFAULT_AUDIO_TITLE = "音频";
+const DEFAULT_VIDEO_TITLE = "Video";
+const DEFAULT_AUDIO_TITLE = "Audio";
 const EMBED_IFRAME_HOSTNAMES = [
 	"www.youtube.com",
 	"youtube.com",
