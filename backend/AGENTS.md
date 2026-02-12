@@ -47,7 +47,7 @@ backend/
 
 ## CONVENTIONS
 - External API behavior must stay backward compatible during modularization.
-- Keep both `/api/*` and `/backend/api/*` entrypoints working unless explicitly removing compatibility.
+- Backend API routes are served under `/backend/api/*` only (do not reintroduce unprefixed `/api/*` compatibility).
 - Runtime validation is strict; missing/invalid settings should fail fast during startup.
 - `INTERNAL_API_TOKEN` is required for startup and internal-only endpoints.
 - DB uses SQLite by default; timestamps are stored as strings.

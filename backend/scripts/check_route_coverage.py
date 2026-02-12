@@ -33,6 +33,14 @@ class RouteKey:
     methods: tuple[str, ...]
 
 
+def normalize_path(path: str) -> str:
+    if path.startswith("/backend/api/"):
+        return path[len("/backend") :]
+    if path == "/backend" or path == "/backend/":
+        return "/"
+    return path
+
+
 def normalize_methods(route: APIRoute) -> tuple[str, ...]:
     methods = route.methods or set()
     return tuple(sorted(method for method in methods if method not in {"HEAD", "OPTIONS"}))
@@ -43,9 +51,15 @@ def collect_routes(app) -> tuple[set[RouteKey], Counter[RouteKey]]:
     for route in app.routes:
         if not isinstance(route, APIRoute):
             continue
-        if not (route.path.startswith("/api") or route.path == "/"):
+        raw_path = route.path
+        if not (
+            raw_path.startswith("/api")
+            or raw_path == "/"
+            or raw_path.startswith("/backend/api")
+            or raw_path in {"/backend", "/backend/"}
+        ):
             continue
-        key = RouteKey(path=route.path, methods=normalize_methods(route))
+        key = RouteKey(path=normalize_path(raw_path), methods=normalize_methods(route))
         keys.append(key)
     return set(keys), Counter(keys)
 

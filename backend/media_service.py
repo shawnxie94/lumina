@@ -42,7 +42,29 @@ def is_media_enabled(db: Session) -> bool:
 def is_internal_media_url(url: str) -> bool:
     if not url:
         return False
-    return url.startswith(f"{MEDIA_BASE_URL}/") or url.startswith("/media/")
+    raw = url.strip()
+    if not raw:
+        return False
+    parsed = urlparse(raw)
+    path = (parsed.path or raw).replace("\\", "/")
+    if not path.startswith("/"):
+        return False
+
+    prefixes = _internal_media_path_prefixes()
+    return any(path.startswith(prefix) for prefix in prefixes)
+
+
+def _internal_media_path_prefixes() -> tuple[str, ...]:
+    prefixes = [
+        f"{MEDIA_BASE_URL.rstrip('/')}/",
+        "/media/",
+        "/backend/media/",
+    ]
+    seen: list[str] = []
+    for prefix in prefixes:
+        if prefix not in seen:
+            seen.append(prefix)
+    return tuple(seen)
 
 
 def _guess_extension(content_type: str | None, url: str | None = None) -> str:
@@ -440,11 +462,7 @@ def _extract_internal_media_rel_path(url: str) -> str | None:
     if not path:
         return None
 
-    prefixes = [
-        f"{MEDIA_BASE_URL.rstrip('/')}/",
-        "/media/",
-        "/backend/media/",
-    ]
+    prefixes = _internal_media_path_prefixes()
     for prefix in prefixes:
         if path.startswith(prefix):
             rel = path[len(prefix) :].lstrip("/")

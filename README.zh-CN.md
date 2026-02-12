@@ -96,7 +96,8 @@ docker-compose up -d
 访问地址：
 
 - Web：<http://localhost:3000>
-- API：<http://localhost:8000>
+- API（接口）：<http://localhost:8000/backend>
+- API（文档）：<http://localhost:8000/docs>
 
 ## 最小开发说明
 
@@ -127,7 +128,9 @@ npm run dev
 
 首次使用需要先访问 `/login` 设置管理员密码，之后再正常登录。
 
-### 为什么前端请求接口返回 404（如 `/backend/api/articles`）？
+### 为什么前端请求接口返回 404（如 `/api/articles`）？
+
+后端接口仅在 `/backend/api/*` 下提供（无前缀 `/api/*` 不再可用）。
 
 优先检查 `API_BASE_URL`。同源环境通常应为 `/backend`；本地前后端分端口时可设置为 `http://localhost:8000/backend`。
 

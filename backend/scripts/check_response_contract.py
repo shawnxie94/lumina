@@ -190,8 +190,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Check API response contract baseline")
     parser.add_argument(
         "--base-url",
-        default="http://localhost:8000",
-        help="Base URL to verify, default: http://localhost:8000",
+        default="http://localhost:8000/backend",
+        help="Base URL to verify, default: http://localhost:8000/backend",
     )
     parser.add_argument(
         "--baseline",

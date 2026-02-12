@@ -99,7 +99,8 @@ docker-compose up -d
 Open:
 
 - Web: <http://localhost:3000>
-- API: <http://localhost:8000>
+- API (routes): <http://localhost:8000/backend>
+- API (docs): <http://localhost:8000/docs>
 
 ## Minimal Dev Notes
 
@@ -130,7 +131,9 @@ npm run dev
 
 On first run, open `/login` and set the admin password before normal login.
 
-### Why does frontend API return 404 (for example `/backend/api/articles`)?
+### Why does frontend API return 404 (for example `/api/articles`)?
+
+Backend routes are served under `/backend/api/*` only (unprefixed `/api/*` is not available).
 
 Check `API_BASE_URL`. In same-origin production it should normally be `/backend`; in local split-port setups it can be `http://localhost:8000/backend`.
 

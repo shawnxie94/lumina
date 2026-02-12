@@ -5,7 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
 COMPOSE_CMD="${COMPOSE_CMD:-docker-compose}"
-API_URL="${API_URL:-http://localhost:8000}"
+API_URL="${API_URL:-http://localhost:8000/backend}"
 WEB_URL="${WEB_URL:-http://localhost:3000}"
 WAIT_TIMEOUT="${WAIT_TIMEOUT:-90}"
 

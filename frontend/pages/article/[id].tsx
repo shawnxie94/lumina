@@ -9,6 +9,7 @@ import {
 	categoryApi,
 	commentApi,
 	commentSettingsApi,
+	getApiBaseUrl,
 	mediaApi,
 	storageSettingsApi,
 	normalizeMediaHtml,
@@ -2883,6 +2884,28 @@ export default function ArticleDetailPage() {
 		}
 	};
 
+	const isLikelyInternalMediaUrl = (url: string): boolean => {
+		const trimmed = url.trim();
+		if (!trimmed) return false;
+		if (
+			trimmed.startsWith("/media/") ||
+			trimmed.startsWith("/backend/media/")
+		) {
+			return true;
+		}
+		if (typeof window === "undefined") return false;
+		try {
+			const apiOrigin = new URL(getApiBaseUrl(), window.location.origin).origin;
+			const parsed = new URL(trimmed);
+			const isInternalPath =
+				parsed.pathname.startsWith("/media/") ||
+				parsed.pathname.startsWith("/backend/media/");
+			return isInternalPath && parsed.origin === apiOrigin;
+		} catch {
+			return false;
+		}
+	};
+
 	const handleBatchConvertMarkdownImages = async () => {
 		if (!article?.id) return;
 		if (!editContent.trim()) {
@@ -2896,7 +2919,7 @@ export default function ArticleDetailPage() {
 		if (mediaUploading) return;
 
 		const urls = extractMarkdownImageUrls(editContent).filter(
-			(url) => !url.includes("/media/"),
+			(url) => !isLikelyInternalMediaUrl(url),
 		);
 		if (urls.length === 0) {
 			showToast(t("未发现外链图片"), "info");

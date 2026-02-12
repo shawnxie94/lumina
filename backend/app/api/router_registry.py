@@ -18,19 +18,18 @@ BACKEND_PREFIX = "/backend"
 
 
 def register_routers(app: FastAPI) -> None:
-    for prefix in ("", BACKEND_PREFIX):
-        app.include_router(auth_router, prefix=prefix)
-        app.include_router(settings_router, prefix=prefix)
-        app.include_router(media_router, prefix=prefix)
-        app.include_router(article_router, prefix=prefix)
-        app.include_router(comment_router, prefix=prefix)
-        app.include_router(ai_tasks_router, prefix=prefix)
-        app.include_router(ai_usage_router, prefix=prefix)
-        app.include_router(category_router, prefix=prefix)
-        app.include_router(backup_router, prefix=prefix)
-        app.include_router(export_router, prefix=prefix)
-        app.include_router(model_api_router, prefix=prefix)
-        app.include_router(prompt_config_router, prefix=prefix)
+    prefix = BACKEND_PREFIX
+    app.include_router(auth_router, prefix=prefix)
+    app.include_router(settings_router, prefix=prefix)
+    app.include_router(media_router, prefix=prefix)
+    app.include_router(article_router, prefix=prefix)
+    app.include_router(comment_router, prefix=prefix)
+    app.include_router(ai_tasks_router, prefix=prefix)
+    app.include_router(ai_usage_router, prefix=prefix)
+    app.include_router(category_router, prefix=prefix)
+    app.include_router(backup_router, prefix=prefix)
+    app.include_router(export_router, prefix=prefix)
+    app.include_router(model_api_router, prefix=prefix)
+    app.include_router(prompt_config_router, prefix=prefix)
 
-    app.include_router(health_router)
-    app.include_router(health_router, prefix=BACKEND_PREFIX)
+    app.include_router(health_router, prefix=prefix)
