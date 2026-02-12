@@ -428,24 +428,39 @@ def cleanup_media_assets(db: Session, article_ids: list[str]) -> int:
     return count
 
 
+def _extract_internal_media_rel_path(url: str) -> str | None:
+    if not url:
+        return None
+    raw = url.strip()
+    if not raw:
+        return None
+
+    parsed = urlparse(raw)
+    path = (parsed.path or raw).replace("\\", "/")
+    if not path:
+        return None
+
+    prefixes = [
+        f"{MEDIA_BASE_URL.rstrip('/')}/",
+        "/media/",
+        "/backend/media/",
+    ]
+    for prefix in prefixes:
+        if path.startswith(prefix):
+            rel = path[len(prefix) :].lstrip("/")
+            return rel or None
+    return None
+
+
 def _extract_media_paths_from_markdown(content: str) -> set[str]:
     if not content:
         return set()
     paths: set[str] = set()
     pattern = re.compile(r"!\[[^\]]*\]\((\S+?)(?:\s+\"[^\"]*\")?\)")
     for match in pattern.finditer(content):
-        url = match.group(1)
-        if not url:
-            continue
-        if MEDIA_BASE_URL in url:
-            idx = url.find(MEDIA_BASE_URL)
-            rel = url[idx + len(MEDIA_BASE_URL) :].lstrip("/")
-            if rel:
-                paths.add(rel)
-        elif url.startswith("/media/"):
-            rel = url[len("/media/") :]
-            if rel:
-                paths.add(rel)
+        rel = _extract_internal_media_rel_path(match.group(1) or "")
+        if rel:
+            paths.add(rel)
     return paths
 
 
@@ -455,16 +470,9 @@ def cleanup_orphan_media(db: Session) -> dict:
     referenced_paths: set[str] = set()
     for article_id, content_md, top_image in articles:
         referenced_paths |= _extract_media_paths_from_markdown(content_md or "")
-        if top_image and (MEDIA_BASE_URL in top_image or top_image.startswith("/media/")):
-            if MEDIA_BASE_URL in top_image:
-                idx = top_image.find(MEDIA_BASE_URL)
-                rel = top_image[idx + len(MEDIA_BASE_URL) :].lstrip("/")
-                if rel:
-                    referenced_paths.add(rel)
-            elif top_image.startswith("/media/"):
-                rel = top_image[len("/media/") :]
-                if rel:
-                    referenced_paths.add(rel)
+        rel = _extract_internal_media_rel_path(top_image or "")
+        if rel:
+            referenced_paths.add(rel)
 
     assets = db.query(MediaAsset).all()
     removed_records = 0
@@ -493,11 +501,12 @@ def cleanup_orphan_media(db: Session) -> dict:
 
     db.commit()
 
+    preserve_paths = keep_paths | referenced_paths
     for root, _dirs, files in os.walk(MEDIA_ROOT):
         for filename in files:
             full_path = os.path.join(root, filename)
             rel_path = os.path.relpath(full_path, MEDIA_ROOT).replace("\\", "/")
-            if rel_path not in keep_paths:
+            if rel_path not in preserve_paths:
                 try:
                     os.remove(full_path)
                     removed_files += 1
