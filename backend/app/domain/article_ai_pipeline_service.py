@@ -23,6 +23,15 @@ from task_errors import TaskConfigError, TaskDataError, TaskExternalError, TaskT
 
 
 logger = logging.getLogger("article_ai_pipeline")
+VIDEO_URL_PATTERN = re.compile(
+    r"(youtube\.com|youtu\.be|bilibili\.com|vimeo\.com|"
+    r"\.(mp4|webm|mov|m4v|ogv|ogg)(\?.*)?$)",
+    re.IGNORECASE,
+)
+AUDIO_URL_PATTERN = re.compile(
+    r"\.(mp3|wav|m4a|aac|ogg|flac|opus)(\?.*)?$",
+    re.IGNORECASE,
+)
 
 
 def build_parameters(model) -> dict:
@@ -317,6 +326,117 @@ class ArticleAIPipelineService:
             return unescape(match.group(1).strip())
         return ""
 
+    def _normalize_media_url(self, url: str) -> str:
+        normalized = (url or "").strip()
+        if not normalized:
+            return ""
+        normalized = re.sub(r"^<|>$", "", normalized)
+        normalized = re.sub(r"[),.;:!?]+$", "", normalized)
+        return normalized
+
+    def _detect_media_kind(self, url: str) -> str | None:
+        normalized = self._normalize_media_url(url)
+        if not normalized:
+            return None
+        if AUDIO_URL_PATTERN.search(normalized):
+            return "audio"
+        if VIDEO_URL_PATTERN.search(normalized):
+            return "video"
+        return None
+
+    def _build_media_markdown_link(
+        self,
+        kind: str,
+        url: str,
+        title: str | None = None,
+    ) -> str:
+        normalized_url = self._normalize_media_url(url)
+        if not normalized_url:
+            return ""
+        normalized_title = self._strip_html_tags(title or "").strip()
+        if not normalized_title:
+            normalized_title = "视频" if kind == "video" else "音频"
+        marker = "▶" if kind == "video" else "🎧"
+        return f"[{marker} {normalized_title}]({normalized_url})"
+
+    def _extract_source_from_media_inner(self, inner_html: str) -> str:
+        if not inner_html:
+            return ""
+        source_match = re.search(r"<source\b([^>]*)>", inner_html, re.IGNORECASE)
+        if not source_match:
+            return ""
+        return self._extract_attr(source_match.group(1), "src")
+
+    def _convert_html_media_embeds(self, html_text: str) -> str:
+        content = html_text or ""
+
+        def replace_iframe(match: re.Match) -> str:
+            attrs = match.group(1) or match.group(3) or ""
+            inner = match.group(2) or ""
+            src = self._extract_attr(attrs, "src")
+            kind = self._detect_media_kind(src)
+            if kind != "video":
+                return "\n\n"
+            title = (
+                self._extract_attr(attrs, "title")
+                or self._extract_attr(attrs, "aria-label")
+                or self._strip_html_tags(inner)
+            )
+            media_md = self._build_media_markdown_link(kind, src, title)
+            return f"\n\n{media_md}\n\n" if media_md else "\n\n"
+
+        def replace_video(match: re.Match) -> str:
+            attrs = match.group(1) or match.group(3) or ""
+            inner = match.group(2) or ""
+            src = self._extract_attr(attrs, "src") or self._extract_source_from_media_inner(
+                inner
+            )
+            if not src:
+                return "\n\n"
+            title = (
+                self._extract_attr(attrs, "title")
+                or self._extract_attr(attrs, "aria-label")
+                or self._strip_html_tags(inner)
+            )
+            media_md = self._build_media_markdown_link("video", src, title)
+            return f"\n\n{media_md}\n\n" if media_md else "\n\n"
+
+        def replace_audio(match: re.Match) -> str:
+            attrs = match.group(1) or match.group(3) or ""
+            inner = match.group(2) or ""
+            src = self._extract_attr(attrs, "src") or self._extract_source_from_media_inner(
+                inner
+            )
+            if not src:
+                return "\n\n"
+            title = (
+                self._extract_attr(attrs, "title")
+                or self._extract_attr(attrs, "aria-label")
+                or self._strip_html_tags(inner)
+            )
+            media_md = self._build_media_markdown_link("audio", src, title)
+            return f"\n\n{media_md}\n\n" if media_md else "\n\n"
+
+        content = re.sub(
+            r"<iframe\b([^>]*)>([\s\S]*?)</iframe>|<iframe\b([^>]*)/?>",
+            replace_iframe,
+            content,
+            flags=re.IGNORECASE,
+        )
+        content = re.sub(
+            r"<video\b([^>]*)>([\s\S]*?)</video>|<video\b([^>]*)/?>",
+            replace_video,
+            content,
+            flags=re.IGNORECASE,
+        )
+        content = re.sub(
+            r"<audio\b([^>]*)>([\s\S]*?)</audio>|<audio\b([^>]*)/?>",
+            replace_audio,
+            content,
+            flags=re.IGNORECASE,
+        )
+        return content
+
     def _convert_html_tables(self, html_text: str) -> str:
         table_re = re.compile(r"<table\b[^>]*>([\s\S]*?)</table>", re.IGNORECASE)
         row_re = re.compile(r"<tr\b[^>]*>([\s\S]*?)</tr>", re.IGNORECASE)
@@ -350,6 +470,7 @@ class ArticleAIPipelineService:
         if not content.strip():
             return ""
 
+        content = self._convert_html_media_embeds(content)
         content = re.sub(r"<!--[\s\S]*?-->", "", content)
         content = re.sub(
             r"<(script|style|noscript|iframe|canvas|svg)\b[\s\S]*?</\1>",
@@ -425,7 +546,13 @@ class ArticleAIPipelineService:
         content = re.sub(
             r"<a\b([^>]*)>([\s\S]*?)</a>",
             lambda m: (
-                "["
+                self._build_media_markdown_link(
+                    self._detect_media_kind(self._extract_attr(m.group(1), "href")) or "",
+                    self._extract_attr(m.group(1), "href"),
+                    self._strip_html_tags(m.group(2)),
+                )
+                if self._detect_media_kind(self._extract_attr(m.group(1), "href"))
+                else "["
                 + (self._strip_html_tags(m.group(2)) or self._extract_attr(m.group(1), "href"))
                 + "]("
                 + self._extract_attr(m.group(1), "href")
@@ -707,6 +834,7 @@ class ArticleAIPipelineService:
     def _build_cleaning_prompt(self, base_prompt: str | None, source_format: str) -> str | None:
         if not base_prompt:
             return None
+
         if source_format == "html":
             return base_prompt
         adjusted = (
