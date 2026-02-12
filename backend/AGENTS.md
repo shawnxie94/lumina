@@ -29,7 +29,7 @@ backend/
 |------|----------|-------|
 | Add or modify API endpoints | `backend/app/api/routers/` | Keep URL/response compatibility |
 | Router registration | `backend/app/api/router_registry.py` | New routers must be registered here |
-| Prefix strategy | `backend/app/api/router_registry.py` | Routers mount with and without `/backend` prefix |
+| Prefix strategy | `backend/app/api/router_registry.py` | Routers mount under `/backend/api/*` only |
 | Shared dependency helpers | `backend/app/core/dependencies.py` | Auth/internal access/date helpers |
 | Middleware/CORS setup | `backend/app/core/http.py` | Request-id logging and CORS config |
 | Public list cache | `backend/app/core/public_cache.py` | Anonymous read cache helpers |

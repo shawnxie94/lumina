@@ -23,7 +23,7 @@ Lumina is a content workspace with a Next.js 14 frontend (pages router), FastAPI
 |------|----------|-------|
 | Backend app entry | `backend/main.py` `backend/app/main.py` | `main.py` exports app; app factory in `backend/app/main.py` |
 | Backend API routers | `backend/app/api/routers/` | Routers split by domain, URLs unchanged |
-| Backend router wiring | `backend/app/api/router_registry.py` | Routers are mounted for both `/api/*` and `/backend/api/*` |
+| Backend router wiring | `backend/app/api/router_registry.py` | Routers are mounted under `/backend/api/*` only |
 | Backend dependencies/middleware | `backend/app/core/dependencies.py` `backend/app/core/http.py` | Shared auth/internal/cors/request-id logic |
 | Backend runtime settings | `backend/app/core/settings.py` | Central env loading + startup fail-fast validation |
 | Backend settings reference | `backend/docs/runtime-settings.md` | Runtime env defaults and validation constraints |
@@ -60,6 +60,7 @@ Lumina is a content workspace with a Next.js 14 frontend (pages router), FastAPI
 - TypeScript uses `strict: true`, `moduleResolution: "bundler"`, `target: "es5"`, `noEmit: true`, `@/*` path alias.
 - Backend requires Python 3.11 and keeps runtime entrypoint as `uvicorn main:app`.
 - Backend startup requires `INTERNAL_API_TOKEN`; app/worker fail fast on invalid runtime settings.
+- Backend API routes are served under `/backend/api/*` only.
 - Frontend API base resolves at runtime and defaults to `/backend` in same-origin environments.
 - WXT manifest enables `<all_urls>` host permissions and devtools; build target `esnext`.
 - Biome disables `noUnknownAtRules` in `biome.json` and `frontend/biome.json` (Tailwind).
