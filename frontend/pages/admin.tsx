@@ -5072,19 +5072,21 @@ export default function AdminPage() {
 
 						<FormField label={t("模型名称")} required>
 							{modelNameManual ? (
-								<div className="flex flex-wrap items-center gap-2">
-									<TextInput
-										type="text"
-										value={modelAPIFormData.model_name}
-										onChange={(e) =>
-											setModelAPIFormData({
-												...modelAPIFormData,
-												model_name: e.target.value,
-											})
-										}
-										placeholder={t("手动输入模型名称")}
-										required
-									/>
+								<div className="flex items-center gap-2">
+									<div className="flex-1 min-w-0">
+										<TextInput
+											type="text"
+											value={modelAPIFormData.model_name}
+											onChange={(e) =>
+												setModelAPIFormData({
+													...modelAPIFormData,
+													model_name: e.target.value,
+												})
+											}
+											placeholder={t("手动输入模型名称")}
+											required
+										/>
+									</div>
 									<Button
 										type="button"
 										onClick={() => setModelNameManual(false)}
@@ -5097,24 +5099,26 @@ export default function AdminPage() {
 									</Button>
 								</div>
 							) : (
-								<div className="flex flex-wrap items-center gap-2">
-									<SelectField
-										value={modelAPIFormData.model_name || undefined}
-										onChange={(value) =>
-											setModelAPIFormData({
-												...modelAPIFormData,
-												model_name: value,
-											})
-										}
-										className="w-full"
-										popupClassName="select-modern-dropdown"
-										placeholder={t("请选择模型")}
-										options={modelOptions.map((model) => ({
-											value: model,
-											label: model,
-										}))}
-										loading={modelOptionsLoading}
-									/>
+								<div className="flex items-center gap-2">
+									<div className="flex-1 min-w-0">
+										<SelectField
+											value={modelAPIFormData.model_name || undefined}
+											onChange={(value) =>
+												setModelAPIFormData({
+													...modelAPIFormData,
+													model_name: value,
+												})
+											}
+											className="w-full"
+											popupClassName="select-modern-dropdown"
+											placeholder={t("请选择模型")}
+											options={modelOptions.map((model) => ({
+												value: model,
+												label: model,
+											}))}
+											loading={modelOptionsLoading}
+										/>
+									</div>
 									<Button
 										type="button"
 										onClick={() => setModelNameManual(true)}
