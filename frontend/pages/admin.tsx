@@ -610,9 +610,13 @@ export default function AdminPage() {
 	const [taskTotal, setTaskTotal] = useState(0);
 	const [taskStatusFilter, setTaskStatusFilter] = useState("");
 	const [taskTypeFilter, setTaskTypeFilter] = useState("");
+	const [taskArticleIdFilter, setTaskArticleIdFilter] = useState("");
 	const [taskArticleTitleFilter, setTaskArticleTitleFilter] = useState("");
 	const hasTaskFilters = Boolean(
-		taskStatusFilter || taskTypeFilter || taskArticleTitleFilter,
+		taskStatusFilter ||
+			taskTypeFilter ||
+			taskArticleIdFilter ||
+			taskArticleTitleFilter,
 	);
 	const [showTaskTimelineModal, setShowTaskTimelineModal] = useState(false);
 	const [taskTimelineLoading, setTaskTimelineLoading] = useState(false);
@@ -895,19 +899,61 @@ export default function AdminPage() {
 			typeof router.query.article_title === "string"
 				? router.query.article_title
 				: undefined;
-		if (articleTitleParam) {
+		const taskStatusParam =
+			typeof router.query.status === "string" ? router.query.status : undefined;
+		const taskTypeParam =
+			typeof router.query.task_type === "string"
+				? router.query.task_type
+				: undefined;
+		const contentTypeParam =
+			typeof router.query.content_type === "string"
+				? router.query.content_type
+				: undefined;
+		const articleIdParam =
+			typeof router.query.article_id === "string"
+				? router.query.article_id
+				: undefined;
+		const taskIdParam =
+			typeof router.query.task_id === "string" ? router.query.task_id : undefined;
+		const autoOpenTaskDetailParam =
+			typeof router.query.open_task_detail === "string"
+				? router.query.open_task_detail
+				: undefined;
+		if (
+			articleTitleParam ||
+			taskStatusParam ||
+			taskTypeParam ||
+			articleIdParam ||
+			taskIdParam ||
+			autoOpenTaskDetailParam
+		) {
 			setActiveSection("monitoring");
 			setMonitoringSubSection("tasks");
 			setPrimaryTab("monitoring");
-			setTaskArticleTitleFilter(articleTitleParam);
+			setTaskArticleTitleFilter(articleTitleParam || "");
+			setTaskArticleIdFilter(articleIdParam || "");
+			setTaskStatusFilter(taskStatusParam || "");
+			setTaskTypeFilter(
+				taskTypeParam
+					? contentTypeParam
+						? `${taskTypeParam}:${contentTypeParam}`
+						: taskTypeParam
+					: "",
+			);
 			setTaskPage(1);
 		}
 		setRouteInitialized(true);
 	}, [
 		router.asPath,
+		router.query.article_id,
 		router.isReady,
 		router.query.article_title,
+		router.query.content_type,
+		router.query.open_task_detail,
 		router.query.path,
+		router.query.status,
+		router.query.task_id,
+		router.query.task_type,
 	]);
 
 	useEffect(() => {
@@ -1105,6 +1151,7 @@ export default function AdminPage() {
 	const [openingTaskTimelineId, setOpeningTaskTimelineId] = useState<
 		string | null
 	>(null);
+	const openedTaskTimelineFromQueryRef = useRef<string | null>(null);
 	const modelOptionsFetchRef = useRef<ReturnType<typeof setTimeout> | null>(
 		null,
 	);
@@ -1186,6 +1233,7 @@ export default function AdminPage() {
 				status: taskStatusFilter || undefined,
 				task_type: taskTypeValue || undefined,
 				content_type: contentTypeValue || undefined,
+				article_id: taskArticleIdFilter || undefined,
 				article_title: taskArticleTitleFilter || undefined,
 			});
 			setTaskItems(response.data || []);
@@ -1543,6 +1591,7 @@ export default function AdminPage() {
 	const resetTaskFilters = () => {
 		setTaskStatusFilter("");
 		setTaskTypeFilter("");
+		setTaskArticleIdFilter("");
 		setTaskArticleTitleFilter("");
 		setTaskPage(1);
 	};
@@ -1669,6 +1718,7 @@ export default function AdminPage() {
 		taskPageSize,
 		taskStatusFilter,
 		taskTypeFilter,
+		taskArticleIdFilter,
 		taskArticleTitleFilter,
 		activeSection,
 		monitoringSubSection,
@@ -2268,6 +2318,53 @@ export default function AdminPage() {
 			setOpeningTaskTimelineId(null);
 		}
 	};
+
+	useEffect(() => {
+		if (!router.isReady || !routeInitialized) return;
+		const shouldAutoOpen =
+			typeof router.query.open_task_detail === "string" &&
+			router.query.open_task_detail.trim() === "1";
+		if (!shouldAutoOpen) {
+			openedTaskTimelineFromQueryRef.current = null;
+			return;
+		}
+		const taskIdFromQuery =
+			typeof router.query.task_id === "string"
+				? router.query.task_id.trim()
+				: "";
+		if (taskIdFromQuery) {
+			const queryKey = `task:${taskIdFromQuery}`;
+			if (openedTaskTimelineFromQueryRef.current === queryKey) {
+				return;
+			}
+			openedTaskTimelineFromQueryRef.current = queryKey;
+			setActiveSection("monitoring");
+			setMonitoringSubSection("tasks");
+			void handleOpenTaskTimeline(taskIdFromQuery);
+			return;
+		}
+
+		if (taskLoading || taskItems.length === 0) {
+			return;
+		}
+		const firstTask = taskItems[0];
+		const queryKey = `first:${firstTask.id}`;
+		if (openedTaskTimelineFromQueryRef.current === queryKey) {
+			return;
+		}
+		openedTaskTimelineFromQueryRef.current = queryKey;
+		setActiveSection("monitoring");
+		setMonitoringSubSection("tasks");
+		void handleOpenTaskTimeline(firstTask.id);
+	}, [
+		handleOpenTaskTimeline,
+		routeInitialized,
+		router.isReady,
+		router.query.open_task_detail,
+		router.query.task_id,
+		taskItems,
+		taskLoading,
+	]);
 
 	const handleRefreshTaskTimeline = async () => {
 		const taskId = selectedTaskTimeline?.task.id;
@@ -4976,6 +5073,7 @@ export default function AdminPage() {
 													onClick={() => {
 														setTaskStatusFilter("");
 														setTaskTypeFilter("");
+														setTaskArticleIdFilter("");
 														setTaskArticleTitleFilter("");
 														setTaskPage(1);
 													}}

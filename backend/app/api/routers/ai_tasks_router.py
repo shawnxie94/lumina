@@ -29,6 +29,7 @@ async def list_ai_tasks(
     status: Optional[str] = None,
     task_type: Optional[str] = None,
     content_type: Optional[str] = None,
+    article_id: Optional[str] = None,
     article_title: Optional[str] = None,
     db: Session = Depends(get_db),
     _: bool = Depends(get_current_admin),
@@ -44,6 +45,8 @@ async def list_ai_tasks(
         query = query.filter(AITask.task_type == task_type)
     if content_type:
         query = query.filter(AITask.content_type == content_type)
+    if article_id:
+        query = query.filter(AITask.article_id == article_id)
     if article_title:
         matching_articles = (
             db.query(Article.id).filter(Article.title.contains(article_title)).all()

@@ -694,6 +694,14 @@ interface CommentLocation {
 	page: number;
 }
 
+interface ArticleTaskListItem {
+	id: string;
+	task_type: string;
+	content_type: string | null;
+	status: string;
+	created_at: string;
+}
+
 const getQueryValue = (value: string | string[] | undefined): string => {
 	if (Array.isArray(value)) return value[0] || "";
 	return value || "";
@@ -775,6 +783,7 @@ export default function ArticleDetailPage() {
 	);
 
 	const [article, setArticle] = useState<ArticleDetail | null>(null);
+	const [articleTasks, setArticleTasks] = useState<ArticleTaskListItem[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [showTranslation, setShowTranslation] = useState(true);
 	const [analysisCollapsed, setAnalysisCollapsed] = useState(false);
@@ -1052,6 +1061,12 @@ export default function ArticleDetailPage() {
 			setShowAiPanel(false);
 		}
 	}, [id, isMobile]);
+
+	useEffect(() => {
+		if (!isAdmin) {
+			setArticleTasks([]);
+		}
+	}, [isAdmin]);
 
 	useEffect(() => {
 		const handleClickOutside = (event: MouseEvent) => {
@@ -1358,6 +1373,7 @@ export default function ArticleDetailPage() {
 				try {
 					const data = await articleApi.getArticle(id as string);
 					setArticle(data);
+					void fetchArticleTasks(data.id);
 					if (!needsPolling(data) && pollingRef.current) {
 						clearInterval(pollingRef.current);
 						pollingRef.current = null;
@@ -1469,11 +1485,35 @@ export default function ArticleDetailPage() {
 		return () => window.removeEventListener("keydown", handleKeyDown);
 	}, [lightboxImage]);
 
+	const fetchArticleTasks = useCallback(
+		async (articleId: string) => {
+			if (!isAdmin) {
+				setArticleTasks([]);
+				return;
+			}
+			try {
+				const taskResponse = await articleApi.getAITasks({
+					page: 1,
+					size: 100,
+					article_id: articleId,
+				});
+				const tasks = Array.isArray(taskResponse?.data)
+					? (taskResponse.data as ArticleTaskListItem[])
+					: [];
+				setArticleTasks(tasks);
+			} catch (error) {
+				console.error("Failed to fetch article tasks:", error);
+			}
+		},
+		[isAdmin],
+	);
+
 	const fetchArticle = async () => {
 		setLoading(true);
 		try {
 			const data = await articleApi.getArticle(id as string);
 			setArticle(data);
+			void fetchArticleTasks(data.id);
 			if (data?.prev_article) {
 				setPrevArticle(data.prev_article as ArticleNeighbor);
 			} else {
@@ -1690,9 +1730,131 @@ export default function ArticleDetailPage() {
 	const activeTabConfig =
 		aiTabConfigs.find((tab) => tab.key === activeAiTab) ??
 		aiTabConfigs.find((tab) => tab.enabled);
-	const aiStatusLink = article?.title
-		? `/admin/monitoring/tasks?article_title=${encodeURIComponent(article.title)}`
+	const sortedArticleTasks = useMemo(() => {
+		return [...articleTasks].sort(
+			(a, b) =>
+				new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+		);
+	}, [articleTasks]);
+	const getLatestTask = useCallback(
+		(taskType: string, contentType?: string | null) =>
+			sortedArticleTasks.find((task) => {
+				if (task.task_type !== taskType) return false;
+				if (contentType == null) return true;
+				return (task.content_type || null) === contentType;
+			}) || null,
+		[sortedArticleTasks],
+	);
+	const buildTaskDetailLink = useCallback(
+		(options: {
+			taskType: string;
+			contentType?: string | null;
+			status?: string | null;
+			task?: ArticleTaskListItem | null;
+		}) => {
+			const params = new URLSearchParams();
+			if (article?.title) {
+				params.set("article_title", article.title);
+			}
+			if (article?.id) {
+				params.set("article_id", article.id);
+			}
+			params.set("open_task_detail", "1");
+			const taskType = options.task?.task_type || options.taskType;
+			if (taskType) {
+				params.set("task_type", taskType);
+			}
+			const contentType = options.task?.content_type ?? options.contentType ?? null;
+			if (contentType) {
+				params.set("content_type", contentType);
+			}
+			const status = options.task?.status || options.status;
+			if (status) {
+				params.set("status", status);
+			}
+			if (options.task?.id) {
+				params.set("task_id", options.task.id);
+			}
+			const query = params.toString();
+			return query ? `/admin/monitoring/tasks?${query}` : "/admin/monitoring/tasks";
+		},
+		[article?.id, article?.title],
+	);
+
+	const cleaningTask = useMemo(
+		() => getLatestTask("process_article_cleaning"),
+		[getLatestTask],
+	);
+	const translationTask = useMemo(
+		() => getLatestTask("process_article_translation"),
+		[getLatestTask],
+	);
+	const summaryTask = useMemo(
+		() => getLatestTask("process_ai_content", "summary"),
+		[getLatestTask],
+	);
+	const activeTabTask = useMemo(() => {
+		if (!activeTabConfig) return null;
+		return getLatestTask("process_ai_content", activeTabConfig.key);
+	}, [activeTabConfig, getLatestTask]);
+
+	const summaryStatusValue =
+		article?.ai_analysis?.summary_status ||
+		(article?.status === "completed" ? "completed" : article?.status);
+	const summaryStatusLink = isAdmin
+		? buildTaskDetailLink({
+				taskType: "process_ai_content",
+				contentType: "summary",
+				status: summaryStatusValue,
+				task: summaryTask,
+			})
 		: "";
+	const activeStatusLink =
+		isAdmin && activeTabConfig
+			? buildTaskDetailLink({
+					taskType: "process_ai_content",
+					contentType: activeTabConfig.key,
+					status: activeTabConfig.status,
+					task: activeTabTask,
+				})
+			: "";
+
+	const cleaningTaskStatus =
+		cleaningTask?.status ||
+		(article?.status === "pending" ||
+		article?.status === "processing" ||
+		article?.status === "failed"
+			? article.status
+			: null);
+	const translationTaskStatus =
+		translationTask?.status || article?.translation_status || null;
+	const contentTaskStatusItems = [
+		{
+			key: "cleaning",
+			label: t("清洗"),
+			status: cleaningTaskStatus,
+			link: buildTaskDetailLink({
+				taskType: "process_article_cleaning",
+				status: cleaningTaskStatus,
+				task: cleaningTask,
+			}),
+		},
+		{
+			key: "translation",
+			label: t("翻译"),
+			status: translationTaskStatus,
+			link: buildTaskDetailLink({
+				taskType: "process_article_translation",
+				status: translationTaskStatus,
+				task: translationTask,
+			}),
+		},
+	].filter(
+		(item) =>
+			item.status === "pending" ||
+			item.status === "processing" ||
+			item.status === "failed",
+	);
 	const activeStatusBadge = isAdmin
 		? getAiTabStatusBadge(activeTabConfig?.status)
 		: null;
@@ -1762,15 +1924,12 @@ export default function ArticleDetailPage() {
 					<AIContentSection
 						title={t("摘要")}
 						content={article?.ai_analysis?.summary}
-						status={
-							article?.ai_analysis?.summary_status ||
-							(article?.status === "completed" ? "completed" : article?.status)
-						}
+						status={summaryStatusValue}
 						onGenerate={() => handleGenerateContent("summary")}
 						onCopy={() => handleCopyContent(article?.ai_analysis?.summary)}
 						canEdit={isAdmin}
 						showStatus={isAdmin}
-						statusLink={aiStatusLink}
+						statusLink={summaryStatusLink}
 					/>
 				)}
 
@@ -1799,9 +1958,9 @@ export default function ArticleDetailPage() {
 								<div className="pointer-events-none absolute right-0 top-0 h-full w-8 ai-tab-fade" />
 							</div>
 							<div className="flex items-center gap-2 pr-2 shrink-0">
-								{activeStatusBadge && aiStatusLink ? (
+								{activeStatusBadge && activeStatusLink ? (
 									<Link
-										href={aiStatusLink}
+										href={activeStatusLink}
 										className="hover:opacity-80 transition"
 									>
 										{activeStatusBadge}
@@ -1852,7 +2011,7 @@ export default function ArticleDetailPage() {
 								renderMindMap={activeTabConfig.renderMindMap}
 								onMindMapOpen={activeTabConfig.onMindMapOpen}
 								showStatus={isAdmin}
-								statusLink={aiStatusLink}
+								statusLink={activeStatusLink}
 								showHeader={false}
 							/>
 						)}
@@ -2805,6 +2964,43 @@ export default function ArticleDetailPage() {
 										<IconDoc className="h-4 w-4" />
 										<span>{t("内容")}</span>
 									</h2>
+									{isAdmin &&
+										contentTaskStatusItems.map((item) => {
+											const statusLabel =
+												item.status === "pending"
+													? t("等待处理")
+													: item.status === "processing"
+														? t("处理中")
+														: item.status === "failed"
+															? t("失败")
+															: item.status || t("未知");
+											const statusClassName =
+												item.status === "pending"
+													? "bg-muted text-text-2"
+													: item.status === "processing"
+														? "bg-info-soft text-info-ink"
+														: item.status === "failed"
+															? "bg-danger-soft text-danger-ink"
+															: "bg-muted text-text-2";
+											const badgeNode = (
+												<span
+													className={`px-2 py-0.5 rounded text-xs ${statusClassName}`}
+												>
+													{item.label}：{statusLabel}
+												</span>
+											);
+											return item.link ? (
+												<Link
+													key={item.key}
+													href={item.link}
+													className="hover:opacity-80 transition"
+												>
+													{badgeNode}
+												</Link>
+											) : (
+												<span key={item.key}>{badgeNode}</span>
+											);
+										})}
 									{isAdmin && article.status === "failed" && (
 										<button
 											type="button"

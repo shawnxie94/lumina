@@ -684,6 +684,7 @@ export const articleApi = {
 		status?: string;
 		task_type?: string;
 		content_type?: string;
+		article_id?: string;
 		article_title?: string;
 	}) => {
 		try {
