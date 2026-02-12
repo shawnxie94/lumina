@@ -380,6 +380,69 @@ html[data-theme="dark"] .note-panel {
   height: auto !important;
 }
 
+.prose .media-embed {
+  margin: 1.25rem 0;
+  max-width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-surface);
+  overflow: hidden;
+}
+
+.media-embed__frame {
+  position: relative;
+  width: 100%;
+  padding-top: 56.25%;
+  background: var(--bg-muted);
+}
+
+.media-embed__frame iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.media-embed__player {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+}
+
+.media-embed--audio .media-embed__player {
+  padding: 0.75rem;
+}
+
+.media-embed__caption {
+  margin: 0;
+  padding: 0.65rem 0.9rem;
+  font-size: 0.8125rem;
+  color: var(--text-2);
+  background: var(--bg-muted);
+  border-top: 1px solid var(--border);
+}
+
+.media-embed__caption a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.media-embed__caption a:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 640px) {
+  .media-embed {
+    border-radius: 10px;
+  }
+
+  .media-embed__caption {
+    padding: 0.55rem 0.75rem;
+    font-size: 0.75rem;
+  }
+}
+
 @keyframes slide-in {
   from {
     transform: translateX(100%);
@@ -881,4 +944,3 @@ html[data-theme="dark"]
   .ant-picker-time-panel-cell-inner {
   color: var(--text-1);
 }
-

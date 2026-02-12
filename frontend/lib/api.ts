@@ -108,13 +108,15 @@ export const normalizeMediaHtml = (html: string): string => {
 	try {
 		const parser = new DOMParser();
 		const doc = parser.parseFromString(html, "text/html");
-		doc.querySelectorAll("img").forEach((img) => {
-			const src = img.getAttribute("src");
-			const resolved = resolveMediaUrl(src);
-			if (resolved && resolved !== src) {
-				img.setAttribute("src", resolved);
-			}
-		});
+		doc
+			.querySelectorAll("img, video, audio, source")
+			.forEach((element) => {
+				const src = element.getAttribute("src");
+				const resolved = resolveMediaUrl(src);
+				if (resolved && resolved !== src) {
+					element.setAttribute("src", resolved);
+				}
+			});
 		return doc.body.innerHTML;
 	} catch {
 		return html;
