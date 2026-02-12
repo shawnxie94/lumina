@@ -9,6 +9,7 @@ services:
       - API_BASE_URL=${API_BASE_URL:-/backend}
       - BACKEND_API_URL=${BACKEND_API_URL:-http://api:8000/backend}
       - INTERNAL_API_TOKEN=${INTERNAL_API_TOKEN}
+      - ERROR_TASK_POLL_INTERVAL_MS=${ERROR_TASK_POLL_INTERVAL_MS:-600000}
     depends_on:
       - api
     networks:

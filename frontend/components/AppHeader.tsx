@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useAuth } from '@/contexts/AuthContext';
 import { useBasicSettings } from '@/contexts/BasicSettingsContext';
-import { articleApi } from '@/lib/api';
+import { articleApi, getErrorTaskPollIntervalMs } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { notificationStore, type NotificationItem } from '@/lib/notifications';
 import {
@@ -184,7 +184,7 @@ export default function AppHeader() {
       return;
     }
     fetchErrorTasks();
-    const timer = setInterval(fetchErrorTasks, 60000);
+    const timer = setInterval(fetchErrorTasks, getErrorTaskPollIntervalMs());
     return () => clearInterval(timer);
   }, [fetchErrorTasks, isAdmin]);
 

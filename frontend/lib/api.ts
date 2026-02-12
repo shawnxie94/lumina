@@ -5,9 +5,12 @@ declare global {
 	interface Window {
 		__LUMINA_RUNTIME_CONFIG__?: {
 			apiBaseUrl?: string;
+			errorTaskPollIntervalMs?: number | string;
 		};
 	}
 }
+
+export const DEFAULT_ERROR_TASK_POLL_INTERVAL_MS = 10 * 60 * 1000;
 
 const normalizeBaseUrl = (value?: string | null): string => {
 	const trimmed = value?.trim();
@@ -18,6 +21,31 @@ const normalizeBaseUrl = (value?: string | null): string => {
 const getRuntimeApiBaseUrl = (): string => {
 	if (typeof window === "undefined") return "";
 	return normalizeBaseUrl(window.__LUMINA_RUNTIME_CONFIG__?.apiBaseUrl);
+};
+
+const parsePositiveInt = (value: unknown): number | null => {
+	if (value === null || value === undefined) return null;
+	const parsed = Number.parseInt(String(value), 10);
+	if (!Number.isFinite(parsed) || parsed <= 0) return null;
+	return parsed;
+};
+
+export const getErrorTaskPollIntervalMs = (): number => {
+	if (typeof window !== "undefined") {
+		const runtimeValue = parsePositiveInt(
+			window.__LUMINA_RUNTIME_CONFIG__?.errorTaskPollIntervalMs,
+		);
+		if (runtimeValue !== null) {
+			return runtimeValue;
+		}
+	}
+	const publicValue = parsePositiveInt(
+		process.env.NEXT_PUBLIC_ERROR_TASK_POLL_INTERVAL_MS,
+	);
+	if (publicValue !== null) {
+		return publicValue;
+	}
+	return DEFAULT_ERROR_TASK_POLL_INTERVAL_MS;
 };
 
 export const getApiBaseUrl = (): string => {
