@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type ReactNode } from 'react';
 
 import Button from '@/components/Button';
-import FormField from '@/components/ui/FormField';
 import TextArea from '@/components/ui/TextArea';
 import { useI18n } from '@/lib/i18n';
 
@@ -96,11 +95,13 @@ export default function ArticleSplitEditorModal({
             <div className="p-4 flex flex-col h-full border-r border-border min-h-0">
               <div className="space-y-4">{topFields}</div>
 
-              <FormField label={t('内容（Markdown）')} required className="mt-4 flex-1 min-h-0 flex flex-col">
+              <div className="mt-4 flex-1 min-h-0 flex flex-col">
                 <div className="mb-2 flex items-center justify-between gap-2">
-                  <span className="flex min-w-0 items-center gap-2 text-sm text-text-2">
+                  <div className="flex min-w-0 items-center gap-2 text-sm text-text-2">
+                    <span>{t('内容（Markdown）')}</span>
+                    <span className="text-danger">*</span>
                     {contentLabelAddon}
-                  </span>
+                  </div>
                   {extraEditorActions && <div className="flex items-center gap-2">{extraEditorActions}</div>}
                 </div>
                 <TextArea
@@ -115,7 +116,7 @@ export default function ArticleSplitEditorModal({
                   className="flex-1 min-h-0 font-mono resize-none"
                   placeholder={contentPlaceholder || t('在此输入 Markdown 内容...')}
                 />
-              </FormField>
+              </div>
 
               <div className="flex justify-end gap-2 pt-4 border-t flex-shrink-0">
                 <Button
