@@ -1,7 +1,24 @@
-from openai import AsyncOpenAI
 import json
 import time
+import re
 from typing import Optional, Dict, Any
+
+from openai import AsyncOpenAI
+
+
+MATH_PATTERN = re.compile(
+    r"\$\$[\s\S]*?\$\$|(?<!\\)\$[^$\n]+(?<!\\)\$|\\\([\s\S]*?\\\)|\\\[[\s\S]*?\\\]",
+    re.MULTILINE,
+)
+HTML_TAG_PATTERN = re.compile(r"<[^>]+>")
+URL_PATTERN = re.compile(r"https?://\S+")
+FENCED_CODE_PATTERN = re.compile(r"```[\s\S]*?```")
+INLINE_CODE_PATTERN = re.compile(r"`[^`]+`")
+MARKDOWN_IMAGE_PATTERN = re.compile(r"!\[.*?\]\(.*?\)")
+MARKDOWN_LINK_PATTERN = re.compile(r"\[.*?\]\(.*?\)")
+MARKDOWN_SYMBOL_PATTERN = re.compile(r"[#*_\-\[\](){}|>]")
+WHITESPACE_PATTERN = re.compile(r"\s+")
+HAN_CHAR_PATTERN = re.compile(r"[\u4e00-\u9fff]")
 
 
 def is_english_content(text: str, threshold: float = 0.7) -> bool:
@@ -18,16 +35,16 @@ def is_english_content(text: str, threshold: float = 0.7) -> bool:
     if not text:
         return False
 
-    # Remove common markdown/HTML elements that might skew the ratio
-    import re
-
-    clean_text = re.sub(r"```[\s\S]*?```", "", text)  # Remove code blocks
-    clean_text = re.sub(r"`[^`]+`", "", clean_text)  # Remove inline code
-    clean_text = re.sub(r"https?://\S+", "", clean_text)  # Remove URLs
-    clean_text = re.sub(r"!\[.*?\]\(.*?\)", "", clean_text)  # Remove images
-    clean_text = re.sub(r"\[.*?\]\(.*?\)", "", clean_text)  # Remove links
-    clean_text = re.sub(r"[#*_\-\[\](){}|>]", "", clean_text)  # Remove markdown symbols
-    clean_text = re.sub(r"\s+", " ", clean_text).strip()  # Normalize whitespace
+    clean_text = text
+    clean_text = FENCED_CODE_PATTERN.sub("", clean_text)
+    clean_text = INLINE_CODE_PATTERN.sub("", clean_text)
+    clean_text = URL_PATTERN.sub("", clean_text)
+    clean_text = MARKDOWN_IMAGE_PATTERN.sub("", clean_text)
+    clean_text = MARKDOWN_LINK_PATTERN.sub("", clean_text)
+    clean_text = MATH_PATTERN.sub("", clean_text)
+    clean_text = HTML_TAG_PATTERN.sub(" ", clean_text)
+    clean_text = MARKDOWN_SYMBOL_PATTERN.sub("", clean_text)
+    clean_text = WHITESPACE_PATTERN.sub(" ", clean_text).strip()
 
     if not clean_text:
         return False
@@ -39,8 +56,14 @@ def is_english_content(text: str, threshold: float = 0.7) -> bool:
     total_letters = ascii_letters + non_ascii_letters
     if total_letters == 0:
         return False
+    if total_letters < 40:
+        return False
 
     ascii_ratio = ascii_letters / total_letters
+    han_chars = len(HAN_CHAR_PATTERN.findall(clean_text))
+    han_ratio = han_chars / total_letters
+    if han_ratio >= 0.2:
+        return False
     return ascii_ratio >= threshold
 
 
