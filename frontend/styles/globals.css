@@ -265,6 +265,58 @@ html[data-theme="dark"] .skeleton-shimmer::after {
   color: var(--accent);
 }
 
+.prose :where(code):not(:where(pre code)) {
+  color: var(--text-1);
+  background: var(--bg-muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.12em 0.42em;
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  font-weight: 600;
+  word-break: break-word;
+}
+
+.prose :where(code):not(:where(pre code))::before,
+.prose :where(code):not(:where(pre code))::after {
+  content: none;
+}
+
+.prose pre {
+  color: var(--text-1);
+  background: var(--bg-muted);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.9rem 1rem;
+  overflow-x: auto;
+}
+
+.prose pre code {
+  color: inherit;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+
+.prose pre code::before,
+.prose pre code::after {
+  content: none;
+}
+
+html[data-theme="dark"] .prose :where(code):not(:where(pre code)) {
+  color: #e2e8f0;
+  background: #1b2433;
+  border-color: #334155;
+}
+
+html[data-theme="dark"] .prose pre {
+  color: #e2e8f0;
+  background: #111827;
+  border-color: #334155;
+}
+
 html[data-theme="dark"] .prose blockquote {
   color: #e2e8f0;
 }
