@@ -1503,6 +1503,7 @@ export default function ArticleDetailPage() {
 	}, [article?.id, article?.slug, article?.title, addArticle]);
 
 	useEffect(() => {
+		if (loading) return;
 		if (!contentRef.current) return;
 
 		// 使用 requestAnimationFrame 确保 DOM 已更新
@@ -1529,7 +1530,7 @@ export default function ArticleDetailPage() {
 		});
 
 		return () => cancelAnimationFrame(rafId);
-	}, [renderedHtml]);
+	}, [renderedHtml, loading]);
 
 	useEffect(() => {
 		if (tocItems.length === 0) return;
