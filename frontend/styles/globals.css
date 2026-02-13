@@ -541,6 +541,22 @@ html[data-theme="dark"] .note-panel {
   height: auto !important;
 }
 
+.immersive-content .media-embed--video {
+  width: 60% !important;
+  max-width: 60% !important;
+}
+
+.article-prose:not(.immersive-content) .media-embed--video {
+  width: 100%;
+  max-width: 100%;
+}
+
+@media (min-width: 1024px) {
+  .article-prose:not(.immersive-content) .media-embed--video {
+    max-width: 420px;
+  }
+}
+
 .prose .media-embed {
   margin: 1.25rem 0;
   max-width: 100%;

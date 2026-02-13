@@ -218,7 +218,7 @@ const renderMediaEmbed = (
 	if (!safeHref) return "";
 
 	if (target.type === "iframe") {
-		return `<figure class="media-embed media-embed--video"><div class="media-embed__frame"><iframe src="${safeSrc}" title="${safeTitle}" loading="lazy" frameborder="0" referrerpolicy="no-referrer" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe></div><figcaption class="media-embed__caption"><a href="${safeHref}" target="_blank" rel="noopener noreferrer nofollow">${safeLabel}</a></figcaption></figure>`;
+		return `<figure class="media-embed media-embed--video"><div class="media-embed__frame"><iframe src="${safeSrc}" title="${safeTitle}" loading="lazy" frameborder="0" referrerpolicy="strict-origin-when-cross-origin" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe></div><figcaption class="media-embed__caption"><a href="${safeHref}" target="_blank" rel="noopener noreferrer nofollow">${safeLabel}</a></figcaption></figure>`;
 	}
 
 	if (target.type === "video") {
