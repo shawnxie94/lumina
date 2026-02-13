@@ -21,6 +21,7 @@ frontend/
 | API client + token helpers | `frontend/lib/api.ts` | Axios instance + typed modules |
 | API base/runtime resolution | `frontend/lib/api.ts` | Handles localhost vs `/backend` origin routing |
 | Language dictionary | `frontend/lib/i18n.ts` | Core zh-CN/en translation keys |
+| Safe markdown + math render | `frontend/lib/safeHtml.ts` | Unified parser pipeline (GFM + math + sanitize + media embed) |
 | Notification center store | `frontend/lib/notifications.ts` | API and UI event notifications |
 | Auth state + gating | `frontend/contexts/AuthContext.tsx` | Provider + login/setup |
 | Site config context | `frontend/contexts/BasicSettingsContext.tsx` | Site name/logo/default language |
@@ -33,6 +34,7 @@ frontend/
 - API auth token stored in `localStorage` key `admin_token`; axios adds `Authorization: Bearer`.
 - UI language preference is persisted in `localStorage` key `ui_language`.
 - Prefer `useI18n().t(...)` for user-facing strings instead of hardcoded literal text.
+- Markdown is rendered through `renderSafeMarkdown`; keep KaTeX and sanitize allowlists in sync when adding tags.
 - Tailwind colors/radii/shadows are mapped to CSS variables in `frontend/styles/globals.css`.
 - Font family is `LXGW WenKai Mono` loaded from `frontend/public/fonts/LXGWWenKaiMono.ttf`.
 

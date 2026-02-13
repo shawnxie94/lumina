@@ -37,7 +37,9 @@ backend/
 | Startup migration gate | `backend/app/core/db_migrations.py` | Alembic upgrade on startup flow |
 | Runtime settings defaults doc | `backend/docs/runtime-settings.md` | Env var defaults, grouping, and validation rules |
 | Domain business logic | `backend/app/domain/` | Query/command/AI pipeline/task split |
+| Language detection heuristic | `backend/ai_client.py` | `is_english_content` pre-cleans markdown/math/html before ratio checks |
 | Article embedding/recommendation | `backend/app/domain/article_embedding_service.py` | Embedding generation + recommendation support |
+| Recommendation settings API | `backend/app/api/routers/settings_router.py` | Includes batch embedding refresh endpoint for admin |
 | Backup import/export | `backend/app/domain/backup_service.py` | JSON backup and incremental restore |
 | Request/response schemas | `backend/app/schemas/` | Reuse schema types across routers |
 | DB migrations | `backend/alembic/` `backend/scripts/migrate_db.py` | Alembic revision + upgrade entrypoint |
@@ -53,6 +55,7 @@ backend/
 - DB uses SQLite by default; timestamps are stored as strings.
 - Keep `main.py` entrypoint stable for `uvicorn main:app` and Docker.
 - Load env config from `app/core/settings.py`; app/worker fail fast on invalid startup settings.
+- Recommendation batch embedding refresh follows the same 500-item scope as similar-article candidate scanning.
 
 ## ANTI-PATTERNS
 - Do not add new routes outside `backend/app/api/routers/`.
@@ -81,3 +84,4 @@ python scripts/check_response_contract.py --verbose
 - `docker-compose.yml` runs `worker.py` with system Python in container.
 - `pyproject.toml` now includes both flat `py-modules` and `app.*` packages.
 - Alembic revisions currently extend through `20260212_0006_ai_advanced_cleaning_options.py`.
+- `settings_router` exposes `/api/settings/recommendations/rebuild-embeddings` for admin-triggered vector refresh.

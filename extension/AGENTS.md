@@ -20,7 +20,7 @@ extension/
 |------|----------|-------|
 | Popup UI flow | `extension/entrypoints/popup/main.js` | Main capture flow |
 | Background context menu | `extension/entrypoints/background.ts` | One-click capture entry |
-| Content extraction | `extension/entrypoints/content.ts` | Scripted extraction pipeline |
+| Content extraction | `extension/entrypoints/content.ts` | Scripted extraction pipeline + formula-preserving fallback |
 | Per-site adapters | `extension/utils/siteAdapters.ts` | Site-specific rules |
 | Readability extraction | `extension/utils/articleExtractor.ts` | Core extraction helpers |
 | API wrapper | `extension/utils/api.ts` | Token storage + headers |
@@ -34,6 +34,7 @@ extension/
 - API host and token are stored in `chrome.storage.local`.
 - Use `chrome.scripting.executeScript` for extraction; no persistent content scripts.
 - Keep extension-facing strings translatable via `utils/i18n.ts`.
+- For math-heavy pages, keep extraction fallback that retains MathML/MathJax before handing content to backend cleaning.
 
 ## ANTI-PATTERNS
 - Avoid embedding backend endpoint strings in popup logic when `ApiClient` already encapsulates them.

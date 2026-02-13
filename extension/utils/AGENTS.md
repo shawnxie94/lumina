@@ -35,6 +35,7 @@ extension/utils/
 - Keep adapter logic isolated per site; avoid cross-site coupling.
 - Favor pure helpers in utils; side effects belong in entrypoints.
 - Keep storage keys stable (`apiHost`, `adminToken`, `ui_language`) for popup compatibility.
+- Keep formula-related extraction helpers compatible with backend math-preservation preprocessing (`$...$` / `$$...$$` path).
 
 ## ANTI-PATTERNS
 - Avoid direct DOM/UI coupling inside util modules.

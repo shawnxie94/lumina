@@ -1,7 +1,7 @@
 # PROJECT KNOWLEDGE BASE
 
-**Generated:** 2026-02-12 20:22 Asia/Shanghai
-**Commit:** 827a834
+**Generated:** 2026-02-13 19:46 Asia/Shanghai
+**Commit:** 1619650
 **Branch:** main
 
 ## OVERVIEW
@@ -28,6 +28,9 @@ Lumina is a content workspace with a Next.js 14 frontend (pages router), FastAPI
 | Backend runtime settings | `backend/app/core/settings.py` | Central env loading + startup fail-fast validation |
 | Backend settings reference | `backend/docs/runtime-settings.md` | Runtime env defaults and validation constraints |
 | Backend domain services | `backend/app/domain/` | Query/command/AI/task split |
+| Backend language heuristic | `backend/ai_client.py` | `is_english_content` uses cleaned-text ratio + Han-char guard |
+| Backend recommendation refresh API | `backend/app/api/routers/settings_router.py` | Admin batch endpoint for recommendation embedding refresh |
+| Backend embedding batch logic | `backend/app/domain/article_embedding_service.py` | Rebuild queue with model/hash skip logic |
 | Backend DB migrations | `backend/alembic/` `backend/scripts/migrate_db.py` | Alembic-based schema/index upgrade path |
 | Route contract baseline | `backend/scripts/route_contract_baseline.json` | API signature regression baseline for modular routers |
 | Response contract baseline | `backend/scripts/response_contract_baseline.json` | Key API response shape regression baseline |
@@ -42,9 +45,10 @@ Lumina is a content workspace with a Next.js 14 frontend (pages router), FastAPI
 | Frontend comment proxy API | `frontend/pages/api/comments/[articleId].ts` | Reads posts comments via Next API route |
 | Frontend API client | `frontend/lib/api.ts` | Axios base + typed exports |
 | Frontend i18n dictionary | `frontend/lib/i18n.ts` | zh-CN/en string map used across pages |
+| Frontend markdown rendering | `frontend/lib/safeHtml.ts` | Unified pipeline with GFM + math + sanitize + media embeds |
 | Extension API client | `extension/utils/api.ts` | Fetch wrapper + auth headers |
 | Extension popup UI | `extension/entrypoints/popup/main.js` | Main capture flow |
-| Extension extraction | `extension/entrypoints/content.ts` `extension/utils/siteAdapters.ts` | Content parsing + adapters |
+| Extension extraction | `extension/entrypoints/content.ts` `extension/utils/siteAdapters.ts` | Content parsing/adapters + formula-preserving fallback for Readability |
 | Extension shared helpers | `extension/utils/` | History/error/i18n/markdown helper modules |
 | Product docs | `docs/trd/trd-optimized.md` `docs/trd/trd-minimal.md` | TRD baselines |
 
@@ -62,6 +66,7 @@ Lumina is a content workspace with a Next.js 14 frontend (pages router), FastAPI
 - Backend startup requires `INTERNAL_API_TOKEN`; app/worker fail fast on invalid runtime settings.
 - Backend API routes are served under `/backend/api/*` only.
 - Frontend API base resolves at runtime and defaults to `/backend` in same-origin environments.
+- Markdown rendering uses `remark-math` + `rehype-katex` with `sanitize-html` allowlists.
 - WXT manifest enables `<all_urls>` host permissions and devtools; build target `esnext`.
 - Biome disables `noUnknownAtRules` in `biome.json` and `frontend/biome.json` (Tailwind).
 - UI language supports `zh-CN` and `en`, with `ui_language` stored client-side.
@@ -75,6 +80,7 @@ Lumina is a content workspace with a Next.js 14 frontend (pages router), FastAPI
 - Extraction uses `chrome.scripting.executeScript` injection; no persistent content scripts.
 - API clients are duplicated in frontend and extension; keep endpoints aligned with backend.
 - Frontend theme tokens are CSS variables in `frontend/styles/globals.css` mapped into Tailwind.
+- Recommendation similarity candidate and admin batch-refresh scope are both capped at 500 items.
 
 ## LOCAL AGENTS
 - `backend/AGENTS.md`
