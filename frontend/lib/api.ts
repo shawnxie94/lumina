@@ -352,6 +352,14 @@ export interface RecommendationSettings {
 	recommendation_model_config_id: string;
 }
 
+export interface RecommendationEmbeddingRefreshResult {
+	success: boolean;
+	scope_limit: number;
+	scanned_articles: number;
+	queued_tasks: number;
+	skipped_articles: number;
+}
+
 export interface ArticleComment {
 	id: string;
 	article_id: string;
@@ -1020,6 +1028,13 @@ export const recommendationSettingsApi = {
 	updateSettings: async (data: RecommendationSettings) => {
 		const response = await api.put("/api/settings/recommendations", data);
 		return response.data;
+	},
+
+	rebuildEmbeddings: async (): Promise<RecommendationEmbeddingRefreshResult> => {
+		const response = await api.post(
+			"/api/settings/recommendations/rebuild-embeddings",
+		);
+		return response.data as RecommendationEmbeddingRefreshResult;
 	},
 };
 

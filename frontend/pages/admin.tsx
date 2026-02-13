@@ -771,6 +771,8 @@ export default function AdminPage() {
 		useState(false);
 	const [recommendationSettingsSaving, setRecommendationSettingsSaving] =
 		useState(false);
+	const [recommendationEmbeddingRefreshing, setRecommendationEmbeddingRefreshing] =
+		useState(false);
 	const [storageCleanupLoading, setStorageCleanupLoading] = useState(false);
 	const [commentValidationResult, setCommentValidationResult] = useState<{
 		ok: boolean;
@@ -1451,6 +1453,32 @@ export default function AdminPage() {
 			);
 		} finally {
 			setRecommendationSettingsSaving(false);
+		}
+	};
+
+	const handleRefreshRecommendationEmbeddings = async () => {
+		if (!recommendationSettings.recommendation_model_config_id) {
+			showToast(t("请先选择远程向量模型"), "error");
+			return;
+		}
+		setRecommendationEmbeddingRefreshing(true);
+		try {
+			await recommendationSettingsApi.updateSettings(recommendationSettings);
+			const result = await recommendationSettingsApi.rebuildEmbeddings();
+			showToast(
+				t("向量刷新任务已提交：扫描 {scanned}，入队 {queued}，跳过 {skipped}")
+					.replace("{scanned}", String(result.scanned_articles))
+					.replace("{queued}", String(result.queued_tasks))
+					.replace("{skipped}", String(result.skipped_articles)),
+			);
+		} catch (error: any) {
+			console.error("Failed to refresh recommendation embeddings:", error);
+			showToast(
+				error?.response?.data?.detail || t("向量刷新任务提交失败"),
+				"error",
+			);
+		} finally {
+			setRecommendationEmbeddingRefreshing(false);
 		}
 	};
 
@@ -5573,6 +5601,20 @@ export default function AdminPage() {
 											</p>
 										</div>
 										<div className="flex flex-wrap items-center gap-2">
+											<Button
+												onClick={handleRefreshRecommendationEmbeddings}
+												disabled={
+													recommendationSettingsLoading ||
+													recommendationEmbeddingRefreshing ||
+													recommendationSettingsSaving ||
+													!recommendationSettings.recommendation_model_config_id
+												}
+												variant="secondary"
+											>
+												{recommendationEmbeddingRefreshing
+													? t("提交中")
+													: t("全量刷新向量")}
+											</Button>
 											<Button
 												onClick={handleSaveRecommendationSettings}
 												disabled={recommendationSettingsSaving}

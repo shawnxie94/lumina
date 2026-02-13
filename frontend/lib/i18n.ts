@@ -187,6 +187,13 @@ const translations: Record<Language, Record<string | number, string>> = {
 		"暂无向量模型配置，请在模型API配置中设置模型类型为向量。": "No vector model config. Set model type to vector in Model API configs.",
 		"文章推荐仅支持远程向量模型；未配置时将无法生成推荐。":
 			"Recommendations only support remote embedding models; without one, no recommendations are generated.",
+		"全量刷新向量": "Refresh embeddings",
+		提交中: "Submitting...",
+		"向量刷新任务已提交：扫描 {scanned}，入队 {queued}":
+			"Embedding refresh submitted: scanned {scanned}, queued {queued}",
+		"向量刷新任务已提交：扫描 {scanned}，入队 {queued}，跳过 {skipped}":
+			"Embedding refresh submitted: scanned {scanned}, queued {queued}, skipped {skipped}",
+		向量刷新任务提交失败: "Failed to submit embedding refresh",
 		"查看与管理所有评论与回复": "View and manage all comments and replies",
 		关键词: "Keyword",
 		评论人: "Commenter",

@@ -3,6 +3,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 
+from app.domain.ai_task_service import AITaskService
 from app.core.dependencies import (
     build_basic_settings,
     ensure_nextauth_secret,
@@ -26,9 +27,11 @@ from auth import get_admin_settings, get_current_admin
 from models import ModelAPIConfig, get_db, now_str
 
 router = APIRouter()
+ai_task_service = AITaskService()
+RECOMMENDATION_EMBEDDING_REFRESH_LIMIT = 500
 
 
-def validate_recommendation_model_config(db: Session, config_id: str) -> None:
+def validate_recommendation_model_config(db: Session, config_id: str) -> ModelAPIConfig:
     model_config = db.query(ModelAPIConfig).filter(ModelAPIConfig.id == config_id).first()
     if not model_config:
         raise HTTPException(status_code=400, detail="所选向量模型不存在，请重新选择")
@@ -36,6 +39,7 @@ def validate_recommendation_model_config(db: Session, config_id: str) -> None:
         raise HTTPException(status_code=400, detail="所选向量模型已禁用，请重新选择")
     if (model_config.model_type or "general") != "vector":
         raise HTTPException(status_code=400, detail="所选模型不是向量模型，请重新选择")
+    return model_config
 
 
 def build_comment_settings_public_payload(db: Session) -> dict:
@@ -290,3 +294,39 @@ async def update_recommendation_settings(
     db.commit()
     db.refresh(admin)
     return {"success": True}
+
+
+@router.post("/api/settings/recommendations/rebuild-embeddings")
+async def rebuild_recommendation_embeddings(
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
+    admin = get_admin_settings(db)
+    if admin is None:
+        raise HTTPException(status_code=404, detail="未初始化管理员设置")
+    if not bool(admin.recommendations_enabled):
+        raise HTTPException(status_code=409, detail="请先开启文章推荐后再刷新向量数据")
+
+    model_config_id = (admin.recommendation_model_config_id or "").strip()
+    if not model_config_id:
+        raise HTTPException(status_code=400, detail="请先选择远程向量模型")
+    model_config = validate_recommendation_model_config(db, model_config_id)
+    result = ai_task_service.embedding_service.rebuild_embeddings_for_recommendations(
+        db=db,
+        model_name=model_config.model_name,
+        limit=RECOMMENDATION_EMBEDDING_REFRESH_LIMIT,
+        enqueue_embedding_task=lambda article_id: ai_task_service.enqueue_task(
+            db,
+            task_type="process_article_embedding",
+            article_id=article_id,
+            content_type="embedding",
+        ),
+    )
+
+    return {
+        "success": True,
+        "scope_limit": result["scope_limit"],
+        "scanned_articles": result["scanned_articles"],
+        "queued_tasks": result["queued_tasks"],
+        "skipped_articles": result["skipped_articles"],
+    }

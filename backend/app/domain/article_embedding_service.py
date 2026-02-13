@@ -2,16 +2,19 @@ import hashlib
 import json
 import math
 import re
+from typing import Callable
 
 from ai_client import ConfigurableAIClient
 from models import (
     AdminSettings,
+    AIAnalysis,
     Article,
     ArticleEmbedding,
     ModelAPIConfig,
     SessionLocal,
     now_str,
 )
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from task_errors import TaskConfigError, TaskDataError
 
@@ -195,3 +198,65 @@ class ArticleEmbeddingService:
             await self.ensure_article_embedding(db, article)
         finally:
             db.close()
+
+    def rebuild_embeddings_for_recommendations(
+        self,
+        db: Session,
+        model_name: str,
+        limit: int,
+        enqueue_embedding_task: Callable[[str], str],
+    ) -> dict[str, int]:
+        if limit <= 0:
+            return {
+                "scope_limit": 0,
+                "scanned_articles": 0,
+                "queued_tasks": 0,
+                "skipped_articles": 0,
+            }
+
+        articles = (
+            db.query(Article)
+            .join(AIAnalysis, AIAnalysis.article_id == Article.id)
+            .filter(AIAnalysis.summary.isnot(None))
+            .filter(func.length(func.trim(AIAnalysis.summary)) > 0)
+            .order_by(Article.created_at.desc())
+            .limit(limit)
+            .all()
+        )
+
+        article_ids = [article.id for article in articles]
+        existing_embedding_map: dict[str, ArticleEmbedding] = {}
+        if article_ids:
+            existing_embeddings = (
+                db.query(ArticleEmbedding)
+                .filter(ArticleEmbedding.article_id.in_(article_ids))
+                .all()
+            )
+            existing_embedding_map = {
+                embedding.article_id: embedding for embedding in existing_embeddings
+            }
+
+        task_ids: set[str] = set()
+        skipped_articles = 0
+        for article in articles:
+            expected_source_hash = self.get_embedding_source_hash(article)
+            existing_embedding = existing_embedding_map.get(article.id)
+            if (
+                existing_embedding
+                and existing_embedding.model == model_name
+                and expected_source_hash
+                and existing_embedding.source_hash == expected_source_hash
+                and bool((existing_embedding.embedding or "").strip())
+            ):
+                skipped_articles += 1
+                continue
+
+            task_id = enqueue_embedding_task(article.id)
+            task_ids.add(task_id)
+
+        return {
+            "scope_limit": limit,
+            "scanned_articles": len(articles),
+            "queued_tasks": len(task_ids),
+            "skipped_articles": skipped_articles,
+        }
