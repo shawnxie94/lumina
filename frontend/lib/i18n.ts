@@ -392,7 +392,7 @@ const translations: Record<Language, Record<string | number, string>> = {
 		关闭: "Close",
 		回复: "Reply",
 		清空筛选: "Clear filters",
-		查看更多: "View more...",
+		"查看更多...": "View more...",
 		查看文章: "View article",
 		选择文章: "Select article",
 		语言: "Language",

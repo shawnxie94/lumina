@@ -14,6 +14,43 @@ type CommentAuthSettings = {
   nextauth_secret?: string;
 };
 
+function readHeaderValue(value: string | string[] | undefined): string {
+  if (Array.isArray(value)) {
+    return value[0] || '';
+  }
+  return value || '';
+}
+
+function inferRequestOrigin(req: any): string {
+  if (!req?.headers) return '';
+
+  const forwardedProto = readHeaderValue(req.headers['x-forwarded-proto'])
+    .split(',')[0]
+    .trim();
+  const forwardedHost = readHeaderValue(req.headers['x-forwarded-host'])
+    .split(',')[0]
+    .trim();
+  const host = readHeaderValue(req.headers.host).split(',')[0].trim();
+
+  const protocol = forwardedProto || (req.socket?.encrypted ? 'https' : 'http');
+  const requestHost = forwardedHost || host;
+  if (!requestHost) return '';
+  return `${protocol}://${requestHost}`;
+}
+
+function ensureNextAuthUrl(req: any) {
+  const configuredUrl = (process.env.NEXTAUTH_URL || '').trim();
+  const shouldInfer =
+    !configuredUrl ||
+    configuredUrl.includes('localhost') ||
+    configuredUrl.includes('127.0.0.1');
+
+  if (!shouldInfer) return;
+  const inferredOrigin = inferRequestOrigin(req);
+  if (!inferredOrigin) return;
+  process.env.NEXTAUTH_URL = inferredOrigin;
+}
+
 async function getCommentAuthSettings(): Promise<CommentAuthSettings> {
   let response: Response;
 
@@ -96,6 +133,7 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
 
 export default async function auth(req: any, res: any) {
   try {
+    ensureNextAuthUrl(req);
     const authOptions = await getAuthOptions();
     return NextAuth(req, res, authOptions);
   } catch (error) {
