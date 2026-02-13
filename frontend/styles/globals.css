@@ -250,6 +250,12 @@ html[data-theme="dark"] .skeleton-shimmer::after {
   color: var(--text-2);
 }
 
+.article-prose p,
+.article-prose li {
+  text-align: justify;
+  text-justify: inter-ideograph;
+}
+
 .prose h1,
 .prose h2,
 .prose h3,
@@ -303,6 +309,23 @@ html[data-theme="dark"] .skeleton-shimmer::after {
 .prose pre code::before,
 .prose pre code::after {
   content: none;
+}
+
+.prose .katex {
+  color: var(--text-1);
+  font-size: 1em;
+}
+
+.prose .katex-display {
+  color: var(--text-1);
+  margin: 1rem 0;
+  overflow-x: auto;
+  padding: 0.2rem 0;
+}
+
+.prose .katex-display > .katex {
+  min-width: max-content;
+  display: inline-block;
 }
 
 html[data-theme="dark"] .prose :where(code):not(:where(pre code)) {

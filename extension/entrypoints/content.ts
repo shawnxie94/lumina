@@ -19,6 +19,18 @@ const LAZY_IMAGE_ATTRS = [
 	"data-zoom-src",
 	"data-full-src",
 ];
+const FORMULA_SIGNAL_SELECTOR = [
+	"math",
+	"mjx-container",
+	".katex",
+	".MathJax",
+	"annotation[encoding='application/x-tex']",
+	"script[type*='math/tex']",
+	"img[alt*='\\\\']",
+	"img[class*='math']",
+	"img[class*='latex']",
+	"[data-formula]",
+].join(",");
 
 export default defineContentScript({
 	matches: ["<all_urls>"],
@@ -168,6 +180,50 @@ interface JsonLdArticle {
 
 function countImgTags(html: string): number {
 	return html.match(/<img\b[^>]*>/gi)?.length || 0;
+}
+
+function countFormulaSignalsInRoot(root: ParentNode): number {
+	try {
+		return root.querySelectorAll(FORMULA_SIGNAL_SELECTOR).length;
+	} catch {
+		return 0;
+	}
+}
+
+function countFormulaSignalsInHtml(html: string): number {
+	if (!html) return 0;
+	const parser = new DOMParser();
+	const doc = parser.parseFromString(html, "text/html");
+	return countFormulaSignalsInRoot(doc);
+}
+
+function getTextLengthFromHtml(html: string): number {
+	if (!html) return 0;
+	return (html || "")
+		.replace(/<[^>]*>/g, " ")
+		.replace(/\s+/g, " ")
+		.trim().length;
+}
+
+function shouldPreferFallbackForFormula(
+	sourceFormulaCount: number,
+	readabilityHtml: string,
+	fallbackHtml: string,
+): boolean {
+	if (sourceFormulaCount <= 0) return false;
+	const readabilityFormulaCount = countFormulaSignalsInHtml(readabilityHtml);
+	const fallbackFormulaCount = countFormulaSignalsInHtml(fallbackHtml);
+
+	if (fallbackFormulaCount <= 0) return false;
+	if (readabilityFormulaCount === 0) return true;
+	if (fallbackFormulaCount <= readabilityFormulaCount) return false;
+
+	const readabilityTextLength = getTextLengthFromHtml(readabilityHtml);
+	const fallbackTextLength = getTextLengthFromHtml(fallbackHtml);
+	if (fallbackTextLength < Math.max(120, Math.floor(readabilityTextLength * 0.5))) {
+		return false;
+	}
+	return true;
 }
 
 function getTodayDate(): string {
@@ -345,6 +401,7 @@ async function extractArticle(forceRefresh = false): Promise<ExtractedArticle> {
 	processLazyImages();
 
 	const baseUrl = window.location.href;
+	const sourceFormulaCount = countFormulaSignalsInRoot(document);
 	const jsonLdData = extractJsonLd();
 	const meta = extractMetadata();
 	const mergedMeta = {
@@ -356,16 +413,32 @@ async function extractArticle(forceRefresh = false): Promise<ExtractedArticle> {
 	};
 
 	let result: ExtractedArticle;
+	let fallbackContentCache: string | null = null;
+	const getFallbackContent = () => {
+		if (fallbackContentCache === null) {
+			fallbackContentCache = resolveRelativeUrls(extractFallbackContent(), baseUrl);
+		}
+		return fallbackContentCache;
+	};
 
 	const adapter = getSiteAdapter(baseUrl);
 	if (adapter) {
 		const adapterResult = extractWithAdapter(adapter);
 		let contentHtml = resolveRelativeUrls(adapterResult.contentHtml, baseUrl);
 		if (countImgTags(contentHtml) === 0) {
-			const fallbackContent = extractFallbackContent();
+			const fallbackContent = getFallbackContent();
 			if (countImgTags(fallbackContent) > 0) {
-				contentHtml = resolveRelativeUrls(fallbackContent, baseUrl);
+				contentHtml = fallbackContent;
 			}
+		}
+		if (
+			shouldPreferFallbackForFormula(
+				sourceFormulaCount,
+				contentHtml,
+				getFallbackContent(),
+			)
+		) {
+			contentHtml = getFallbackContent();
 		}
 		const rawDate = adapterResult.publishedAt || mergedMeta.publishedAt;
 
@@ -391,10 +464,19 @@ async function extractArticle(forceRefresh = false): Promise<ExtractedArticle> {
 		if (article) {
 			let contentHtml = resolveRelativeUrls(article.content, baseUrl);
 			if (countImgTags(contentHtml) === 0) {
-				const fallbackContent = extractFallbackContent();
+				const fallbackContent = getFallbackContent();
 				if (countImgTags(fallbackContent) > 0) {
-					contentHtml = resolveRelativeUrls(fallbackContent, baseUrl);
+					contentHtml = fallbackContent;
 				}
+			}
+			if (
+				shouldPreferFallbackForFormula(
+					sourceFormulaCount,
+					contentHtml,
+					getFallbackContent(),
+				)
+			) {
+				contentHtml = getFallbackContent();
 			}
 			const topImage = mergedMeta.topImage || extractFirstImage(contentHtml);
 			const rawDate = article.publishedTime || mergedMeta.publishedAt;
@@ -411,8 +493,7 @@ async function extractArticle(forceRefresh = false): Promise<ExtractedArticle> {
 				content_structured: buildStructuredContentFromHtml(contentHtml),
 			};
 		} else {
-			const fallbackContent = extractFallbackContent();
-			const contentHtml = resolveRelativeUrls(fallbackContent, baseUrl);
+			const contentHtml = getFallbackContent();
 
 			result = {
 				title: mergedMeta.title || document.title,

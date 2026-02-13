@@ -1,5 +1,13 @@
-import { marked } from "marked";
+import rehypeKatex from "rehype-katex";
+import rehypeRaw from "rehype-raw";
+import rehypeStringify from "rehype-stringify";
+import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import remarkParse from "remark-parse";
+import remarkRehype from "remark-rehype";
 import sanitizeHtml, { type IOptions } from "sanitize-html";
+import { unified } from "unified";
+import { visit } from "unist-util-visit";
 
 const LINK_REL_TOKENS = ["noopener", "noreferrer", "nofollow"];
 const VIDEO_MARKER = "▶";
@@ -45,6 +53,14 @@ interface MediaTarget {
 
 interface MarkdownRenderOptions {
 	enableMediaEmbed?: boolean;
+}
+
+interface TreeNode {
+	type?: string;
+	value?: string;
+	alt?: string;
+	url?: string;
+	children?: TreeNode[];
 }
 
 const escapeHtml = (value: string): string =>
@@ -216,6 +232,48 @@ const renderMediaEmbed = (
 	return `<figure class="media-embed media-embed--link"><figcaption class="media-embed__caption"><a href="${safeHref}" target="_blank" rel="noopener noreferrer nofollow">${safeLabel}</a></figcaption></figure>`;
 };
 
+const getNodeText = (node: TreeNode | undefined): string => {
+	if (!node) return "";
+	if (typeof node.value === "string") return node.value;
+	if (typeof node.alt === "string") return node.alt;
+	if (!Array.isArray(node.children)) return "";
+	return node.children.map((child) => getNodeText(child)).join("");
+};
+
+const remarkMediaEmbed = (enableMediaEmbed: boolean) => {
+	return () => {
+		return (tree: TreeNode) => {
+			if (!enableMediaEmbed) return;
+			visit(tree as any, "link", (node: any, index: number | undefined, parent: any) => {
+				if (typeof node.url !== "string") return;
+				const media = normalizeMediaLabel(getNodeText(node));
+				if (!media) return;
+				const html = renderMediaEmbed(media.type, media.title, node.url);
+				if (!html) return;
+				if (typeof index !== "number") return;
+				if (!Array.isArray(parent.children)) return;
+				parent.children[index] = { type: "html", value: html };
+			});
+		};
+	};
+};
+
+const createMarkdownProcessor = (enableMediaEmbed: boolean) =>
+	unified()
+		.use(remarkParse)
+		.use(remarkGfm)
+		.use(remarkMath)
+		.use(remarkMediaEmbed(enableMediaEmbed))
+		.use(remarkRehype, { allowDangerousHtml: true })
+		.use(rehypeRaw)
+		.use(rehypeKatex, {
+			output: "mathml",
+		})
+		.use(rehypeStringify);
+
+const markdownProcessor = createMarkdownProcessor(false);
+const markdownProcessorWithEmbed = createMarkdownProcessor(true);
+
 const SANITIZE_OPTIONS: IOptions = {
 	allowedTags: [
 		"p",
@@ -254,6 +312,31 @@ const SANITIZE_OPTIONS: IOptions = {
 		"th",
 		"td",
 		"mark",
+		"math",
+		"semantics",
+		"annotation",
+		"mrow",
+		"mi",
+		"mn",
+		"mo",
+		"mtext",
+		"msub",
+		"msup",
+		"msubsup",
+		"mfrac",
+		"msqrt",
+		"mroot",
+		"munder",
+		"mover",
+		"munderover",
+		"mtable",
+		"mtr",
+		"mtd",
+		"mstyle",
+		"mspace",
+		"mpadded",
+		"mphantom",
+		"menclose",
 	],
 	allowedAttributes: {
 		a: ["href", "title", "target", "rel"],
@@ -270,6 +353,21 @@ const SANITIZE_OPTIONS: IOptions = {
 			"frameborder",
 			"referrerpolicy",
 		],
+		math: ["xmlns", "display"],
+		annotation: ["encoding"],
+		mo: ["stretchy", "fence", "form", "separator", "lspace", "rspace"],
+		mstyle: [
+			"displaystyle",
+			"scriptlevel",
+			"mathsize",
+			"mathvariant",
+			"mathcolor",
+			"mathbackground",
+		],
+		mtable: ["columnalign", "rowalign", "columnspacing", "rowspacing"],
+		mtd: ["rowspan", "columnspan", "columnalign", "rowalign"],
+		mspace: ["width", "height", "depth", "linebreak"],
+		mpadded: ["width", "height", "depth", "lspace", "voffset"],
 		mark: ["data-annotation-id"],
 		"*": ["class"],
 	},
@@ -312,21 +410,9 @@ export function renderSafeMarkdown(
 	markdown: string,
 	options: MarkdownRenderOptions = {},
 ): string {
-	const renderer = new marked.Renderer();
-	const defaultLinkRenderer = renderer.link.bind(renderer);
-	const enableMediaEmbed = Boolean(options.enableMediaEmbed);
-
-	if (enableMediaEmbed) {
-		renderer.link = (href, title, text) => {
-			const media = normalizeMediaLabel(text || "");
-			if (!media || !href) {
-				return defaultLinkRenderer(href, title, text);
-			}
-			return renderMediaEmbed(media.type, media.title, href);
-		};
-	}
-
-	const rendered = marked.parse(markdown || "", { renderer });
-	const html = typeof rendered === "string" ? rendered : "";
-	return sanitizeRichHtml(html);
+	const processor = options.enableMediaEmbed
+		? markdownProcessorWithEmbed
+		: markdownProcessor;
+	const file = processor.processSync(markdown || "");
+	return sanitizeRichHtml(String(file.value || ""));
 }

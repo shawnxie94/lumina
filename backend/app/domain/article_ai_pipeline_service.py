@@ -3,6 +3,7 @@ import json
 import logging
 import re
 from html import unescape
+from xml.etree import ElementTree as ET
 
 from ai_client import ConfigurableAIClient, is_english_content
 from media_service import maybe_ingest_article_images_with_stats
@@ -367,6 +368,217 @@ class ArticleAIPipelineService:
             return ""
         return self._extract_attr(source_match.group(1), "src")
 
+    def _mathml_local_name(self, tag: str) -> str:
+        if not tag:
+            return ""
+        name = tag
+        if "}" in name:
+            name = name.split("}", 1)[1]
+        if ":" in name:
+            name = name.split(":", 1)[1]
+        return name.lower()
+
+    def _normalize_math_operator(self, text: str) -> str:
+        mapping = {
+            "−": "-",
+            "–": "-",
+            "—": "-",
+            "∗": r"\cdot",
+            "·": r"\cdot",
+            "×": r"\times",
+            "÷": r"\div",
+            "≤": r"\le",
+            "≥": r"\ge",
+            "≠": r"\neq",
+            "≈": r"\approx",
+            "∞": r"\infty",
+        }
+        return mapping.get(text, text)
+
+    def _wrap_latex_group(self, value: str) -> str:
+        text = (value or "").strip()
+        if not text:
+            return ""
+        if text.startswith("{") and text.endswith("}"):
+            return text
+        return "{" + text + "}"
+
+    def _mathml_element_to_latex(self, element: ET.Element) -> str:
+        tag = self._mathml_local_name(element.tag)
+        text = (element.text or "").strip()
+        children = list(element)
+
+        if tag in {"math", "mrow", "semantics"}:
+            parts = []
+            for child in children:
+                child_tag = self._mathml_local_name(child.tag)
+                if child_tag == "annotation":
+                    continue
+                part = self._mathml_element_to_latex(child)
+                if part:
+                    parts.append(part)
+            return "".join(parts) or text
+
+        if tag in {"mi", "mn"}:
+            return text
+
+        if tag == "mo":
+            return self._normalize_math_operator(text)
+
+        if tag == "mtext":
+            if not text:
+                return ""
+            return r"\text{" + text.replace("{", r"\{").replace("}", r"\}") + "}"
+
+        if tag == "msup" and len(children) >= 2:
+            base = self._mathml_element_to_latex(children[0])
+            sup = self._mathml_element_to_latex(children[1])
+            return f"{base}^{self._wrap_latex_group(sup)}"
+
+        if tag == "msub" and len(children) >= 2:
+            base = self._mathml_element_to_latex(children[0])
+            sub = self._mathml_element_to_latex(children[1])
+            return f"{base}_{self._wrap_latex_group(sub)}"
+
+        if tag == "msubsup" and len(children) >= 3:
+            base = self._mathml_element_to_latex(children[0])
+            sub = self._mathml_element_to_latex(children[1])
+            sup = self._mathml_element_to_latex(children[2])
+            return f"{base}_{self._wrap_latex_group(sub)}^{self._wrap_latex_group(sup)}"
+
+        if tag == "mfrac" and len(children) >= 2:
+            numerator = self._mathml_element_to_latex(children[0])
+            denominator = self._mathml_element_to_latex(children[1])
+            return r"\frac" + self._wrap_latex_group(numerator) + self._wrap_latex_group(
+                denominator
+            )
+
+        if tag == "msqrt" and len(children) >= 1:
+            body = "".join(self._mathml_element_to_latex(child) for child in children)
+            return r"\sqrt" + self._wrap_latex_group(body)
+
+        if tag == "mroot" and len(children) >= 2:
+            body = self._mathml_element_to_latex(children[0])
+            root = self._mathml_element_to_latex(children[1])
+            return (
+                r"\sqrt[" + root + "]" + self._wrap_latex_group(body)
+            )
+
+        if tag == "mfenced":
+            body = "".join(self._mathml_element_to_latex(child) for child in children)
+            open_symbol = element.attrib.get("open", "(")
+            close_symbol = element.attrib.get("close", ")")
+            return f"{open_symbol}{body}{close_symbol}"
+
+        parts = []
+        if text:
+            parts.append(text)
+        for child in children:
+            child_text = self._mathml_element_to_latex(child)
+            if child_text:
+                parts.append(child_text)
+            tail = (child.tail or "").strip()
+            if tail:
+                parts.append(tail)
+        return "".join(parts)
+
+    def _mathml_to_latex(self, mathml_fragment: str) -> str:
+        fragment = (mathml_fragment or "").strip()
+        if not fragment:
+            return ""
+
+        annotation_match = re.search(
+            r"<annotation\b[^>]*encoding\s*=\s*['\"]application/x-tex['\"][^>]*>([\s\S]*?)</annotation>",
+            fragment,
+            flags=re.IGNORECASE,
+        )
+        if annotation_match:
+            return self._strip_html_tags(annotation_match.group(1))
+
+        try:
+            root = ET.fromstring(unescape(fragment))
+        except Exception:
+            return self._strip_html_tags(fragment)
+
+        for node in root.iter():
+            if self._mathml_local_name(node.tag) != "annotation":
+                continue
+            encoding = (node.attrib.get("encoding") or "").strip().lower()
+            if encoding == "application/x-tex":
+                value = (node.text or "").strip()
+                if value:
+                    return value
+
+        return self._mathml_element_to_latex(root).strip()
+
+    def _wrap_formula_markdown(self, latex_text: str, is_block: bool) -> str:
+        formula = (latex_text or "").strip()
+        if not formula:
+            return ""
+        if is_block:
+            return "\n\n$$\n" + formula + "\n$$\n\n"
+        return "$" + formula + "$"
+
+    def _convert_html_math_expressions(self, html_text: str) -> str:
+        content = html_text or ""
+
+        def replace_script_math(match: re.Match) -> str:
+            attrs = match.group(1) or ""
+            script_type = self._extract_attr(attrs, "type").lower()
+            if not script_type.startswith("math/tex"):
+                return match.group(0)
+            tex = (match.group(2) or "").strip()
+            mode_attr = self._extract_attr(attrs, "mode").lower()
+            is_block = "mode=display" in script_type or mode_attr == "display"
+            return self._wrap_formula_markdown(tex, is_block)
+
+        def replace_mjx_container(match: re.Match) -> str:
+            attrs = (match.group(1) or "").lower()
+            inner = match.group(2) or ""
+            tex = ""
+            annotation_match = re.search(
+                r"<annotation\b[^>]*encoding\s*=\s*['\"]application/x-tex['\"][^>]*>([\s\S]*?)</annotation>",
+                inner,
+                flags=re.IGNORECASE,
+            )
+            if annotation_match:
+                tex = self._strip_html_tags(annotation_match.group(1))
+            else:
+                math_match = re.search(
+                    r"<math\b[^>]*>[\s\S]*?</math>", inner, flags=re.IGNORECASE
+                )
+                if math_match:
+                    tex = self._mathml_to_latex(math_match.group(0))
+            is_block = "display" in attrs and "inline" not in attrs
+            return self._wrap_formula_markdown(tex, is_block)
+
+        def replace_mathml(match: re.Match) -> str:
+            attrs = (match.group(1) or "").lower()
+            full_math = match.group(0)
+            tex = self._mathml_to_latex(full_math)
+            is_block = "display=\"block\"" in attrs or "display='block'" in attrs
+            return self._wrap_formula_markdown(tex, is_block)
+
+        content = re.sub(
+            r"<script\b([^>]*)>([\s\S]*?)</script>",
+            replace_script_math,
+            content,
+            flags=re.IGNORECASE,
+        )
+        content = re.sub(
+            r"<mjx-container\b([^>]*)>([\s\S]*?)</mjx-container>",
+            replace_mjx_container,
+            content,
+            flags=re.IGNORECASE,
+        )
+        content = re.sub(
+            r"<math\b([^>]*)>[\s\S]*?</math>",
+            replace_mathml,
+            content,
+            flags=re.IGNORECASE,
+        )
+        return content
+
     def _convert_html_media_embeds(self, html_text: str) -> str:
         content = html_text or ""
 
@@ -470,6 +682,7 @@ class ArticleAIPipelineService:
         if not content.strip():
             return ""
 
+        content = self._convert_html_math_expressions(content)
         content = self._convert_html_media_embeds(content)
         content = re.sub(r"<!--[\s\S]*?-->", "", content)
         content = re.sub(
