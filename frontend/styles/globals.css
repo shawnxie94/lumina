@@ -546,9 +546,32 @@ html[data-theme="dark"] .note-panel {
   max-width: 60% !important;
 }
 
+@media (max-width: 1023px) {
+  .immersive-content img,
+  .immersive-content video,
+  .immersive-content audio,
+  .immersive-content iframe,
+  .immersive-content .media-embed,
+  .immersive-content .media-embed--video {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+}
+
 .article-prose:not(.immersive-content) .media-embed--video {
   width: 100%;
   max-width: 100%;
+}
+
+@media (max-width: 1023px) {
+  .article-prose:not(.immersive-content) img,
+  .article-prose:not(.immersive-content) video,
+  .article-prose:not(.immersive-content) audio,
+  .article-prose:not(.immersive-content) iframe,
+  .article-prose:not(.immersive-content) .media-embed {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
 }
 
 @media (min-width: 1024px) {

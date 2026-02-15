@@ -38,8 +38,11 @@ const X_MEDIA_HOSTS = new Set([
 	"www.twitter.com",
 ]);
 const TWITTER_IMAGE_CDN_HOST = "pbs.twimg.com";
-const X_MEDIA_RESOLVE_LIMIT = 8;
 const xMediaResolveCache = new Map<string, string | null>();
+
+function setXMediaResolveCache(key: string, value: string | null): void {
+	xMediaResolveCache.set(key, value);
+}
 
 export default defineContentScript({
 	matches: ["<all_urls>"],
@@ -1089,7 +1092,7 @@ async function resolveXMediaUrlToImage(
 		? findTwitterImageHintInDocument(doc, normalizedUrl, baseUrl)
 		: null;
 	if (hinted) {
-		xMediaResolveCache.set(normalizedUrl, hinted);
+		setXMediaResolveCache(normalizedUrl, hinted);
 		return hinted;
 	}
 
@@ -1098,7 +1101,7 @@ async function resolveXMediaUrlToImage(
 			credentials: "include",
 		});
 		if (!response.ok) {
-			xMediaResolveCache.set(normalizedUrl, null);
+			setXMediaResolveCache(normalizedUrl, null);
 			return null;
 		}
 
@@ -1108,19 +1111,19 @@ async function resolveXMediaUrlToImage(
 			.toLowerCase();
 		if (contentType.startsWith("image/")) {
 			const imageUrl = toAbsoluteUrl(response.url || normalizedUrl, normalizedUrl);
-			xMediaResolveCache.set(normalizedUrl, imageUrl);
+			setXMediaResolveCache(normalizedUrl, imageUrl);
 			return imageUrl;
 		}
 
 		const html = await response.text();
 		const metaImage = extractMetaImageUrl(html, response.url || normalizedUrl);
 		if (metaImage) {
-			xMediaResolveCache.set(normalizedUrl, metaImage);
+			setXMediaResolveCache(normalizedUrl, metaImage);
 			return metaImage;
 		}
 	} catch {}
 
-	xMediaResolveCache.set(normalizedUrl, null);
+	setXMediaResolveCache(normalizedUrl, null);
 	return null;
 }
 
@@ -1158,7 +1161,7 @@ async function resolveXMediaLinks(
 	}
 
 	const urlMappings = new Map<string, string>();
-	const candidateList = Array.from(candidates).slice(0, X_MEDIA_RESOLVE_LIMIT);
+	const candidateList = Array.from(candidates);
 	for (const candidate of candidateList) {
 		const resolved = await resolveXMediaUrlToImage(candidate, baseUrl, doc);
 		if (resolved) {

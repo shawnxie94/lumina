@@ -53,6 +53,7 @@ import {
 	IconReply,
 	IconChevronDown,
 	IconChevronUp,
+	IconChevronRight,
 	IconTag,
 	IconGlobe,
 } from "@/components/icons";
@@ -971,7 +972,8 @@ export default function ArticleDetailPage() {
 	const [immersiveMode, setImmersiveMode] = useState(false);
 	const [isMobile, setIsMobile] = useState(false);
 	const [showAiPanel, setShowAiPanel] = useState(false);
-	const [lightboxImage, setLightboxImage] = useState<string | null>(null);
+	const [lightboxImages, setLightboxImages] = useState<string[]>([]);
+	const [lightboxIndex, setLightboxIndex] = useState(0);
 	const [mindMapOpen, setMindMapOpen] = useState(false);
 	const [prevArticle, setPrevArticle] = useState<ArticleNeighbor | null>(null);
 	const [nextArticle, setNextArticle] = useState<ArticleNeighbor | null>(null);
@@ -986,6 +988,26 @@ export default function ArticleDetailPage() {
 	const contentRef = useRef<HTMLDivElement>(null);
 	const pollingRef = useRef<NodeJS.Timeout | null>(null);
 	const similarPollingRef = useRef<NodeJS.Timeout | null>(null);
+	const lightboxImage = lightboxImages[lightboxIndex] || null;
+	const hasLightboxMultiple = lightboxImages.length > 1;
+
+	const closeLightbox = useCallback(() => {
+		setLightboxImages([]);
+		setLightboxIndex(0);
+	}, []);
+
+	const shiftLightbox = useCallback(
+		(direction: 1 | -1) => {
+			if (lightboxImages.length <= 1) return;
+			setLightboxIndex((prev) => {
+				const next = prev + direction;
+				if (next < 0) return lightboxImages.length - 1;
+				if (next >= lightboxImages.length) return 0;
+				return next;
+			});
+		},
+		[lightboxImages.length],
+	);
 
 	const needsPolling = useCallback((data: ArticleDetail | null): boolean => {
 		if (!data) return false;
@@ -1572,11 +1594,31 @@ export default function ArticleDetailPage() {
 		if (!lightboxImage) return;
 		const handleKeyDown = (event: KeyboardEvent) => {
 			if (event.key === "Escape") {
-				setLightboxImage(null);
+				closeLightbox();
+				return;
+			}
+			if (event.key === "ArrowLeft") {
+				event.preventDefault();
+				shiftLightbox(-1);
+				return;
+			}
+			if (event.key === "ArrowRight") {
+				event.preventDefault();
+				shiftLightbox(1);
 			}
 		};
 		window.addEventListener("keydown", handleKeyDown);
 		return () => window.removeEventListener("keydown", handleKeyDown);
+	}, [lightboxImage, closeLightbox, shiftLightbox]);
+
+	useEffect(() => {
+		if (!lightboxImage || typeof document === "undefined") return;
+		const body = document.body;
+		const previousOverflow = body.style.overflow;
+		body.style.overflow = "hidden";
+		return () => {
+			body.style.overflow = previousOverflow;
+		};
 	}, [lightboxImage]);
 
 	const fetchArticleTasks = useCallback(
@@ -1704,8 +1746,21 @@ export default function ArticleDetailPage() {
 		if (!target) return;
 		if (target.tagName === "IMG") {
 			const img = target as HTMLImageElement;
-			if (img.src) {
-				setLightboxImage(img.src);
+			const clickedSrc = img.currentSrc || img.src || "";
+			if (clickedSrc) {
+				const imageList = contentRef.current
+					? Array.from(contentRef.current.querySelectorAll("img"))
+							.map((node) => {
+								const imageNode = node as HTMLImageElement;
+								return imageNode.currentSrc || imageNode.src || "";
+							})
+							.filter(Boolean)
+					: [];
+				const uniqueImages = Array.from(new Set(imageList));
+				const images = uniqueImages.length > 0 ? uniqueImages : [clickedSrc];
+				const index = Math.max(0, images.findIndex((src) => src === clickedSrc));
+				setLightboxImages(images);
+				setLightboxIndex(index);
 			}
 			return;
 		}
@@ -4684,25 +4739,58 @@ export default function ArticleDetailPage() {
 				onCancel={() => setShowDeleteModal(false)}
 			/>
 
-			<ModalShell
-				isOpen={Boolean(lightboxImage)}
-				onClose={() => setLightboxImage(null)}
-				title={t("预览")}
-				widthClassName="max-w-5xl"
-				panelClassName="max-h-[90vh]"
-				bodyClassName="p-4"
-			>
-				{lightboxImage ? (
-					<div className="flex items-center justify-center">
+			{lightboxImage && (
+				<div
+					className="fixed inset-0 z-[70] bg-black/75 backdrop-blur-[1px]"
+					onClick={closeLightbox}
+					role="dialog"
+					aria-modal="true"
+					aria-label={t("预览")}
+				>
+					<div
+						className="relative flex h-full w-full items-center justify-center p-4 sm:p-6"
+						onClick={(event) => event.stopPropagation()}
+					>
+						<button
+							type="button"
+							onClick={closeLightbox}
+							className="absolute right-4 top-4 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-black/35 text-white transition hover:bg-black/55"
+							aria-label={t("关闭")}
+						>
+							×
+						</button>
+						<div className="absolute left-4 top-4 z-10 rounded-full bg-black/35 px-3 py-1 text-xs text-white">
+							{lightboxIndex + 1} / {lightboxImages.length}
+						</div>
+						{hasLightboxMultiple && (
+							<button
+								type="button"
+								onClick={() => shiftLightbox(-1)}
+								className="absolute left-3 sm:left-4 top-1/2 z-10 -translate-y-1/2 flex h-11 w-11 items-center justify-center rounded-full bg-black/35 text-white transition hover:bg-black/55"
+								aria-label={t("上一篇")}
+							>
+								<IconChevronRight className="h-6 w-6 rotate-180" />
+							</button>
+						)}
 						<img
 							src={lightboxImage}
 							alt={t("预览")}
-							className="max-h-[78vh] max-w-full rounded-lg shadow-xl"
+							className="max-h-[92vh] w-auto max-w-[96vw] object-contain"
 							decoding="async"
 						/>
+						{hasLightboxMultiple && (
+							<button
+								type="button"
+								onClick={() => shiftLightbox(1)}
+								className="absolute right-3 sm:right-4 top-1/2 z-10 -translate-y-1/2 flex h-11 w-11 items-center justify-center rounded-full bg-black/35 text-white transition hover:bg-black/55"
+								aria-label={t("下一篇")}
+							>
+								<IconChevronRight className="h-6 w-6" />
+							</button>
+						)}
 					</div>
-				) : null}
-			</ModalShell>
+				</div>
+			)}
 
 			{mindMapOpen &&
 				article?.ai_analysis?.outline &&
@@ -4738,18 +4826,18 @@ export default function ArticleDetailPage() {
 					>
 						AI
 					</button>
-					<ModalShell
-						isOpen={showAiPanel}
-						onClose={() => setShowAiPanel(false)}
-						title={t("AI")}
-						widthClassName="max-w-sm"
-						overlayClassName="items-stretch justify-end bg-black/40 p-0"
-						panelClassName="h-full w-[86vw] max-w-sm rounded-none border-l border-border shadow-xl"
-						headerClassName="border-b border-border px-4 py-3"
-						bodyClassName="overflow-y-auto p-4"
-					>
-						{aiPanelContent}
-					</ModalShell>
+						<ModalShell
+							isOpen={showAiPanel}
+							onClose={() => setShowAiPanel(false)}
+							title={t("AI")}
+							widthClassName="max-w-sm"
+							overlayClassName="items-stretch justify-end bg-black/40 p-0"
+							panelClassName="h-full w-[86vw] max-w-sm rounded-none border-l border-border shadow-xl flex flex-col"
+							headerClassName="border-b border-border px-4 py-3"
+							bodyClassName="flex-1 min-h-0 overflow-y-auto overscroll-y-contain p-4 [-webkit-overflow-scrolling:touch]"
+						>
+							{aiPanelContent}
+						</ModalShell>
 				</>
 			)}
 

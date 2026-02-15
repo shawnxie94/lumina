@@ -390,7 +390,7 @@ export default function AppHeader() {
               <button
                 type="button"
                 onClick={() => setThemeMenuOpen((prev) => !prev)}
-                className="flex items-center gap-1 px-3 py-1 rounded-sm text-sm text-text-3 hover:text-text-1 hover:bg-muted transition"
+                className="flex items-center justify-center w-8 h-8 lg:w-auto lg:h-auto lg:px-3 lg:py-1 lg:gap-1 rounded-sm text-sm text-text-3 hover:text-text-1 hover:bg-muted transition"
                 title={t('切换主题')}
                 aria-label={t('切换主题')}
               >
@@ -461,6 +461,14 @@ export default function AppHeader() {
                 </div>
               )}
             </div>
+            <Link
+              href="/list"
+              className={`inline-flex lg:hidden h-8 items-center px-3 rounded-sm text-sm font-medium transition ${
+                isFeedRoute ? 'bg-muted text-text-1' : 'text-text-2 hover:bg-muted hover:text-text-1'
+              }`}
+            >
+              {t('信息流')}
+            </Link>
             {resolvedAdmin && (
               <Link
                 href="/admin"
@@ -493,25 +501,6 @@ export default function AppHeader() {
             ) : (
               <div className="hidden lg:block h-8 w-8" aria-hidden="true" />
             )}
-          </div>
-
-          <div className="mt-3 flex lg:hidden items-center gap-2 text-sm font-medium">
-            <Link
-              href="/"
-              className={`px-3 py-1 rounded-sm transition ${
-                isHomeRoute ? 'bg-muted text-text-1' : 'text-text-2 hover:bg-muted hover:text-text-1'
-              }`}
-            >
-              {t('主页')}
-            </Link>
-            <Link
-              href="/list"
-              className={`px-3 py-1 rounded-sm transition ${
-                isFeedRoute ? 'bg-muted text-text-1' : 'text-text-2 hover:bg-muted hover:text-text-1'
-              }`}
-            >
-              {t('信息流')}
-            </Link>
           </div>
         </div>
       </div>

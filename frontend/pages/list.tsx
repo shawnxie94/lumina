@@ -1552,6 +1552,7 @@ export default function Home() {
                               </Link>
                               <ArticleMetaRow
                                 className="mt-2"
+                                singleLine
                                 publishedAt={article.published_at}
                                 createdAt={article.created_at}
                                 items={[
