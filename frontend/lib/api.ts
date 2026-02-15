@@ -639,6 +639,7 @@ export const articleApi = {
 		content_md: string;
 		source_url?: string;
 		author?: string;
+		published_at?: string;
 		top_image?: string;
 		category_id?: string;
 	}) => {

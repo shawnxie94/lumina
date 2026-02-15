@@ -246,7 +246,7 @@ export default function Home() {
   const [createdDateRange, setCreatedDateRange] = useState<[Date | null, Date | null]>([null, null]);
   const [quickDateFilter, setQuickDateFilter] = useState<QuickDateOption>('');
   const [visibilityFilter, setVisibilityFilter] = useState<string>('');
-  const [sortBy, setSortBy] = useState<string>('created_at_desc');
+  const [sortBy, setSortBy] = useState<string>('published_at_desc');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [total, setTotal] = useState(0);
@@ -538,7 +538,7 @@ export default function Home() {
       : '';
     const sortByParam = sortByRaw === 'published_at_desc' || sortByRaw === 'created_at_desc'
       ? sortByRaw
-      : 'created_at_desc';
+      : 'published_at_desc';
 
     const pageParam = Number(routerQueryState.page || '');
     const sizeParam = Number(routerQueryState.size || '');
@@ -603,7 +603,7 @@ export default function Home() {
     if (publishedEndDate) nextQuery.published_at_end = formatDate(publishedEndDate);
     if (createdStartDate) nextQuery.created_at_start = formatDate(createdStartDate);
     if (createdEndDate) nextQuery.created_at_end = formatDate(createdEndDate);
-    if (sortBy !== 'created_at_desc') nextQuery.sort_by = sortBy;
+    if (sortBy !== 'published_at_desc') nextQuery.sort_by = sortBy;
     if (page > 1) nextQuery.page = String(page);
     if (pageSize !== 10) nextQuery.size = String(pageSize);
 
@@ -1144,6 +1144,7 @@ export default function Home() {
         content_md: createContent.trim(),
         source_url: createSourceUrl.trim() || undefined,
         author: createAuthor.trim() || undefined,
+        published_at: new Date().toISOString(),
         top_image: createTopImage.trim() || undefined,
         category_id: createCategoryId || undefined,
       });
