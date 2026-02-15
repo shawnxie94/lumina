@@ -31,6 +31,15 @@ const FORMULA_SIGNAL_SELECTOR = [
 	"img[class*='latex']",
 	"[data-formula]",
 ].join(",");
+const X_MEDIA_HOSTS = new Set([
+	"x.com",
+	"www.x.com",
+	"twitter.com",
+	"www.twitter.com",
+]);
+const TWITTER_IMAGE_CDN_HOST = "pbs.twimg.com";
+const X_MEDIA_RESOLVE_LIMIT = 8;
+const xMediaResolveCache = new Map<string, string | null>();
 
 export default defineContentScript({
 	matches: ["<all_urls>"],
@@ -509,6 +518,15 @@ async function extractArticle(forceRefresh = false): Promise<ExtractedArticle> {
 		}
 	}
 
+	const resolvedMedia = await resolveXMediaLinks(
+		result.content_html,
+		result.top_image,
+		baseUrl,
+	);
+	result.content_html = resolvedMedia.contentHtml;
+	result.top_image = resolvedMedia.topImage;
+	result.content_structured = buildStructuredContentFromHtml(result.content_html);
+
 	result.quality = assessContentQuality(result.content_html);
 	cachedResult = { url: currentUrl, data: result };
 	return result;
@@ -937,6 +955,241 @@ function resolveRelativeUrls(html: string, baseUrl: string): string {
 	});
 
 	return doc.body.innerHTML;
+}
+
+function toAbsoluteUrl(rawUrl: string, baseUrl: string): string {
+	if (!rawUrl) return "";
+	try {
+		return new URL(rawUrl, baseUrl).href;
+	} catch {
+		return rawUrl;
+	}
+}
+
+function isXMediaPageUrl(rawUrl: string, baseUrl: string): boolean {
+	const absolute = toAbsoluteUrl(rawUrl, baseUrl);
+	if (!absolute) return false;
+	try {
+		const parsed = new URL(absolute);
+		const host = parsed.hostname.toLowerCase();
+		if (!X_MEDIA_HOSTS.has(host)) return false;
+		return parsed.pathname.includes("/media/");
+	} catch {
+		return false;
+	}
+}
+
+function isTwitterImageUrl(rawUrl: string, baseUrl: string): boolean {
+	const absolute = toAbsoluteUrl(rawUrl, baseUrl);
+	if (!absolute) return false;
+	try {
+		const host = new URL(absolute).hostname.toLowerCase();
+		return host === TWITTER_IMAGE_CDN_HOST;
+	} catch {
+		return false;
+	}
+}
+
+function pickUrlFromSrcset(srcset: string, baseUrl: string): string {
+	if (!srcset) return "";
+	const candidates = srcset
+		.split(",")
+		.map((part) => part.trim().split(/\s+/)[0] || "")
+		.filter(Boolean);
+	for (const candidate of candidates) {
+		const absolute = toAbsoluteUrl(candidate, baseUrl);
+		if (isTwitterImageUrl(absolute, baseUrl)) {
+			return absolute;
+		}
+	}
+	return toAbsoluteUrl(candidates[0] || "", baseUrl);
+}
+
+function extractTwitterImageHintFromElement(
+	element: Element,
+	baseUrl: string,
+): string | null {
+	const attrs = [
+		"src",
+		"data-src",
+		"data-full-src",
+		"data-image-url",
+		"data-url",
+	];
+	for (const attr of attrs) {
+		const value = element.getAttribute(attr) || "";
+		const absolute = toAbsoluteUrl(value, baseUrl);
+		if (isTwitterImageUrl(absolute, baseUrl)) {
+			return absolute;
+		}
+	}
+	const srcset = element.getAttribute("srcset") || "";
+	if (srcset) {
+		const picked = pickUrlFromSrcset(srcset, baseUrl);
+		if (isTwitterImageUrl(picked, baseUrl)) {
+			return picked;
+		}
+	}
+	return null;
+}
+
+function findTwitterImageHintInDocument(
+	doc: Document,
+	xMediaUrl: string,
+	baseUrl: string,
+): string | null {
+	const normalizedTarget = toAbsoluteUrl(xMediaUrl, baseUrl);
+	const anchors = Array.from(doc.querySelectorAll("a[href]"));
+	for (const anchor of anchors) {
+		const href = toAbsoluteUrl(anchor.getAttribute("href") || "", baseUrl);
+		if (href !== normalizedTarget) continue;
+		const image = anchor.querySelector("img, source");
+		if (!image) continue;
+		const hinted = extractTwitterImageHintFromElement(image, baseUrl);
+		if (hinted) return hinted;
+	}
+	return null;
+}
+
+function extractMetaImageUrl(html: string, baseUrl: string): string | null {
+	if (!html) return null;
+	try {
+		const doc = new DOMParser().parseFromString(html, "text/html");
+		const selectors = [
+			'meta[property="og:image"]',
+			'meta[property="og:image:url"]',
+			'meta[name="twitter:image"]',
+			'meta[name="twitter:image:src"]',
+		];
+		for (const selector of selectors) {
+			const meta = doc.querySelector(selector);
+			const content = meta?.getAttribute("content") || "";
+			const absolute = toAbsoluteUrl(content, baseUrl);
+			if (!absolute) continue;
+			if (!isXMediaPageUrl(absolute, baseUrl)) return absolute;
+		}
+		return null;
+	} catch {
+		return null;
+	}
+}
+
+async function resolveXMediaUrlToImage(
+	rawUrl: string,
+	baseUrl: string,
+	doc?: Document,
+): Promise<string | null> {
+	const normalizedUrl = toAbsoluteUrl(rawUrl, baseUrl);
+	if (!isXMediaPageUrl(normalizedUrl, baseUrl)) return null;
+	if (xMediaResolveCache.has(normalizedUrl)) {
+		return xMediaResolveCache.get(normalizedUrl) || null;
+	}
+
+	const hinted = doc
+		? findTwitterImageHintInDocument(doc, normalizedUrl, baseUrl)
+		: null;
+	if (hinted) {
+		xMediaResolveCache.set(normalizedUrl, hinted);
+		return hinted;
+	}
+
+	try {
+		const response = await fetch(normalizedUrl, {
+			credentials: "include",
+		});
+		if (!response.ok) {
+			xMediaResolveCache.set(normalizedUrl, null);
+			return null;
+		}
+
+		const contentType = (response.headers.get("content-type") || "")
+			.split(";")[0]
+			.trim()
+			.toLowerCase();
+		if (contentType.startsWith("image/")) {
+			const imageUrl = toAbsoluteUrl(response.url || normalizedUrl, normalizedUrl);
+			xMediaResolveCache.set(normalizedUrl, imageUrl);
+			return imageUrl;
+		}
+
+		const html = await response.text();
+		const metaImage = extractMetaImageUrl(html, response.url || normalizedUrl);
+		if (metaImage) {
+			xMediaResolveCache.set(normalizedUrl, metaImage);
+			return metaImage;
+		}
+	} catch {}
+
+	xMediaResolveCache.set(normalizedUrl, null);
+	return null;
+}
+
+async function resolveXMediaLinks(
+	contentHtml: string,
+	topImage: string | null,
+	baseUrl: string,
+): Promise<{ contentHtml: string; topImage: string | null }> {
+	if (!contentHtml && !topImage) {
+		return { contentHtml, topImage };
+	}
+
+	const parser = new DOMParser();
+	const doc = parser.parseFromString(contentHtml || "", "text/html");
+	const candidates = new Set<string>();
+
+	doc.querySelectorAll("img[src], source[src], a[href]").forEach((element) => {
+		const attr = element.hasAttribute("src") ? "src" : "href";
+		const value = element.getAttribute(attr) || "";
+		const absolute = toAbsoluteUrl(value, baseUrl);
+		if (isXMediaPageUrl(absolute, baseUrl)) {
+			candidates.add(absolute);
+		}
+	});
+
+	if (topImage) {
+		const absoluteTopImage = toAbsoluteUrl(topImage, baseUrl);
+		if (isXMediaPageUrl(absoluteTopImage, baseUrl)) {
+			candidates.add(absoluteTopImage);
+		}
+	}
+
+	if (candidates.size === 0) {
+		return { contentHtml, topImage };
+	}
+
+	const urlMappings = new Map<string, string>();
+	const candidateList = Array.from(candidates).slice(0, X_MEDIA_RESOLVE_LIMIT);
+	for (const candidate of candidateList) {
+		const resolved = await resolveXMediaUrlToImage(candidate, baseUrl, doc);
+		if (resolved) {
+			urlMappings.set(candidate, resolved);
+		}
+	}
+
+	if (urlMappings.size === 0) {
+		return { contentHtml, topImage };
+	}
+
+	doc.querySelectorAll("img[src], source[src], a[href]").forEach((element) => {
+		const attr = element.hasAttribute("src") ? "src" : "href";
+		const raw = element.getAttribute(attr) || "";
+		const absolute = toAbsoluteUrl(raw, baseUrl);
+		const mapped = urlMappings.get(absolute);
+		if (mapped) {
+			element.setAttribute(attr, mapped);
+		}
+	});
+
+	let nextTopImage = topImage;
+	if (topImage) {
+		const absoluteTopImage = toAbsoluteUrl(topImage, baseUrl);
+		nextTopImage = urlMappings.get(absoluteTopImage) || topImage;
+	}
+
+	return {
+		contentHtml: doc.body.innerHTML,
+		topImage: nextTopImage,
+	};
 }
 
 function extractFirstImage(html: string): string | null {
