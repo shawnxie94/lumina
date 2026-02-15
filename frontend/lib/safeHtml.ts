@@ -240,17 +240,34 @@ const getNodeText = (node: TreeNode | undefined): string => {
 	return node.children.map((child) => getNodeText(child)).join("");
 };
 
+const isStandaloneParagraphLink = (
+	node: TreeNode,
+	index: number | undefined,
+	parent: TreeNode | undefined,
+): boolean => {
+	if (typeof index !== "number") return false;
+	if (!parent || parent.type !== "paragraph") return false;
+	if (!Array.isArray(parent.children)) return false;
+	const meaningfulChildren = parent.children.filter((child) => {
+		if (child.type !== "text") return true;
+		if (typeof child.value !== "string") return true;
+		return child.value.trim().length > 0;
+	});
+	return meaningfulChildren.length === 1 && meaningfulChildren[0] === node;
+};
+
 const remarkMediaEmbed = (enableMediaEmbed: boolean) => {
 	return () => {
 		return (tree: TreeNode) => {
 			if (!enableMediaEmbed) return;
 			visit(tree as any, "link", (node: any, index: number | undefined, parent: any) => {
 				if (typeof node.url !== "string") return;
+				if (typeof index !== "number") return;
+				if (!isStandaloneParagraphLink(node, index, parent)) return;
 				const media = normalizeMediaLabel(getNodeText(node));
 				if (!media) return;
 				const html = renderMediaEmbed(media.type, media.title, node.url);
 				if (!html) return;
-				if (typeof index !== "number") return;
 				if (!Array.isArray(parent.children)) return;
 				parent.children[index] = { type: "html", value: html };
 			});

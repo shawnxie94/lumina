@@ -165,7 +165,7 @@ export default function HomePage() {
             </div>
           </section>
 
-          <div className="relative max-w-7xl mx-auto px-4 pb-12 text-center">
+          <div className="relative max-w-7xl mx-auto px-4 pb-4 sm:pb-6 text-center">
             <h2 className="text-2xl sm:text-3xl font-semibold text-text-1">
               {t('最新内容')}
             </h2>
