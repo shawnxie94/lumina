@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.core.dependencies import normalize_date_bound
 from auth import get_current_admin
 from models import AIUsageLog, Article, ModelAPIConfig, get_db
 
@@ -35,10 +36,12 @@ async def get_ai_usage_logs(
         query = query.filter(AIUsageLog.task_type == task_type)
     if content_type:
         query = query.filter(AIUsageLog.content_type == content_type)
-    if start:
-        query = query.filter(AIUsageLog.created_at >= start)
-    if end:
-        query = query.filter(AIUsageLog.created_at <= end)
+    start_bound = normalize_date_bound(start, False)
+    end_bound = normalize_date_bound(end, True)
+    if start_bound:
+        query = query.filter(AIUsageLog.created_at >= start_bound)
+    if end_bound:
+        query = query.filter(AIUsageLog.created_at <= end_bound)
 
     total = query.count()
     logs = (
@@ -117,10 +120,12 @@ async def get_ai_usage_summary(
         base_query = base_query.filter(AIUsageLog.task_type == task_type)
     if content_type:
         base_query = base_query.filter(AIUsageLog.content_type == content_type)
-    if start:
-        base_query = base_query.filter(AIUsageLog.created_at >= start)
-    if end:
-        base_query = base_query.filter(AIUsageLog.created_at <= end)
+    start_bound = normalize_date_bound(start, False)
+    end_bound = normalize_date_bound(end, True)
+    if start_bound:
+        base_query = base_query.filter(AIUsageLog.created_at >= start_bound)
+    if end_bound:
+        base_query = base_query.filter(AIUsageLog.created_at <= end_bound)
 
     overall = base_query.with_entities(
         func.count(AIUsageLog.id),
