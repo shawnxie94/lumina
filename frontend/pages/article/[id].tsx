@@ -3224,7 +3224,7 @@ export default function ArticleDetailPage() {
 			>
 				<div className="flex flex-col lg:flex-row gap-6">
 					<div
-						className={`flex-1 w-full bg-surface ${immersiveMode ? "" : "rounded-sm shadow-sm border border-border p-4 sm:p-6 max-w-4xl mx-auto lg:mx-0"}`}
+						className={`flex-1 min-w-0 w-full bg-surface ${immersiveMode ? "" : "rounded-sm shadow-sm border border-border p-4 sm:p-6 max-w-4xl mx-auto lg:mx-0"}`}
 					>
 						{!immersiveMode && (
 							<div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
