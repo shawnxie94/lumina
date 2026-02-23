@@ -195,6 +195,8 @@ const getDateRangeFromQuickOption = (option: QuickDateOption): [Date | null, Dat
 };
 
 const quickDateOptions: QuickDateOption[] = ['', '1d', '3d', '1w', '1m', '3m', '6m', '1y'];
+const FILTER_FETCH_DEBOUNCE_MS = 500;
+const TITLE_SEARCH_FETCH_DEBOUNCE_MS = 900;
 
 const getQueryValue = (value: string | string[] | undefined): string => {
   if (Array.isArray(value)) return value[0] || '';
@@ -499,13 +501,15 @@ export default function Home() {
     suppressNextPageFetchRef.current = true;
     setHasMore(true);
     setIsAppending(false);
+    const debounceMs = searchTerm ? TITLE_SEARCH_FETCH_DEBOUNCE_MS : FILTER_FETCH_DEBOUNCE_MS;
     if (debounceRef.current) {
       clearTimeout(debounceRef.current);
     }
     debounceRef.current = setTimeout(() => {
+      suppressNextPageFetchRef.current = false;
       fetchArticles();
       fetchCategoryStats();
-    }, 400);
+    }, debounceMs);
     return () => {
       if (debounceRef.current) {
         clearTimeout(debounceRef.current);
@@ -1140,6 +1144,7 @@ export default function Home() {
     const pageNum = parseInt(jumpToPage);
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
     if (pageNum >= 1 && pageNum <= totalPages) {
+      suppressNextPageFetchRef.current = false;
       setPage(pageNum);
       setJumpToPage('');
     } else {
@@ -1720,7 +1725,11 @@ export default function Home() {
                       <span>{t('每页显示')}</span>
                       <SelectField
                         value={pageSize}
-                        onChange={(value) => { setPageSize(Number(value)); setPage(1); }}
+                        onChange={(value) => {
+                          suppressNextPageFetchRef.current = false;
+                          setPageSize(Number(value));
+                          setPage(1);
+                        }}
                         className="w-20"
                         options={[
                           { value: 10, label: '10' },
@@ -1733,7 +1742,10 @@ export default function Home() {
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                       <Button
-                        onClick={() => setPage((p) => Math.max(1, p - 1))}
+                        onClick={() => {
+                          suppressNextPageFetchRef.current = false;
+                          setPage((p) => Math.max(1, p - 1));
+                        }}
                         disabled={page === 1}
                         variant="secondary"
                         size="sm"
@@ -1744,7 +1756,10 @@ export default function Home() {
                         {t('第')} {page} / {totalPages} {t('页')}
                       </span>
                       <Button
-                        onClick={() => setPage((p) => p + 1)}
+                        onClick={() => {
+                          suppressNextPageFetchRef.current = false;
+                          setPage((p) => p + 1);
+                        }}
                         disabled={page >= totalPages}
                         variant="secondary"
                         size="sm"
