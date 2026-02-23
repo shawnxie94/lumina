@@ -26,6 +26,52 @@ def _normalize_end_date_bound(value: str | None) -> str | None:
     return next_day.strftime("%Y-%m-%d")
 
 
+def _parse_datetime_value(value: str | None) -> datetime | None:
+    raw = (value or "").strip()
+    if not raw:
+        return None
+    try:
+        normalized = raw[:-1] + "+00:00" if raw.endswith("Z") else raw
+        return datetime.fromisoformat(normalized)
+    except Exception:
+        pass
+    try:
+        return datetime.strptime(raw, "%Y-%m-%d")
+    except Exception:
+        return None
+
+
+def _article_time_sort_key(article: Article) -> tuple[datetime, datetime, str]:
+    primary = _parse_datetime_value(article.published_at) or _parse_datetime_value(
+        article.created_at
+    )
+    secondary = _parse_datetime_value(article.created_at) or primary
+    fallback = article.created_at or article.published_at or ""
+    default_dt = datetime.max
+    return (
+        primary or default_dt,
+        secondary or default_dt,
+        fallback,
+    )
+
+
+def _normalize_public_base_url(public_base_url: str | None) -> str:
+    return (public_base_url or "").strip().rstrip("/")
+
+
+def _to_absolute_url(url: str | None, public_base_url: str) -> str:
+    value = (url or "").strip()
+    if not value:
+        return ""
+    if value.startswith(("http://", "https://", "data:")):
+        return value
+    if value.startswith("//"):
+        return f"https:{value}"
+    if value.startswith("/") and public_base_url:
+        return f"{public_base_url}{value}"
+    return value
+
+
 class ArticleQueryService:
     def get_article_neighbors(
         self,
@@ -172,39 +218,61 @@ class ArticleQueryService:
         articles = query.offset((page - 1) * size).limit(size).all()
         return articles, total
 
-    def export_articles(self, db: Session, article_slugs: list[str]) -> str:
-        articles = db.query(Article).filter(Article.slug.in_(article_slugs)).all()
+    def export_articles(
+        self,
+        db: Session,
+        article_slugs: list[str],
+        public_base_url: str | None = None,
+    ) -> str:
+        if not article_slugs:
+            return ""
 
-        categories_dict: dict[str, list[Article]] = {}
-        uncategorized: list[Article] = []
+        articles = (
+            db.query(Article)
+            .options(
+                joinedload(Article.category).load_only(
+                    Category.id, Category.name, Category.sort_order
+                ),
+                joinedload(Article.ai_analysis).load_only(AIAnalysis.summary),
+            )
+            .filter(Article.slug.in_(article_slugs))
+            .all()
+        )
 
+        base_url = _normalize_public_base_url(public_base_url)
+        grouped: dict[tuple[int, int, str], list[Article]] = {}
         for article in articles:
             if article.category:
-                category_name = article.category.name
-                if category_name not in categories_dict:
-                    categories_dict[category_name] = []
-                categories_dict[category_name].append(article)
+                key = (
+                    0,
+                    article.category.sort_order
+                    if article.category.sort_order is not None
+                    else 999999,
+                    article.category.name or "未分类",
+                )
             else:
-                uncategorized.append(article)
+                key = (1, 999999, "未分类")
+            grouped.setdefault(key, []).append(article)
 
-        markdown_content = ""
+        lines: list[str] = []
+        for (_, _, category_name), category_articles in sorted(grouped.items()):
+            lines.append(f"## {category_name}")
+            lines.append("")
+            for article in sorted(category_articles, key=_article_time_sort_key):
+                article_url = (
+                    f"{base_url}/article/{article.slug}"
+                    if base_url
+                    else f"/article/{article.slug}"
+                )
+                lines.append(f"### [{article.title}]({article_url})")
+                lines.append("")
+                top_image = _to_absolute_url(article.top_image, base_url)
+                if top_image:
+                    lines.append(f"![]({top_image})")
+                    lines.append("")
+                summary = article.ai_analysis.summary if article.ai_analysis else ""
+                if summary:
+                    lines.append(summary)
+                    lines.append("")
 
-        for category_name, category_articles in categories_dict.items():
-            markdown_content += f"## {category_name}\n\n"
-            for article in category_articles:
-                markdown_content += f"### [{article.title}]({article.source_url or ''})\n\n"
-                if article.top_image:
-                    markdown_content += f"![]({article.top_image})\n\n"
-                if article.ai_analysis and article.ai_analysis.summary:
-                    markdown_content += f"{article.ai_analysis.summary}\n\n"
-
-        if uncategorized:
-            markdown_content += "## 未分类\n\n"
-            for article in uncategorized:
-                markdown_content += f"### [{article.title}]({article.source_url or ''})\n\n"
-                if article.top_image:
-                    markdown_content += f"![]({article.top_image})\n\n"
-                if article.ai_analysis and article.ai_analysis.summary:
-                    markdown_content += f"{article.ai_analysis.summary}\n\n"
-
-        return markdown_content
+        return "\n".join(lines).strip()
