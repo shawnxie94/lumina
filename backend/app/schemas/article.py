@@ -14,6 +14,7 @@ class ArticleCreate(BaseModel):
     published_at: Optional[str] = None
     source_domain: Optional[str] = None
     category_id: Optional[str] = None
+    skip_ai_processing: Optional[bool] = False
 
 
 class ArticleUpdate(BaseModel):

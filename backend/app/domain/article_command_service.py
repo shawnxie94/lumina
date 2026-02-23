@@ -20,6 +20,7 @@ class ArticleCommandService:
     async def create_article(self, article_data: dict, db: Session) -> str:
         if not article_data.get("content_html") and not article_data.get("content_md"):
             raise ValueError("文章内容不能为空")
+        skip_ai_processing = bool(article_data.get("skip_ai_processing"))
 
         _category = (
             db.query(Category)
@@ -52,7 +53,8 @@ class ArticleCommandService:
             published_at=article_data.get("published_at"),
             source_domain=article_data.get("source_domain"),
             category_id=article_data.get("category_id"),
-            status="pending",
+            status="completed" if skip_ai_processing else "pending",
+            translation_status="skipped" if skip_ai_processing else None,
             original_language=original_language,
         )
 
@@ -78,20 +80,21 @@ class ArticleCommandService:
         except Exception as exc:
             logger.warning("top_image_ingest_error: %s", str(exc))
 
-        self.ai_task_service.enqueue_task(
-            db,
-            task_type="process_article_cleaning",
-            article_id=article.id,
-            content_type="content_cleaning",
-            payload={
-                "category_id": article_data.get("category_id"),
-                "source_format": "html"
-                if article_data.get("content_html")
-                else "markdown",
-                "strategy": "auto",
-                "chunk_cursor": 0,
-            },
-        )
+        if not skip_ai_processing:
+            self.ai_task_service.enqueue_task(
+                db,
+                task_type="process_article_cleaning",
+                article_id=article.id,
+                content_type="content_cleaning",
+                payload={
+                    "category_id": article_data.get("category_id"),
+                    "source_format": "html"
+                    if article_data.get("content_html")
+                    else "markdown",
+                    "strategy": "auto",
+                    "chunk_cursor": 0,
+                },
+            )
 
         return article.id
 

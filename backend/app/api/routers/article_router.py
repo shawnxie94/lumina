@@ -61,8 +61,9 @@ async def create_article(
         article_id = await article_command_service.create_article(article.dict(), db)
         article_obj = db.query(Article).filter(Article.id == article_id).first()
         slug = article_obj.slug if article_obj else article_id
+        status = article_obj.status if article_obj else "processing"
         invalidate_public_article_meta_cache()
-        return {"id": article_id, "slug": slug, "status": "processing"}
+        return {"id": article_id, "slug": slug, "status": status}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 

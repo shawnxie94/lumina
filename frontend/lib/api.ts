@@ -642,6 +642,7 @@ export const articleApi = {
 		published_at?: string;
 		top_image?: string;
 		category_id?: string;
+		skip_ai_processing?: boolean;
 	}) => {
 		const response = await api.post("/api/articles", data);
 		return response.data;

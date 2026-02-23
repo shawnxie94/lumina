@@ -5,7 +5,15 @@ import { useRouter } from 'next/router';
 import Link from 'next/link';
 import dayjs, { type Dayjs } from 'dayjs';
 
-import { articleApi, categoryApi, Article, Category, resolveMediaUrl } from '@/lib/api';
+import {
+  articleApi,
+  categoryApi,
+  mediaApi,
+  storageSettingsApi,
+  Article,
+  Category,
+  resolveMediaUrl,
+} from '@/lib/api';
 import AppFooter from '@/components/AppFooter';
 import AppHeader from '@/components/AppHeader';
 import ArticleLanguageTag from '@/components/article/ArticleLanguageTag';
@@ -53,6 +61,10 @@ interface PastedMediaLink {
   kind: PastedMediaKind;
   url: string;
 }
+
+type CreatePendingMedia =
+  | { token: string; kind: 'file'; file: File }
+  | { token: string; kind: 'url'; url: string };
 
 const IMAGE_LINK_PATTERN = /\.(png|jpe?g|gif|webp|svg|bmp|avif)(\?.*)?$/i;
 const VIDEO_LINK_PATTERN = /\.(mp4|webm|mov|m4v|ogv|ogg)(\?.*)?$/i;
@@ -144,6 +156,9 @@ const buildMarkdownFromMediaLink = (
   }
   return `[🎧 ${t('音频')}](${link.url})`;
 };
+
+const buildCreateMediaToken = (): string =>
+  `__LUMINA_CREATE_MEDIA_${Date.now()}_${Math.random().toString(36).slice(2, 10)}__`;
 
 
 const getDateRangeFromQuickOption = (option: QuickDateOption): [Date | null, Date | null] => {
@@ -289,6 +304,8 @@ export default function Home() {
   const [createContent, setCreateContent] = useState('');
   const [createSourceUrl, setCreateSourceUrl] = useState('');
   const [createSaving, setCreateSaving] = useState(false);
+  const [createMediaStorageEnabled, setCreateMediaStorageEnabled] = useState(false);
+  const [createPendingMedia, setCreatePendingMedia] = useState<CreatePendingMedia[]>([]);
 
   const [publishedStartDate, publishedEndDate] = publishedDateRange;
   const [createdStartDate, createdEndDate] = createdDateRange;
@@ -442,6 +459,25 @@ export default function Home() {
   };
 
   useEffect(() => {
+    if (!showCreateModal || !isAdmin) return;
+    let cancelled = false;
+    const fetchStorageSettings = async () => {
+      try {
+        const settings = await storageSettingsApi.getSettings();
+        if (!cancelled) {
+          setCreateMediaStorageEnabled(Boolean(settings.media_storage_enabled));
+        }
+      } catch (error) {
+        console.error('Failed to fetch storage settings:', error);
+      }
+    };
+    fetchStorageSettings();
+    return () => {
+      cancelled = true;
+    };
+  }, [showCreateModal, isAdmin]);
+
+  useEffect(() => {
     if (shouldHoldListView) {
       setListContentReady(false);
       return;
@@ -504,6 +540,13 @@ export default function Home() {
     createdEndDate,
     sortBy,
   ]);
+
+  useEffect(() => {
+    if (createPendingMedia.length === 0) return;
+    setCreatePendingMedia((prev) =>
+      prev.filter((item) => createContent.includes(item.token)),
+    );
+  }, [createContent, createPendingMedia.length]);
 
   useEffect(() => {
     if (!initialized || authLoading) return;
@@ -1110,21 +1153,65 @@ export default function Home() {
     }
   };
 
+  const resetCreateForm = () => {
+    setShowCreateModal(false);
+    setCreateTitle('');
+    setCreateAuthor('');
+    setCreateCategoryId('');
+    setCreateTopImage('');
+    setCreateContent('');
+    setCreateSourceUrl('');
+    setCreatePendingMedia([]);
+  };
+
   const handleCreatePaste = (
     event: React.ClipboardEvent<HTMLTextAreaElement>,
   ) => {
     const clipboard = event.clipboardData;
     if (!clipboard) return;
+    const target = event.currentTarget;
+    const pushPendingMedia = (item: CreatePendingMedia) => {
+      const token = buildCreateMediaToken();
+      setCreatePendingMedia((prev) => [...prev, { ...item, token }]);
+      insertTextAtCursor(target, `![](${token})`, setCreateContent);
+    };
+
+    const files = Array.from(clipboard.files || []);
+    const imageFile = files.find((file) => file.type.startsWith('image/'));
+    if (imageFile) {
+      event.preventDefault();
+      if (!createMediaStorageEnabled) {
+        showToast(t('未开启本地图片存储，无法上传图片'), 'info');
+        return;
+      }
+      pushPendingMedia({ token: '', kind: 'file', file: imageFile });
+      showToast(t('图片将在创建后转存'));
+      return;
+    }
+
     const mediaLink =
       extractMediaLinkFromHtml(clipboard.getData('text/html')) ||
       extractMediaLinkFromText(clipboard.getData('text/plain'));
     if (!mediaLink) return;
     event.preventDefault();
-    insertTextAtCursor(
-      event.currentTarget,
-      buildMarkdownFromMediaLink(mediaLink, t),
-      setCreateContent,
-    );
+    if (mediaLink.kind !== 'image') {
+      insertTextAtCursor(
+        target,
+        buildMarkdownFromMediaLink(mediaLink, t),
+        setCreateContent,
+      );
+      return;
+    }
+    if (!createMediaStorageEnabled) {
+      insertTextAtCursor(
+        target,
+        buildMarkdownFromMediaLink(mediaLink, t),
+        setCreateContent,
+      );
+      return;
+    }
+    pushPendingMedia({ token: '', kind: 'url', url: mediaLink.url });
+    showToast(t('图片将在创建后转存'));
   };
 
   const handleCreateArticle = async () => {
@@ -1139,28 +1226,73 @@ export default function Home() {
 
     setCreateSaving(true);
     try {
+      const originalContent = createContent.trim();
+      const pendingMedia = createPendingMedia.filter((item) =>
+        originalContent.includes(item.token),
+      );
       const response = await articleApi.createArticle({
         title: createTitle.trim(),
-        content_md: createContent.trim(),
+        content_md: originalContent,
         source_url: createSourceUrl.trim() || undefined,
         author: createAuthor.trim() || undefined,
         published_at: new Date().toISOString(),
         top_image: createTopImage.trim() || undefined,
         category_id: createCategoryId || undefined,
+        skip_ai_processing: true,
       });
 
-      showToast(t('创建成功'));
-      setShowCreateModal(false);
-      setCreateTitle('');
-      setCreateAuthor('');
-      setCreateCategoryId('');
-      setCreateTopImage('');
-      setCreateContent('');
-      setCreateSourceUrl('');
+      const createdArticleId = response?.id ? String(response.id) : '';
+      const createdArticleSlug = response?.slug ? String(response.slug) : '';
+
+      let patchedContent = originalContent;
+      let transferSuccessCount = 0;
+      let transferFailedCount = 0;
+      if (
+        pendingMedia.length > 0 &&
+        createdArticleId &&
+        createdArticleSlug &&
+        createMediaStorageEnabled
+      ) {
+        for (const item of pendingMedia) {
+          try {
+            const result =
+              item.kind === 'file'
+                ? await mediaApi.upload(createdArticleId, item.file)
+                : await mediaApi.ingest(createdArticleId, item.url);
+            patchedContent = patchedContent.split(item.token).join(result.url);
+            transferSuccessCount += 1;
+          } catch (error) {
+            console.error('Failed to transfer pasted image:', error);
+            transferFailedCount += 1;
+            if (item.kind === 'url') {
+              patchedContent = patchedContent.split(item.token).join(item.url);
+            } else {
+              patchedContent = patchedContent.split(`![](${item.token})`).join('');
+              patchedContent = patchedContent.split(item.token).join('');
+            }
+          }
+        }
+
+        if (patchedContent !== originalContent) {
+          await articleApi.updateArticle(createdArticleSlug, {
+            content_md: patchedContent,
+          });
+        }
+      }
+
+      if (transferFailedCount > 0) {
+        showToast(t('创建成功，部分图片转存失败'), 'error');
+      } else if (transferSuccessCount > 0) {
+        showToast(t('创建成功，图片已转存'));
+      } else {
+        showToast(t('创建成功'));
+      }
+
+      resetCreateForm();
       fetchArticles();
 
-      if (response.slug) {
-        router.push(buildArticleHref(response.slug));
+      if (createdArticleSlug) {
+        router.push(buildArticleHref(createdArticleSlug));
       }
     } catch (error: unknown) {
       const errMsg = error instanceof Error ? error.message : String(error);

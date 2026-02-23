@@ -1948,8 +1948,15 @@ export default function ArticleDetailPage() {
 	}, [activeTabConfig, getLatestTask]);
 
 	const summaryStatusValue =
+		summaryTask?.status ||
 		article?.ai_analysis?.summary_status ||
-		(article?.status === "completed" ? "completed" : article?.status);
+		(article?.ai_analysis?.summary
+			? "completed"
+			: article?.status === "pending" ||
+				  article?.status === "processing" ||
+				  article?.status === "failed"
+				? article.status
+				: null);
 	const summaryStatusLink = isAdmin
 		? buildTaskDetailLink({
 				taskType: "process_ai_content",
