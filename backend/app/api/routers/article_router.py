@@ -2,6 +2,7 @@ import json
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from app.schemas import (
@@ -10,6 +11,7 @@ from app.schemas import (
     ArticleBatchVisibility,
     ArticleCreate,
     ArticleNotesUpdate,
+    ArticleReportByUrlRequest,
     ArticleUpdate,
     ArticleVisibilityUpdate,
 )
@@ -20,6 +22,18 @@ from app.domain.article_embedding_service import (
     ArticleEmbeddingService,
 )
 from app.domain.article_query_service import ArticleQueryService
+from app.domain.article_url_ingest_service import (
+    ArticleUrlIngestBadGatewayError,
+    ArticleUrlIngestBadRequestError,
+    ArticleUrlIngestContentTypeError,
+    ArticleUrlIngestDuplicateError,
+    ArticleUrlIngestGatewayTimeoutError,
+    ArticleUrlIngestService,
+)
+from app.core.dependencies import (
+    check_is_admin_or_internal,
+    get_admin_or_internal,
+)
 from app.core.public_cache import (
     CACHE_KEY_AUTHORS_PUBLIC,
     CACHE_KEY_CATEGORIES_PUBLIC,
@@ -37,6 +51,9 @@ article_query_service = ArticleQueryService()
 ai_task_service = AITaskService()
 article_command_service = ArticleCommandService(ai_task_service=ai_task_service)
 article_embedding_service = ArticleEmbeddingService()
+article_url_ingest_service = ArticleUrlIngestService(
+    article_command_service=article_command_service
+)
 
 SIMILAR_ARTICLE_CANDIDATE_LIMIT = 500
 CATEGORY_SIMILARITY_BOOST = 0.05
@@ -68,6 +85,40 @@ async def create_article(
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@router.post("/api/articles/report-url")
+async def report_article_by_url(
+    payload: ArticleReportByUrlRequest,
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_admin_or_internal),
+):
+    try:
+        result = await article_url_ingest_service.report_by_url(
+            db,
+            url=payload.url,
+            category_id=payload.category_id,
+            is_visible=payload.is_visible,
+            skip_ai_processing=bool(payload.skip_ai_processing),
+        )
+        invalidate_public_article_meta_cache()
+        return result
+    except ArticleUrlIngestDuplicateError as exc:
+        return JSONResponse(
+            status_code=409,
+            content={
+                "code": "source_url_exists",
+                "existing": exc.existing,
+            },
+        )
+    except ArticleUrlIngestContentTypeError as exc:
+        raise HTTPException(status_code=415, detail=exc.detail)
+    except ArticleUrlIngestGatewayTimeoutError as exc:
+        raise HTTPException(status_code=504, detail=exc.detail)
+    except ArticleUrlIngestBadGatewayError as exc:
+        raise HTTPException(status_code=502, detail=exc.detail)
+    except ArticleUrlIngestBadRequestError as exc:
+        raise HTTPException(status_code=400, detail=exc.detail)
+
+
 @router.get("/api/articles")
 async def get_articles(
     response: Response,
@@ -84,7 +135,7 @@ async def get_articles(
     created_at_end: Optional[str] = None,
     sort_by: Optional[str] = "created_at_desc",
     db: Session = Depends(get_db),
-    is_admin: bool = Depends(check_is_admin),
+    is_admin: bool = Depends(check_is_admin_or_internal),
 ):
     page = max(1, page)
     size = min(max(1, size), MAX_PUBLIC_PAGE_SIZE)
@@ -166,7 +217,7 @@ async def get_article(
     article_slug: str,
     response: Response,
     db: Session = Depends(get_db),
-    is_admin: bool = Depends(check_is_admin),
+    is_admin: bool = Depends(check_is_admin_or_internal),
 ):
     article = article_query_service.get_article_by_slug(
         db,

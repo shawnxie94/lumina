@@ -48,18 +48,6 @@
     ]
   },
   {
-    "path": "/api/backup/export",
-    "methods": [
-      "GET"
-    ]
-  },
-  {
-    "path": "/api/backup/import",
-    "methods": [
-      "POST"
-    ]
-  },
-  {
     "path": "/api/articles",
     "methods": [
       "GET"
@@ -85,6 +73,12 @@
   },
   {
     "path": "/api/articles/batch/visibility",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/articles/report-url",
     "methods": [
       "POST"
     ]
@@ -201,6 +195,18 @@
     "path": "/api/authors",
     "methods": [
       "GET"
+    ]
+  },
+  {
+    "path": "/api/backup/export",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/backup/import",
+    "methods": [
+      "POST"
     ]
   },
   {
@@ -417,6 +423,12 @@
     "path": "/api/settings/recommendations",
     "methods": [
       "PUT"
+    ]
+  },
+  {
+    "path": "/api/settings/recommendations/rebuild-embeddings",
+    "methods": [
+      "POST"
     ]
   },
   {

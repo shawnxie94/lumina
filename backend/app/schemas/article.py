@@ -17,6 +17,13 @@ class ArticleCreate(BaseModel):
     skip_ai_processing: Optional[bool] = False
 
 
+class ArticleReportByUrlRequest(BaseModel):
+    url: str
+    category_id: Optional[str] = None
+    is_visible: Optional[bool] = None
+    skip_ai_processing: Optional[bool] = False
+
+
 class ArticleUpdate(BaseModel):
     title: Optional[str] = None
     author: Optional[str] = None

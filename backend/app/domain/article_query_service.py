@@ -1,4 +1,5 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+import re
 
 from sqlalchemy import func, literal
 from sqlalchemy.orm import Session, joinedload, load_only
@@ -30,15 +31,67 @@ def _parse_datetime_value(value: str | None) -> datetime | None:
     raw = (value or "").strip()
     if not raw:
         return None
+
+    candidates: list[str] = [raw]
+    if raw.endswith("Z"):
+        candidates.append(raw[:-1] + "+00:00")
+
+    replaced = raw.replace("/", "-")
+    if replaced != raw:
+        candidates.append(replaced)
+        if replaced.endswith("Z"):
+            candidates.append(replaced[:-1] + "+00:00")
+
+    padded_match = re.match(r"^(\d{4})[-/](\d{1,2})[-/](\d{1,2})(.*)$", raw)
+    if padded_match:
+        year, month, day, suffix = padded_match.groups()
+        padded = f"{year}-{int(month):02d}-{int(day):02d}{suffix}"
+        candidates.append(padded)
+        if padded.endswith("Z"):
+            candidates.append(padded[:-1] + "+00:00")
+
     try:
-        normalized = raw[:-1] + "+00:00" if raw.endswith("Z") else raw
-        return datetime.fromisoformat(normalized)
+        for candidate in candidates:
+            try:
+                parsed = datetime.fromisoformat(candidate)
+                if parsed.tzinfo is not None:
+                    return parsed.astimezone(timezone.utc).replace(tzinfo=None)
+                return parsed
+            except Exception:
+                continue
     except Exception:
         pass
-    try:
-        return datetime.strptime(raw, "%Y-%m-%d")
-    except Exception:
-        return None
+
+    strptime_patterns = (
+        "%Y-%m-%d",
+        "%Y-%m-%d %H:%M",
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%dT%H:%M",
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%dT%H:%M:%S.%f",
+    )
+    for candidate in candidates:
+        for pattern in strptime_patterns:
+            try:
+                parsed = datetime.strptime(candidate, pattern)
+                if parsed.tzinfo is not None:
+                    return parsed.astimezone(timezone.utc).replace(tzinfo=None)
+                return parsed
+            except Exception:
+                continue
+    return None
+
+
+def _article_published_desc_sort_key(article: Article) -> tuple[datetime, datetime, str, str]:
+    published = _parse_datetime_value(article.published_at)
+    created = _parse_datetime_value(article.created_at)
+    default_dt = datetime.min
+    return (
+        published or created or default_dt,
+        created or published or default_dt,
+        article.published_at or "",
+        article.id or "",
+    )
 
 
 def _article_time_sort_key(article: Article) -> tuple[datetime, datetime, str]:
@@ -209,13 +262,13 @@ class ArticleQueryService:
 
         if sort_by == "created_at_desc":
             query = query.order_by(Article.created_at.desc())
-        else:
-            query = query.order_by(
-                Article.published_at.desc().nullslast(),
-                Article.created_at.desc(),
-            )
+            articles = query.offset((page - 1) * size).limit(size).all()
+            return articles, total
 
-        articles = query.offset((page - 1) * size).limit(size).all()
+        articles = query.all()
+        articles.sort(key=_article_published_desc_sort_key, reverse=True)
+        offset = max(0, (page - 1) * size)
+        articles = articles[offset : offset + size]
         return articles, total
 
     def export_articles(

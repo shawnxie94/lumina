@@ -8,7 +8,7 @@ from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 
 from app.core.settings import get_settings
-from auth import get_admin_settings, get_current_admin, security
+from auth import check_is_admin, get_admin_settings, get_current_admin, security
 from models import AdminSettings, get_db, now_str
 
 settings = get_settings()
@@ -49,6 +49,16 @@ def get_admin_or_internal(
     if is_internal_request(request):
         return True
     return get_current_admin(credentials=credentials, db=db)
+
+
+def check_is_admin_or_internal(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    db: Session = Depends(get_db),
+) -> bool:
+    if is_internal_request(request):
+        return True
+    return check_is_admin(credentials=credentials, db=db)
 
 
 def build_basic_settings(admin: Optional[AdminSettings]) -> dict:

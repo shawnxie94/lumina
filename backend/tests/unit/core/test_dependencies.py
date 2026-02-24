@@ -95,3 +95,39 @@ def test_get_sensitive_words_and_contains_sensitive_word(monkeypatch):
 
     assert dependencies.contains_sensitive_word("this has bar content", words) is True
     assert dependencies.contains_sensitive_word("clean text", words) is False
+
+
+def test_check_is_admin_or_internal_returns_true_for_internal_request(monkeypatch):
+    monkeypatch.setattr(dependencies, "is_internal_request", lambda request: True)
+    checker = dependencies.check_is_admin_or_internal(
+        request=SimpleNamespace(headers={}),
+        credentials=None,
+        db=object(),
+    )
+    assert checker is True
+
+
+def test_check_is_admin_or_internal_falls_back_to_admin_check(monkeypatch):
+    monkeypatch.setattr(dependencies, "is_internal_request", lambda request: False)
+    monkeypatch.setattr(
+        dependencies,
+        "check_is_admin",
+        lambda credentials, db: credentials == "token",
+    )
+
+    assert (
+        dependencies.check_is_admin_or_internal(
+            request=SimpleNamespace(headers={}),
+            credentials="token",
+            db=object(),
+        )
+        is True
+    )
+    assert (
+        dependencies.check_is_admin_or_internal(
+            request=SimpleNamespace(headers={}),
+            credentials=None,
+            db=object(),
+        )
+        is False
+    )
