@@ -63,6 +63,8 @@ const translations: Record<ExtensionLanguage, Record<string, string>> = {
 		未命名: "Untitled",
 		"提取内容时出错，请刷新页面后重试":
 			"Extraction failed. Refresh and try again.",
+		"当前链接属于本机或内网地址，URL上报已禁用":
+			"This link points to localhost or private network, URL report is blocked.",
 	},
 };
 

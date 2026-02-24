@@ -1,4 +1,10 @@
-import type { CreateArticleRequest, CreateArticleResponse, StorageData } from '../types';
+import type {
+  CreateArticleRequest,
+  CreateArticleResponse,
+  ReportArticleByUrlDuplicateResponse,
+  ReportArticleByUrlRequest,
+  StorageData,
+} from '../types';
 import { logError } from './errorLogger';
 
 const DEFAULT_API_HOST = 'localhost:8000';
@@ -165,6 +171,45 @@ export class ApiClient {
     } catch (error) {
       console.error('Failed to create article:', error);
       logError('api', error instanceof Error ? error : new Error(String(error)), { action: 'createArticle', apiHost: this.apiHost });
+      throw error;
+    }
+  }
+
+  async reportArticleByUrl(
+    data: ReportArticleByUrlRequest,
+  ): Promise<CreateArticleResponse | ReportArticleByUrlDuplicateResponse> {
+    try {
+      const response = await fetch(`${this.baseUrl}${API_PREFIX}/api/articles/report-url`, {
+        method: 'POST',
+        headers: this.getHeaders(),
+        body: JSON.stringify(data),
+      });
+
+      if (response.status === 401) {
+        throw new Error('UNAUTHORIZED');
+      }
+
+      if (response.status === 409) {
+        const duplicateData = (await response
+          .json()
+          .catch(() => ({ code: '', existing: null }))) as ReportArticleByUrlDuplicateResponse;
+        if (duplicateData?.code === 'source_url_exists' && duplicateData?.existing) {
+          return duplicateData;
+        }
+      }
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
+        throw new Error(`Failed to report article URL: ${errorData.detail || 'Unknown error'}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to report article URL:', error);
+      logError('api', error instanceof Error ? error : new Error(String(error)), {
+        action: 'reportArticleByUrl',
+        apiHost: this.apiHost,
+      });
       throw error;
     }
   }

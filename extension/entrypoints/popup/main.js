@@ -487,8 +487,12 @@ class PopupController {
 	updateStatus(type, message) {
 		const statusEl = document.getElementById("status");
 		const errorBox = document.getElementById("errorBox");
+		const isError = type === "error" && Boolean(message);
 		if (statusEl) {
 			if (!message) {
+				statusEl.className = "status hidden";
+				statusEl.textContent = "";
+			} else if (isError) {
 				statusEl.className = "status hidden";
 				statusEl.textContent = "";
 			} else {
@@ -497,7 +501,7 @@ class PopupController {
 			}
 		}
 		if (errorBox) {
-			if (type === "error" && message) {
+			if (isError) {
 				errorBox.textContent = message;
 				errorBox.classList.remove("hidden");
 			} else {

@@ -18,6 +18,25 @@ export interface CreateArticleResponse {
 	[key: string]: any;
 }
 
+export interface ReportArticleByUrlRequest {
+	url: string;
+	category_id?: string;
+	is_visible?: boolean;
+	skip_ai_processing?: boolean;
+}
+
+export interface ExistingArticleInfo {
+	id: string | number;
+	slug?: string;
+	title?: string;
+	status?: string;
+}
+
+export interface ReportArticleByUrlDuplicateResponse {
+	code: "source_url_exists";
+	existing: ExistingArticleInfo;
+}
+
 export interface StorageData {
 	apiHost: string;
 }

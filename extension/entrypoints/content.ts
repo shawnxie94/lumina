@@ -4,6 +4,7 @@ import { logError } from "../utils/errorLogger";
 import { extractWithAdapter, getSiteAdapter } from "../utils/siteAdapters";
 
 let cachedResult: { url: string; data: ExtractedArticle } | null = null;
+let lastContextLinkHref: string | null = null;
 
 const LAZY_IMAGE_ATTRS = [
 	"data-src",
@@ -48,6 +49,14 @@ export default defineContentScript({
 	matches: ["<all_urls>"],
 	runAt: "document_idle",
 	main() {
+		document.addEventListener(
+			"contextmenu",
+			(event) => {
+				lastContextLinkHref = extractContextLinkHref(event);
+			},
+			true,
+		);
+
 		chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 			if (message.type === "PING") {
 				sendResponse({ pong: true });
@@ -91,10 +100,31 @@ export default defineContentScript({
 				const result = extractSelection();
 				sendResponse(result);
 			}
+			if (message.type === "GET_LAST_CONTEXT_LINK") {
+				sendResponse({
+					url: lastContextLinkHref || "",
+				});
+			}
 			return true;
 		});
 	},
 });
+
+function extractContextLinkHref(event: MouseEvent): string | null {
+	const directTarget =
+		event.target instanceof Element
+			? (event.target.closest("a[href]") as HTMLAnchorElement | null)
+			: null;
+	if (directTarget?.href) return directTarget.href;
+
+	const path = typeof event.composedPath === "function" ? event.composedPath() : [];
+	for (const node of path) {
+		if (!(node instanceof Element)) continue;
+		const anchor = node.closest("a[href]") as HTMLAnchorElement | null;
+		if (anchor?.href) return anchor.href;
+	}
+	return null;
+}
 
 function checkXArticleRedirect(): {
 	shouldRedirect: boolean;
