@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel
 
@@ -42,3 +42,4 @@ class BasicSettingsUpdate(BaseModel):
 class MediaIngestRequest(BaseModel):
     url: str
     article_id: str
+    kind: Literal["image", "book"] = "image"

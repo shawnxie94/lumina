@@ -191,7 +191,7 @@ function splitArticleAuthors(value?: string | null): string[] {
 	return Array.from(new Set(authors));
 }
 
-type PastedMediaKind = "image" | "video" | "audio";
+type PastedMediaKind = "image" | "video" | "audio" | "book";
 
 interface PastedMediaLink {
 	kind: PastedMediaKind;
@@ -201,7 +201,16 @@ interface PastedMediaLink {
 const IMAGE_LINK_PATTERN = /\.(png|jpe?g|gif|webp|svg|bmp|avif)(\?.*)?$/i;
 const VIDEO_LINK_PATTERN = /\.(mp4|webm|mov|m4v|ogv|ogg)(\?.*)?$/i;
 const AUDIO_LINK_PATTERN = /\.(mp3|wav|m4a|aac|ogg|flac|opus)(\?.*)?$/i;
+const BOOK_LINK_PATTERN = /\.(pdf|epub|mobi)(\?.*)?$/i;
 const VIDEO_HOST_PATTERN = /(youtube\.com|youtu\.be|bilibili\.com|vimeo\.com)/i;
+const PDF_FRAME_MIN_HEIGHT_PX = 320;
+const PDF_FRAME_MAX_VIEWPORT_MULTIPLIER = 1.4;
+const PDF_IMMERSIVE_VIEWPORT_OFFSET_PX = 170;
+const PDF_NON_IMMERSIVE_BASE_HEIGHT_PX = 680;
+const PDF_HEIGHT_SCALE_STORAGE_KEY = "pdf_height_scale";
+const PDF_HEIGHT_SCALE_MIN = 0.4;
+const PDF_HEIGHT_SCALE_MAX = 2.2;
+const PDF_HEIGHT_SCALE_STEP = 0.1;
 
 function cleanupPastedUrl(url: string): string {
 	return (url || "")
@@ -217,6 +226,7 @@ function detectMediaKindFromUrl(url: string): PastedMediaKind | null {
 	if (AUDIO_LINK_PATTERN.test(normalized)) return "audio";
 	if (VIDEO_LINK_PATTERN.test(normalized)) return "video";
 	if (VIDEO_HOST_PATTERN.test(normalized)) return "video";
+	if (BOOK_LINK_PATTERN.test(normalized)) return "book";
 	return null;
 }
 
@@ -230,7 +240,10 @@ function buildMarkdownFromMediaLink(
 	if (link.kind === "video") {
 		return `[▶ ${t("视频")}](${link.url})`;
 	}
-	return `[🎧 ${t("音频")}](${link.url})`;
+	if (link.kind === "audio") {
+		return `[🎧 ${t("音频")}](${link.url})`;
+	}
+	return `[📚 ${t("书籍")}](${link.url})`;
 }
 
 function toPastedMediaLink(url?: string | null): PastedMediaLink | null {
@@ -970,6 +983,7 @@ export default function ArticleDetailPage() {
 	const [tocCollapsed, setTocCollapsed] = useState(false);
 	const activeHeadingMapRef = useRef<Map<string, number>>(new Map());
 	const [immersiveMode, setImmersiveMode] = useState(false);
+	const [pdfHeightScale, setPdfHeightScale] = useState(1);
 	const [isMobile, setIsMobile] = useState(false);
 	const [showAiPanel, setShowAiPanel] = useState(false);
 	const [lightboxImages, setLightboxImages] = useState<string[]>([]);
@@ -1043,6 +1057,32 @@ export default function ArticleDetailPage() {
 			: applyAnnotations(normalizedHtml, annotations);
 		return sanitizeRichHtml(htmlWithAnnotations);
 	}, [article, annotations, showTranslation, immersiveMode]);
+	const hasPdfEmbed = useMemo(
+		() => renderedHtml.includes("media-embed__book-pdf"),
+		[renderedHtml],
+	);
+
+	const decreasePdfHeight = useCallback(() => {
+		setPdfHeightScale((prev) =>
+			Math.max(
+				PDF_HEIGHT_SCALE_MIN,
+				Math.round((prev - PDF_HEIGHT_SCALE_STEP) * 10) / 10,
+			),
+		);
+	}, []);
+
+	const increasePdfHeight = useCallback(() => {
+		setPdfHeightScale((prev) =>
+			Math.min(
+				PDF_HEIGHT_SCALE_MAX,
+				Math.round((prev + PDF_HEIGHT_SCALE_STEP) * 10) / 10,
+			),
+		);
+	}, []);
+
+	const resetPdfHeight = useCallback(() => {
+		setPdfHeightScale(1);
+	}, []);
 
 	const authorItems = useMemo(
 		() => splitArticleAuthors(article?.author),
@@ -1288,6 +1328,26 @@ export default function ArticleDetailPage() {
 	}, []);
 
 	useEffect(() => {
+		if (typeof window === "undefined") return;
+		const raw = localStorage.getItem(PDF_HEIGHT_SCALE_STORAGE_KEY);
+		const parsed = Number.parseFloat(raw || "");
+		if (!Number.isFinite(parsed)) return;
+		const clamped = Math.min(
+			PDF_HEIGHT_SCALE_MAX,
+			Math.max(PDF_HEIGHT_SCALE_MIN, parsed),
+		);
+		setPdfHeightScale(Math.round(clamped * 10) / 10);
+	}, []);
+
+	useEffect(() => {
+		if (typeof window === "undefined") return;
+		localStorage.setItem(
+			PDF_HEIGHT_SCALE_STORAGE_KEY,
+			pdfHeightScale.toFixed(1),
+		);
+	}, [pdfHeightScale]);
+
+	useEffect(() => {
 		if (!article) return;
 		const detectImageLayout = () => {
 			if (!contentRef.current) return;
@@ -1362,6 +1422,56 @@ export default function ArticleDetailPage() {
 		};
 		setTimeout(detectImageLayout, 300);
 	}, [article, renderedHtml]);
+
+	useEffect(() => {
+		if (!contentRef.current) return;
+		const embeds = Array.from(
+			contentRef.current.querySelectorAll("embed.media-embed__book-pdf"),
+		) as HTMLEmbedElement[];
+		if (embeds.length === 0) return;
+
+		const resolveFrameHeight = (): number => {
+			const viewportHeight =
+				typeof window !== "undefined" ? window.innerHeight : 900;
+			const baseHeight = immersiveMode
+				? Math.max(
+						PDF_FRAME_MIN_HEIGHT_PX,
+						viewportHeight - PDF_IMMERSIVE_VIEWPORT_OFFSET_PX,
+					)
+				: PDF_NON_IMMERSIVE_BASE_HEIGHT_PX;
+			const maxHeight = viewportHeight * PDF_FRAME_MAX_VIEWPORT_MULTIPLIER;
+			return Math.max(
+				PDF_FRAME_MIN_HEIGHT_PX,
+				Math.min(baseHeight * pdfHeightScale, maxHeight),
+			);
+		};
+
+		const applyPdfFrameHeight = () => {
+			const frameHeight = resolveFrameHeight();
+			for (const embed of embeds) {
+				const container = embed.closest(".media-embed--book") as HTMLElement | null;
+				if (!container) continue;
+				container.style.setProperty(
+					"--pdf-frame-height",
+					`${Math.round(frameHeight)}px`,
+				);
+				embed.style.display = "block";
+			}
+		};
+
+		applyPdfFrameHeight();
+		if (typeof window !== "undefined") {
+			window.addEventListener("resize", applyPdfFrameHeight);
+		}
+		return () => {
+			embeds.forEach((embed) => {
+				embed.style.display = "block";
+			});
+			if (typeof window !== "undefined") {
+				window.removeEventListener("resize", applyPdfFrameHeight);
+			}
+		};
+	}, [immersiveMode, renderedHtml, pdfHeightScale]);
 
 	useEffect(() => {
 		if (id) {
@@ -2864,7 +2974,7 @@ export default function ArticleDetailPage() {
 		if (!mediaLink) return;
 
 		event.preventDefault();
-		if (mediaLink.kind !== "image") {
+		if (mediaLink.kind === "video" || mediaLink.kind === "audio") {
 			if (target) {
 				insertTextAtCursor(
 					target,
@@ -2888,14 +2998,30 @@ export default function ArticleDetailPage() {
 
 		setMediaUploading(true);
 		try {
-			const result = await mediaApi.ingest(article.id, mediaLink.url);
+			const ingestKind = mediaLink.kind === "book" ? "book" : "image";
+			const result = await mediaApi.ingest(article.id, mediaLink.url, ingestKind);
 			if (target) {
-				insertTextAtCursor(target, `![](${result.url})`, setEditContent);
+				if (mediaLink.kind === "image") {
+					insertTextAtCursor(target, `![](${result.url})`, setEditContent);
+				} else {
+					insertTextAtCursor(
+						target,
+						buildMarkdownFromMediaLink(
+							{ kind: "book", url: result.url },
+							t,
+						),
+						setEditContent,
+					);
+				}
 			}
-			showToast(t("图片已转存"));
+			showToast(mediaLink.kind === "book" ? t("书籍已转存") : t("图片已转存"));
 		} catch (error: any) {
-			console.error("Failed to ingest image:", error);
-			showToast(error?.response?.data?.detail || t("图片转存失败"), "error");
+			console.error("Failed to ingest media:", error);
+			showToast(
+				error?.response?.data?.detail ||
+					(mediaLink.kind === "book" ? t("书籍转存失败") : t("图片转存失败")),
+				"error",
+			);
 		} finally {
 			setMediaUploading(false);
 		}
@@ -3331,6 +3457,42 @@ export default function ArticleDetailPage() {
 									>
 										<IconBook className="h-4 w-4" />
 									</button>
+									{immersiveMode && hasPdfEmbed && (
+										<div className="inline-flex h-8 items-center rounded-sm border border-border bg-muted text-text-2">
+											<button
+												type="button"
+												onClick={decreasePdfHeight}
+												disabled={pdfHeightScale <= PDF_HEIGHT_SCALE_MIN}
+												className="h-full px-2 text-sm hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50 transition"
+												title={t("缩短PDF高度")}
+												aria-label={t("缩短PDF高度")}
+											>
+												−
+											</button>
+											<span className="min-w-[52px] px-1 text-center text-xs tabular-nums">
+												{Math.round(pdfHeightScale * 100)}%
+											</span>
+											<button
+												type="button"
+												onClick={increasePdfHeight}
+												disabled={pdfHeightScale >= PDF_HEIGHT_SCALE_MAX}
+												className="h-full px-2 text-sm hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50 transition"
+												title={t("拉长PDF高度")}
+												aria-label={t("拉长PDF高度")}
+											>
+												+
+											</button>
+											<button
+												type="button"
+												onClick={resetPdfHeight}
+												className="h-full border-l border-border px-2 text-xs hover:bg-surface transition"
+												title={t("重置PDF高度")}
+												aria-label={t("重置PDF高度")}
+											>
+												{t("重置")}
+											</button>
+										</div>
+									)}
 									{isAdmin && (
 										<button
 											type="button"
@@ -3349,21 +3511,21 @@ export default function ArticleDetailPage() {
 											<IconEdit className="h-4 w-4" />
 										</button>
 									)}
-										{isAdmin && (
-											<div className="relative" ref={moreActionsRef}>
-												<button
+									{isAdmin && (
+										<div className="relative" ref={moreActionsRef}>
+											<button
 												type="button"
 												onClick={() => setShowMoreActions((prev) => !prev)}
-													className="inline-flex items-center gap-1 h-8 px-2 rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
-													aria-haspopup="menu"
-													aria-expanded={showMoreActions}
-													aria-label={t("更多")}
-													title={t("更多")}
-												>
-													<span className="text-xs">{t("更多")}</span>
-													<IconChevronDown
-														className={`h-3.5 w-3.5 transition-transform ${
-															showMoreActions ? "rotate-180" : ""
+												className="inline-flex items-center gap-1 h-8 px-2 rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
+												aria-haspopup="menu"
+												aria-expanded={showMoreActions}
+												aria-label={t("更多")}
+												title={t("更多")}
+											>
+												<span className="text-xs">{t("更多")}</span>
+												<IconChevronDown
+													className={`h-3.5 w-3.5 transition-transform ${
+														showMoreActions ? "rotate-180" : ""
 													}`}
 												/>
 											</button>

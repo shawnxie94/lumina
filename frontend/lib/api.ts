@@ -120,15 +120,20 @@ export const normalizeMediaHtml = (html: string): string => {
 	try {
 		const parser = new DOMParser();
 		const doc = parser.parseFromString(html, "text/html");
-		doc
-			.querySelectorAll("img, video, audio, source")
-			.forEach((element) => {
-				const src = element.getAttribute("src");
-				const resolved = resolveMediaUrl(src);
-				if (resolved && resolved !== src) {
-					element.setAttribute("src", resolved);
-				}
-			});
+		doc.querySelectorAll("img, video, audio, source, embed").forEach((element) => {
+			const src = element.getAttribute("src");
+			const resolved = resolveMediaUrl(src);
+			if (resolved && resolved !== src) {
+				element.setAttribute("src", resolved);
+			}
+		});
+		doc.querySelectorAll("a[href]").forEach((element) => {
+			const href = element.getAttribute("href");
+			const resolved = resolveMediaUrl(href);
+			if (resolved && resolved !== href) {
+				element.setAttribute("href", resolved);
+			}
+		});
 		return doc.body.innerHTML;
 	} catch {
 		return html;
@@ -1238,10 +1243,11 @@ export const storageSettingsApi = {
 };
 
 export const mediaApi = {
-	upload: async (articleId: string, file: File) => {
+	upload: async (articleId: string, file: File, kind: "image" | "book" = "image") => {
 		const form = new FormData();
 		form.append("file", file);
 		form.append("article_id", articleId);
+		form.append("kind", kind);
 		const response = await api.post("/api/media/upload", form, {
 			headers: { "Content-Type": "multipart/form-data" },
 		});
@@ -1253,10 +1259,15 @@ export const mediaApi = {
 			content_type: string;
 		};
 	},
-	ingest: async (articleId: string, url: string) => {
+	ingest: async (
+		articleId: string,
+		url: string,
+		kind: "image" | "book" = "image",
+	) => {
 		const response = await api.post("/api/media/ingest", {
 			article_id: articleId,
 			url,
+			kind,
 		});
 		return response.data as {
 			asset_id: string;

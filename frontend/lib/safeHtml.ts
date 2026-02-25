@@ -12,8 +12,11 @@ import { visit } from "unist-util-visit";
 const LINK_REL_TOKENS = ["noopener", "noreferrer", "nofollow"];
 const VIDEO_MARKER = "▶";
 const AUDIO_MARKER = "🎧";
+const BOOK_MARKER = "📚";
 const DEFAULT_VIDEO_TITLE = "Video";
 const DEFAULT_AUDIO_TITLE = "Audio";
+const DEFAULT_BOOK_TITLE = "Book";
+const DEFAULT_PDF_TITLE = "PDF";
 const EMBED_IFRAME_HOSTNAMES = [
 	"www.youtube.com",
 	"youtube.com",
@@ -37,9 +40,11 @@ const AUDIO_EXTENSIONS = [
 	".flac",
 	".opus",
 ];
+const BOOK_EXTENSIONS = [".pdf", ".epub", ".mobi"];
+const PDF_EXTENSIONS = [".pdf"];
 
-type MediaEmbedType = "video" | "audio";
-type MediaTargetType = "iframe" | "video" | "audio" | "link";
+type MediaEmbedType = "video" | "audio" | "book";
+type MediaTargetType = "iframe" | "video" | "audio" | "pdf" | "link";
 
 interface MediaEmbedResult {
 	type: MediaEmbedType;
@@ -88,6 +93,10 @@ const normalizeMediaLabel = (text: string): MediaEmbedResult | null => {
 	if (plainText.startsWith(AUDIO_MARKER)) {
 		const title = plainText.slice(AUDIO_MARKER.length).trim() || DEFAULT_AUDIO_TITLE;
 		return { type: "audio", title };
+	}
+	if (plainText.startsWith(BOOK_MARKER)) {
+		const title = plainText.slice(BOOK_MARKER.length).trim() || DEFAULT_BOOK_TITLE;
+		return { type: "book", title };
 	}
 	return null;
 };
@@ -199,7 +208,29 @@ const resolveMediaTarget = (
 	if (hasAnyExtension(url, AUDIO_EXTENSIONS)) {
 		return { type: "audio", src: url };
 	}
+	if (mediaType === "book") {
+		if (hasAnyExtension(url, PDF_EXTENSIONS)) {
+			return { type: "pdf", src: url };
+		}
+		return { type: "link", src: url };
+	}
 	return { type: "link", src: url };
+};
+
+const inferStandaloneBookEmbed = (
+	rawUrl: string,
+	linkText: string,
+): MediaEmbedResult | null => {
+	const url = normalizeUrl(rawUrl);
+	if (!url || !hasAnyExtension(url, BOOK_EXTENSIONS)) return null;
+	const text = stripHtmlTags(linkText);
+	if (text && text !== url) {
+		return { type: "book", title: text };
+	}
+	const fallbackTitle = hasAnyExtension(url, PDF_EXTENSIONS)
+		? DEFAULT_PDF_TITLE
+		: DEFAULT_BOOK_TITLE;
+	return { type: "book", title: fallbackTitle };
 };
 
 const renderMediaEmbed = (
@@ -211,7 +242,12 @@ const renderMediaEmbed = (
 	const safeTitle = escapeHtml(title);
 	const safeHref = escapeHtml(normalizeUrl(rawUrl));
 	const safeSrc = escapeHtml(target.src);
-	const marker = mediaType === "video" ? VIDEO_MARKER : AUDIO_MARKER;
+	const marker =
+		mediaType === "video"
+			? VIDEO_MARKER
+			: mediaType === "audio"
+				? AUDIO_MARKER
+				: BOOK_MARKER;
 	const label = `${marker} ${title}`;
 	const safeLabel = escapeHtml(label);
 
@@ -227,6 +263,14 @@ const renderMediaEmbed = (
 
 	if (target.type === "audio") {
 		return `<figure class="media-embed media-embed--audio"><audio class="media-embed__player" controls preload="metadata" src="${safeSrc}"></audio><figcaption class="media-embed__caption"><a href="${safeHref}" target="_blank" rel="noopener noreferrer nofollow">${safeLabel}</a></figcaption></figure>`;
+	}
+
+	if (target.type === "pdf") {
+		return `<figure class="media-embed media-embed--book"><div class="media-embed__book-frame"><embed class="media-embed__book-pdf" src="${safeSrc}" type="application/pdf"></embed></div><figcaption class="media-embed__caption"><a href="${safeHref}" target="_blank" rel="noopener noreferrer nofollow">${safeLabel}</a></figcaption></figure>`;
+	}
+
+	if (mediaType === "book") {
+		return `<figure class="media-embed media-embed--book media-embed--book-link"><div class="media-embed__book-note">${safeTitle}</div><figcaption class="media-embed__caption"><a href="${safeHref}" target="_blank" rel="noopener noreferrer nofollow">${safeLabel}</a></figcaption></figure>`;
 	}
 
 	return `<figure class="media-embed media-embed--link"><figcaption class="media-embed__caption"><a href="${safeHref}" target="_blank" rel="noopener noreferrer nofollow">${safeLabel}</a></figcaption></figure>`;
@@ -264,7 +308,10 @@ const remarkMediaEmbed = (enableMediaEmbed: boolean) => {
 				if (typeof node.url !== "string") return;
 				if (typeof index !== "number") return;
 				if (!isStandaloneParagraphLink(node, index, parent)) return;
-				const media = normalizeMediaLabel(getNodeText(node));
+				const linkText = getNodeText(node);
+				const media =
+					normalizeMediaLabel(linkText) ||
+					inferStandaloneBookEmbed(node.url, linkText);
 				if (!media) return;
 				const html = renderMediaEmbed(media.type, media.title, node.url);
 				if (!html) return;
@@ -321,6 +368,7 @@ const SANITIZE_OPTIONS: IOptions = {
 		"video",
 		"audio",
 		"source",
+		"embed",
 		"iframe",
 		"table",
 		"thead",
@@ -361,6 +409,7 @@ const SANITIZE_OPTIONS: IOptions = {
 		video: ["src", "controls", "preload", "poster", "class"],
 		audio: ["src", "controls", "preload", "class"],
 		source: ["src", "type"],
+		embed: ["src", "type", "class"],
 		iframe: [
 			"src",
 			"title",

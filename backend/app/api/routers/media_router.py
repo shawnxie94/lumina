@@ -21,13 +21,14 @@ router = APIRouter()
 async def upload_media(
     file: UploadFile = File(...),
     article_id: str = Form(...),
+    kind: str = Form("image"),
     request: Request = None,
     db: Session = Depends(get_db),
     _: bool = Depends(get_current_admin),
 ):
     if not is_media_enabled(db):
         raise HTTPException(status_code=403, detail="未开启本地存储")
-    asset, url = await save_upload_image(db, article_id, file)
+    asset, url = await save_upload_image(db, article_id, file, kind=kind)
     if request is not None and url.startswith("/"):
         base_url = str(request.base_url).rstrip("/")
         url = f"{base_url}{url}"
@@ -49,7 +50,12 @@ async def ingest_media(
 ):
     if not is_media_enabled(db):
         raise HTTPException(status_code=403, detail="未开启本地存储")
-    asset, url = await ingest_external_image(db, payload.article_id, payload.url)
+    asset, url = await ingest_external_image(
+        db,
+        payload.article_id,
+        payload.url,
+        kind=payload.kind,
+    )
     if request is not None and url.startswith("/"):
         base_url = str(request.base_url).rstrip("/")
         url = f"{base_url}{url}"

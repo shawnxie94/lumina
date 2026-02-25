@@ -55,7 +55,7 @@ const toDayjsRange = (range: [Date | null, Date | null]): [Dayjs | null, Dayjs |
   range[1] ? dayjs(range[1]) : null,
 ];
 
-type PastedMediaKind = 'image' | 'video' | 'audio';
+type PastedMediaKind = 'image' | 'video' | 'audio' | 'book';
 
 interface PastedMediaLink {
   kind: PastedMediaKind;
@@ -63,12 +63,13 @@ interface PastedMediaLink {
 }
 
 type CreatePendingMedia =
-  | { token: string; kind: 'file'; file: File }
-  | { token: string; kind: 'url'; url: string };
+  | { token: string; kind: 'file'; file: File; mediaKind: 'image' }
+  | { token: string; kind: 'url'; url: string; mediaKind: 'image' | 'book' };
 
 const IMAGE_LINK_PATTERN = /\.(png|jpe?g|gif|webp|svg|bmp|avif)(\?.*)?$/i;
 const VIDEO_LINK_PATTERN = /\.(mp4|webm|mov|m4v|ogv|ogg)(\?.*)?$/i;
 const AUDIO_LINK_PATTERN = /\.(mp3|wav|m4a|aac|ogg|flac|opus)(\?.*)?$/i;
+const BOOK_LINK_PATTERN = /\.(pdf|epub|mobi)(\?.*)?$/i;
 const VIDEO_HOST_PATTERN = /(youtube\.com|youtu\.be|bilibili\.com|vimeo\.com)/i;
 
 const insertTextAtCursor = (
@@ -100,6 +101,7 @@ const detectMediaKindFromUrl = (url: string): PastedMediaKind | null => {
   if (AUDIO_LINK_PATTERN.test(normalized)) return 'audio';
   if (VIDEO_LINK_PATTERN.test(normalized)) return 'video';
   if (VIDEO_HOST_PATTERN.test(normalized)) return 'video';
+  if (BOOK_LINK_PATTERN.test(normalized)) return 'book';
   return null;
 };
 
@@ -154,7 +156,10 @@ const buildMarkdownFromMediaLink = (
   if (link.kind === 'video') {
     return `[▶ ${t('视频')}](${link.url})`;
   }
-  return `[🎧 ${t('音频')}](${link.url})`;
+  if (link.kind === 'audio') {
+    return `[🎧 ${t('音频')}](${link.url})`;
+  }
+  return `[📚 ${t('书籍')}](${link.url})`;
 };
 
 const buildCreateMediaToken = (): string =>
@@ -1178,6 +1183,10 @@ export default function Home() {
     const pushPendingMedia = (item: CreatePendingMedia) => {
       const token = buildCreateMediaToken();
       setCreatePendingMedia((prev) => [...prev, { ...item, token }]);
+      if (item.mediaKind === 'book') {
+        insertTextAtCursor(target, `[📚 ${t('书籍')}](${token})`, setCreateContent);
+        return;
+      }
       insertTextAtCursor(target, `![](${token})`, setCreateContent);
     };
 
@@ -1189,7 +1198,7 @@ export default function Home() {
         showToast(t('未开启本地图片存储，无法上传图片'), 'info');
         return;
       }
-      pushPendingMedia({ token: '', kind: 'file', file: imageFile });
+      pushPendingMedia({ token: '', kind: 'file', file: imageFile, mediaKind: 'image' });
       showToast(t('图片将在创建后转存'));
       return;
     }
@@ -1199,7 +1208,7 @@ export default function Home() {
       extractMediaLinkFromText(clipboard.getData('text/plain'));
     if (!mediaLink) return;
     event.preventDefault();
-    if (mediaLink.kind !== 'image') {
+    if (mediaLink.kind === 'video' || mediaLink.kind === 'audio') {
       insertTextAtCursor(
         target,
         buildMarkdownFromMediaLink(mediaLink, t),
@@ -1215,8 +1224,13 @@ export default function Home() {
       );
       return;
     }
-    pushPendingMedia({ token: '', kind: 'url', url: mediaLink.url });
-    showToast(t('图片将在创建后转存'));
+    pushPendingMedia({
+      token: '',
+      kind: 'url',
+      url: mediaLink.url,
+      mediaKind: mediaLink.kind === 'book' ? 'book' : 'image',
+    });
+    showToast(mediaLink.kind === 'book' ? t('书籍将在创建后转存') : t('图片将在创建后转存'));
   };
 
   const handleCreateArticle = async () => {
@@ -1263,11 +1277,11 @@ export default function Home() {
             const result =
               item.kind === 'file'
                 ? await mediaApi.upload(createdArticleId, item.file)
-                : await mediaApi.ingest(createdArticleId, item.url);
+                : await mediaApi.ingest(createdArticleId, item.url, item.mediaKind);
             patchedContent = patchedContent.split(item.token).join(result.url);
             transferSuccessCount += 1;
           } catch (error) {
-            console.error('Failed to transfer pasted image:', error);
+            console.error('Failed to transfer pasted media:', error);
             transferFailedCount += 1;
             if (item.kind === 'url') {
               patchedContent = patchedContent.split(item.token).join(item.url);
@@ -1286,9 +1300,9 @@ export default function Home() {
       }
 
       if (transferFailedCount > 0) {
-        showToast(t('创建成功，部分图片转存失败'), 'error');
+        showToast(t('创建成功，部分媒体转存失败'), 'error');
       } else if (transferSuccessCount > 0) {
-        showToast(t('创建成功，图片已转存'));
+        showToast(t('创建成功，媒体已转存'));
       } else {
         showToast(t('创建成功'));
       }

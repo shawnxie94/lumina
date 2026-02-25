@@ -4,6 +4,7 @@ import os
 import re
 import uuid
 from datetime import datetime
+from typing import Literal, cast
 from urllib.parse import urlparse
 
 import httpx
@@ -26,6 +27,18 @@ MAX_MEDIA_SIZE = media_settings.max_size
 DEFAULT_COMPRESS_THRESHOLD = 1536 * 1024
 DEFAULT_MAX_DIM = 2000
 DEFAULT_WEBP_QUALITY = 80
+MEDIA_KIND_IMAGE = "image"
+MEDIA_KIND_BOOK = "book"
+SUPPORTED_MEDIA_KINDS = {MEDIA_KIND_IMAGE, MEDIA_KIND_BOOK}
+BOOK_CONTENT_TYPE_TO_EXTENSION = {
+    "application/pdf": ".pdf",
+    "application/epub+zip": ".epub",
+    "application/x-mobipocket-ebook": ".mobi",
+}
+BOOK_EXTENSION_TO_CONTENT_TYPE = {
+    extension: content_type
+    for content_type, extension in BOOK_CONTENT_TYPE_TO_EXTENSION.items()
+}
 
 
 def ensure_media_root() -> None:
@@ -134,9 +147,38 @@ def _validate_image_content_type(content_type: str | None) -> str:
     return raw
 
 
-def _validate_size(size: int) -> None:
+def _normalize_media_kind(kind: str | None) -> Literal["image", "book"]:
+    normalized = (kind or MEDIA_KIND_IMAGE).strip().lower()
+    if normalized not in SUPPORTED_MEDIA_KINDS:
+        raise HTTPException(status_code=400, detail="仅支持 image 或 book 类型")
+    return cast(Literal["image", "book"], normalized)
+
+
+def _extract_extension(source: str | None) -> str:
+    raw_source = (source or "").strip()
+    if not raw_source:
+        return ""
+    parsed = urlparse(raw_source)
+    _, ext = os.path.splitext(parsed.path or raw_source)
+    return ext.lower()
+
+
+def _validate_book_content(
+    content_type: str | None,
+    source: str | None = None,
+) -> tuple[str, str]:
+    normalized_type = (content_type or "").split(";")[0].strip().lower()
+    ext = _extract_extension(source)
+    if normalized_type in BOOK_CONTENT_TYPE_TO_EXTENSION:
+        return normalized_type, BOOK_CONTENT_TYPE_TO_EXTENSION[normalized_type]
+    if ext in BOOK_EXTENSION_TO_CONTENT_TYPE:
+        return BOOK_EXTENSION_TO_CONTENT_TYPE[ext], ext
+    raise HTTPException(status_code=400, detail="仅支持 PDF/EPUB/MOBI 文件")
+
+
+def _validate_size(size: int, detail: str = "图片过大，超出限制") -> None:
     if size > MAX_MEDIA_SIZE:
-        raise HTTPException(status_code=400, detail="图片过大，超出限制")
+        raise HTTPException(status_code=400, detail=detail)
 
 
 def _get_media_settings(db: Session) -> dict:
@@ -210,20 +252,34 @@ def _maybe_compress_image(
 
 
 async def save_upload_image(
-    db: Session, article_id: str, file: UploadFile
+    db: Session,
+    article_id: str,
+    file: UploadFile,
+    kind: str = MEDIA_KIND_IMAGE,
 ) -> tuple[MediaAsset, str]:
-    content_type = _validate_image_content_type(file.content_type)
-    settings = _get_media_settings(db)
     data = await file.read()
-    data, content_type, ext_override = _maybe_compress_image(
-        data,
-        content_type,
-        settings["compress_threshold"],
-        settings["max_dim"],
-        settings["webp_quality"],
-    )
+    media_kind = _normalize_media_kind(kind)
+    ext_override: str | None = None
+    content_type: str | None = None
+    if media_kind == MEDIA_KIND_IMAGE:
+        content_type = _validate_image_content_type(file.content_type)
+        settings = _get_media_settings(db)
+        data, content_type, ext_override = _maybe_compress_image(
+            data,
+            content_type,
+            settings["compress_threshold"],
+            settings["max_dim"],
+            settings["webp_quality"],
+        )
+        _validate_size(len(data))
+    else:
+        content_type, ext_override = _validate_book_content(
+            file.content_type,
+            file.filename,
+        )
+        _validate_size(len(data), detail="文件过大，超出限制")
+
     size = len(data)
-    _validate_size(size)
     ext = ext_override or _guess_extension(content_type, file.filename)
     storage_path = _build_storage_path(ext)
     _write_bytes(storage_path, data)
@@ -239,29 +295,44 @@ async def save_upload_image(
 
 
 async def ingest_external_image(
-    db: Session, article_id: str, url: str
+    db: Session,
+    article_id: str,
+    url: str,
+    kind: str = MEDIA_KIND_IMAGE,
 ) -> tuple[MediaAsset, str]:
+    media_kind = _normalize_media_kind(kind)
     if not url or not url.startswith(("http://", "https://")):
-        raise HTTPException(status_code=400, detail="图片链接无效")
+        detail = "图片链接无效" if media_kind == MEDIA_KIND_IMAGE else "书籍链接无效"
+        raise HTTPException(status_code=400, detail=detail)
 
     timeout = httpx.Timeout(10.0, connect=5.0)
     async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
         response = await client.get(url)
 
     if response.status_code >= 400:
-        raise HTTPException(status_code=400, detail="图片下载失败")
+        detail = "图片下载失败" if media_kind == MEDIA_KIND_IMAGE else "书籍下载失败"
+        raise HTTPException(status_code=400, detail=detail)
 
-    content_type = _validate_image_content_type(response.headers.get("content-type"))
-    settings = _get_media_settings(db)
     data = response.content or b""
-    data, content_type, ext_override = _maybe_compress_image(
-        data,
-        content_type,
-        settings["compress_threshold"],
-        settings["max_dim"],
-        settings["webp_quality"],
-    )
-    _validate_size(len(data))
+    ext_override: str | None = None
+    content_type: str | None = None
+    if media_kind == MEDIA_KIND_IMAGE:
+        content_type = _validate_image_content_type(response.headers.get("content-type"))
+        settings = _get_media_settings(db)
+        data, content_type, ext_override = _maybe_compress_image(
+            data,
+            content_type,
+            settings["compress_threshold"],
+            settings["max_dim"],
+            settings["webp_quality"],
+        )
+        _validate_size(len(data))
+    else:
+        content_type, ext_override = _validate_book_content(
+            response.headers.get("content-type"),
+            url,
+        )
+        _validate_size(len(data), detail="文件过大，超出限制")
 
     ext = ext_override or _guess_extension(content_type, url)
     storage_path = _build_storage_path(ext)
@@ -474,11 +545,15 @@ def _extract_media_paths_from_markdown(content: str) -> set[str]:
     if not content:
         return set()
     paths: set[str] = set()
-    pattern = re.compile(r"!\[[^\]]*\]\((\S+?)(?:\s+\"[^\"]*\")?\)")
-    for match in pattern.finditer(content):
-        rel = _extract_internal_media_rel_path(match.group(1) or "")
-        if rel:
-            paths.add(rel)
+    patterns = [
+        re.compile(r"!\[[^\]]*\]\((\S+?)(?:\s+\"[^\"]*\")?\)"),
+        re.compile(r"(?<!!)\[[^\]]*\]\((\S+?)(?:\s+\"[^\"]*\")?\)"),
+    ]
+    for pattern in patterns:
+        for match in pattern.finditer(content):
+            rel = _extract_internal_media_rel_path(match.group(1) or "")
+            if rel:
+                paths.add(rel)
     return paths
 
 

@@ -33,6 +33,10 @@ AUDIO_URL_PATTERN = re.compile(
     r"\.(mp3|wav|m4a|aac|ogg|flac|opus)(\?.*)?$",
     re.IGNORECASE,
 )
+BOOK_URL_PATTERN = re.compile(
+    r"\.(pdf|epub|mobi)(\?.*)?$",
+    re.IGNORECASE,
+)
 
 
 def build_parameters(model) -> dict:
@@ -343,6 +347,8 @@ class ArticleAIPipelineService:
             return "audio"
         if VIDEO_URL_PATTERN.search(normalized):
             return "video"
+        if BOOK_URL_PATTERN.search(normalized):
+            return "book"
         return None
 
     def _build_media_markdown_link(
@@ -356,8 +362,18 @@ class ArticleAIPipelineService:
             return ""
         normalized_title = self._strip_html_tags(title or "").strip()
         if not normalized_title:
-            normalized_title = "视频" if kind == "video" else "音频"
-        marker = "▶" if kind == "video" else "🎧"
+            if kind == "video":
+                normalized_title = "视频"
+            elif kind == "audio":
+                normalized_title = "音频"
+            else:
+                normalized_title = "书籍"
+        if kind == "video":
+            marker = "▶"
+        elif kind == "audio":
+            marker = "🎧"
+        else:
+            marker = "📚"
         return f"[{marker} {normalized_title}]({normalized_url})"
 
     def _extract_source_from_media_inner(self, inner_html: str) -> str:
