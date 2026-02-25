@@ -1,7 +1,7 @@
 # PROJECT KNOWLEDGE BASE
 
-**Generated:** 2026-02-13 19:46 Asia/Shanghai
-**Commit:** 1619650
+**Generated:** 2026-02-25 12:36 Asia/Shanghai
+**Commit:** b908bf4
 **Branch:** main
 
 ## OVERVIEW
@@ -32,6 +32,7 @@ Lumina is a content workspace with a Next.js 14 frontend (pages router), FastAPI
 | Backend recommendation refresh API | `backend/app/api/routers/settings_router.py` | Admin batch endpoint for recommendation embedding refresh |
 | Backend embedding batch logic | `backend/app/domain/article_embedding_service.py` | Rebuild queue with model/hash skip logic |
 | Backend DB migrations | `backend/alembic/` `backend/scripts/migrate_db.py` | Alembic-based schema/index upgrade path |
+| Backend unit tests | `backend/tests/unit/` | Pytest-based unit tests for core/domain/utils modules |
 | Route contract baseline | `backend/scripts/route_contract_baseline.json` | API signature regression baseline for modular routers |
 | Response contract baseline | `backend/scripts/response_contract_baseline.json` | Key API response shape regression baseline |
 | DB models + init | `backend/models.py` | Models + DB setup + defaults |
@@ -70,7 +71,7 @@ Lumina is a content workspace with a Next.js 14 frontend (pages router), FastAPI
 - WXT manifest enables `<all_urls>` host permissions and devtools; build target `esnext`.
 - Biome disables `noUnknownAtRules` in `biome.json` and `frontend/biome.json` (Tailwind).
 - UI language supports `zh-CN` and `en`, with `ui_language` stored client-side.
-- Tests are not configured; no `test` scripts or test configs are present.
+- Backend has pytest unit tests under `backend/tests/unit/`; frontend/extension currently have no built-in test scripts.
 
 ## ANTI-PATTERNS (THIS PROJECT)
 - Avoid broad refactors in very large files (`frontend/pages/admin.tsx`, `frontend/pages/article/[id].tsx`, `frontend/pages/list.tsx`) unless task-scoped.
@@ -103,9 +104,10 @@ cd backend
 uv sync
 uv run uvicorn main:app --reload
 uv run uvicorn main:app --host 0.0.0.0 --port 8000
-python scripts/migrate_db.py
-python scripts/check_route_coverage.py --verbose
-python scripts/check_response_contract.py --verbose
+uv run python scripts/migrate_db.py
+uv run python scripts/check_route_coverage.py --verbose
+uv run python scripts/check_response_contract.py --verbose
+uv run pytest tests/unit
 
 # Extension
 cd extension
@@ -130,4 +132,4 @@ docker-compose logs api
 - `data/` is a persistent SQLite volume; reset with `docker-compose down -v`.
 - Extension requires manual browser testing via Chrome extension load.
 - `docker-compose.yml` is gitignored; local edits won't show in git status.
-- Repo contains generated artifacts: `backend/.venv`, `frontend/.next`, `frontend/tsconfig.tsbuildinfo`, `extension/.output`, `extension/.wxt`, `data/articles.db`.
+- Repo contains generated artifacts: `backend/.venv`, `backend/.pytest_cache`, `frontend/.next`, `frontend/tsconfig.tsbuildinfo`, `extension/.output`, `extension/.wxt`, `data/articles.db`.

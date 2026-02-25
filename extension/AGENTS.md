@@ -1,4 +1,5 @@
 # EXTENSION AGENTS
+**Updated:** 2026-02-25 12:36 Asia/Shanghai (`b908bf4`)
 
 ## OVERVIEW
 WXT-based browser extension with popup/background/content entrypoints, script-driven extraction, and local helper modules for history/errors/i18n.
@@ -41,3 +42,4 @@ extension/
 
 ## NOTES
 - `entrypoints/content.ts` and `utils/siteAdapters.ts` are >500 lines; avoid refactors while fixing bugs.
+- Extension verification relies on manual browser loading/testing (`npm run dev` + load unpacked extension).

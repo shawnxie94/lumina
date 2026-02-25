@@ -1,4 +1,5 @@
 # FRONTEND PAGES AGENTS
+**Updated:** 2026-02-25 12:36 Asia/Shanghai (`b908bf4`)
 
 ## OVERVIEW
 Next.js pages-router entry layer; major page files contain most UI state, data fetching, and admin workflows.
@@ -38,3 +39,4 @@ frontend/pages/
 
 ## NOTES
 - `frontend/pages/list.tsx`, `frontend/pages/article/[id].tsx`, and `frontend/pages/admin.tsx` are very large; keep edits minimal and task-scoped.
+- When page logic changes are significant, prioritize checking `/`, `/list`, `/article/[id]`, `/admin`, and `/login` flows in local dev.

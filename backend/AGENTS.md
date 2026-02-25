@@ -1,4 +1,5 @@
 # BACKEND AGENTS
+**Updated:** 2026-02-25 12:36 Asia/Shanghai (`b908bf4`)
 
 ## OVERVIEW
 FastAPI backend uses app-factory wiring with modular routers under `backend/app/`, while keeping `main.py` stable for runtime entrypoint compatibility.
@@ -14,10 +15,12 @@ backend/
 │   │   └── routers/            # Domain routers (auth/articles/comments/...)
 │   ├── core/                   # Shared deps + settings + middleware + cache helpers
 │   ├── domain/                 # Service layer (query/command/ai/task/backup/embed)
+│   ├── legacy/                 # Legacy compatibility adapters
 │   └── schemas/                # Shared Pydantic schemas
 ├── alembic/                    # Alembic migrations
 ├── docs/                       # Runtime setting docs
 ├── scripts/                    # Migration/contract checks
+├── tests/                      # Unit tests (pytest)
 ├── models.py                   # ORM models + DB init + defaults
 ├── auth.py                     # JWT auth helpers
 ├── worker.py                   # Background AI task loop
@@ -43,6 +46,7 @@ backend/
 | Backup import/export | `backend/app/domain/backup_service.py` | JSON backup and incremental restore |
 | Request/response schemas | `backend/app/schemas/` | Reuse schema types across routers |
 | DB migrations | `backend/alembic/` `backend/scripts/migrate_db.py` | Alembic revision + upgrade entrypoint |
+| Unit tests | `backend/tests/unit/` | Unit coverage for core/domain/utils |
 | Route contract baseline | `backend/scripts/route_contract_baseline.json` | Guard for API signature coverage |
 | Response contract baseline | `backend/scripts/response_contract_baseline.json` | Guard for key API response shape regression |
 | Worker orchestration | `backend/worker.py` | Uses `app.domain.ai_task_service` |
@@ -66,15 +70,18 @@ backend/
 ```bash
 # DB migration
 cd backend
-python scripts/migrate_db.py
+uv run python scripts/migrate_db.py
 
 # Route coverage guard (modular routers vs route contract baseline)
-python scripts/check_route_coverage.py --verbose
+uv run python scripts/check_route_coverage.py --verbose
 # (Intentional API route contract update only)
-python scripts/check_route_coverage.py --write-baseline
+uv run python scripts/check_route_coverage.py --write-baseline
 
 # Response contract guard (HTTP status + key fields)
-python scripts/check_response_contract.py --verbose
+uv run python scripts/check_response_contract.py --verbose
+
+# Unit tests
+uv run pytest tests/unit
 
 # One-click docker startup + healthcheck (run from repo root)
 ../scripts/docker_healthcheck.sh

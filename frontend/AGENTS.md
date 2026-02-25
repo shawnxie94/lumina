@@ -1,4 +1,5 @@
 # FRONTEND AGENTS
+**Updated:** 2026-02-25 12:36 Asia/Shanghai (`b908bf4`)
 
 ## OVERVIEW
 Next.js 14 pages-router frontend with Tailwind + Ant Design, shared API helpers, and bilingual UI (`zh-CN`/`en`).
@@ -37,6 +38,7 @@ frontend/
 - Markdown is rendered through `renderSafeMarkdown`; keep KaTeX and sanitize allowlists in sync when adding tags.
 - Tailwind colors/radii/shadows are mapped to CSS variables in `frontend/styles/globals.css`.
 - Font family is `LXGW WenKai Mono` loaded from `frontend/public/fonts/LXGWWenKaiMono.ttf`.
+- Frontend currently has no built-in automated test script; prefer targeted manual verification for page changes.
 
 ## ANTI-PATTERNS
 - Do not hardcode backend origin; use helpers in `frontend/lib/api.ts`.

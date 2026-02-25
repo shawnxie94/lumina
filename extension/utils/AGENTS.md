@@ -1,4 +1,5 @@
 # EXTENSION UTILS AGENTS
+**Updated:** 2026-02-25 12:36 Asia/Shanghai (`b908bf4`)
 
 ## OVERVIEW
 Shared helper layer for extension API calls, extraction pipeline, popup state utilities, and language/error tooling.
@@ -39,3 +40,6 @@ extension/utils/
 
 ## ANTI-PATTERNS
 - Avoid direct DOM/UI coupling inside util modules.
+
+## NOTES
+- Utility changes should be validated from popup capture flow and content extraction flow together to avoid runtime drift.
