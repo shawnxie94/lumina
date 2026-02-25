@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
+from app.core.dependencies import get_admin_or_internal
 from app.domain.backup_service import BackupService
 from app.schemas import BackupImportRequest
 from auth import get_current_admin
@@ -18,7 +19,7 @@ backup_service = BackupService()
 @router.get("/api/backup/export")
 async def export_backup(
     db: Session = Depends(get_db),
-    _: bool = Depends(get_current_admin),
+    _: bool = Depends(get_admin_or_internal),
 ):
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"lumina-backup-{timestamp}.json"

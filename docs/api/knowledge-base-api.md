@@ -5,6 +5,8 @@
 - 文章列表获取（支持筛选）
 - 文章详情获取（含正文与 AI 解读）
 - 文章 URL 上报（只传 URL 自动抓取）
+- 文章导出（批量导出 Markdown）
+- 备份导出（导出 JSON 备份）
 
 ## 1. 基本信息
 
@@ -47,6 +49,8 @@ X-Internal-Token: <INTERNAL_API_TOKEN>
 - `GET /api/articles`：匿名可访问（仅返回可见文章）；Bearer/Internal 可访问全部
 - `GET /api/articles/{article_slug}`：匿名可访问可见文章；Bearer/Internal 可访问全部
 - `POST /api/articles/report-url`：必须 Bearer 或 Internal（二选一）
+- `POST /api/export`：必须 Bearer 或 Internal（二选一）
+- `GET /api/backup/export`：必须 Bearer 或 Internal（二选一）
 
 ## 3. 获取文章列表
 
@@ -201,7 +205,106 @@ curl -s "http://localhost:8000/backend/api/articles/report-url" \
 - `502`：抓取失败（网络或上游异常）
 - `504`：抓取超时
 
-## 6. 安全与限制
+## 6. 导出接口
+
+### 6.1 文章导出
+
+`POST /api/export`
+
+### 6.1.1 请求体
+
+```json
+{
+  "article_slugs": ["article-slug-1", "article-slug-2"],
+  "category_id": "optional-category-id",
+  "search": "optional-keyword",
+  "source_domain": "example.com",
+  "author": "Alice",
+  "is_visible": true,
+  "published_at_start": "2026-01-01",
+  "published_at_end": "2026-01-31",
+  "created_at_start": "2026-01-01",
+  "created_at_end": "2026-01-31"
+}
+```
+
+- 支持两种导出模式（`article_slugs` 优先）：
+  - 模式 A：按 slug 列表导出，传 `article_slugs`
+  - 模式 B：按筛选条件导出，`article_slugs` 不传，改传筛选字段
+- `article_slugs`：可选，`string[]`，要导出的文章 slug 列表
+- 筛选字段（均可选）：`category_id`、`search`、`source_domain`、`author`、`is_visible`、`published_at_start`、`published_at_end`、`created_at_start`、`created_at_end`
+- 校验规则：当 `article_slugs` 未提供时，至少需要一个筛选字段
+- 兼容行为：当 `article_slugs` 传空数组时，接口返回空内容字符串
+
+### 6.1.2 Bearer 调用示例
+
+```bash
+curl -s "http://localhost:8000/backend/api/export" \
+  -H "Authorization: Bearer <admin-token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "article_slugs": ["article-slug-1", "article-slug-2"]
+  }'
+```
+
+### 6.1.3 Internal Token 调用示例（按筛选条件导出）
+
+```bash
+curl -s "http://localhost:8000/backend/api/export" \
+  -H "X-Internal-Token: <INTERNAL_API_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "category_id": "optional-category-id",
+    "search": "ai",
+    "source_domain": "example.com",
+    "author": "Alice"
+  }'
+```
+
+### 6.1.4 成功响应（200）
+
+```json
+{
+  "content": "## 分类A\n\n### [文章标题](http://localhost:8000/article/article-slug-1)\n\n摘要...",
+  "filename": "articles_export.md"
+}
+```
+
+### 6.1.5 常见错误码
+
+- `400`：请求体非法或导出过程异常
+- `401/403`：认证失败（未登录或 token 失效）
+
+### 6.2 备份导出
+
+`GET /api/backup/export`
+
+### 6.2.1 入参
+
+- 无请求体
+- 无查询参数
+
+### 6.2.2 Bearer 调用示例
+
+```bash
+curl -L -OJ "http://localhost:8000/backend/api/backup/export" \
+  -H "Authorization: Bearer <admin-token>"
+```
+
+### 6.2.3 Internal Token 调用示例
+
+```bash
+curl -L -OJ "http://localhost:8000/backend/api/backup/export" \
+  -H "X-Internal-Token: <INTERNAL_API_TOKEN>"
+```
+
+### 6.2.4 响应说明
+
+- `Content-Type: application/json; charset=utf-8`
+- `Content-Disposition: attachment; filename="lumina-backup-YYYYMMDD_HHMMSS.json"`
+- 响应体为备份 JSON，包含 `meta` 与 `data` 两部分（如 `categories`、`articles`、`ai_analyses` 等）
+
+## 7. 安全与限制
 
 - URL 上报默认禁止访问内网/本机地址（如 `localhost`、`127.0.0.1`、`10.x`、`172.16-31.x`、`192.168.x`、`::1`）
 - 同一 `source_url` 在系统内唯一，重复上报返回 `409`

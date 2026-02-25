@@ -59,4 +59,28 @@ class ArticleNotesUpdate(BaseModel):
 
 
 class ExportRequest(BaseModel):
-    article_slugs: list[str]
+    article_slugs: Optional[list[str]] = None
+    category_id: Optional[str] = None
+    search: Optional[str] = None
+    source_domain: Optional[str] = None
+    author: Optional[str] = None
+    is_visible: Optional[bool] = None
+    published_at_start: Optional[str] = None
+    published_at_end: Optional[str] = None
+    created_at_start: Optional[str] = None
+    created_at_end: Optional[str] = None
+
+    def has_filter_conditions(self) -> bool:
+        if self.is_visible is not None:
+            return True
+        string_fields = (
+            self.category_id,
+            self.search,
+            self.source_domain,
+            self.author,
+            self.published_at_start,
+            self.published_at_end,
+            self.created_at_start,
+            self.created_at_end,
+        )
+        return any((value or "").strip() for value in string_fields)
