@@ -1,5 +1,5 @@
 # FRONTEND PAGES AGENTS
-**Updated:** 2026-02-25 12:36 Asia/Shanghai (`b908bf4`)
+**Updated:** 2026-02-25 22:22 Asia/Shanghai (`6573af1`)
 
 ## OVERVIEW
 Next.js pages-router entry layer; major page files contain most UI state, data fetching, and admin workflows.

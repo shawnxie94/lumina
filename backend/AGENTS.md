@@ -1,5 +1,5 @@
 # BACKEND AGENTS
-**Updated:** 2026-02-25 12:36 Asia/Shanghai (`b908bf4`)
+**Updated:** 2026-02-25 22:22 Asia/Shanghai (`6573af1`)
 
 ## OVERVIEW
 FastAPI backend uses app-factory wiring with modular routers under `backend/app/`, while keeping `main.py` stable for runtime entrypoint compatibility.

@@ -1,5 +1,5 @@
 # EXTENSION AGENTS
-**Updated:** 2026-02-25 12:36 Asia/Shanghai (`b908bf4`)
+**Updated:** 2026-02-25 22:22 Asia/Shanghai (`6573af1`)
 
 ## OVERVIEW
 WXT-based browser extension with popup/background/content entrypoints, script-driven extraction, and local helper modules for history/errors/i18n.
