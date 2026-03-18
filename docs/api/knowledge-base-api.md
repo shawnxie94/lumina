@@ -95,7 +95,8 @@ curl -s "http://localhost:8000/backend/api/articles?page=1&size=20&search=ai&sou
       "published_at": "string|null",
       "created_at": "string",
       "is_visible": true,
-      "original_language": "zh|en|..."
+      "original_language": "zh|en|...",
+      "note_recommendation_level": "strongly_recommended|recommended|neutral|not_recommended"
     }
   ],
   "pagination": {
@@ -106,6 +107,13 @@ curl -s "http://localhost:8000/backend/api/articles?page=1&size=20&search=ai&sou
   }
 }
 ```
+
+`note_recommendation_level` 说明：
+
+- `strongly_recommended`：强烈推荐
+- `recommended`：推荐
+- `neutral`：一般（默认值）
+- `not_recommended`：不推荐
 
 ## 4. 获取文章详情
 
@@ -124,6 +132,7 @@ curl -s "http://localhost:8000/backend/api/articles/<article-slug>"
 - 正文字段：`content_html`、`content_md`、`content_trans`
 - AI 字段：`ai_analysis.summary`、`key_points`、`outline`、`quotes` 及各自状态
 - 导航字段：`prev_article`、`next_article`
+- 批注字段：`note_content`、`note_annotations`、`note_recommendation_level`
 
 ## 5. URL 上报文章
 

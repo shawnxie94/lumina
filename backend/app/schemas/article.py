@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel
 
@@ -56,6 +56,14 @@ class ArticleBatchDelete(BaseModel):
 class ArticleNotesUpdate(BaseModel):
     note_content: Optional[str] = None
     annotations: Optional[list[dict]] = None
+    note_recommendation_level: Optional[
+        Literal[
+            "strongly_recommended",
+            "recommended",
+            "neutral",
+            "not_recommended",
+        ]
+    ] = None
 
 
 class ExportRequest(BaseModel):

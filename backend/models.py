@@ -14,6 +14,7 @@ from sqlalchemy.orm import relationship, sessionmaker
 from datetime import date, datetime, timezone
 import uuid
 from app.core.db_migrations import run_db_migrations
+from app.core.note_recommendation import DEFAULT_NOTE_RECOMMENDATION_LEVEL
 from app.core.settings import get_settings
 
 Base = declarative_base()
@@ -108,6 +109,11 @@ class Article(Base):
     updated_at = Column(String, default=now_str)
     note_content = Column(Text, nullable=True)
     note_annotations = Column(Text, nullable=True)
+    note_recommendation_level = Column(
+        String,
+        nullable=False,
+        default=DEFAULT_NOTE_RECOMMENDATION_LEVEL,
+    )
     original_language = Column(String, nullable=True)  # 原文语言：zh, en, ja, etc.
 
     category = relationship("Category", back_populates="articles")

@@ -42,6 +42,7 @@ from app.core.public_cache import (
     get_public_cached,
     invalidate_public_cache,
 )
+from app.core.note_recommendation import normalize_note_recommendation_level
 from auth import check_is_admin, get_admin_settings, get_current_admin
 from media_service import cleanup_media_assets
 from models import Article, ArticleComment, ArticleEmbedding, Category, get_db, now_str
@@ -179,6 +180,9 @@ async def get_articles(
                 "created_at": a.created_at,
                 "is_visible": a.is_visible,
                 "original_language": a.original_language,
+                "note_recommendation_level": normalize_note_recommendation_level(
+                    a.note_recommendation_level
+                ),
             }
             for a in articles
         ],
@@ -257,6 +261,9 @@ async def get_article(
         "created_at": article.created_at,
         "note_content": article.note_content,
         "note_annotations": article.note_annotations,
+        "note_recommendation_level": normalize_note_recommendation_level(
+            article.note_recommendation_level
+        ),
         "ai_analysis": {
             "summary": article.ai_analysis.summary if article.ai_analysis else None,
             "summary_status": article.ai_analysis.summary_status
@@ -444,6 +451,10 @@ async def update_article_notes(
         article.note_content = payload.note_content
     if payload.annotations is not None:
         article.note_annotations = json.dumps(payload.annotations, ensure_ascii=False)
+    if payload.note_recommendation_level is not None:
+        article.note_recommendation_level = normalize_note_recommendation_level(
+            payload.note_recommendation_level
+        )
     article.updated_at = now_str()
     db.commit()
     db.refresh(article)

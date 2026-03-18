@@ -307,6 +307,12 @@ export interface Article {
 	created_at: string;
 	is_visible: boolean;
 	original_language?: string;
+	note_recommendation_level?:
+		| "strongly_recommended"
+		| "recommended"
+		| "neutral"
+		| "not_recommended"
+		| null;
 }
 
 export interface ArticleDetail extends Article {
@@ -320,6 +326,12 @@ export interface ArticleDetail extends Article {
 	is_visible: boolean;
 	note_content?: string | null;
 	note_annotations?: string | null;
+	note_recommendation_level?:
+		| "strongly_recommended"
+		| "recommended"
+		| "neutral"
+		| "not_recommended"
+		| null;
 	ai_analysis: {
 		summary: string | null;
 		summary_status: string | null;
@@ -677,6 +689,11 @@ export const articleApi = {
 		data: {
 			note_content?: string | null;
 			annotations?: Array<{ id: string; start: number; end: number; comment: string }>;
+			note_recommendation_level?:
+				| "strongly_recommended"
+				| "recommended"
+				| "neutral"
+				| "not_recommended";
 		},
 	) => {
 		const response = await api.put(`/api/articles/${id}/notes`, data);

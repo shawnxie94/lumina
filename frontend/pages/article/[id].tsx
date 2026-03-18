@@ -68,11 +68,27 @@ import { signIn, signOut, useSession } from "next-auth/react";
 const POLLING_INTERVAL = 3000;
 const SIMILAR_ARTICLE_LIMIT = 5;
 type AIContentType = "summary" | "key_points" | "outline" | "quotes";
+type NoteRecommendationLevel =
+	| "strongly_recommended"
+	| "recommended"
+	| "neutral"
+	| "not_recommended";
 type ConfigModalMode =
 	| "generate"
 	| "retry_ai_content"
 	| "retry_cleaning"
 	| "retry_translation";
+
+const DEFAULT_NOTE_RECOMMENDATION_LEVEL: NoteRecommendationLevel = "neutral";
+const NOTE_RECOMMENDATION_LEVEL_OPTIONS: Array<{
+	value: NoteRecommendationLevel;
+	label: string;
+}> = [
+	{ value: "strongly_recommended", label: "强烈推荐" },
+	{ value: "recommended", label: "推荐" },
+	{ value: "neutral", label: "一般" },
+	{ value: "not_recommended", label: "不推荐" },
+];
 
 interface AIContentSectionProps {
 	title: string;
@@ -757,6 +773,29 @@ function renderMarkdown(
 	return renderSafeMarkdown(content, options);
 }
 
+function normalizeNoteRecommendationLevel(
+	value?: string | null,
+): NoteRecommendationLevel {
+	if (!value) return DEFAULT_NOTE_RECOMMENDATION_LEVEL;
+	const matched = NOTE_RECOMMENDATION_LEVEL_OPTIONS.find(
+		(item) => item.value === value,
+	);
+	return matched?.value || DEFAULT_NOTE_RECOMMENDATION_LEVEL;
+}
+
+function getNoteRecommendationTone(level: NoteRecommendationLevel): string {
+	if (level === "strongly_recommended") {
+		return "border-success-soft bg-success-soft text-success-ink";
+	}
+	if (level === "recommended") {
+		return "border-info-soft bg-info-soft text-info-ink";
+	}
+	if (level === "not_recommended") {
+		return "border-danger-soft bg-danger-soft text-danger-ink";
+	}
+	return "border-warning-soft bg-warning-soft text-warning-ink";
+}
+
 interface ArticleNeighbor {
 	id: string;
 	slug: string;
@@ -903,6 +942,10 @@ export default function ArticleDetailPage() {
 
 	const [noteContent, setNoteContent] = useState("");
 	const [noteDraft, setNoteDraft] = useState("");
+	const [noteRecommendationLevel, setNoteRecommendationLevel] =
+		useState<NoteRecommendationLevel>(DEFAULT_NOTE_RECOMMENDATION_LEVEL);
+	const [noteRecommendationDraftLevel, setNoteRecommendationDraftLevel] =
+		useState<NoteRecommendationLevel>(DEFAULT_NOTE_RECOMMENDATION_LEVEL);
 	const [showNoteModal, setShowNoteModal] = useState(false);
 	const [annotations, setAnnotations] = useState<ArticleAnnotation[]>([]);
 	const [activeAnnotationId, setActiveAnnotationId] = useState<string>("");
@@ -1099,6 +1142,16 @@ export default function ArticleDetailPage() {
 	const selectableModelConfigs = useMemo(
 		() => modelConfigs.filter((config) => config.model_type !== "vector"),
 		[modelConfigs],
+	);
+	const noteRecommendationLabel = useMemo(() => {
+		const matched = NOTE_RECOMMENDATION_LEVEL_OPTIONS.find(
+			(item) => item.value === noteRecommendationLevel,
+		);
+		return t(matched?.label || "一般");
+	}, [noteRecommendationLevel, t]);
+	const noteRecommendationTone = useMemo(
+		() => getNoteRecommendationTone(noteRecommendationLevel),
+		[noteRecommendationLevel],
 	);
 
 	const activeAnnotation = annotations.find(
@@ -1614,6 +1667,11 @@ export default function ArticleDetailPage() {
 		if (!article) return;
 		setNoteContent(article.note_content || "");
 		setNoteDraft(article.note_content || "");
+		const normalizedLevel = normalizeNoteRecommendationLevel(
+			article.note_recommendation_level,
+		);
+		setNoteRecommendationLevel(normalizedLevel);
+		setNoteRecommendationDraftLevel(normalizedLevel);
 		if (article.note_annotations) {
 			try {
 				const parsed = JSON.parse(
@@ -2628,6 +2686,7 @@ export default function ArticleDetailPage() {
 					icon: <IconNote className="h-4 w-4" />,
 					onClick: () => {
 						setNoteDraft(noteContent);
+						setNoteRecommendationDraftLevel(noteRecommendationLevel);
 						setShowNoteModal(true);
 					},
 				},
@@ -2666,12 +2725,14 @@ export default function ArticleDetailPage() {
 	const saveNotes = async (
 		nextNotes: string,
 		nextAnnotations: ArticleAnnotation[],
+		nextRecommendationLevel: NoteRecommendationLevel,
 	) => {
 		if (!article) return;
 		try {
 			await articleApi.updateArticleNotes(article.slug, {
 				note_content: nextNotes,
 				annotations: nextAnnotations,
+				note_recommendation_level: nextRecommendationLevel,
 			});
 		} catch (error) {
 			console.error("Failed to save notes:", error);
@@ -2681,8 +2742,9 @@ export default function ArticleDetailPage() {
 
 	const handleSaveNoteContent = async () => {
 		setNoteContent(noteDraft);
+		setNoteRecommendationLevel(noteRecommendationDraftLevel);
 		setShowNoteModal(false);
-		await saveNotes(noteDraft, annotations);
+		await saveNotes(noteDraft, annotations, noteRecommendationDraftLevel);
 		showToast(t("已保存批注"));
 	};
 
@@ -2737,7 +2799,7 @@ export default function ArticleDetailPage() {
 		setShowAnnotationModal(false);
 		setPendingAnnotationRange(null);
 		setActiveAnnotationId("");
-		await saveNotes(noteContent, next);
+		await saveNotes(noteContent, next, noteRecommendationLevel);
 		showToast(existingId ? t("已更新划线批注") : t("已添加划线批注"));
 	};
 
@@ -2747,7 +2809,7 @@ export default function ArticleDetailPage() {
 		if (activeAnnotationId === id) {
 			setActiveAnnotationId("");
 		}
-		await saveNotes(noteContent, next);
+		await saveNotes(noteContent, next, noteRecommendationLevel);
 		showToast(t("已删除划线批注"));
 	};
 
@@ -2759,7 +2821,7 @@ export default function ArticleDetailPage() {
 				: item,
 		);
 		setAnnotations(next);
-		await saveNotes(noteContent, next);
+		await saveNotes(noteContent, next, noteRecommendationLevel);
 		showToast(t("已更新划线批注"));
 	};
 
@@ -3064,7 +3126,13 @@ export default function ArticleDetailPage() {
 		try {
 			setNoteDraft("");
 			setNoteContent("");
-			await saveNotes("", annotations);
+			setNoteRecommendationLevel(DEFAULT_NOTE_RECOMMENDATION_LEVEL);
+			setNoteRecommendationDraftLevel(DEFAULT_NOTE_RECOMMENDATION_LEVEL);
+			await saveNotes(
+				"",
+				annotations,
+				DEFAULT_NOTE_RECOMMENDATION_LEVEL,
+			);
 			showToast(t("批注已删除"));
 			setShowNoteModal(false);
 		} catch (error) {
@@ -3564,7 +3632,14 @@ export default function ArticleDetailPage() {
 						{noteContent && !immersiveMode && (
 							<div className="note-panel mb-4 rounded-sm p-4 text-sm text-text-2">
 								<div className="flex items-center justify-between mb-2">
-									<div className="note-panel-title text-sm">{t("批注")}</div>
+									<div className="flex items-center gap-2">
+										<div className="note-panel-title text-sm">{t("批注")}</div>
+										<span
+											className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs ${noteRecommendationTone}`}
+										>
+											{noteRecommendationLabel}
+										</span>
+									</div>
 									{isAdmin && (
 										<IconButton
 											onClick={() => setShowDeleteNoteModal(true)}
@@ -4793,12 +4868,30 @@ export default function ArticleDetailPage() {
 						</div>
 					}
 				>
-					<TextArea
-						value={noteDraft}
-						onChange={(e) => setNoteDraft(e.target.value)}
-						rows={6}
-						placeholder={t("输入批注内容，支持 Markdown")}
-					/>
+					<div className="space-y-3">
+						<FormField label={t("推荐等级")}>
+							<SelectField
+								value={noteRecommendationDraftLevel}
+								onChange={(value) =>
+									setNoteRecommendationDraftLevel(
+										normalizeNoteRecommendationLevel(String(value)),
+									)
+								}
+								className="w-full"
+								options={NOTE_RECOMMENDATION_LEVEL_OPTIONS.map((item) => ({
+									value: item.value,
+									label: t(item.label),
+								}))}
+								showSearch={false}
+							/>
+						</FormField>
+						<TextArea
+							value={noteDraft}
+							onChange={(e) => setNoteDraft(e.target.value)}
+							rows={6}
+							placeholder={t("输入批注内容，支持 Markdown")}
+						/>
+					</div>
 				</ModalShell>
 			)}
 

@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import build_basic_settings
+from app.core.note_recommendation import normalize_note_recommendation_level
 from auth import get_admin_settings
 from models import (
     AIAnalysis,
@@ -279,6 +280,12 @@ class BackupService:
             return json.dumps(value, ensure_ascii=False)
         text = str(value)
         return text if text.strip() else None
+
+    @staticmethod
+    def _normalize_note_recommendation_level(value: Any) -> str:
+        if value is None:
+            return normalize_note_recommendation_level(None)
+        return normalize_note_recommendation_level(str(value).strip() or None)
 
     def _import_categories(
         self,
@@ -691,6 +698,9 @@ class BackupService:
                     updated_at=self._optional_str(item.get("updated_at")) or now_str(),
                     note_content=self._optional_str(item.get("note_content")),
                     note_annotations=self._normalize_json_text(item.get("note_annotations")),
+                    note_recommendation_level=self._normalize_note_recommendation_level(
+                        item.get("note_recommendation_level")
+                    ),
                     original_language=self._optional_str(item.get("original_language")),
                 )
                 pending.append((old_id, slug, source_url, article))
@@ -950,6 +960,9 @@ class BackupService:
             "updated_at": article.updated_at,
             "note_content": article.note_content,
             "note_annotations": article.note_annotations,
+            "note_recommendation_level": self._normalize_note_recommendation_level(
+                article.note_recommendation_level
+            ),
             "original_language": article.original_language,
         }
 
