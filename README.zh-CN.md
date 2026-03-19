@@ -118,6 +118,45 @@ npm install
 npm run dev
 ```
 
+## Agent CLI
+
+Lumina 现在在后端包里内置了面向 Agent 的 CLI，可直接命令行接入。
+
+完整命令文档见：[backend/docs/cli.md](./backend/docs/cli.md)
+
+先安装后端依赖：
+
+```bash
+cd backend
+uv sync
+```
+
+示例：
+
+```bash
+# 本地模式：直接读取数据库
+cd backend
+uv run lumina-cli --mode local --json article list --page 1 --size 20
+
+# 本地模式并显式指定数据库
+uv run lumina-cli --mode local --database-url sqlite:////tmp/lumina.db --json system doctor
+
+# 远程模式：调用正在运行的 Lumina 后端
+uv run lumina-cli --mode remote --base-url http://localhost:8000/backend --password '你的管理员密码' --json article get my-article-slug
+```
+
+对于 OpenClaw 等 Agent 集成，建议统一使用 `--json`，这样每个命令都会返回稳定的机器可读结构：
+
+```json
+{"ok":true,"mode":"local","command":"article.list","data":{"items":[],"pagination":{"page":1,"size":20,"total":0,"total_pages":0}}}
+```
+
+说明：
+
+- `article list` 支持与后端 API 对齐的核心筛选：分页、分类、搜索、来源、作者、可见性、时间区间和排序。
+- `article create`、`article update`、`article report-url`、`task retry`、`task cancel` 等写操作支持 `--input <path|->` 读取 JSON。
+- `local` 模式会直接写数据库，但不会主动失效已经运行中的 Web/API 进程内公共缓存；如果你要求 API/UI 立刻反映变更，优先使用 `remote` 模式。
+
 ## 常见问题
 
 ### API 为什么启动失败？

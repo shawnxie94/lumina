@@ -121,6 +121,45 @@ npm install
 npm run dev
 ```
 
+## Agent CLI
+
+Lumina now includes an Agent-friendly CLI in the backend package.
+
+Detailed command reference: [backend/docs/cli.md](./backend/docs/cli.md)
+
+Install backend dependencies first:
+
+```bash
+cd backend
+uv sync
+```
+
+Examples:
+
+```bash
+# Local mode: read data directly from the database
+cd backend
+uv run lumina-cli --mode local --json article list --page 1 --size 20
+
+# Local mode with an explicit database
+uv run lumina-cli --mode local --database-url sqlite:////tmp/lumina.db --json system doctor
+
+# Remote mode: call a running Lumina backend
+uv run lumina-cli --mode remote --base-url http://localhost:8000/backend --password 'your-admin-password' --json article get my-article-slug
+```
+
+For Agent integrations such as OpenClaw, prefer `--json` so every command returns a stable machine-readable envelope:
+
+```json
+{"ok":true,"mode":"local","command":"article.list","data":{"items":[],"pagination":{"page":1,"size":20,"total":0,"total_pages":0}}}
+```
+
+Notes:
+
+- `article list` supports the same core filters as the backend API: pagination, category, search, source, author, visibility, time range, and sort order.
+- `--input <path|->` is supported for write commands such as `article create`, `article update`, `article report-url`, `task retry`, and `task cancel`.
+- `local` mode writes directly to the database and does not invalidate in-memory public cache entries held by an already-running web/api process. If you need immediate API/UI consistency, prefer `remote` mode.
+
 ## FAQ
 
 ### Why does API fail to start?

@@ -1,0 +1,2 @@
+[console_scripts]
+lumina-cli = app.cli.main:main

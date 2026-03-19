@@ -21,6 +21,9 @@ dependencies = [
     "alembic==1.14.0",
 ]
 
+[project.scripts]
+lumina-cli = "app.cli.main:main"
+
 [build-system]
 requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
@@ -31,6 +34,7 @@ packages = [
     "app",
     "app.api",
     "app.api.routers",
+    "app.cli",
     "app.core",
     "app.domain",
     "app.schemas",

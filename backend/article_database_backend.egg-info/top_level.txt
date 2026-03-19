@@ -1,5 +1,9 @@
 ai_client
+app
 auth
 main
+media_service
 models
 slug_utils
+task_errors
+task_state
