@@ -110,6 +110,48 @@ def test_report_by_url_creates_article_and_uses_redirect_url(db_session, monkeyp
     assert command.last_payload["skip_ai_processing"] is True
 
 
+def test_report_by_url_uses_first_image_in_primary_content_when_meta_missing(
+    db_session,
+    monkeypatch,
+):
+    command = StubArticleCommandService()
+    service = ArticleUrlIngestService(article_command_service=command)
+    monkeypatch.setattr(service, "_hostname_resolves_to_private", lambda hostname: False)
+
+    async def fake_fetch(_url: str) -> URLFetchResult:
+        return URLFetchResult(
+            final_url="https://example.com/body-first-image",
+            html="""
+            <html>
+              <head>
+                <title>Test Title</title>
+              </head>
+              <body>
+                <header><img src="/logo.png" /></header>
+                <article>
+                  <h1>Article</h1>
+                  <p>Hello world content, enough words to pass primary content detection.</p>
+                  <img src="/content-cover.jpg" />
+                </article>
+              </body>
+            </html>
+            """,
+        )
+
+    monkeypatch.setattr(service, "_fetch_html_from_url", fake_fetch)
+
+    asyncio.run(
+        service.report_by_url(
+            db_session,
+            url="https://example.com/start",
+            skip_ai_processing=True,
+        )
+    )
+
+    assert command.last_payload is not None
+    assert command.last_payload["top_image"] == "https://example.com/content-cover.jpg"
+
+
 def test_report_by_url_returns_duplicate_when_source_url_exists(db_session, monkeypatch):
     existing = make_existing_article(db_session, "https://example.com/existing")
     service = ArticleUrlIngestService(article_command_service=StubArticleCommandService())

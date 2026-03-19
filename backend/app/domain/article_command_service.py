@@ -9,6 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.domain.ai_task_service import AITaskService
+from app.domain.article_top_image_service import resolve_top_image
 
 logger = logging.getLogger("article_service")
 
@@ -39,6 +40,13 @@ class ArticleCommandService:
         if source_url == "":
             source_url = None
 
+        top_image = resolve_top_image(
+            article_data.get("top_image"),
+            content_html=article_data.get("content_html"),
+            content_md=article_data.get("content_md"),
+            base_url=source_url,
+        )
+
         article_id = generate_uuid()
         article = Article(
             id=article_id,
@@ -48,7 +56,7 @@ class ArticleCommandService:
             content_structured=content_structured,
             content_md=article_data.get("content_md"),
             source_url=source_url,
-            top_image=article_data.get("top_image"),
+            top_image=top_image,
             author=article_data.get("author"),
             published_at=article_data.get("published_at"),
             source_domain=article_data.get("source_domain"),

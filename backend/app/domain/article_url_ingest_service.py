@@ -5,12 +5,13 @@ import re
 import socket
 from dataclasses import dataclass
 from html import unescape
-from urllib.parse import urljoin, urlparse, urlunparse
+from urllib.parse import urlparse, urlunparse
 
 import httpx
 from sqlalchemy.orm import Session
 
 from app.domain.article_command_service import ArticleCommandService
+from app.domain.article_top_image_service import resolve_top_image
 from models import Article
 
 MAX_HTML_SIZE_BYTES = 2 * 1024 * 1024
@@ -23,7 +24,6 @@ _ATTR_RE = re.compile(
 _TITLE_RE = re.compile(r"<title\b[^>]*>(.*?)</title>", re.IGNORECASE | re.DOTALL)
 _H1_RE = re.compile(r"<h1\b[^>]*>(.*?)</h1>", re.IGNORECASE | re.DOTALL)
 _META_RE = re.compile(r"<meta\b[^>]*>", re.IGNORECASE)
-_IMG_RE = re.compile(r"<img\b[^>]*>", re.IGNORECASE)
 _TIME_RE = re.compile(
     r"<time\b[^>]*datetime=(\"[^\"]+\"|'[^']+')[^>]*>",
     re.IGNORECASE,
@@ -290,7 +290,11 @@ class ArticleUrlIngestService:
             "title": title,
             "content_html": content_html,
             "content_md": markdown,
-            "top_image": self._extract_top_image(cleaned_html, source_url),
+            "top_image": self._extract_top_image(
+                cleaned_html,
+                content_html,
+                source_url,
+            ),
             "author": self._extract_author(cleaned_html),
             "published_at": self._extract_published_at(cleaned_html),
             "source_domain": (urlparse(source_url).hostname or "").lower(),
@@ -339,22 +343,22 @@ class ArticleUrlIngestService:
 
         return ""
 
-    def _extract_top_image(self, html: str, source_url: str) -> str | None:
+    def _extract_top_image(
+        self,
+        html: str,
+        content_html: str,
+        source_url: str,
+    ) -> str | None:
         meta_image = self._extract_meta_content(
             html,
             properties={"og:image"},
             names={"twitter:image"},
         )
-        if meta_image:
-            return urljoin(source_url, meta_image)
-
-        image_match = _IMG_RE.search(html)
-        if image_match:
-            attrs = self._parse_tag_attrs(image_match.group(0))
-            src = attrs.get("src") or attrs.get("data-src")
-            if src:
-                return urljoin(source_url, src)
-        return None
+        return resolve_top_image(
+            meta_image,
+            content_html=content_html,
+            base_url=source_url,
+        )
 
     def _extract_author(self, html: str) -> str | None:
         author = self._extract_meta_content(
