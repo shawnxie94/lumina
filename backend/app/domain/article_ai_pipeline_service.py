@@ -1,4 +1,5 @@
 import asyncio
+from difflib import SequenceMatcher
 import json
 import logging
 import re
@@ -1023,21 +1024,126 @@ class ArticleAIPipelineService:
             chunks.append("\n\n".join(current).strip())
         return [item for item in chunks if item]
 
-    def _merge_with_overlap(self, existing: str, new_text: str) -> str:
+    def _normalize_overlap_text(self, text: str) -> str:
+        content = self._normalize_line_breaks(text or "").strip()
+        if not content:
+            return ""
+        content = re.sub(r"\s+([，。！？；：、,.!?;:])", r"\1", content)
+        content = re.sub(r"([，。！？；：、,.!?;:])\s+", r"\1", content)
+        content = re.sub(r"\s+", " ", content)
+        return content.strip()
+
+    def _has_unclosed_fence(self, text: str) -> bool:
+        content = self._normalize_line_breaks(text or "")
+        fence_count = len(re.findall(r"^\s*```", content, flags=re.MULTILINE))
+        return fence_count % 2 == 1
+
+    def _split_sentence_spans(self, text: str) -> list[tuple[str, int, int]]:
+        content = self._normalize_line_breaks(text or "")
+        if not content.strip():
+            return []
+
+        spans: list[tuple[str, int, int]] = []
+        start = 0
+        for idx, char in enumerate(content):
+            if char in "。！？!?；;.\n":
+                segment = content[start : idx + 1]
+                if segment.strip():
+                    spans.append((segment, start, idx + 1))
+                start = idx + 1
+        if start < len(content):
+            segment = content[start:]
+            if segment.strip():
+                spans.append((segment, start, len(content)))
+        return spans
+
+    def _try_trim_block_overlap(self, left: str, right: str) -> str:
+        left_blocks = self._build_markdown_blocks(left)
+        right_blocks = self._build_markdown_blocks(right)
+        max_size = min(6, len(left_blocks), len(right_blocks))
+        if max_size <= 0:
+            return right
+
+        for size in range(max_size, 0, -1):
+            left_slice = left_blocks[-size:]
+            right_slice = right_blocks[:size]
+            if all(
+                self._normalize_overlap_text(l) == self._normalize_overlap_text(r)
+                for l, r in zip(left_slice, right_slice)
+            ):
+                return "\n\n".join(right_blocks[size:]).strip()
+        return right
+
+    def _try_trim_line_overlap(self, left: str, right: str) -> str:
+        left_lines = self._normalize_line_breaks(left).splitlines()
+        right_lines = self._normalize_line_breaks(right).splitlines()
+        max_size = min(12, len(left_lines), len(right_lines))
+        if max_size < 2:
+            return right
+
+        for size in range(max_size, 1, -1):
+            left_slice = "\n".join(left_lines[-size:])
+            right_slice = "\n".join(right_lines[:size])
+            if self._normalize_overlap_text(left_slice) == self._normalize_overlap_text(
+                right_slice
+            ):
+                return "\n".join(right_lines[size:]).strip()
+        return right
+
+    def _try_trim_exact_text_overlap(self, left: str, right: str) -> str:
+        max_overlap = min(len(left), len(right), 600)
+        for size in range(max_overlap, 40, -1):
+            if left[-size:] == right[:size]:
+                return right[size:].strip()
+        return right
+
+    def _try_trim_sentence_overlap(self, left: str, right: str) -> str:
+        if self._has_unclosed_fence(left) or self._has_unclosed_fence(right):
+            return right
+
+        left_spans = self._split_sentence_spans(left)
+        right_spans = self._split_sentence_spans(right)
+        max_size = min(2, len(left_spans), len(right_spans))
+        if max_size <= 0:
+            return right
+
+        for size in range(max_size, 0, -1):
+            left_start = left_spans[-size][1]
+            right_end = right_spans[size - 1][2]
+            left_candidate = left[left_start:].strip()
+            right_candidate = right[:right_end].strip()
+            left_normalized = self._normalize_overlap_text(left_candidate)
+            right_normalized = self._normalize_overlap_text(right_candidate)
+            if min(len(left_normalized), len(right_normalized)) < 24:
+                continue
+            score = SequenceMatcher(None, left_normalized, right_normalized).ratio()
+            if score >= 0.9:
+                return right[right_end:].lstrip()
+        return right
+
+    def _merge_with_overlap(
+        self, existing: str, new_text: str, mode: str = "markdown"
+    ) -> str:
         left = (existing or "").strip()
         right = (new_text or "").strip()
         if not left:
             return right
         if not right:
             return left
-        max_overlap = min(len(left), len(right), 600)
-        overlap = 0
-        for size in range(max_overlap, 40, -1):
-            if left[-size:] == right[:size]:
-                overlap = size
-                break
-        if overlap:
-            return (left + right[overlap:]).strip()
+
+        if mode == "markdown":
+            for trim_func in (
+                self._try_trim_block_overlap,
+                self._try_trim_line_overlap,
+                self._try_trim_exact_text_overlap,
+                self._try_trim_sentence_overlap,
+            ):
+                trimmed_right = trim_func(left, right)
+                if trimmed_right != right:
+                    if not trimmed_right:
+                        return left
+                    return (left + "\n\n" + trimmed_right).strip()
+
         return (left + "\n\n" + right).strip()
 
     def _finalize_markdown(self, content: str) -> str:
@@ -1077,6 +1183,7 @@ class ArticleAIPipelineService:
         instruction = (
             "继续上一次输出：仅补充尚未输出的剩余内容，不要重复任何已输出句子。"
             "从最后一个完整句后继续，保持 GFM Markdown 格式。"
+            "如果下一段与已输出末尾有重复，必须删除重复后再继续；禁止复述上一段最后一句。"
             f"\n\n已输出末尾（仅供衔接，不要原样重复）：\n{partial_output[-1200:]}\n"
         )
         if not base_prompt:
@@ -1642,6 +1749,7 @@ class ArticleAIPipelineService:
                     advanced_options=advanced_options,
                 )
                 chunk_size_tokens = int(advanced_options["chunk_size_tokens"])
+                # Recommended overlap window for cleaning: 80-120 tokens.
                 chunk_overlap_tokens = int(advanced_options["chunk_overlap_tokens"])
                 max_continue_rounds = int(advanced_options["max_continue_rounds"])
                 chunks = (
@@ -2404,6 +2512,7 @@ class ArticleAIPipelineService:
                     advanced_options=advanced_options,
                 )
                 chunk_size_tokens = int(advanced_options["chunk_size_tokens"])
+                # Recommended overlap window for translation: 120-180 tokens.
                 chunk_overlap_tokens = int(advanced_options["chunk_overlap_tokens"])
                 max_continue_rounds = int(advanced_options["max_continue_rounds"])
                 chunks = (
