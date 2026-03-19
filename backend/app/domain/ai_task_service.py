@@ -263,6 +263,19 @@ class AITaskService:
     ):
         await pipeline.process_article_classification(article_id, category_id)
 
+    async def _handle_process_article_tagging(
+        self,
+        pipeline,
+        article_id: str,
+        category_id,
+        payload: dict,
+    ):
+        await pipeline.process_article_tagging(
+            article_id,
+            category_id,
+            force=bool(payload.get("force")),
+        )
+
     async def _handle_process_article_translation(
         self,
         pipeline,
@@ -327,6 +340,12 @@ class AITaskService:
                 pipeline,
                 self._require_article_id(article_id),
                 category_id,
+            ),
+            "process_article_tagging": lambda: self._handle_process_article_tagging(
+                pipeline,
+                self._require_article_id(article_id),
+                category_id,
+                payload,
             ),
             "process_article_translation": lambda: self._handle_process_article_translation(
                 pipeline,

@@ -9,6 +9,8 @@ from xml.etree import ElementTree as ET
 from ai_client import ConfigurableAIClient, is_english_content
 from media_service import maybe_ingest_article_images_with_stats
 from sqlalchemy import or_
+from app.core.public_cache import CACHE_KEY_TAGS_PUBLIC, invalidate_public_cache
+from app.domain.article_tag_service import ArticleTagService
 from models import (
     AIAnalysis,
     AITask,
@@ -38,6 +40,7 @@ BOOK_URL_PATTERN = re.compile(
     r"\.(pdf|epub|mobi)(\?.*)?$",
     re.IGNORECASE,
 )
+article_tag_service = ArticleTagService()
 
 
 def build_parameters(model) -> dict:
@@ -2251,6 +2254,18 @@ class ArticleAIPipelineService:
                 raise
 
             effective_category_id = article.category_id or category_id
+            if not analysis.tagging_manual_override:
+                analysis.tagging_status = "pending"
+                analysis.updated_at = now_str()
+                db.commit()
+                self._enqueue_task(
+                    db,
+                    task_type="process_article_tagging",
+                    article_id=article_id,
+                    content_type="tagging",
+                    payload={"category_id": effective_category_id},
+                )
+
             self._enqueue_task(
                 db,
                 task_type="process_ai_content",
@@ -2275,6 +2290,146 @@ class ArticleAIPipelineService:
                 article.translation_status = "skipped"
                 article.translation_error = None
                 db.commit()
+        finally:
+            db.close()
+
+    async def process_article_tagging(
+        self,
+        article_id: str,
+        category_id: str | None,
+        force: bool = False,
+    ):
+        db = SessionLocal()
+        try:
+            article = db.query(Article).filter(Article.id == article_id).first()
+            if not article:
+                return
+
+            analysis = article_tag_service.ensure_analysis(db, article)
+            if bool(analysis.tagging_manual_override) and not force:
+                analysis.updated_at = now_str()
+                db.commit()
+                return
+
+            source_content = self._normalize_markdown_whitespace(article.content_md or "")
+            if not source_content:
+                analysis.tagging_status = "failed"
+                analysis.updated_at = now_str()
+                db.commit()
+                raise TaskDataError("文章内容为空，无法生成标签")
+
+            source_hash = article_tag_service.get_tagging_source_hash(article)
+            if (
+                not force
+                and analysis.tagging_status == "completed"
+                and analysis.tagging_source_hash == source_hash
+                and len(article.tags) > 0
+            ):
+                return
+
+            analysis.tagging_status = "processing"
+            analysis.updated_at = now_str()
+            db.commit()
+
+            tagging_config = self.get_ai_config(db, category_id, prompt_type="tagging")
+            if not tagging_config:
+                analysis.tagging_status = "failed"
+                analysis.updated_at = now_str()
+                db.commit()
+                raise TaskConfigError("未配置AI服务，请先在配置页面设置AI参数")
+
+            prompt = tagging_config.get("prompt_template")
+            category_name = article.category.name if article.category else ""
+            if prompt:
+                if "{category_name}" in prompt:
+                    prompt = prompt.replace("{category_name}", category_name)
+                elif category_name:
+                    prompt = f"{prompt}\n\n参考分类：{category_name}"
+            parameters = tagging_config.get("parameters") or {}
+            pricing = {
+                "model_api_config_id": tagging_config.get("model_api_config_id"),
+                "price_input_per_1k": tagging_config.get("price_input_per_1k"),
+                "price_output_per_1k": tagging_config.get("price_output_per_1k"),
+                "currency": tagging_config.get("currency"),
+            }
+
+            try:
+                result = await self.create_ai_client(tagging_config).generate_summary(
+                    source_content,
+                    prompt=prompt,
+                    parameters=parameters,
+                    max_tokens=300,
+                )
+                if isinstance(result, dict):
+                    self._log_ai_usage(
+                        db,
+                        model_config_id=pricing.get("model_api_config_id"),
+                        article_id=article_id,
+                        task_type="process_article_tagging",
+                        content_type="tagging",
+                        usage=result.get("usage"),
+                        latency_ms=result.get("latency_ms"),
+                        status="completed",
+                        error_message=None,
+                        price_input_per_1k=pricing.get("price_input_per_1k"),
+                        price_output_per_1k=pricing.get("price_output_per_1k"),
+                        currency=pricing.get("currency"),
+                        request_payload=result.get("request_payload"),
+                        response_payload=result.get("response_payload"),
+                    )
+                    result = result.get("content")
+
+                tag_names = article_tag_service.parse_tag_names(result)
+                article_tag_service.set_article_tags(
+                    db,
+                    article,
+                    tag_names,
+                    manual_override=False,
+                    tagging_status="completed",
+                    source_hash=source_hash,
+                )
+                invalidate_public_cache(CACHE_KEY_TAGS_PUBLIC)
+                db.commit()
+            except asyncio.TimeoutError:
+                self._log_ai_usage(
+                    db,
+                    model_config_id=pricing.get("model_api_config_id"),
+                    article_id=article_id,
+                    task_type="process_article_tagging",
+                    content_type="tagging",
+                    usage=None,
+                    latency_ms=None,
+                    status="failed",
+                    error_message="AI生成超时，请稍后重试",
+                    price_input_per_1k=pricing.get("price_input_per_1k"),
+                    price_output_per_1k=pricing.get("price_output_per_1k"),
+                    currency=pricing.get("currency"),
+                )
+                analysis = article_tag_service.ensure_analysis(db, article)
+                analysis.tagging_status = "failed"
+                analysis.updated_at = now_str()
+                db.commit()
+                raise TaskTimeoutError("标签生成超时")
+            except Exception as exc:
+                self._log_ai_usage(
+                    db,
+                    model_config_id=pricing.get("model_api_config_id"),
+                    article_id=article_id,
+                    task_type="process_article_tagging",
+                    content_type="tagging",
+                    usage=None,
+                    latency_ms=None,
+                    status="failed",
+                    error_message=str(exc),
+                    price_input_per_1k=pricing.get("price_input_per_1k"),
+                    price_output_per_1k=pricing.get("price_output_per_1k"),
+                    currency=pricing.get("currency"),
+                )
+                analysis = article_tag_service.ensure_analysis(db, article)
+                analysis.tagging_status = "failed"
+                analysis.updated_at = now_str()
+                db.commit()
+                raise
         finally:
             db.close()
 

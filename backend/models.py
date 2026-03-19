@@ -6,6 +6,7 @@ from sqlalchemy import (
     Boolean,
     ForeignKey,
     Float,
+    Table,
     create_engine,
     event,
 )
@@ -69,6 +70,25 @@ def now_str():
     return datetime.now(timezone.utc).isoformat()
 
 
+article_tags = Table(
+    "article_tags",
+    Base.metadata,
+    Column(
+        "article_id",
+        String,
+        ForeignKey("articles.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column(
+        "tag_id",
+        String,
+        ForeignKey("tags.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column("created_at", String, default=now_str, nullable=False),
+)
+
+
 class Category(Base):
     __tablename__ = "categories"
 
@@ -81,6 +101,18 @@ class Category(Base):
 
     articles = relationship("Article", back_populates="category")
     prompt_configs = relationship("PromptConfig", back_populates="category")
+
+
+class Tag(Base):
+    __tablename__ = "tags"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    name = Column(String, nullable=False)
+    normalized_name = Column(String, unique=True, nullable=False, index=True)
+    created_at = Column(String, default=now_str)
+    updated_at = Column(String, default=now_str)
+
+    articles = relationship("Article", secondary=article_tags, back_populates="tags")
 
 
 class Article(Base):
@@ -130,6 +162,7 @@ class Article(Base):
         uselist=False,
         cascade="all, delete-orphan",
     )
+    tags = relationship("Tag", secondary=article_tags, back_populates="articles")
 
 
 class ArticleComment(Base):
@@ -188,6 +221,9 @@ class AIAnalysis(Base):
     quotes_status = Column(String, default=None)
     mindmap = Column(Text)
     classification_status = Column(String, default=None)
+    tagging_status = Column(String, default=None)
+    tagging_source_hash = Column(String, nullable=True)
+    tagging_manual_override = Column(Boolean, nullable=False, default=False)
     cleaned_md_draft = Column(Text, nullable=True)
     error_message = Column(Text, nullable=True)
     updated_at = Column(String, default=today_str)

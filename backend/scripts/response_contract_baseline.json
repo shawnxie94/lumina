@@ -33,13 +33,26 @@
       "/data/0/id",
       "/data/0/slug",
       "/data/0/title",
-      "/data/0/status"
+      "/data/0/status",
+      "/data/0/tags"
     ]
   },
   {
     "name": "categories",
     "method": "GET",
     "path": "/api/categories",
+    "expected_status": 200,
+    "body_type": "array",
+    "required_when_nonempty_paths": [
+      "/0/id",
+      "/0/name",
+      "/0/article_count"
+    ]
+  },
+  {
+    "name": "tags",
+    "method": "GET",
+    "path": "/api/tags",
     "expected_status": 200,
     "body_type": "array",
     "required_when_nonempty_paths": [

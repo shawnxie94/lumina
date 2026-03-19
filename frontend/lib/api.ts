@@ -300,6 +300,7 @@ export interface Article {
 	summary: string;
 	top_image: string;
 	category: { id: string; name: string; color?: string } | null;
+	tags: Tag[];
 	author: string;
 	status: string;
 	source_domain: string | null;
@@ -341,6 +342,8 @@ export interface ArticleDetail extends Article {
 		outline_status: string | null;
 		quotes: string | null;
 		quotes_status: string | null;
+		tagging_status: string | null;
+		tagging_manual_override?: boolean | null;
 		error_message?: string | null;
 		updated_at?: string | null;
 	} | null;
@@ -432,6 +435,7 @@ export interface BackupPayload {
 	};
 	data: {
 		categories: Record<string, unknown>[];
+		tags: Record<string, unknown>[];
 		model_api_configs: Record<string, unknown>[];
 		prompt_configs: Record<string, unknown>[];
 		settings: Record<string, unknown>;
@@ -448,6 +452,7 @@ export interface BackupImportResult {
 	};
 	stats: {
 		categories: { created: number; skipped: number; errors: number };
+		tags: { created: number; skipped: number; errors: number };
 		model_api_configs: { created: number; skipped: number; errors: number };
 		prompt_configs: { created: number; skipped: number; errors: number };
 		articles: { created: number; skipped: number; errors: number };
@@ -478,6 +483,12 @@ export interface Category {
 	description: string;
 	color: string;
 	article_count: number;
+}
+
+export interface Tag {
+	id: string;
+	name: string;
+	article_count?: number;
 }
 
 export interface ModelAPIConfig {
@@ -637,6 +648,7 @@ export const articleApi = {
 		page?: number;
 		size?: number;
 		category_id?: string;
+		tag_ids?: string;
 		search?: string;
 		source_domain?: string;
 		author?: string;
@@ -712,6 +724,7 @@ export const articleApi = {
 			author?: string;
 			published_at?: string | null;
 			category_id?: string | null;
+			tag_names?: string[];
 			top_image?: string;
 			content_md?: string;
 			content_trans?: string;
@@ -726,6 +739,11 @@ export const articleApi = {
 		const response = await api.put(`/api/articles/${id}/visibility`, {
 			is_visible: isVisible,
 		});
+		return response.data;
+	},
+
+	regenerateArticleTags: async (id: string) => {
+		const response = await api.post(`/api/articles/${id}/tags/regenerate`);
 		return response.data;
 	},
 
@@ -1099,6 +1117,7 @@ export const categoryApi = {
 		search?: string;
 		source_domain?: string;
 		author?: string;
+		tag_ids?: string;
 		published_at_start?: string;
 		published_at_end?: string;
 		created_at_start?: string;
@@ -1144,6 +1163,13 @@ export const categoryApi = {
 	updateCategoriesSort: async (items: { id: string; sort_order: number }[]) => {
 		const response = await api.put("/api/categories/sort", { items });
 		return response.data;
+	},
+};
+
+export const tagApi = {
+	getTags: async (): Promise<Tag[]> => {
+		const response = await api.get("/api/tags");
+		return response.data as Tag[];
 	},
 };
 

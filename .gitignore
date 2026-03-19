@@ -16,6 +16,9 @@ dist/
 .wxt/
 .output/
 frontend/tsconfig.tsbuildinfo
+frontend/public/sw.js
+frontend/public/workbox-*.js
+frontend/public/fallback-*.js
 docker-compose.yml
 .worktrees/
 docker-compose.dockerhub.yml

@@ -18,6 +18,7 @@ PUBLIC_CACHE_CONTROL = (
 CACHE_KEY_SETTINGS_BASIC_PUBLIC = "settings:basic:public"
 CACHE_KEY_SETTINGS_COMMENTS_PUBLIC = "settings:comments:public"
 CACHE_KEY_CATEGORIES_PUBLIC = "categories:public"
+CACHE_KEY_TAGS_PUBLIC = "tags:public"
 CACHE_KEY_AUTHORS_PUBLIC = "authors:public"
 CACHE_KEY_SOURCES_PUBLIC = "sources:public"
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 
 from app.domain.article_query_service import ArticleQueryService
-from models import Article, Category, now_str
+from models import Article, Category, Tag, now_str
 
 
 def make_article(
@@ -13,6 +13,7 @@ def make_article(
     published_at: str | None,
     created_at: str,
     category_id: str | None = None,
+    tags: list[Tag] | None = None,
     source_domain: str | None = None,
     author: str | None = None,
     is_visible: bool = True,
@@ -31,6 +32,8 @@ def make_article(
         status="completed",
         is_visible=is_visible,
     )
+    if tags:
+        article.tags = list(tags)
     db_session.add(article)
     db_session.commit()
     db_session.refresh(article)
@@ -48,6 +51,20 @@ def make_category(db_session, name: str, sort_order: int = 0) -> Category:
     db_session.commit()
     db_session.refresh(category)
     return category
+
+
+def make_tag(db_session, name: str) -> Tag:
+    tag = Tag(
+        id=str(uuid.uuid4()),
+        name=name,
+        normalized_name=name.casefold(),
+        created_at=now_str(),
+        updated_at=now_str(),
+    )
+    db_session.add(tag)
+    db_session.commit()
+    db_session.refresh(tag)
+    return tag
 
 
 def test_get_articles_sort_by_published_desc_handles_mixed_date_formats(db_session):
@@ -215,3 +232,52 @@ def test_export_articles_by_filters_respects_visibility_for_non_admin(db_session
 
     assert visible.title in markdown
     assert hidden.title not in markdown
+
+
+def test_get_articles_filters_by_any_selected_tag(db_session):
+    service = ArticleQueryService()
+    ai_tag = make_tag(db_session, "AI")
+    product_tag = make_tag(db_session, "产品")
+    growth_tag = make_tag(db_session, "增长")
+
+    make_article(
+        db_session,
+        title="matched-by-ai",
+        published_at="2026-01-10",
+        created_at="2026-01-11T00:00:00+00:00",
+        tags=[ai_tag],
+    )
+    make_article(
+        db_session,
+        title="matched-by-growth",
+        published_at="2026-01-12",
+        created_at="2026-01-13T00:00:00+00:00",
+        tags=[growth_tag],
+    )
+    make_article(
+        db_session,
+        title="matched-by-product",
+        published_at="2026-01-14",
+        created_at="2026-01-15T00:00:00+00:00",
+        tags=[product_tag],
+    )
+    make_article(
+        db_session,
+        title="unmatched",
+        published_at="2026-01-16",
+        created_at="2026-01-17T00:00:00+00:00",
+    )
+
+    articles, total = service.get_articles(
+        db=db_session,
+        page=1,
+        size=10,
+        tag_ids=[ai_tag.id, product_tag.id],
+        is_admin=True,
+    )
+
+    assert total == 2
+    assert {article.title for article in articles} == {
+        "matched-by-ai",
+        "matched-by-product",
+    }

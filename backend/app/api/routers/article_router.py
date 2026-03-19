@@ -22,6 +22,7 @@ from app.domain.article_embedding_service import (
     ArticleEmbeddingService,
 )
 from app.domain.article_query_service import ArticleQueryService
+from app.domain.article_tag_service import ArticleTagService
 from app.domain.article_url_ingest_service import (
     ArticleUrlIngestBadGatewayError,
     ArticleUrlIngestBadRequestError,
@@ -38,6 +39,7 @@ from app.core.public_cache import (
     CACHE_KEY_AUTHORS_PUBLIC,
     CACHE_KEY_CATEGORIES_PUBLIC,
     CACHE_KEY_SOURCES_PUBLIC,
+    CACHE_KEY_TAGS_PUBLIC,
     apply_public_cache_headers,
     get_public_cached,
     invalidate_public_cache,
@@ -45,13 +47,22 @@ from app.core.public_cache import (
 from app.core.note_recommendation import normalize_note_recommendation_level
 from auth import check_is_admin, get_admin_settings, get_current_admin
 from media_service import cleanup_media_assets
-from models import Article, ArticleComment, ArticleEmbedding, Category, get_db, now_str
+from models import (
+    Article,
+    ArticleComment,
+    ArticleEmbedding,
+    Category,
+    article_tags,
+    get_db,
+    now_str,
+)
 
 router = APIRouter()
 article_query_service = ArticleQueryService()
 ai_task_service = AITaskService()
 article_command_service = ArticleCommandService(ai_task_service=ai_task_service)
 article_embedding_service = ArticleEmbeddingService()
+article_tag_service = ArticleTagService()
 article_url_ingest_service = ArticleUrlIngestService(
     article_command_service=article_command_service
 )
@@ -66,7 +77,14 @@ def invalidate_public_article_meta_cache() -> None:
         CACHE_KEY_AUTHORS_PUBLIC,
         CACHE_KEY_SOURCES_PUBLIC,
         CACHE_KEY_CATEGORIES_PUBLIC,
+        CACHE_KEY_TAGS_PUBLIC,
     )
+
+
+def parse_tag_ids(raw_value: str | None) -> list[str]:
+    if not raw_value:
+        return []
+    return [item.strip() for item in raw_value.split(",") if item and item.strip()]
 
 
 @router.post("/api/articles")
@@ -126,6 +144,7 @@ async def get_articles(
     page: int = 1,
     size: int = 20,
     category_id: Optional[str] = None,
+    tag_ids: Optional[str] = None,
     search: Optional[str] = None,
     source_domain: Optional[str] = None,
     author: Optional[str] = None,
@@ -145,6 +164,7 @@ async def get_articles(
         page=page,
         size=size,
         category_id=category_id,
+        tag_ids=parse_tag_ids(tag_ids),
         search=search,
         source_domain=source_domain,
         author=author,
@@ -173,6 +193,7 @@ async def get_articles(
                 }
                 if a.category
                 else None,
+                "tags": article_tag_service.serialize_tags(a),
                 "author": a.author,
                 "status": a.status,
                 "source_domain": a.source_domain,
@@ -254,6 +275,7 @@ async def get_article(
         "category": {"id": article.category.id, "name": article.category.name}
         if article.category
         else None,
+        "tags": article_tag_service.serialize_tags(article),
         "author": article.author,
         "status": article.status,
         "is_visible": article.is_visible,
@@ -282,6 +304,12 @@ async def get_article(
             if article.ai_analysis
             else None,
             "classification_status": article.ai_analysis.classification_status
+            if article.ai_analysis
+            else None,
+            "tagging_status": article.ai_analysis.tagging_status
+            if article.ai_analysis
+            else None,
+            "tagging_manual_override": article.ai_analysis.tagging_manual_override
             if article.ai_analysis
             else None,
             "error_message": article.ai_analysis.error_message
@@ -471,10 +499,13 @@ async def delete_article(
     if not article:
         raise HTTPException(status_code=404, detail="文章不存在")
 
+    affected_tag_ids = [tag.id for tag in getattr(article, "tags", []) if getattr(tag, "id", None)]
     cleanup_media_assets(db, [article.id])
     if article.ai_analysis:
         db.delete(article.ai_analysis)
     db.delete(article)
+    db.flush()
+    article_tag_service.cleanup_orphan_tags(db, tag_ids=affected_tag_ids)
     db.commit()
     invalidate_public_article_meta_cache()
     return {"message": "删除成功"}
@@ -508,6 +539,18 @@ async def update_article(
             article.is_visible = article_data.is_visible
         if "category_id" in article_data.__fields_set__:
             article.category_id = article_data.category_id
+        if "tag_names" in article_data.__fields_set__ and not article_tag_service.has_same_tag_names(
+            article,
+            article_data.tag_names or [],
+        ):
+            article_tag_service.set_article_tags(
+                db,
+                article,
+                article_data.tag_names or [],
+                manual_override=True,
+                tagging_status="completed",
+                source_hash=article_tag_service.get_tagging_source_hash(article),
+            )
 
         article.updated_at = now_str()
 
@@ -524,6 +567,7 @@ async def update_article(
             "content_md": article.content_md,
             "content_trans": article.content_trans,
             "is_visible": article.is_visible,
+            "tags": article_tag_service.serialize_tags(article),
             "updated_at": article.updated_at,
         }
     except Exception as e:
@@ -583,22 +627,65 @@ async def batch_delete_articles(
         row[0]
         for row in db.query(Article.id).filter(Article.slug.in_(request.article_slugs)).all()
     ]
+    affected_tag_ids: list[str] = []
     cleanup_media_assets(db, article_ids)
     if article_ids:
+        affected_tag_ids = [
+            row[0]
+            for row in db.query(article_tags.c.tag_id)
+            .filter(article_tags.c.article_id.in_(article_ids))
+            .distinct()
+            .all()
+        ]
         db.query(ArticleComment).filter(ArticleComment.article_id.in_(article_ids)).delete(
             synchronize_session=False
         )
         db.query(ArticleEmbedding).filter(
             ArticleEmbedding.article_id.in_(article_ids)
         ).delete(synchronize_session=False)
+        db.execute(
+            article_tags.delete().where(article_tags.c.article_id.in_(article_ids))
+        )
     deleted = (
         db.query(Article)
         .filter(Article.slug.in_(request.article_slugs))
         .delete(synchronize_session=False)
     )
+    article_tag_service.cleanup_orphan_tags(db, tag_ids=affected_tag_ids)
     db.commit()
     invalidate_public_article_meta_cache()
     return {"deleted": deleted}
+
+
+@router.post("/api/articles/{article_slug}/tags/regenerate")
+async def regenerate_article_tags(
+    article_slug: str,
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
+    article = article_query_service.get_article_by_slug(db, article_slug, include_relations=True)
+    if not article:
+        raise HTTPException(status_code=404, detail="文章不存在")
+    if not article.content_md or not article.content_md.strip():
+        raise HTTPException(status_code=409, detail="文章内容为空，无法生成标签")
+
+    analysis = article_tag_service.ensure_analysis(db, article)
+    analysis.tagging_manual_override = False
+    analysis.tagging_status = "pending"
+    analysis.updated_at = now_str()
+    db.commit()
+
+    task_id = ai_task_service.enqueue_task(
+        db,
+        task_type="process_article_tagging",
+        article_id=article.id,
+        content_type="tagging",
+        payload={
+            "category_id": article.category_id,
+            "force": True,
+        },
+    )
+    return {"success": True, "task_id": task_id}
 
 
 @router.put("/api/articles/{article_slug}/visibility")

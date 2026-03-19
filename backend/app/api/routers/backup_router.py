@@ -6,6 +6,15 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
+from app.core.public_cache import (
+    CACHE_KEY_AUTHORS_PUBLIC,
+    CACHE_KEY_CATEGORIES_PUBLIC,
+    CACHE_KEY_SETTINGS_BASIC_PUBLIC,
+    CACHE_KEY_SETTINGS_COMMENTS_PUBLIC,
+    CACHE_KEY_SOURCES_PUBLIC,
+    CACHE_KEY_TAGS_PUBLIC,
+    invalidate_public_cache,
+)
 from app.core.dependencies import get_admin_or_internal
 from app.domain.backup_service import BackupService
 from app.schemas import BackupImportRequest
@@ -38,7 +47,16 @@ async def import_backup(
     _: bool = Depends(get_current_admin),
 ):
     try:
-        return backup_service.import_backup(db, request.model_dump())
+        result = backup_service.import_backup(db, request.model_dump())
+        invalidate_public_cache(
+            CACHE_KEY_AUTHORS_PUBLIC,
+            CACHE_KEY_CATEGORIES_PUBLIC,
+            CACHE_KEY_SETTINGS_BASIC_PUBLIC,
+            CACHE_KEY_SETTINGS_COMMENTS_PUBLIC,
+            CACHE_KEY_SOURCES_PUBLIC,
+            CACHE_KEY_TAGS_PUBLIC,
+        )
+        return result
     except ValueError as exc:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(exc))

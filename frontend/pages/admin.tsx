@@ -239,12 +239,14 @@ type PromptType =
 	| "quotes"
 	| "content_cleaning"
 	| "content_validation"
-	| "classification";
+	| "classification"
+	| "tagging";
 
 const PROMPT_TYPES = [
 	{ value: "content_cleaning" as PromptType, labelKey: "清洗" },
 	{ value: "content_validation" as PromptType, labelKey: "校验" },
 	{ value: "classification" as PromptType, labelKey: "分类" },
+	{ value: "tagging" as PromptType, labelKey: "标签" },
 	{ value: "summary" as PromptType, labelKey: "摘要" },
 	{ value: "translation" as PromptType, labelKey: "翻译" },
 	{ value: "key_points" as PromptType, labelKey: "总结" },
@@ -2195,6 +2197,7 @@ export default function AdminPage() {
 			return "content_validation";
 		if (task.task_type === "process_article_classification")
 			return "classification";
+		if (task.task_type === "process_article_tagging") return "tagging";
 		if (task.task_type === "process_article_translation") return "translation";
 		if (
 			task.task_type === "process_ai_content" &&
@@ -2464,6 +2467,7 @@ export default function AdminPage() {
 		if (taskType === "process_article_cleaning") return t("清洗");
 		if (taskType === "process_article_validation") return t("校验");
 		if (taskType === "process_article_classification") return t("分类");
+		if (taskType === "process_article_tagging") return t("标签");
 		if (taskType === "process_article_translation") return t("翻译");
 		if (taskType === "process_article_embedding") return t("向量化");
 		if (taskType === "process_ai_content") {
@@ -2804,6 +2808,7 @@ export default function AdminPage() {
 		if (contentType === "content_cleaning") return t("清洗");
 		if (contentType === "content_validation") return t("校验");
 		if (contentType === "classification") return t("分类");
+		if (contentType === "tagging") return t("标签");
 		return contentType;
 	};
 
@@ -3788,6 +3793,7 @@ export default function AdminPage() {
 														{ value: "content_cleaning", label: t("清洗") },
 														{ value: "content_validation", label: t("校验") },
 														{ value: "classification", label: t("分类") },
+														{ value: "tagging", label: t("标签") },
 													]}
 												/>
 												<div className="md:col-span-2">
@@ -5332,6 +5338,10 @@ export default function AdminPage() {
 													{
 														value: "process_article_classification",
 														label: t("分类"),
+													},
+													{
+														value: "process_article_tagging",
+														label: t("标签"),
 													},
 													{
 														value: "process_article_translation",

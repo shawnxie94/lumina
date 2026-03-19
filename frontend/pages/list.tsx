@@ -10,8 +10,10 @@ import {
   categoryApi,
   mediaApi,
   storageSettingsApi,
+  tagApi,
   Article,
   Category,
+  Tag,
   resolveMediaUrl,
 } from '@/lib/api';
 import AppFooter from '@/components/AppFooter';
@@ -30,6 +32,7 @@ import IconButton from '@/components/IconButton';
 import CheckboxInput from '@/components/ui/CheckboxInput';
 import FormField from '@/components/ui/FormField';
 import SelectField from '@/components/ui/SelectField';
+import TagSelectField from '@/components/ui/TagSelectField';
 import TextInput from '@/components/ui/TextInput';
 import { useToast } from '@/components/Toast';
 import { BackToTop } from '@/components/BackToTop';
@@ -214,6 +217,15 @@ const parseDateQuery = (value: string): Date | null => {
   return Number.isNaN(date.getTime()) ? null : date;
 };
 
+const parseTagIdsQuery = (value: string): string[] =>
+  value
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+const sortTagNames = (values: string[]): string[] =>
+  [...values].sort((left, right) => left.localeCompare(right));
+
 const serializeQuery = (query: Record<string, string>): string =>
   Object.entries(query)
     .sort(([a], [b]) => a.localeCompare(b))
@@ -222,6 +234,7 @@ const serializeQuery = (query: Record<string, string>): string =>
 
 const LIST_QUERY_KEYS = [
   'category_id',
+  'tag_ids',
   'search',
   'source_domain',
   'author',
@@ -257,10 +270,12 @@ export default function Home() {
   const { basicSettings } = useBasicSettings();
   const [articles, setArticles] = useState<Article[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [availableTags, setAvailableTags] = useState<Tag[]>([]);
   const [categoryStats, setCategoryStats] = useState<{ id: string; name: string; color: string | null; article_count: number }[]>([]);
   const [authors, setAuthors] = useState<string[]>([]);
   const [sources, setSources] = useState<string[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('');
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [sourceDomain, setSourceDomain] = useState<string>('');
   const [author, setAuthor] = useState<string>('');
@@ -302,6 +317,24 @@ export default function Home() {
     cancelText: t('取消'),
     onConfirm: () => {},
   });
+
+  const handleTagFilterChange = (value: string[]) => {
+    setSelectedTagIds(value);
+    setPage(1);
+  };
+
+  const tagFilterField = (
+    <FormField label={t('标签')}>
+      <TagSelectField
+        tags={availableTags}
+        value={selectedTagIds}
+        onChange={handleTagFilterChange}
+        className="w-full"
+        placeholder={t('选择标签')}
+        maxTagCount="responsive"
+      />
+    </FormField>
+  );
 
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createTitle, setCreateTitle] = useState('');
@@ -371,6 +404,7 @@ export default function Home() {
         page,
         size: pageSize,
         category_id: selectedCategory || undefined,
+        tag_ids: selectedTagIds.length > 0 ? selectedTagIds.join(',') : undefined,
         search: searchTerm || undefined,
         source_domain: sourceDomain || undefined,
         author: author || undefined,
@@ -422,6 +456,7 @@ export default function Home() {
         search: searchTerm || undefined,
         source_domain: sourceDomain || undefined,
         author: author || undefined,
+        tag_ids: selectedTagIds.length > 0 ? selectedTagIds.join(',') : undefined,
         published_at_start: formatDate(publishedStartDate) || undefined,
         published_at_end: formatDate(publishedEndDate) || undefined,
         created_at_start: formatDate(createdStartDate) || undefined,
@@ -462,6 +497,15 @@ export default function Home() {
       console.error('Failed to fetch sources:', error);
     } finally {
       sourcesLoadingRef.current = false;
+    }
+  };
+
+  const fetchTags = async () => {
+    try {
+      const data = await tagApi.getTags();
+      setAvailableTags(data);
+    } catch (error) {
+      console.error('Failed to fetch tags:', error);
     }
   };
 
@@ -524,6 +568,7 @@ export default function Home() {
     initialized,
     authLoading,
     selectedCategory,
+    selectedTagIds,
     searchTerm,
     sourceDomain,
     author,
@@ -539,6 +584,7 @@ export default function Home() {
     setSelectedArticleSlugs(new Set());
   }, [
     selectedCategory,
+    selectedTagIds,
     searchTerm,
     sourceDomain,
     author,
@@ -574,6 +620,7 @@ export default function Home() {
     hydratedQueryRef.current = routerQuerySignature;
 
     const categoryParam = routerQueryState.category_id || '';
+    const tagIdsParam = parseTagIdsQuery(routerQueryState.tag_ids || '');
     const searchParam = routerQueryState.search || '';
     const sourceDomainParam = routerQueryState.source_domain || '';
     const authorParam = routerQueryState.author || '';
@@ -596,6 +643,7 @@ export default function Home() {
     const sizeParam = Number(routerQueryState.size || '');
 
     setSelectedCategory(categoryParam);
+    setSelectedTagIds(tagIdsParam);
     setSearchTerm(searchParam);
     setSourceDomain(sourceDomainParam);
     setAuthor(authorParam);
@@ -626,6 +674,7 @@ export default function Home() {
     setShowFilters(
       Boolean(
         searchParam ||
+        tagIdsParam.length > 0 ||
         sourceDomainParam ||
         authorParam ||
         visibilityParam ||
@@ -646,6 +695,7 @@ export default function Home() {
 
     const nextQuery: Record<string, string> = {};
     if (selectedCategory) nextQuery.category_id = selectedCategory;
+    if (selectedTagIds.length > 0) nextQuery.tag_ids = selectedTagIds.join(',');
     if (searchTerm) nextQuery.search = searchTerm;
     if (sourceDomain) nextQuery.source_domain = sourceDomain;
     if (author) nextQuery.author = author;
@@ -685,6 +735,7 @@ export default function Home() {
     initialized,
     routerQuerySignature,
     selectedCategory,
+    selectedTagIds,
     searchTerm,
     sourceDomain,
     author,
@@ -701,6 +752,7 @@ export default function Home() {
 
   useEffect(() => {
     fetchCategories();
+    fetchTags();
   }, []);
 
   useEffect(() => {
@@ -774,6 +826,7 @@ export default function Home() {
     setCreatedDateRange([null, null]);
     setQuickDateFilter('');
     setSelectedCategory('');
+    setSelectedTagIds([]);
     setVisibilityFilter('');
     setPage(1);
   };
@@ -848,7 +901,21 @@ export default function Home() {
   const activeFilters = useMemo(() => {
     const filters: string[] = [];
     const categoryName = categories.find((c) => c.id === selectedCategory)?.name;
+    const selectedTagNames = sortTagNames(
+      availableTags
+        .filter((tag) => selectedTagIds.includes(tag.id))
+        .map((tag) => tag.name),
+    );
     if (categoryName) filters.push(`${t('分类')}：${categoryName}`);
+    if (selectedTagIds.length > 0) {
+      filters.push(
+        `${t('标签')}：${
+          selectedTagNames.length > 0
+            ? selectedTagNames.join('、')
+            : `${selectedTagIds.length}${t('个已选标签')}`
+        }`,
+      );
+    }
     if (searchTerm) filters.push(`${t('标题')}：${searchTerm}`);
     if (sourceDomain) filters.push(`${t('来源')}：${sourceDomain}`);
     if (author) filters.push(`${t('作者')}：${author}`);
@@ -866,7 +933,9 @@ export default function Home() {
     return filters;
   }, [
     categories,
+    availableTags,
     selectedCategory,
+    selectedTagIds,
     searchTerm,
     sourceDomain,
     author,
@@ -901,6 +970,9 @@ export default function Home() {
           onChange={(value) => { setAuthor(value); setPage(1); }}
           options={[{ value: '', label: t('全部作者') }, ...authors.map((a) => ({ value: a, label: a }))]}
         />
+      </div>
+      <div className="mb-4 lg:hidden">
+        {tagFilterField}
       </div>
       {isMobile && (
         <div className="grid grid-cols-1 gap-4 mb-4">
@@ -942,7 +1014,10 @@ export default function Home() {
           />
         </div>
       )}
-      <div className="hidden lg:grid grid-cols-1 md:grid-cols-3 gap-4 mb-2">
+      <div className="hidden lg:grid grid-cols-3 gap-4 mb-2">
+        <div>
+          {tagFilterField}
+        </div>
         <div>
           <label htmlFor="published-date-range" className="block text-sm text-text-2 mb-1.5">{t('发表时间')}</label>
           <DateRangePicker
@@ -970,7 +1045,6 @@ export default function Home() {
             className="w-full"
           />
         </div>
-        <div className="hidden md:block" />
       </div>
     </>
   );
@@ -1703,7 +1777,6 @@ export default function Home() {
                               </Link>
                               <ArticleMetaRow
                                 className="mt-2"
-                                singleLine
                                 publishedAt={article.published_at}
                                 createdAt={article.created_at}
                                 items={[
@@ -1716,6 +1789,23 @@ export default function Home() {
                                       }}
                                     >
                                       {article.category.name}
+                                    </span>
+                                  ) : null,
+                                  article.tags.length > 0 ? (
+                                    <span className="inline-flex flex-wrap items-center gap-2 min-w-0">
+                                      {article.tags.slice(0, 2).map((tag) => (
+                                        <span
+                                          key={tag.id}
+                                          className="px-2 py-1 text-xs rounded-sm bg-muted text-text-2"
+                                        >
+                                          {tag.name}
+                                        </span>
+                                      ))}
+                                      {article.tags.length > 2 && (
+                                        <span className="px-2 py-1 text-xs rounded-sm bg-surface text-text-3 border border-border">
+                                          +{article.tags.length - 2}
+                                        </span>
+                                      )}
                                     </span>
                                   ) : null,
                                   article.author ? <span>{t('作者')}: {article.author}</span> : null,

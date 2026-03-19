@@ -1,5 +1,5 @@
 import Head from "next/head";
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, type ReactNode } from "react";
 
 import { useRouter } from "next/router";
 import Link from "next/link";
@@ -12,6 +12,7 @@ import {
 	getApiBaseUrl,
 	mediaApi,
 	storageSettingsApi,
+	tagApi,
 	normalizeMediaHtml,
 	resolveMediaUrl,
 	type ArticleComment,
@@ -20,9 +21,11 @@ import {
 	type ModelAPIConfig,
 	type PromptConfig,
 	type SimilarArticleItem,
+	type Tag,
 } from "@/lib/api";
 import AppFooter from "@/components/AppFooter";
 import AppHeader from "@/components/AppHeader";
+import ArticleTagBar from "@/components/article/ArticleTagBar";
 import ArticleMetaRow from "@/components/article/ArticleMetaRow";
 import ArticleSplitEditorModal from "@/components/article/ArticleSplitEditorModal";
 import Button from "@/components/Button";
@@ -30,6 +33,7 @@ import IconButton from "@/components/IconButton";
 import FormField from "@/components/ui/FormField";
 import ModalShell from "@/components/ui/ModalShell";
 import SelectField from "@/components/ui/SelectField";
+import TagSelectField from "@/components/ui/TagSelectField";
 import TextArea from "@/components/ui/TextArea";
 import TextInput from "@/components/ui/TextInput";
 import { useToast } from "@/components/Toast";
@@ -38,18 +42,20 @@ import { BackToTop } from "@/components/BackToTop";
 import {
 	IconBolt,
 	IconBook,
+	IconCheck,
+	IconClock,
 	IconCopy,
 	IconDoc,
 	IconEdit,
 	IconEye,
 	IconEyeOff,
+	IconLock,
 	IconLink,
 	IconList,
 	IconNote,
 	IconRefresh,
 	IconRobot,
 	IconTrash,
-	IconCheck,
 	IconReply,
 	IconChevronDown,
 	IconChevronUp,
@@ -108,6 +114,54 @@ interface AIContentSectionProps {
 interface MindMapNode {
 	title: string;
 	children?: MindMapNode[];
+}
+
+interface TaggingStatusMeta {
+	label: string;
+	className: string;
+	icon: ReactNode;
+}
+
+const buildSortedTagSignature = (values: string[]): string =>
+	[...values]
+		.map((value) => value.trim())
+		.filter(Boolean)
+		.sort((left, right) => left.localeCompare(right))
+		.join("\u0000");
+
+function getTaggingStatusMeta(
+	t: (key: string) => string,
+	analysis: ArticleDetail["ai_analysis"] | null | undefined,
+): TaggingStatusMeta | null {
+	if (analysis?.tagging_manual_override) {
+		return {
+			label: t("已手动锁定"),
+			className: "text-text-2",
+			icon: <IconLock className="h-3.5 w-3.5" />,
+		};
+	}
+	if (analysis?.tagging_status === "pending") {
+		return {
+			label: t("等待处理"),
+			className: "text-primary",
+			icon: <IconClock className="h-3.5 w-3.5" />,
+		};
+	}
+	if (analysis?.tagging_status === "processing") {
+		return {
+			label: t("处理中"),
+			className: "text-primary",
+			icon: <IconClock className="h-3.5 w-3.5 animate-pulse" />,
+		};
+	}
+	if (analysis?.tagging_status === "failed") {
+		return {
+			label: t("失败"),
+			className: "text-danger-ink",
+			icon: <IconRobot className="h-3.5 w-3.5" />,
+		};
+	}
+	return null;
 }
 
 function normalizeMindMapNode(input: unknown): MindMapNode | null {
@@ -923,7 +977,9 @@ export default function ArticleDetailPage() {
 	const [selectedPromptConfigId, setSelectedPromptConfigId] =
 		useState<string>("");
 	const [categories, setCategories] = useState<Category[]>([]);
+	const [availableTags, setAvailableTags] = useState<Tag[]>([]);
 	const [categoriesLoading, setCategoriesLoading] = useState(false);
+	const [tagsLoading, setTagsLoading] = useState(false);
 
 	const [showEditModal, setShowEditModal] = useState(false);
 	const [editMode, setEditMode] = useState<"original" | "translation">(
@@ -933,9 +989,11 @@ export default function ArticleDetailPage() {
 	const [editAuthor, setEditAuthor] = useState("");
 	const [editPublishedAt, setEditPublishedAt] = useState("");
 	const [editCategoryId, setEditCategoryId] = useState("");
+	const [editTagNames, setEditTagNames] = useState<string[]>([]);
 	const [editTopImage, setEditTopImage] = useState("");
 	const [editContent, setEditContent] = useState("");
 	const [saving, setSaving] = useState(false);
+	const [tagRegenerating, setTagRegenerating] = useState(false);
 	const [mediaStorageEnabled, setMediaStorageEnabled] = useState(false);
 	const [mediaStorageLoading, setMediaStorageLoading] = useState(false);
 	const [mediaUploading, setMediaUploading] = useState(false);
@@ -1585,6 +1643,22 @@ export default function ArticleDetailPage() {
 	}, [showEditModal, categories.length, categoriesLoading]);
 
 	useEffect(() => {
+		if (!showEditModal || availableTags.length > 0 || tagsLoading) return;
+		const fetchTags = async () => {
+			setTagsLoading(true);
+			try {
+				const data = await tagApi.getTags();
+				setAvailableTags(data);
+			} catch (error) {
+				console.error("Failed to fetch tags:", error);
+			} finally {
+				setTagsLoading(false);
+			}
+		};
+		fetchTags();
+	}, [showEditModal, availableTags.length, tagsLoading]);
+
+	useEffect(() => {
 		if (!showEditModal || !isAdmin) return;
 		fetchStorageSettings();
 	}, [showEditModal, isAdmin]);
@@ -1868,6 +1942,21 @@ export default function ArticleDetailPage() {
 			showToast(error?.response?.data?.detail || t("提交向量化失败"), "error");
 		} finally {
 			setEmbeddingRefreshing(false);
+		}
+	};
+
+	const handleRegenerateTags = async () => {
+		if (!article?.slug) return;
+		setTagRegenerating(true);
+		try {
+			await articleApi.regenerateArticleTags(article.slug);
+			showToast(t("已提交自动打标任务"));
+			fetchArticle();
+		} catch (error: any) {
+			console.error("Failed to regenerate tags:", error);
+			showToast(error?.response?.data?.detail || t("自动打标提交失败"), "error");
+		} finally {
+			setTagRegenerating(false);
 		}
 	};
 
@@ -3208,6 +3297,7 @@ export default function ArticleDetailPage() {
 		setEditAuthor(article.author || "");
 		setEditPublishedAt(toDateInputValue(article.published_at));
 		setEditCategoryId(article.category?.id || "");
+		setEditTagNames(article.tags.map((tag) => tag.name));
 		setEditTopImage(article.top_image || "");
 		setEditContent(
 			mode === "translation"
@@ -3222,11 +3312,16 @@ export default function ArticleDetailPage() {
 		setSaving(true);
 
 		try {
+			const editedTagNames = editTagNames.map((item) => item.trim()).filter(Boolean);
+			const hasTagChanges =
+				buildSortedTagSignature(article.tags.map((tag) => tag.name)) !==
+				buildSortedTagSignature(editedTagNames);
 			const updateData: {
 				title?: string;
 				author?: string;
 				published_at?: string | null;
 				category_id?: string | null;
+				tag_names?: string[];
 				top_image?: string;
 				content_md?: string;
 				content_trans?: string;
@@ -3237,6 +3332,9 @@ export default function ArticleDetailPage() {
 				category_id: editCategoryId || null,
 				top_image: editTopImage,
 			};
+			if (hasTagChanges) {
+				updateData.tag_names = editedTagNames;
+			}
 
 			if (editMode === "translation") {
 				updateData.content_trans = editContent;
@@ -3344,6 +3442,8 @@ export default function ArticleDetailPage() {
 		);
 	}
 
+	const taggingStatusMeta = getTaggingStatusMeta(t, article.ai_analysis);
+
 	return (
 		<div
 			className={`min-h-screen ${immersiveMode ? "bg-surface" : "bg-app"} flex flex-col`}
@@ -3365,7 +3465,7 @@ export default function ArticleDetailPage() {
 						{article.title}
 					</h1>
 					<ArticleMetaRow
-						className={`justify-center gap-4 ${immersiveMode ? "" : "border-b border-border pb-3"}`}
+						className={`justify-center gap-4 ${immersiveMode ? "" : "pb-3"}`}
 						publishedAt={article.published_at}
 						createdAt={article.created_at}
 						items={[
@@ -3414,6 +3514,36 @@ export default function ArticleDetailPage() {
 								</div>
 							) : null,
 						]}
+					/>
+					<ArticleTagBar
+						tags={article.tags}
+						className="mt-1.5"
+						actions={
+							isAdmin ? (
+								<span className="inline-flex items-center gap-1">
+									{taggingStatusMeta && (
+										<IconButton
+											size="sm"
+											variant="ghost"
+											title={`${t("自动打标状态")}：${taggingStatusMeta.label}`}
+											className={`cursor-help ${taggingStatusMeta.className}`}
+										>
+											{taggingStatusMeta.icon}
+										</IconButton>
+									)}
+									<IconButton
+										size="sm"
+										variant="ghost"
+										title={t("重新自动打标")}
+										onClick={handleRegenerateTags}
+										loading={tagRegenerating}
+										className="text-text-3 hover:text-primary"
+									>
+										<IconRefresh className="h-3.5 w-3.5" />
+									</IconButton>
+								</span>
+							) : null
+						}
 					/>
 				</div>
 			</section>
@@ -3628,7 +3758,6 @@ export default function ArticleDetailPage() {
 								</div>
 							</div>
 						)}
-
 						{noteContent && !immersiveMode && (
 							<div className="note-panel mb-4 rounded-sm p-4 text-sm text-text-2">
 								<div className="flex items-center justify-between mb-2">
@@ -4638,6 +4767,20 @@ export default function ArticleDetailPage() {
 									]}
 								/>
 							</FormField>
+							<FormField label={t("标签")}>
+								<TagSelectField
+									tags={availableTags}
+									mode="tags"
+									value={editTagNames}
+									onChange={(value) => setEditTagNames(value.map((item) => item.trim()))}
+									className="w-full"
+									loading={tagsLoading}
+									placeholder={t("输入或选择标签")}
+									maxTagCount="responsive"
+								/>
+							</FormField>
+						</div>
+						<div>
 							<FormField
 								label={
 									<span className="inline-flex items-center gap-2">

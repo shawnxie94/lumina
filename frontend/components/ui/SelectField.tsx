@@ -4,6 +4,7 @@ import type { SelectProps } from "antd";
 
 interface SelectFieldProps extends SelectProps {
 	compact?: boolean;
+	multiline?: boolean;
 }
 
 const normalizeText = (value: unknown) =>
@@ -29,6 +30,7 @@ const defaultFilterOption: NonNullable<SelectProps["filterOption"]> = (
 
 export default function SelectField({
 	compact = false,
+	multiline = false,
 	className = "",
 	popupClassName = "",
 	style,
@@ -38,10 +40,13 @@ export default function SelectField({
 	...props
 }: SelectFieldProps) {
 	const height = compact ? 32 : 36;
-	const resolvedClassName = `select-modern-antd ${compact ? "h-8" : "h-9"} ${className}`.trim();
+	const isMultiMode = props.mode === "multiple" || props.mode === "tags";
+	const sizeClass = multiline && isMultiMode ? "" : compact ? "h-8" : "h-9";
+	const multilineClass = multiline && isMultiMode ? "select-modern-antd-multiline" : "";
+	const resolvedClassName = `select-modern-antd ${sizeClass} ${multilineClass} ${className}`.trim();
 	const resolvedPopupClassName = `select-modern-dropdown ${popupClassName}`.trim();
 	const resolvedStyle: CSSProperties = {
-		height,
+		...(multiline && isMultiMode ? { minHeight: height } : { height }),
 		...style,
 	};
 

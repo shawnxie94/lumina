@@ -33,6 +33,7 @@ class ArticleUpdate(BaseModel):
     content_trans: Optional[str] = None
     is_visible: Optional[bool] = None
     category_id: Optional[str] = None
+    tag_names: Optional[list[str]] = None
 
 
 class ArticleVisibilityUpdate(BaseModel):

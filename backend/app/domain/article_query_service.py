@@ -4,7 +4,7 @@ import re
 from sqlalchemy import func, literal
 from sqlalchemy.orm import Session, joinedload, load_only
 
-from models import AIAnalysis, Article, Category
+from models import AIAnalysis, Article, Category, Tag
 
 
 def _normalize_start_date_bound(value: str | None) -> str | None:
@@ -130,6 +130,7 @@ def _build_filtered_query(
     *,
     is_admin: bool,
     category_id: str | None = None,
+    tag_ids: list[str] | None = None,
     search: str | None = None,
     source_domain: str | None = None,
     author: str | None = None,
@@ -146,6 +147,10 @@ def _build_filtered_query(
 
     if category_id:
         query = query.filter(Article.category_id == category_id)
+    if tag_ids:
+        normalized_tag_ids = [tag_id.strip() for tag_id in tag_ids if tag_id and tag_id.strip()]
+        if normalized_tag_ids:
+            query = query.filter(Article.tags.any(Tag.id.in_(normalized_tag_ids)))
     if search:
         query = query.filter(Article.title.contains(search))
     if source_domain:
@@ -257,6 +262,7 @@ class ArticleQueryService:
         if include_relations:
             query = query.options(
                 joinedload(Article.category).load_only(Category.id, Category.name, Category.color),
+                joinedload(Article.tags).load_only(Tag.id, Tag.name),
                 joinedload(Article.ai_analysis).load_only(
                     AIAnalysis.summary,
                     AIAnalysis.summary_status,
@@ -267,6 +273,8 @@ class ArticleQueryService:
                     AIAnalysis.quotes,
                     AIAnalysis.quotes_status,
                     AIAnalysis.classification_status,
+                    AIAnalysis.tagging_status,
+                    AIAnalysis.tagging_manual_override,
                     AIAnalysis.error_message,
                     AIAnalysis.updated_at,
                 ),
@@ -279,6 +287,7 @@ class ArticleQueryService:
         page: int = 1,
         size: int = 20,
         category_id: str | None = None,
+        tag_ids: list[str] | None = None,
         search: str | None = None,
         source_domain: str | None = None,
         author: str | None = None,
@@ -294,6 +303,7 @@ class ArticleQueryService:
             db.query(Article),
             is_admin=is_admin,
             category_id=category_id,
+            tag_ids=tag_ids,
             search=search,
             source_domain=source_domain,
             author=author,
@@ -322,6 +332,7 @@ class ArticleQueryService:
                 Article.category_id,
             ),
             joinedload(Article.category).load_only(Category.id, Category.name, Category.color),
+            joinedload(Article.tags).load_only(Tag.id, Tag.name),
             joinedload(Article.ai_analysis).load_only(AIAnalysis.summary),
         )
 
@@ -364,6 +375,7 @@ class ArticleQueryService:
         db: Session,
         *,
         category_id: str | None = None,
+        tag_ids: list[str] | None = None,
         search: str | None = None,
         source_domain: str | None = None,
         author: str | None = None,
@@ -379,6 +391,7 @@ class ArticleQueryService:
             db.query(Article),
             is_admin=is_admin,
             category_id=category_id,
+            tag_ids=tag_ids,
             search=search,
             source_domain=source_domain,
             author=author,
@@ -394,6 +407,7 @@ class ArticleQueryService:
                 Category.name,
                 Category.sort_order,
             ),
+            joinedload(Article.tags).load_only(Tag.id, Tag.name),
             joinedload(Article.ai_analysis).load_only(AIAnalysis.summary),
         ).all()
         return _render_export_markdown(articles, public_base_url=public_base_url)

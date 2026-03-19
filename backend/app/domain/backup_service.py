@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.core.dependencies import build_basic_settings
 from app.core.note_recommendation import normalize_note_recommendation_level
+from app.domain.article_tag_service import ArticleTagService
 from auth import get_admin_settings
 from models import (
     AIAnalysis,
@@ -17,11 +18,13 @@ from models import (
     Category,
     ModelAPIConfig,
     PromptConfig,
+    Tag,
     generate_uuid,
     now_str,
 )
 
 BACKUP_SCHEMA_VERSION = 1
+article_tag_service = ArticleTagService()
 
 
 class _SkipRecorder:
@@ -70,6 +73,10 @@ class BackupService:
             self._serialize_model_api_config(item)
             for item in db.query(ModelAPIConfig).order_by(ModelAPIConfig.created_at.desc()).all()
         ]
+        tags = [
+            self._serialize_tag(item)
+            for item in db.query(Tag).order_by(Tag.name.asc()).all()
+        ]
         prompt_configs = [
             self._serialize_prompt_config(item)
             for item in db.query(PromptConfig).order_by(PromptConfig.created_at.desc()).all()
@@ -81,6 +88,7 @@ class BackupService:
             yield f"\"meta\":{json.dumps(meta, ensure_ascii=False)}"
             yield ",\"data\":{"
             yield f"\"categories\":{json.dumps(categories, ensure_ascii=False)}"
+            yield f",\"tags\":{json.dumps(tags, ensure_ascii=False)}"
             yield f",\"model_api_configs\":{json.dumps(model_api_configs, ensure_ascii=False)}"
             yield f",\"prompt_configs\":{json.dumps(prompt_configs, ensure_ascii=False)}"
             yield f",\"settings\":{json.dumps(settings_snapshot, ensure_ascii=False)}"
@@ -148,6 +156,7 @@ class BackupService:
 
         stats = {
             "categories": self._new_stats(),
+            "tags": self._new_stats(),
             "model_api_configs": self._new_stats(),
             "prompt_configs": self._new_stats(),
             "articles": self._new_stats(),
@@ -157,6 +166,7 @@ class BackupService:
         skipped = _SkipRecorder(self.SKIPPED_ITEM_LIMIT)
 
         category_id_map: dict[str, str] = {}
+        tag_id_map: dict[str, str] = {}
         model_id_map: dict[str, str] = {}
         article_id_map: dict[str, str] = {}
         article_slug_map: dict[str, str] = {}
@@ -167,6 +177,13 @@ class BackupService:
             section_stats=stats["categories"],
             skipped=skipped,
             category_id_map=category_id_map,
+        )
+        self._import_tags(
+            db=db,
+            items=self._as_list(data.get("tags"), "tags"),
+            section_stats=stats["tags"],
+            skipped=skipped,
+            tag_id_map=tag_id_map,
         )
         self._import_model_api_configs(
             db=db,
@@ -189,6 +206,7 @@ class BackupService:
             section_stats=stats["articles"],
             skipped=skipped,
             category_id_map=category_id_map,
+            tag_id_map=tag_id_map,
             article_id_map=article_id_map,
             article_slug_map=article_slug_map,
         )
@@ -458,6 +476,83 @@ class BackupService:
                 db.rollback()
                 section_stats["errors"] += len(pending)
 
+    def _import_tags(
+        self,
+        db: Session,
+        items: list[Any],
+        section_stats: dict[str, int],
+        skipped: _SkipRecorder,
+        tag_id_map: dict[str, str],
+    ) -> None:
+        existing_by_normalized_name = {
+            row.normalized_name: row.id
+            for row in db.query(Tag.id, Tag.normalized_name).all()
+        }
+
+        for batch in _chunked(items, self.IMPORT_BATCH_SIZE):
+            pending: list[tuple[str, str, Tag]] = []
+            for item in batch:
+                if not isinstance(item, dict):
+                    section_stats["errors"] += 1
+                    continue
+                old_id = self._clean_str(item.get("id"))
+                name = article_tag_service.normalize_tag_name(self._clean_str(item.get("name")))
+                normalized_name = article_tag_service.get_normalized_name(
+                    self._clean_str(item.get("normalized_name")) or name
+                )
+                if not name or not normalized_name:
+                    section_stats["errors"] += 1
+                    continue
+
+                existing_id = existing_by_normalized_name.get(normalized_name)
+                if existing_id:
+                    section_stats["skipped"] += 1
+                    skipped.add("tags", name, "唯一键冲突(normalized_name)")
+                    if old_id:
+                        tag_id_map[old_id] = existing_id
+                    continue
+
+                tag = Tag(
+                    id=generate_uuid(),
+                    name=name,
+                    normalized_name=normalized_name,
+                    created_at=self._optional_str(item.get("created_at")) or now_str(),
+                    updated_at=self._optional_str(item.get("updated_at")) or now_str(),
+                )
+                pending.append((old_id, normalized_name, tag))
+                existing_by_normalized_name[normalized_name] = tag.id
+
+            if not pending:
+                continue
+
+            try:
+                for _, _, tag in pending:
+                    db.add(tag)
+                db.commit()
+                section_stats["created"] += len(pending)
+                for old_id, _, tag in pending:
+                    if old_id:
+                        tag_id_map[old_id] = tag.id
+            except IntegrityError:
+                db.rollback()
+                for old_id, normalized_name, tag in pending:
+                    try:
+                        db.add(tag)
+                        db.commit()
+                        section_stats["created"] += 1
+                        if old_id:
+                            tag_id_map[old_id] = tag.id
+                    except IntegrityError:
+                        db.rollback()
+                        section_stats["skipped"] += 1
+                        skipped.add("tags", normalized_name, "唯一键冲突(normalized_name)")
+                    except Exception:
+                        db.rollback()
+                        section_stats["errors"] += 1
+            except Exception:
+                db.rollback()
+                section_stats["errors"] += len(pending)
+
     def _import_prompt_configs(
         self,
         db: Session,
@@ -604,6 +699,7 @@ class BackupService:
         section_stats: dict[str, int],
         skipped: _SkipRecorder,
         category_id_map: dict[str, str],
+        tag_id_map: dict[str, str],
         article_id_map: dict[str, str],
         article_slug_map: dict[str, str],
     ) -> None:
@@ -641,6 +737,7 @@ class BackupService:
             pending: list[tuple[str, str, str | None, Article]] = []
             reserved_slugs: set[str] = set()
             reserved_source_urls: set[str] = set()
+            resolved_tag_ids_by_slug: dict[str, list[str]] = {}
             for item in batch:
                 if not isinstance(item, dict):
                     section_stats["errors"] += 1
@@ -676,6 +773,13 @@ class BackupService:
                         skipped.add("articles", slug, "关联分类不存在，已跳过")
                         continue
 
+                resolved_tag_ids: list[str] = []
+                for source_tag_id in item.get("tag_ids") or []:
+                    mapped_tag_id = tag_id_map.get(self._clean_str(source_tag_id))
+                    if not mapped_tag_id:
+                        continue
+                    resolved_tag_ids.append(mapped_tag_id)
+
                 article = Article(
                     id=generate_uuid(),
                     title=title,
@@ -707,9 +811,27 @@ class BackupService:
                 reserved_slugs.add(slug)
                 if source_url:
                     reserved_source_urls.add(source_url)
+                resolved_tag_ids_by_slug[slug] = resolved_tag_ids
 
             if not pending:
                 continue
+
+            candidate_tag_ids = {
+                tag_id
+                for tag_ids in resolved_tag_ids_by_slug.values()
+                for tag_id in tag_ids
+            }
+            tag_by_id = {}
+            if candidate_tag_ids:
+                tag_by_id = {
+                    tag.id: tag for tag in db.query(Tag).filter(Tag.id.in_(candidate_tag_ids)).all()
+                }
+            for _, slug, _, article in pending:
+                article.tags = [
+                    tag_by_id[tag_id]
+                    for tag_id in resolved_tag_ids_by_slug.get(slug, [])
+                    if tag_id in tag_by_id
+                ]
 
             try:
                 for _, _, _, article in pending:
@@ -820,6 +942,11 @@ class BackupService:
                     quotes_status=self._optional_str(item.get("quotes_status")),
                     mindmap=self._optional_str(item.get("mindmap")),
                     classification_status=self._optional_str(item.get("classification_status")),
+                    tagging_status=self._optional_str(item.get("tagging_status")),
+                    tagging_source_hash=self._optional_str(item.get("tagging_source_hash")),
+                    tagging_manual_override=self._safe_bool(
+                        item.get("tagging_manual_override"), default=False
+                    ),
                     cleaned_md_draft=self._optional_str(item.get("cleaned_md_draft")),
                     error_message=self._optional_str(item.get("error_message")),
                     updated_at=self._optional_str(item.get("updated_at")) or now_str(),
@@ -893,6 +1020,16 @@ class BackupService:
         }
 
     @staticmethod
+    def _serialize_tag(tag: Tag) -> dict[str, Any]:
+        return {
+            "id": tag.id,
+            "name": tag.name,
+            "normalized_name": tag.normalized_name,
+            "created_at": tag.created_at,
+            "updated_at": tag.updated_at,
+        }
+
+    @staticmethod
     def _serialize_model_api_config(config: ModelAPIConfig) -> dict[str, Any]:
         return {
             "id": config.id,
@@ -956,6 +1093,7 @@ class BackupService:
             "status": article.status,
             "is_visible": bool(article.is_visible),
             "category_id": article.category_id,
+            "tag_ids": [tag.id for tag in getattr(article, "tags", [])],
             "created_at": article.created_at,
             "updated_at": article.updated_at,
             "note_content": article.note_content,
@@ -982,6 +1120,9 @@ class BackupService:
             "quotes_status": analysis.quotes_status,
             "mindmap": analysis.mindmap,
             "classification_status": analysis.classification_status,
+            "tagging_status": analysis.tagging_status,
+            "tagging_source_hash": analysis.tagging_source_hash,
+            "tagging_manual_override": bool(analysis.tagging_manual_override),
             "cleaned_md_draft": analysis.cleaned_md_draft,
             "error_message": analysis.error_message,
             "updated_at": analysis.updated_at,

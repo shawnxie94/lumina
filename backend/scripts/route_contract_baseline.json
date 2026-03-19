@@ -156,6 +156,12 @@
     ]
   },
   {
+    "path": "/api/articles/{article_slug}/tags/regenerate",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/articles/{article_slug}/visibility",
     "methods": [
       "PUT"
@@ -445,6 +451,12 @@
   },
   {
     "path": "/api/sources",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/tags",
     "methods": [
       "GET"
     ]
