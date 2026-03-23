@@ -297,6 +297,7 @@ export interface Article {
 	id: string;
 	slug: string;  // SEO友好的URL slug
 	title: string;
+	title_trans?: string | null;
 	summary: string;
 	top_image: string;
 	category: { id: string; name: string; color?: string } | null;
@@ -721,6 +722,7 @@ export const articleApi = {
 		id: string,
 		data: {
 			title?: string;
+			title_trans?: string | null;
 			author?: string;
 			published_at?: string | null;
 			category_id?: string | null;

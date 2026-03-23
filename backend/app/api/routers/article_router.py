@@ -265,6 +265,7 @@ async def get_article(
         "id": article.id,
         "slug": article.slug,
         "title": article.title,
+        "title_trans": article.title_trans,
         "content_html": article.content_html,
         "content_md": article.content_md,
         "content_trans": article.content_trans,
@@ -525,6 +526,8 @@ async def update_article(
     try:
         if article_data.title is not None:
             article.title = article_data.title
+        if "title_trans" in article_data.__fields_set__:
+            article.title_trans = article_data.title_trans
         if article_data.author is not None:
             article.author = article_data.author
         if "published_at" in article_data.__fields_set__:
@@ -561,6 +564,7 @@ async def update_article(
         return {
             "id": article.id,
             "title": article.title,
+            "title_trans": article.title_trans,
             "author": article.author,
             "published_at": article.published_at,
             "top_image": article.top_image,

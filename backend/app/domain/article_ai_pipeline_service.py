@@ -1169,6 +1169,136 @@ class ArticleAIPipelineService:
             fixed_lines.append(line)
         return self._normalize_markdown_whitespace("\n".join(fixed_lines))
 
+    def _extract_title_text(self, content: str) -> str:
+        text = self._normalize_markdown_whitespace(self._strip_html_tags(content or ""))
+        if not text:
+            return ""
+
+        lines = [line.strip() for line in self._normalize_line_breaks(text).split("\n")]
+        lines = [line for line in lines if line]
+        if not lines:
+            return ""
+
+        title_line = lines[0]
+        if len(lines) >= 2 and re.fullmatch(r"[=-]{3,}", lines[1]):
+            title_line = lines[0]
+
+        title_line = re.sub(r"^#{1,6}\s+", "", title_line)
+        title_line = re.sub(r"\s+#+$", "", title_line).strip()
+        title_line = re.sub(r"^\*\*(.+)\*\*$", r"\1", title_line)
+        title_line = re.sub(r'^["“”\'‘’]+|["“”\'‘’]+$', "", title_line).strip()
+        return title_line
+
+    async def _translate_article_title(
+        self,
+        db,
+        ai_client,
+        title: str,
+        prompt: str | None,
+        parameters: dict,
+        pricing: dict,
+        article_id: str,
+    ) -> str:
+        source_title = self._extract_title_text(title)
+        if not source_title:
+            raise TaskDataError("文章标题为空，无法翻译")
+
+        title_payload = f"# {source_title}"
+        estimated_tokens = self._estimate_tokens(title_payload)
+
+        try:
+            translated_title = await ai_client.translate_to_chinese(
+                title_payload,
+                prompt=prompt,
+                parameters=parameters,
+                max_tokens=min(512, self.DEFAULT_CLEANING_MAX_TOKENS),
+            )
+            finish_reason = (
+                translated_title.get("finish_reason")
+                if isinstance(translated_title, dict)
+                else None
+            )
+            truncated = finish_reason == "length"
+            usage = None
+            latency_ms = None
+            request_payload = None
+            response_payload = None
+
+            if isinstance(translated_title, dict):
+                usage = translated_title.get("usage")
+                latency_ms = translated_title.get("latency_ms")
+                request_payload = translated_title.get("request_payload")
+                response_payload = translated_title.get("response_payload")
+                translated_title = translated_title.get("content") or ""
+
+            normalized_title = self._extract_title_text(translated_title)
+            if not normalized_title:
+                raise TaskDataError("标题翻译失败：输出为空")
+            self._log_ai_usage(
+                db,
+                model_config_id=pricing.get("model_api_config_id"),
+                article_id=article_id,
+                task_type="process_article_translation",
+                content_type="translation_title",
+                usage=usage,
+                latency_ms=latency_ms,
+                status="completed",
+                error_message=None,
+                price_input_per_1k=pricing.get("price_input_per_1k"),
+                price_output_per_1k=pricing.get("price_output_per_1k"),
+                currency=pricing.get("currency"),
+                request_payload=request_payload,
+                response_payload=response_payload,
+                finish_reason=finish_reason,
+                truncated=truncated,
+                chunk_index=None,
+                continue_round=None,
+                estimated_input_tokens=estimated_tokens,
+            )
+            return normalized_title
+        except asyncio.TimeoutError:
+            self._log_ai_usage(
+                db,
+                model_config_id=pricing.get("model_api_config_id"),
+                article_id=article_id,
+                task_type="process_article_translation",
+                content_type="translation_title",
+                usage=None,
+                latency_ms=None,
+                status="failed",
+                error_message="标题翻译超时，请稍后重试",
+                price_input_per_1k=pricing.get("price_input_per_1k"),
+                price_output_per_1k=pricing.get("price_output_per_1k"),
+                currency=pricing.get("currency"),
+                finish_reason=None,
+                truncated=None,
+                chunk_index=None,
+                continue_round=None,
+                estimated_input_tokens=estimated_tokens,
+            )
+            raise TaskTimeoutError("标题翻译超时，请稍后重试")
+        except Exception as exc:
+            self._log_ai_usage(
+                db,
+                model_config_id=pricing.get("model_api_config_id"),
+                article_id=article_id,
+                task_type="process_article_translation",
+                content_type="translation_title",
+                usage=None,
+                latency_ms=None,
+                status="failed",
+                error_message=str(exc),
+                price_input_per_1k=pricing.get("price_input_per_1k"),
+                price_output_per_1k=pricing.get("price_output_per_1k"),
+                currency=pricing.get("currency"),
+                finish_reason=None,
+                truncated=None,
+                chunk_index=None,
+                continue_round=None,
+                estimated_input_tokens=estimated_tokens,
+            )
+            raise
+
     def _build_cleaning_prompt(self, base_prompt: str | None, source_format: str) -> str | None:
         if not base_prompt:
             return None
@@ -2569,6 +2699,17 @@ class ArticleAIPipelineService:
                 "price_output_per_1k": ai_config.get("price_output_per_1k"),
                 "currency": ai_config.get("currency"),
             }
+            article.title_trans = await self._translate_article_title(
+                db=db,
+                ai_client=trans_client,
+                title=article.title or "",
+                prompt=trans_prompt,
+                parameters=parameters,
+                pricing=pricing,
+                article_id=article_id,
+            )
+            article.updated_at = now_str()
+            db.commit()
 
             strategy_value = (strategy or "auto").strip().lower() or "auto"
             estimated_tokens = self._estimate_tokens(source_content)

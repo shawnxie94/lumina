@@ -783,6 +783,7 @@ class BackupService:
                 article = Article(
                     id=generate_uuid(),
                     title=title,
+                    title_trans=self._optional_str(item.get("title_trans")),
                     slug=slug,
                     content_html=self._optional_str(item.get("content_html")),
                     content_structured=self._normalize_json_text(item.get("content_structured")),
@@ -1078,6 +1079,7 @@ class BackupService:
         return {
             "id": article.id,
             "title": article.title,
+            "title_trans": article.title_trans,
             "slug": article.slug,
             "content_html": article.content_html,
             "content_structured": article.content_structured,

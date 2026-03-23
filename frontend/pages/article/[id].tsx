@@ -1158,6 +1158,13 @@ export default function ArticleDetailPage() {
 			: applyAnnotations(normalizedHtml, annotations);
 		return sanitizeRichHtml(htmlWithAnnotations);
 	}, [article, annotations, showTranslation, immersiveMode]);
+	const displayTitle = useMemo(() => {
+		if (!article) return "";
+		if (showTranslation && article.title_trans) {
+			return article.title_trans;
+		}
+		return article.title;
+	}, [article, showTranslation]);
 	const hasPdfEmbed = useMemo(
 		() => renderedHtml.includes("media-embed__book-pdf"),
 		[renderedHtml],
@@ -3293,7 +3300,11 @@ export default function ArticleDetailPage() {
 	const openEditModal = (mode: "original" | "translation") => {
 		if (!article) return;
 		setEditMode(mode);
-		setEditTitle(article.title || "");
+		setEditTitle(
+			mode === "translation"
+				? article.title_trans || article.title || ""
+				: article.title || "",
+		);
 		setEditAuthor(article.author || "");
 		setEditPublishedAt(toDateInputValue(article.published_at));
 		setEditCategoryId(article.category?.id || "");
@@ -3318,6 +3329,7 @@ export default function ArticleDetailPage() {
 				buildSortedTagSignature(editedTagNames);
 			const updateData: {
 				title?: string;
+				title_trans?: string | null;
 				author?: string;
 				published_at?: string | null;
 				category_id?: string | null;
@@ -3326,7 +3338,6 @@ export default function ArticleDetailPage() {
 				content_md?: string;
 				content_trans?: string;
 			} = {
-				title: editTitle,
 				author: editAuthor,
 				published_at: editPublishedAt || null,
 				category_id: editCategoryId || null,
@@ -3337,8 +3348,10 @@ export default function ArticleDetailPage() {
 			}
 
 			if (editMode === "translation") {
+				updateData.title_trans = editTitle;
 				updateData.content_trans = editContent;
 			} else {
+				updateData.title = editTitle;
 				updateData.content_md = editContent;
 			}
 
@@ -3450,8 +3463,8 @@ export default function ArticleDetailPage() {
 		>
 			<Head>
 				<title>
-					{article?.title
-						? `${article.title} - ${basicSettings.site_name || "Lumina"}`
+					{displayTitle
+						? `${displayTitle} - ${basicSettings.site_name || "Lumina"}`
 						: `${t("文章详情")} - ${basicSettings.site_name || "Lumina"}`}
 				</title>
 			</Head>
@@ -3462,7 +3475,7 @@ export default function ArticleDetailPage() {
 			>
 				<div className="max-w-7xl mx-auto px-4 py-5 sm:py-6">
 					<h1 className="text-2xl font-bold text-text-1 text-center mb-3">
-						{article.title}
+						{displayTitle}
 					</h1>
 					<ArticleMetaRow
 						className={`justify-center gap-4 ${immersiveMode ? "" : "pb-3"}`}

@@ -120,6 +120,7 @@ class Article(Base):
 
     id = Column(String, primary_key=True, default=generate_uuid)
     title = Column(String, nullable=False)
+    title_trans = Column(String, nullable=True)
     slug = Column(String, unique=True, nullable=False, index=True)  # SEO友好的URL slug
     content_html = Column(Text, nullable=True)
     content_structured = Column(Text, nullable=True)

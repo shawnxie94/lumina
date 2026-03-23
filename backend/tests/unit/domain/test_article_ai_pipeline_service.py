@@ -1,4 +1,8 @@
+import asyncio
+
+import app.domain.article_ai_pipeline_service as article_ai_pipeline_module
 from app.domain.article_ai_pipeline_service import ArticleAIPipelineService
+from models import Article, now_str
 
 
 def test_detect_media_kind_supports_book_links():
@@ -129,3 +133,68 @@ def test_build_continue_prompt_adds_boundary_dedup_instruction():
 
     assert "如果下一段与已输出末尾有重复，必须删除重复后再继续" in prompt
     assert "禁止复述上一段最后一句" in prompt
+
+
+def test_extract_title_text_handles_markdown_heading_and_quotes():
+    service = ArticleAIPipelineService()
+
+    assert service._extract_title_text('# "Hello World"') == "Hello World"
+    assert service._extract_title_text("**你好，世界**") == "你好，世界"
+
+
+def test_process_article_translation_also_updates_translated_title(
+    db_session,
+    monkeypatch,
+):
+    article = Article(
+        title="Hello World",
+        slug="hello-world",
+        content_md="This is a test article.",
+        created_at=now_str(),
+        updated_at=now_str(),
+    )
+    db_session.add(article)
+    db_session.commit()
+    db_session.refresh(article)
+
+    service = ArticleAIPipelineService()
+
+    class FakeClient:
+        def __init__(self):
+            self.calls = 0
+
+        async def translate_to_chinese(self, content, **kwargs):
+            self.calls += 1
+            if self.calls == 1:
+                return {"content": "# 你好，世界"}
+            return {"content": "这是一篇测试文章。"}
+
+    monkeypatch.setattr(article_ai_pipeline_module, "SessionLocal", lambda: db_session)
+    monkeypatch.setattr(
+        service,
+        "get_ai_config",
+        lambda *args, **kwargs: {
+            "base_url": "https://example.com",
+            "api_key": "test-key",
+            "model_name": "test-model",
+            "model_api_config_id": None,
+            "price_input_per_1k": None,
+            "price_output_per_1k": None,
+            "currency": None,
+            "parameters": None,
+        },
+    )
+    monkeypatch.setattr(service, "create_ai_client", lambda config: FakeClient())
+
+    asyncio.run(
+        service.process_article_translation(
+            article_id=article.id,
+            category_id=None,
+        )
+    )
+
+    persisted_article = db_session.get(Article, article.id)
+    assert persisted_article is not None
+    assert persisted_article.title_trans == "你好，世界"
+    assert persisted_article.content_trans == "这是一篇测试文章。"
+    assert persisted_article.translation_status == "completed"

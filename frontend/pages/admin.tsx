@@ -120,6 +120,7 @@ const MONITORING_SUB_SECTIONS: MonitoringSubSection[] = [
 	"ai-usage",
 	"comments",
 ];
+
 const COMMENT_SUB_SECTIONS: CommentSubSection[] = ["keys", "filters"];
 
 const isAISubSection = (value: string): value is AISubSection =>
@@ -241,6 +242,42 @@ type PromptType =
 	| "content_validation"
 	| "classification"
 	| "tagging";
+
+const createEmptyPromptFormData = (
+	type: PromptType,
+): {
+	name: string;
+	category_id: string;
+	type: PromptType;
+	prompt: string;
+	system_prompt: string;
+	response_format: string;
+	temperature: string;
+	max_tokens: string;
+	top_p: string;
+	chunk_size_tokens: string;
+	chunk_overlap_tokens: string;
+	max_continue_rounds: string;
+	model_api_config_id: string;
+	is_enabled: boolean;
+	is_default: boolean;
+} => ({
+	name: "",
+	category_id: "",
+	type,
+	prompt: "",
+	system_prompt: "",
+	response_format: "",
+	temperature: "",
+	max_tokens: "",
+	top_p: "",
+	chunk_size_tokens: "",
+	chunk_overlap_tokens: "",
+	max_continue_rounds: "",
+	model_api_config_id: "",
+	is_enabled: true,
+	is_default: false,
+});
 
 const PROMPT_TYPES = [
 	{ value: "content_cleaning" as PromptType, labelKey: "清洗" },
@@ -1099,23 +1136,12 @@ export default function AdminPage() {
 	});
 
 	const [promptFormData, setPromptFormData] = useState({
-		name: "",
-		category_id: "",
-		type: "summary",
-		prompt: "",
-		system_prompt: "",
-		response_format: "",
-		temperature: "",
-		max_tokens: "",
-		top_p: "",
-		chunk_size_tokens: "",
-		chunk_overlap_tokens: "",
-		max_continue_rounds: "",
-		model_api_config_id: "",
-		is_enabled: true,
-		is_default: false,
+		...createEmptyPromptFormData("summary"),
 	});
 	const [showPromptAdvanced, setShowPromptAdvanced] = useState(false);
+	const [promptModalMode, setPromptModalMode] = useState<
+		"create" | "edit" | "duplicate"
+	>("create");
 	const promptTypeSupportsChunkOptions = supportsChunkOptionsForPromptType(
 		promptFormData.type,
 	);
@@ -1137,6 +1163,22 @@ export default function AdminPage() {
 		}
 		return modelAPIConfigs.filter((config) => !isVector(config));
 	}, [modelAPIConfigs, modelCategory]);
+	const promptModelOptions = useMemo(
+		() =>
+			modelAPIConfigs
+				.map((config) => ({
+					value: config.id,
+					label:
+						`${config.name || config.model_name || config.id}` +
+						(config.model_name && config.model_name !== config.name
+							? ` (${config.model_name})`
+							: "") +
+						(config.model_type === "vector" ? ` · ${t("向量")}` : "") +
+						(!config.is_enabled ? ` · ${t("已禁用")}` : ""),
+				}))
+				.sort((a, b) => a.label.localeCompare(b.label, "zh-Hans-CN")),
+		[modelAPIConfigs, t],
+	);
 	const [modelAPITestConfig, setModelAPITestConfig] =
 		useState<ModelAPIConfig | null>(null);
 	const [modelAPITestPrompt, setModelAPITestPrompt] = useState("");
@@ -1665,6 +1707,7 @@ export default function AdminPage() {
 			if (aiSubSection === "model-api") {
 				fetchModelAPIConfigs();
 			} else if (aiSubSection === "prompt") {
+				fetchModelAPIConfigs();
 				fetchPromptConfigs();
 			} else {
 				fetchRecommendationSettings();
@@ -1702,6 +1745,11 @@ export default function AdminPage() {
 		monitoringSubSection,
 		routeInitialized,
 	]);
+
+	useEffect(() => {
+		if (!showPromptModal || modelLoading || modelAPIConfigs.length > 0) return;
+		void fetchModelAPIConfigs();
+	}, [showPromptModal, modelLoading, modelAPIConfigs.length]);
 
 	useEffect(() => {
 		setCommentValidationResult(null);
@@ -2036,33 +2084,22 @@ export default function AdminPage() {
 
 	const handleCreatePromptNew = () => {
 		setEditingPromptConfig(null);
-		setPromptFormData({
-			name: "",
-			category_id: "",
-			type: selectedPromptType,
-			prompt: "",
-			system_prompt: "",
-			response_format: "",
-			temperature: "",
-			max_tokens: "",
-			top_p: "",
-			chunk_size_tokens: "",
-			chunk_overlap_tokens: "",
-			max_continue_rounds: "",
-			model_api_config_id: "",
-			is_enabled: true,
-			is_default: false,
-		});
+		setPromptModalMode("create");
+		setPromptFormData(createEmptyPromptFormData(selectedPromptType));
 		setShowPromptAdvanced(false);
+		if (modelAPIConfigs.length === 0) {
+			void fetchModelAPIConfigs();
+		}
 		setShowPromptModal(true);
 	};
 
 	const handleEditPrompt = (config: PromptConfig) => {
 		setEditingPromptConfig(config);
+		setPromptModalMode("edit");
 		setPromptFormData({
 			name: config.name,
 			category_id: config.category_id || "",
-			type: config.type,
+			type: config.type as PromptType,
 			prompt: config.prompt,
 			system_prompt: config.system_prompt || "",
 			response_format: config.response_format || "",
@@ -2077,6 +2114,36 @@ export default function AdminPage() {
 			is_default: config.is_default,
 		});
 		setShowPromptAdvanced(false);
+		if (modelAPIConfigs.length === 0) {
+			void fetchModelAPIConfigs();
+		}
+		setShowPromptModal(true);
+	};
+
+	const handleDuplicatePrompt = (config: PromptConfig) => {
+		setEditingPromptConfig(null);
+		setPromptModalMode("duplicate");
+		setPromptFormData({
+			name: `${config.name} ${t("副本")}`,
+			category_id: config.category_id || "",
+			type: config.type as PromptType,
+			prompt: config.prompt,
+			system_prompt: config.system_prompt || "",
+			response_format: config.response_format || "",
+			temperature: config.temperature?.toString() || "",
+			max_tokens: config.max_tokens?.toString() || "",
+			top_p: config.top_p?.toString() || "",
+			chunk_size_tokens: config.chunk_size_tokens?.toString() || "",
+			chunk_overlap_tokens: config.chunk_overlap_tokens?.toString() || "",
+			max_continue_rounds: config.max_continue_rounds?.toString() || "",
+			model_api_config_id: config.model_api_config_id || "",
+			is_enabled: config.is_enabled,
+			is_default: false,
+		});
+		setShowPromptAdvanced(false);
+		if (modelAPIConfigs.length === 0) {
+			void fetchModelAPIConfigs();
+		}
 		setShowPromptModal(true);
 	};
 
@@ -4440,6 +4507,14 @@ export default function AdminPage() {
 																	title={t("预览")}
 																>
 																	<IconEye className="h-4 w-4" />
+																</IconButton>
+																<IconButton
+																	onClick={() => handleDuplicatePrompt(config)}
+																	variant="primary"
+																	size="sm"
+																	title={t("复制")}
+																>
+																	<IconCopy className="h-4 w-4" />
 																</IconButton>
 																<IconButton
 																	onClick={() => handleEditPrompt(config)}
@@ -7067,7 +7142,11 @@ export default function AdminPage() {
 						isOpen={showPromptModal}
 						onClose={() => setShowPromptModal(false)}
 						title={
-							editingPromptConfig ? t("编辑提示词配置") : t("创建新提示词配置")
+							promptModalMode === "edit"
+								? t("编辑提示词配置")
+								: promptModalMode === "duplicate"
+									? t("复制提示词配置")
+									: t("创建新提示词配置")
 						}
 						widthClassName="max-w-2xl"
 						panelClassName="max-h-[90vh] overflow-y-auto"
@@ -7088,7 +7167,7 @@ export default function AdminPage() {
 									loading={promptSaving}
 									disabled={promptSaving}
 								>
-									{editingPromptConfig ? t("保存") : t("创建")}
+									{promptModalMode === "edit" ? t("保存") : t("创建")}
 								</Button>
 							</div>
 						}
@@ -7171,7 +7250,7 @@ export default function AdminPage() {
 							/>
 							{showPromptAdvanced && (
 								<div className="space-y-4 border-t border-border p-4">
-										<div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+									<div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
 										<FormField label={t("响应格式")}>
 											<SelectField
 												value={promptFormData.response_format}
@@ -7223,7 +7302,7 @@ export default function AdminPage() {
 											/>
 										</FormField>
 
-											<FormField label="Top P">
+										<FormField label="Top P">
 											<TextInput
 												type="number"
 												step="0.1"
@@ -7238,65 +7317,65 @@ export default function AdminPage() {
 												}
 												placeholder={t("1.0")}
 											/>
-											</FormField>
-										</div>
-
-											{promptTypeSupportsChunkOptions && (
-												<div className="rounded-lg border border-border p-3">
-													<div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-														<FormField label={t("分块大小")}>
-															<TextInput
-																type="number"
-																min="1"
-																value={promptFormData.chunk_size_tokens}
-																onChange={(e) =>
-																	setPromptFormData({
-																		...promptFormData,
-																		chunk_size_tokens: e.target.value,
-																	})
-																}
-																placeholder={t("例如 12000")}
-															/>
-														</FormField>
-														<FormField label={t("分块重叠")}>
-															<TextInput
-																type="number"
-																min="0"
-																value={promptFormData.chunk_overlap_tokens}
-																onChange={(e) =>
-																	setPromptFormData({
-																		...promptFormData,
-																		chunk_overlap_tokens: e.target.value,
-																	})
-																}
-																placeholder={t("例如 800")}
-															/>
-														</FormField>
-														<FormField label={t("最多续写轮次")}>
-															<TextInput
-																type="number"
-																min="0"
-																value={promptFormData.max_continue_rounds}
-																onChange={(e) =>
-																	setPromptFormData({
-																		...promptFormData,
-																		max_continue_rounds: e.target.value,
-																	})
-																}
-																placeholder={t("例如 2")}
-															/>
-														</FormField>
-													</div>
-													<p className="mt-2 text-xs text-text-3">
-														{t(
-															"该三项需同时填写；并且关联模型需配置上下文窗口与输出预留，否则后端会拒绝保存。",
-														)}
-													</p>
-												</div>
-											)}
+										</FormField>
 									</div>
-								)}
-							</div>
+
+									{promptTypeSupportsChunkOptions && (
+										<div className="rounded-lg border border-border p-3">
+											<div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+												<FormField label={t("分块大小")}>
+													<TextInput
+														type="number"
+														min="1"
+														value={promptFormData.chunk_size_tokens}
+														onChange={(e) =>
+															setPromptFormData({
+																...promptFormData,
+																chunk_size_tokens: e.target.value,
+															})
+														}
+														placeholder={t("例如 12000")}
+													/>
+												</FormField>
+												<FormField label={t("分块重叠")}>
+													<TextInput
+														type="number"
+														min="0"
+														value={promptFormData.chunk_overlap_tokens}
+														onChange={(e) =>
+															setPromptFormData({
+																...promptFormData,
+																chunk_overlap_tokens: e.target.value,
+															})
+														}
+														placeholder={t("例如 800")}
+													/>
+												</FormField>
+												<FormField label={t("最多续写轮次")}>
+													<TextInput
+														type="number"
+														min="0"
+														value={promptFormData.max_continue_rounds}
+														onChange={(e) =>
+															setPromptFormData({
+																...promptFormData,
+																max_continue_rounds: e.target.value,
+															})
+														}
+														placeholder={t("例如 2")}
+													/>
+												</FormField>
+											</div>
+											<p className="mt-2 text-xs text-text-3">
+												{t(
+													"该三项需同时填写；并且关联模型需配置上下文窗口与输出预留，否则后端会拒绝保存。",
+												)}
+											</p>
+												</div>
+									)}
+								</div>
+							)}
+						</div>
 
 						<FormField label={t("关联模型API配置（可选）")}>
 							<SelectField
@@ -7311,10 +7390,7 @@ export default function AdminPage() {
 								popupClassName="select-modern-dropdown"
 								options={[
 									{ value: "", label: t("使用默认") },
-									...modelAPIConfigs.map((config) => ({
-										value: config.id,
-										label: config.name,
-									})),
+									...promptModelOptions,
 								]}
 							/>
 						</FormField>
@@ -7441,6 +7517,15 @@ export default function AdminPage() {
 						footerClassName="border-t border-border bg-muted p-6"
 						footer={
 							<div className="flex justify-end gap-2">
+								<Button
+									onClick={() => {
+										handleDuplicatePrompt(showPromptPreview);
+										setShowPromptPreview(null);
+									}}
+									variant="secondary"
+								>
+									{t("复制为新配置")}
+								</Button>
 								<Button
 									onClick={() => {
 										handleEditPrompt(showPromptPreview);
