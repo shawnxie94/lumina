@@ -184,6 +184,7 @@ async def get_articles(
                 "id": a.id,
                 "slug": a.slug,
                 "title": a.title,
+                "title_trans": a.title_trans,
                 "summary": a.ai_analysis.summary if a.ai_analysis else "",
                 "top_image": a.top_image,
                 "category": {

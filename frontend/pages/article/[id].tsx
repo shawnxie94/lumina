@@ -73,6 +73,8 @@ import { signIn, signOut, useSession } from "next-auth/react";
 // 轮询间隔（毫秒）
 const POLLING_INTERVAL = 3000;
 const SIMILAR_ARTICLE_LIMIT = 5;
+const PENDING_JOB_STATUSES = ["pending", "processing"] as const;
+type PendingJobStatus = (typeof PENDING_JOB_STATUSES)[number];
 type AIContentType = "summary" | "key_points" | "outline" | "quotes";
 type NoteRecommendationLevel =
 	| "strongly_recommended"
@@ -95,6 +97,29 @@ const NOTE_RECOMMENDATION_LEVEL_OPTIONS: Array<{
 	{ value: "neutral", label: "一般" },
 	{ value: "not_recommended", label: "不推荐" },
 ];
+
+const isPendingJobStatus = (
+	value?: string | null,
+): value is PendingJobStatus =>
+	PENDING_JOB_STATUSES.includes(value as PendingJobStatus);
+
+const hasPendingArticleJob = (article: ArticleDetail | null): boolean => {
+	if (!article) return false;
+	if (isPendingJobStatus(article.status)) return true;
+	if (isPendingJobStatus(article.translation_status)) return true;
+
+	const statuses = article.ai_analysis
+		? [
+				article.ai_analysis.summary_status,
+				article.ai_analysis.key_points_status,
+				article.ai_analysis.outline_status,
+				article.ai_analysis.quotes_status,
+				article.ai_analysis.tagging_status,
+			]
+		: [];
+
+	return statuses.some((status) => isPendingJobStatus(status));
+};
 
 interface AIContentSectionProps {
 	title: string;
@@ -1125,23 +1150,7 @@ export default function ArticleDetailPage() {
 	);
 
 	const needsPolling = useCallback((data: ArticleDetail | null): boolean => {
-		if (!data) return false;
-		const pendingStatuses = ["pending", "processing"];
-		if (pendingStatuses.includes(data.status)) return true;
-		if (pendingStatuses.includes(data.translation_status || "")) return true;
-		if (data.ai_analysis) {
-			const {
-				summary_status,
-				key_points_status,
-				outline_status,
-				quotes_status,
-			} = data.ai_analysis;
-			if (pendingStatuses.includes(summary_status || "")) return true;
-			if (pendingStatuses.includes(key_points_status || "")) return true;
-			if (pendingStatuses.includes(outline_status || "")) return true;
-			if (pendingStatuses.includes(quotes_status || "")) return true;
-		}
-		return false;
+		return hasPendingArticleJob(data);
 	}, []);
 
 	const renderedHtml = useMemo(() => {
@@ -1957,8 +1966,35 @@ export default function ArticleDetailPage() {
 		setTagRegenerating(true);
 		try {
 			await articleApi.regenerateArticleTags(article.slug);
+			setArticle((prev) =>
+				prev
+					? {
+							...prev,
+							ai_analysis: prev.ai_analysis
+								? {
+										...prev.ai_analysis,
+										tagging_manual_override: false,
+										tagging_status: "pending",
+									}
+								: {
+										summary: null,
+										summary_status: null,
+										key_points: null,
+										key_points_status: null,
+										outline: null,
+										outline_status: null,
+										quotes: null,
+										quotes_status: null,
+										tagging_status: "pending",
+										tagging_manual_override: false,
+										error_message: null,
+										updated_at: null,
+									},
+						}
+					: prev,
+			);
 			showToast(t("已提交自动打标任务"));
-			fetchArticle();
+			await fetchArticle();
 		} catch (error: any) {
 			console.error("Failed to regenerate tags:", error);
 			showToast(error?.response?.data?.detail || t("自动打标提交失败"), "error");
@@ -3456,6 +3492,8 @@ export default function ArticleDetailPage() {
 	}
 
 	const taggingStatusMeta = getTaggingStatusMeta(t, article.ai_analysis);
+	const isTaggingBusy =
+		tagRegenerating || isPendingJobStatus(article.ai_analysis?.tagging_status);
 
 	return (
 		<div
@@ -3550,6 +3588,7 @@ export default function ArticleDetailPage() {
 										title={t("重新自动打标")}
 										onClick={handleRegenerateTags}
 										loading={tagRegenerating}
+										disabled={isTaggingBusy}
 										className="text-text-3 hover:text-primary"
 									>
 										<IconRefresh className="h-3.5 w-3.5" />

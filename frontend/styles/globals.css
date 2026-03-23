@@ -289,12 +289,35 @@ html[data-theme="dark"] .skeleton-shimmer::after {
 }
 
 .prose pre {
+  position: relative;
   color: var(--text-1);
-  background: var(--bg-muted);
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.02) 0%, var(--bg-muted) 100%);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 12px;
   padding: 0.9rem 1rem;
   overflow-x: auto;
+  box-shadow: var(--shadow-sm);
+}
+
+.prose pre.code-block {
+  padding-top: 2.5rem;
+}
+
+.prose pre.code-block::before {
+  content: attr(data-language);
+  position: absolute;
+  top: 0.75rem;
+  right: 0.9rem;
+  border-radius: 9999px;
+  padding: 0.22rem 0.56rem;
+  background: rgba(148, 163, 184, 0.14);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  color: var(--text-3);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  text-transform: uppercase;
 }
 
 .prose pre code {
@@ -306,9 +329,85 @@ html[data-theme="dark"] .skeleton-shimmer::after {
   font-size: 0.9em;
 }
 
+.prose pre code.hljs {
+  display: block;
+  min-width: max-content;
+  line-height: 1.7;
+  tab-size: 2;
+}
+
 .prose pre code::before,
 .prose pre code::after {
   content: none;
+}
+
+.prose .hljs {
+  color: #1f2937;
+  background: transparent;
+}
+
+.prose .hljs-comment,
+.prose .hljs-quote {
+  color: #6b7280;
+  font-style: italic;
+}
+
+.prose .hljs-keyword,
+.prose .hljs-selector-tag,
+.prose .hljs-subst {
+  color: #7c3aed;
+  font-weight: 700;
+}
+
+.prose .hljs-title,
+.prose .hljs-title.class_,
+.prose .hljs-title.function_,
+.prose .hljs-function .hljs-title,
+.prose .hljs-section {
+  color: #0f766e;
+}
+
+.prose .hljs-string,
+.prose .hljs-regexp,
+.prose .hljs-addition,
+.prose .hljs-attribute,
+.prose .hljs-meta .hljs-string {
+  color: #047857;
+}
+
+.prose .hljs-number,
+.prose .hljs-literal,
+.prose .hljs-symbol,
+.prose .hljs-bullet,
+.prose .hljs-variable,
+.prose .hljs-template-variable {
+  color: #b45309;
+}
+
+.prose .hljs-built_in,
+.prose .hljs-type,
+.prose .hljs-class .hljs-title,
+.prose .hljs-doctag {
+  color: #1d4ed8;
+}
+
+.prose .hljs-meta,
+.prose .hljs-meta .hljs-keyword,
+.prose .hljs-operator,
+.prose .hljs-punctuation {
+  color: #475569;
+}
+
+.prose .hljs-deletion {
+  color: #b91c1c;
+}
+
+.prose .hljs-emphasis {
+  font-style: italic;
+}
+
+.prose .hljs-strong {
+  font-weight: 700;
 }
 
 .prose .katex {
@@ -336,12 +435,76 @@ html[data-theme="dark"] .prose :where(code):not(:where(pre code)) {
 
 html[data-theme="dark"] .prose pre {
   color: #e2e8f0;
-  background: #111827;
+  background: linear-gradient(180deg, rgba(96, 165, 250, 0.08) 0%, #0f172a 100%);
   border-color: #334155;
 }
 
 html[data-theme="dark"] .prose blockquote {
   color: #e2e8f0;
+}
+
+html[data-theme="dark"] .prose pre.code-block::before {
+  background: rgba(148, 163, 184, 0.12);
+  border-color: rgba(148, 163, 184, 0.24);
+  color: #cbd5e1;
+}
+
+html[data-theme="dark"] .prose .hljs {
+  color: #dbe4f0;
+}
+
+html[data-theme="dark"] .prose .hljs-comment,
+html[data-theme="dark"] .prose .hljs-quote {
+  color: #94a3b8;
+}
+
+html[data-theme="dark"] .prose .hljs-keyword,
+html[data-theme="dark"] .prose .hljs-selector-tag,
+html[data-theme="dark"] .prose .hljs-subst {
+  color: #c084fc;
+}
+
+html[data-theme="dark"] .prose .hljs-title,
+html[data-theme="dark"] .prose .hljs-title.class_,
+html[data-theme="dark"] .prose .hljs-title.function_,
+html[data-theme="dark"] .prose .hljs-function .hljs-title,
+html[data-theme="dark"] .prose .hljs-section {
+  color: #5eead4;
+}
+
+html[data-theme="dark"] .prose .hljs-string,
+html[data-theme="dark"] .prose .hljs-regexp,
+html[data-theme="dark"] .prose .hljs-addition,
+html[data-theme="dark"] .prose .hljs-attribute,
+html[data-theme="dark"] .prose .hljs-meta .hljs-string {
+  color: #86efac;
+}
+
+html[data-theme="dark"] .prose .hljs-number,
+html[data-theme="dark"] .prose .hljs-literal,
+html[data-theme="dark"] .prose .hljs-symbol,
+html[data-theme="dark"] .prose .hljs-bullet,
+html[data-theme="dark"] .prose .hljs-variable,
+html[data-theme="dark"] .prose .hljs-template-variable {
+  color: #fdba74;
+}
+
+html[data-theme="dark"] .prose .hljs-built_in,
+html[data-theme="dark"] .prose .hljs-type,
+html[data-theme="dark"] .prose .hljs-class .hljs-title,
+html[data-theme="dark"] .prose .hljs-doctag {
+  color: #93c5fd;
+}
+
+html[data-theme="dark"] .prose .hljs-meta,
+html[data-theme="dark"] .prose .hljs-meta .hljs-keyword,
+html[data-theme="dark"] .prose .hljs-operator,
+html[data-theme="dark"] .prose .hljs-punctuation {
+  color: #94a3b8;
+}
+
+html[data-theme="dark"] .prose .hljs-deletion {
+  color: #fca5a5;
 }
 
 .ai-tab-fade {

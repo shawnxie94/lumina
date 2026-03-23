@@ -1675,6 +1675,7 @@ export default function Home() {
                   <div className="space-y-4">
                     {articles.map((article) => {
                       const articleHref = buildArticleHref(article.slug);
+                      const displayTitle = article.title_trans?.trim() || article.title;
                       const selected = showAdminDesktop && selectedArticleSlugs.has(article.slug);
                       const cardTopImageUrl = resolveMediaUrl(article.top_image || basicSettings.site_logo_url || '/logo.png');
                       const mediaBlock = (
@@ -1682,7 +1683,7 @@ export default function Home() {
                           <div className="relative w-full sm:w-40 aspect-video sm:aspect-square overflow-hidden rounded-lg bg-muted">
                             <img
                               src={cardTopImageUrl || defaultTopImageUrl}
-                              alt={article.title}
+                              alt={displayTitle}
                               className="absolute inset-0 h-full w-full object-cover"
                               loading="lazy"
                               decoding="async"
@@ -1698,7 +1699,7 @@ export default function Home() {
                           >
                             <img
                               src={cardTopImageUrl || defaultTopImageUrl}
-                              alt={article.title}
+                              alt={displayTitle}
                               className="absolute inset-0 h-full w-full object-cover"
                               loading="lazy"
                               decoding="async"
@@ -1772,7 +1773,7 @@ export default function Home() {
                                 rel={articleLinkRel}
                               >
                                 <h3 className="text-xl font-semibold text-text-1 hover:text-primary transition cursor-pointer">
-                                  {article.title}
+                                  {displayTitle}
                                 </h3>
                               </Link>
                               <ArticleMetaRow

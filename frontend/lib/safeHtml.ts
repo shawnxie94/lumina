@@ -1,4 +1,7 @@
+import * as beautify from "js-beautify";
+import { common, createLowlight } from "lowlight";
 import rehypeKatex from "rehype-katex";
+import rehypeHighlight from "rehype-highlight";
 import rehypeRaw from "rehype-raw";
 import rehypeStringify from "rehype-stringify";
 import remarkGfm from "remark-gfm";
@@ -42,6 +45,43 @@ const AUDIO_EXTENSIONS = [
 ];
 const BOOK_EXTENSIONS = [".pdf", ".epub", ".mobi"];
 const PDF_EXTENSIONS = [".pdf"];
+const LANGUAGE_CLASS_PREFIX = "language-";
+const CODE_BLOCK_FORMAT_MAX_LENGTH = 20000;
+const CODE_BLOCK_DETECTION_SUBSET = [
+	"typescript",
+	"javascript",
+	"json",
+	"html",
+	"xml",
+	"css",
+	"scss",
+	"less",
+	"bash",
+	"shell",
+	"python",
+	"java",
+	"go",
+	"rust",
+	"php",
+	"ruby",
+	"sql",
+] as const;
+const SCRIPT_BEAUTIFY_OPTIONS = {
+	indent_size: 2,
+	preserve_newlines: true,
+	max_preserve_newlines: 2,
+	space_in_empty_paren: false,
+	end_with_newline: false,
+} as const;
+const MARKUP_BEAUTIFY_OPTIONS = {
+	indent_size: 2,
+	preserve_newlines: true,
+	max_preserve_newlines: 2,
+	end_with_newline: false,
+	wrap_line_length: 0,
+} as const;
+const codeBlockLowlight = createLowlight(common);
+const codeBlockFormatCache = new Map<string, { language: string; value: string }>();
 
 type MediaEmbedType = "video" | "audio" | "book";
 type MediaTargetType = "iframe" | "video" | "audio" | "pdf" | "link";
@@ -62,10 +102,13 @@ interface MarkdownRenderOptions {
 
 interface TreeNode {
 	type?: string;
+	tagName?: string;
+	lang?: string | null;
 	value?: string;
 	alt?: string;
 	url?: string;
 	children?: TreeNode[];
+	properties?: Record<string, unknown>;
 }
 
 const escapeHtml = (value: string): string =>
@@ -82,6 +125,107 @@ const escapeHtml = (value: string): string =>
 
 const stripHtmlTags = (value: string): string =>
 	(value || "").replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim();
+
+const normalizeCodeLanguage = (value?: string | null): string => {
+	const normalized = (value || "").trim().toLowerCase();
+	if (!normalized) return "";
+
+	const aliasMap: Record<string, string> = {
+		ts: "typescript",
+		cts: "typescript",
+		mts: "typescript",
+		tsx: "typescript",
+		javascriptreact: "javascript",
+		jsx: "javascript",
+		js: "javascript",
+		mjs: "javascript",
+		cjs: "javascript",
+		node: "javascript",
+		json5: "json",
+		jsonc: "json",
+		htm: "html",
+		xhtml: "html",
+		svg: "xml",
+		yml: "yaml",
+		sh: "bash",
+		shell: "bash",
+		zsh: "bash",
+		console: "bash",
+		md: "markdown",
+		markdown: "markdown",
+	};
+
+	return aliasMap[normalized] || normalized;
+};
+
+const detectCodeLanguage = (value: string): string => {
+	const source = (value || "").trim();
+	if (!source) return "";
+	try {
+		const result = codeBlockLowlight.highlightAuto(source, {
+			subset: [...CODE_BLOCK_DETECTION_SUBSET],
+		});
+		return normalizeCodeLanguage(result.data?.language);
+	} catch {
+		return "";
+	}
+};
+
+const formatJavaScriptLikeCode = (value: string): string =>
+	beautify.js(value, SCRIPT_BEAUTIFY_OPTIONS);
+
+const formatCssLikeCode = (value: string): string =>
+	beautify.css(value, {
+		indent_size: 2,
+		end_with_newline: false,
+	});
+
+const formatHtmlLikeCode = (value: string): string =>
+	beautify.html(value, MARKUP_BEAUTIFY_OPTIONS);
+
+const CODE_BLOCK_FORMATTERS: Record<string, (value: string) => string> = {
+	javascript: formatJavaScriptLikeCode,
+	typescript: formatJavaScriptLikeCode,
+	json: formatJavaScriptLikeCode,
+	css: formatCssLikeCode,
+	scss: formatCssLikeCode,
+	less: formatCssLikeCode,
+	html: formatHtmlLikeCode,
+	xml: formatHtmlLikeCode,
+};
+
+const formatCodeBlock = (
+	value: string,
+	explicitLanguage?: string | null,
+): { language: string; value: string } => {
+	const source = value || "";
+	if (!source.trim() || source.length > CODE_BLOCK_FORMAT_MAX_LENGTH) {
+		return {
+			language: normalizeCodeLanguage(explicitLanguage),
+			value: source,
+		};
+	}
+
+	const normalizedExplicitLanguage = normalizeCodeLanguage(explicitLanguage);
+	const language = normalizedExplicitLanguage || detectCodeLanguage(source);
+	const cacheKey = `${language}\u0000${source}`;
+	const cached = codeBlockFormatCache.get(cacheKey);
+	if (cached) return cached;
+
+	let nextValue = source;
+	const formatter = CODE_BLOCK_FORMATTERS[language];
+	try {
+		if (formatter) {
+			nextValue = formatter(source);
+		}
+	} catch {
+		nextValue = source;
+	}
+
+	const result = { language, value: nextValue };
+	codeBlockFormatCache.set(cacheKey, result);
+	return result;
+};
 
 const normalizeMediaLabel = (text: string): MediaEmbedResult | null => {
 	const plainText = stripHtmlTags(text);
@@ -284,6 +428,49 @@ const getNodeText = (node: TreeNode | undefined): string => {
 	return node.children.map((child) => getNodeText(child)).join("");
 };
 
+const getNodeClassNames = (node: TreeNode | undefined): string[] => {
+	if (!node?.properties) return [];
+	const className = node.properties.className;
+	if (Array.isArray(className)) {
+		return className.filter(
+			(value): value is string => typeof value === "string" && value.trim().length > 0,
+		);
+	}
+	if (typeof className === "string") {
+		return className
+			.split(/\s+/)
+			.map((value) => value.trim())
+			.filter(Boolean);
+	}
+	return [];
+};
+
+const setNodeClassNames = (node: TreeNode, classNames: string[]): void => {
+	node.properties = {
+		...(node.properties || {}),
+		className: classNames,
+	};
+};
+
+const setNodeProperty = (
+	node: TreeNode,
+	name: string,
+	value: string,
+): void => {
+	node.properties = {
+		...(node.properties || {}),
+		[name]: value,
+	};
+};
+
+const getCodeBlockLanguage = (node: TreeNode | undefined): string => {
+	const languageClass = getNodeClassNames(node).find((className) =>
+		className.startsWith(LANGUAGE_CLASS_PREFIX),
+	);
+	if (!languageClass) return "";
+	return languageClass.slice(LANGUAGE_CLASS_PREFIX.length).trim().toLowerCase();
+};
+
 const isStandaloneParagraphLink = (
 	node: TreeNode,
 	index: number | undefined,
@@ -322,17 +509,58 @@ const remarkMediaEmbed = (enableMediaEmbed: boolean) => {
 	};
 };
 
+const remarkFormatCodeBlocks = () => {
+	return (tree: TreeNode) => {
+		visit(tree as any, "code", (node: any) => {
+			if (typeof node?.value !== "string") return;
+			const result = formatCodeBlock(node.value, node.lang);
+			if (result.language) {
+				node.lang = result.language;
+			}
+			node.value = result.value;
+		});
+	};
+};
+
+const rehypeCodeBlockMeta = () => {
+	return (tree: TreeNode) => {
+		visit(tree as any, "element", (node: any) => {
+			if (node.tagName !== "pre" || !Array.isArray(node.children)) return;
+			const codeNode = node.children.find(
+				(child: any) => child?.type === "element" && child.tagName === "code",
+			) as TreeNode | undefined;
+			if (!codeNode) return;
+
+			const language = getCodeBlockLanguage(codeNode) || "text";
+			setNodeProperty(node, "data-language", language);
+			setNodeProperty(codeNode, "data-language", language);
+
+			const preClassNames = getNodeClassNames(node);
+			if (!preClassNames.includes("code-block")) {
+				preClassNames.push("code-block");
+			}
+			setNodeClassNames(node, preClassNames);
+		});
+	};
+};
+
 const createMarkdownProcessor = (enableMediaEmbed: boolean) =>
 	unified()
 		.use(remarkParse)
 		.use(remarkGfm)
 		.use(remarkMath)
 		.use(remarkMediaEmbed(enableMediaEmbed))
+		.use(remarkFormatCodeBlocks)
 		.use(remarkRehype, { allowDangerousHtml: true })
 		.use(rehypeRaw)
 		.use(rehypeKatex, {
 			output: "mathml",
 		})
+		.use(rehypeHighlight, {
+			detect: true,
+			ignoreMissing: true,
+		})
+		.use(rehypeCodeBlockMeta)
 		.use(rehypeStringify);
 
 const markdownProcessor = createMarkdownProcessor(false);
@@ -406,6 +634,8 @@ const SANITIZE_OPTIONS: IOptions = {
 	allowedAttributes: {
 		a: ["href", "title", "target", "rel"],
 		img: ["src", "alt", "title", "width", "height", "loading", "decoding"],
+		pre: ["data-language"],
+		code: ["data-language"],
 		video: ["src", "controls", "preload", "poster", "class"],
 		audio: ["src", "controls", "preload", "class"],
 		source: ["src", "type"],
