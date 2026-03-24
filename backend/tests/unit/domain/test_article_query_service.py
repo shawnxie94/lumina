@@ -13,6 +13,7 @@ def make_article(
     title: str,
     published_at: str | None,
     created_at: str,
+    title_trans: str | None = None,
     category_id: str | None = None,
     tags: list[Tag] | None = None,
     source_domain: str | None = None,
@@ -22,6 +23,7 @@ def make_article(
     article = Article(
         id=str(uuid.uuid4()),
         title=title,
+        title_trans=title_trans,
         slug=f"{title.lower()}-{uuid.uuid4().hex[:8]}",
         content_md=f"{title}-content",
         published_at=published_at,
@@ -461,3 +463,25 @@ def test_render_articles_rss_uses_filtered_links_and_escapes_xml(db_session):
         in rss
     )
     assert "<pubDate>" in rss
+
+
+def test_render_articles_rss_prefers_translated_title(db_session):
+    service = ArticleQueryService()
+    article = make_article(
+        db_session,
+        title="Original Title",
+        title_trans="  译文标题  ",
+        published_at="2026-02-10T08:30:00+00:00",
+        created_at="2026-02-11T00:00:00+00:00",
+        is_visible=True,
+    )
+
+    rss = service.render_articles_rss(
+        articles=[article],
+        public_base_url="https://lumina.example.com",
+        site_name="Lumina",
+        site_description="公开订阅",
+    )
+
+    assert "<title>译文标题</title>" in rss
+    assert "<title>Original Title</title>" not in rss

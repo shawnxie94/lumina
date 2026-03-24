@@ -236,6 +236,13 @@ def _to_rfc2822_datetime(value: str | None) -> str:
     return format_datetime(parsed.replace(tzinfo=timezone.utc), usegmt=True)
 
 
+def _get_preferred_article_title(article: Article) -> str:
+    translated_title = (article.title_trans or "").strip()
+    if translated_title:
+        return translated_title
+    return article.title or ""
+
+
 def _build_query_string(*, category_id: str | None = None, tag_ids: list[str] | None = None) -> str:
     params: dict[str, str] = {}
     normalized_tag_ids = _normalize_tag_ids(tag_ids)
@@ -530,10 +537,11 @@ class ArticleQueryService:
                 article.created_at
             )
             summary = article.ai_analysis.summary if article.ai_analysis else ""
+            display_title = _get_preferred_article_title(article)
             lines.extend(
                 [
                     "<item>",
-                    f"<title>{escape(article.title or '')}</title>",
+                    f"<title>{escape(display_title)}</title>",
                     f"<link>{escape(article_link)}</link>",
                     f'<guid isPermaLink="true">{escape(article_link)}</guid>',
                     f"<description>{escape(summary or '')}</description>",

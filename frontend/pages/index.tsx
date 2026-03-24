@@ -183,51 +183,55 @@ export default function HomePage() {
             <div className="py-12 text-center text-text-3">{t('暂无文章')}</div>
           ) : (
             <div className="mt-4 grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-              {latestArticles.map((article) => (
-                <Link
-                  key={article.slug}
-                  href={`/article/${article.slug}`}
-                  className="group overflow-hidden rounded-2xl border border-border-strong bg-surface/80 shadow-md transition hover:border-primary/40 hover:shadow-lg hover:shadow-primary/10"
-                >
-                  <div className="relative aspect-video overflow-hidden bg-muted">
-                    <img
-                      src={resolveMediaUrl(article.top_image || logoUrl) || fallbackTopImageUrl}
-                      alt={article.title}
-                      className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
-                    />
-                    <ArticleLanguageTag article={article} className="absolute left-2 top-2 px-2 py-0.5 text-xs" />
-                  </div>
-                  <div className="p-4">
-                    <h3 className="text-base font-semibold text-text-1 truncate group-hover:text-primary transition" title={article.title}>
-                      {article.title}
-                    </h3>
-                    {article.summary && (
-                      <p className="mt-2 text-sm text-text-3 line-clamp-2">
-                        {article.summary}
-                      </p>
-                    )}
-                    <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-text-3">
-                      {article.category && (
-                        <span
-                          className="rounded-sm px-2 py-0.5"
-                          style={{
-                            backgroundColor: article.category.color
-                              ? `${article.category.color}20`
-                              : 'var(--bg-muted)',
-                            color: article.category.color || 'var(--text-2)',
-                          }}
-                        >
-                          {article.category.name}
-                        </span>
-                      )}
-                      {article.author && <span>{t('作者')}: {article.author}</span>}
-                      <span>
-                        {formatDate(article.published_at || article.created_at, language)}
-                      </span>
+              {latestArticles.map((article) => {
+                const displayTitle = article.title_trans?.trim() || article.title;
+
+                return (
+                  <Link
+                    key={article.slug}
+                    href={`/article/${article.slug}`}
+                    className="group overflow-hidden rounded-2xl border border-border-strong bg-surface/80 shadow-md transition hover:border-primary/40 hover:shadow-lg hover:shadow-primary/10"
+                  >
+                    <div className="relative aspect-video overflow-hidden bg-muted">
+                      <img
+                        src={resolveMediaUrl(article.top_image || logoUrl) || fallbackTopImageUrl}
+                        alt={displayTitle}
+                        className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
+                      />
+                      <ArticleLanguageTag article={article} className="absolute left-2 top-2 px-2 py-0.5 text-xs" />
                     </div>
-                  </div>
-                </Link>
-              ))}
+                    <div className="p-4">
+                      <h3 className="text-base font-semibold text-text-1 truncate group-hover:text-primary transition" title={displayTitle}>
+                        {displayTitle}
+                      </h3>
+                      {article.summary && (
+                        <p className="mt-2 text-sm text-text-3 line-clamp-2">
+                          {article.summary}
+                        </p>
+                      )}
+                      <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-text-3">
+                        {article.category && (
+                          <span
+                            className="rounded-sm px-2 py-0.5"
+                            style={{
+                              backgroundColor: article.category.color
+                                ? `${article.category.color}20`
+                                : 'var(--bg-muted)',
+                              color: article.category.color || 'var(--text-2)',
+                            }}
+                          >
+                            {article.category.name}
+                          </span>
+                        )}
+                        {article.author && <span>{t('作者')}: {article.author}</span>}
+                        <span>
+                          {formatDate(article.published_at || article.created_at, language)}
+                        </span>
+                      </div>
+                    </div>
+                  </Link>
+                );
+              })}
             </div>
           )}
           <div className="mt-8 text-center">
