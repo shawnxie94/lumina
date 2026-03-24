@@ -9,6 +9,7 @@ const translations: Record<Language, Record<string | number, string>> = {
 	en: {
 		主页: "Home",
 		信息流: "Feed",
+		RSS订阅: "RSS Subscription",
 		通知中心: "Notifications",
 		清理: "Clear",
 		暂无通知: "No notifications",

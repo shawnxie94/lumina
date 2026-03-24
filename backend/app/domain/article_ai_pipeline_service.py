@@ -9,7 +9,11 @@ from xml.etree import ElementTree as ET
 from ai_client import ConfigurableAIClient, is_english_content
 from media_service import maybe_ingest_article_images_with_stats
 from sqlalchemy import or_
-from app.core.public_cache import CACHE_KEY_TAGS_PUBLIC, invalidate_public_cache
+from app.core.public_cache import (
+    CACHE_KEY_TAGS_PUBLIC,
+    invalidate_public_cache,
+    invalidate_public_rss_cache,
+)
 from app.domain.article_tag_service import ArticleTagService
 from models import (
     AIAnalysis,
@@ -2519,6 +2523,7 @@ class ArticleAIPipelineService:
                     source_hash=source_hash,
                 )
                 invalidate_public_cache(CACHE_KEY_TAGS_PUBLIC)
+                invalidate_public_rss_cache()
                 db.commit()
             except asyncio.TimeoutError:
                 self._log_ai_usage(

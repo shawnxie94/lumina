@@ -21,6 +21,7 @@ CACHE_KEY_CATEGORIES_PUBLIC = "categories:public"
 CACHE_KEY_TAGS_PUBLIC = "tags:public"
 CACHE_KEY_AUTHORS_PUBLIC = "authors:public"
 CACHE_KEY_SOURCES_PUBLIC = "sources:public"
+CACHE_KEY_ARTICLES_RSS_PUBLIC_PREFIX = "articles:rss:public:"
 
 T = TypeVar("T")
 
@@ -94,6 +95,20 @@ def invalidate_public_cache(*keys: str) -> None:
 
 def invalidate_public_cache_prefix(*prefixes: str) -> None:
     _public_cache.invalidate_prefix(*prefixes)
+
+
+def invalidate_public_rss_cache() -> None:
+    invalidate_public_cache_prefix(CACHE_KEY_ARTICLES_RSS_PUBLIC_PREFIX)
+
+
+def invalidate_public_article_derived_cache() -> None:
+    invalidate_public_cache(
+        CACHE_KEY_AUTHORS_PUBLIC,
+        CACHE_KEY_SOURCES_PUBLIC,
+        CACHE_KEY_CATEGORIES_PUBLIC,
+        CACHE_KEY_TAGS_PUBLIC,
+    )
+    invalidate_public_rss_cache()
 
 
 def apply_public_cache_headers(response: Response) -> None:

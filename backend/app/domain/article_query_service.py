@@ -1,5 +1,8 @@
 from datetime import datetime, timedelta, timezone
+from email.utils import format_datetime
 import re
+from urllib.parse import urlencode
+from xml.sax.saxutils import escape
 
 from sqlalchemy import func, literal
 from sqlalchemy.orm import Session, joinedload, load_only
@@ -112,6 +115,11 @@ def _normalize_public_base_url(public_base_url: str | None) -> str:
     return (public_base_url or "").strip().rstrip("/")
 
 
+def _normalize_tag_ids(tag_ids: list[str] | None) -> list[str]:
+    normalized = sorted({tag_id.strip() for tag_id in (tag_ids or []) if tag_id and tag_id.strip()})
+    return normalized
+
+
 def _to_absolute_url(url: str | None, public_base_url: str) -> str:
     value = (url or "").strip()
     if not value:
@@ -221,7 +229,43 @@ def _render_export_markdown(articles: list[Article], public_base_url: str | None
     return "\n".join(lines).strip()
 
 
+def _to_rfc2822_datetime(value: str | None) -> str:
+    parsed = _parse_datetime_value(value)
+    if parsed is None:
+        return ""
+    return format_datetime(parsed.replace(tzinfo=timezone.utc), usegmt=True)
+
+
+def _build_query_string(*, category_id: str | None = None, tag_ids: list[str] | None = None) -> str:
+    params: dict[str, str] = {}
+    normalized_tag_ids = _normalize_tag_ids(tag_ids)
+    if category_id:
+        params["category_id"] = category_id
+    if normalized_tag_ids:
+        params["tag_ids"] = ",".join(normalized_tag_ids)
+    if not params:
+        return ""
+    return urlencode(params)
+
+
+def _build_public_feed_url(
+    public_base_url: str,
+    path: str,
+    *,
+    category_id: str | None = None,
+    tag_ids: list[str] | None = None,
+) -> str:
+    query_string = _build_query_string(category_id=category_id, tag_ids=tag_ids)
+    normalized_path = path if path.startswith("/") else f"/{path}"
+    url = f"{public_base_url}{normalized_path}" if public_base_url else normalized_path
+    if query_string:
+        return f"{url}?{query_string}"
+    return url
+
+
 class ArticleQueryService:
+    RSS_ITEM_LIMIT = 50
+
     def get_article_neighbors(
         self,
         db: Session,
@@ -411,3 +455,93 @@ class ArticleQueryService:
             joinedload(Article.ai_analysis).load_only(AIAnalysis.summary),
         ).all()
         return _render_export_markdown(articles, public_base_url=public_base_url)
+
+    def get_articles_for_rss(
+        self,
+        db: Session,
+        *,
+        category_id: str | None = None,
+        tag_ids: list[str] | None = None,
+    ) -> list[Article]:
+        query = _build_filtered_query(
+            db.query(Article),
+            is_admin=False,
+            category_id=category_id,
+            tag_ids=_normalize_tag_ids(tag_ids),
+        )
+        query = query.options(
+            load_only(
+                Article.id,
+                Article.slug,
+                Article.title,
+                Article.published_at,
+                Article.created_at,
+            ),
+            joinedload(Article.ai_analysis).load_only(AIAnalysis.summary),
+        )
+        articles = query.all()
+        articles.sort(key=_article_published_desc_sort_key, reverse=True)
+        return articles[: self.RSS_ITEM_LIMIT]
+
+    def render_articles_rss(
+        self,
+        *,
+        articles: list[Article],
+        public_base_url: str | None = None,
+        site_name: str,
+        site_description: str,
+        category_id: str | None = None,
+        tag_ids: list[str] | None = None,
+    ) -> str:
+        base_url = _normalize_public_base_url(public_base_url)
+        normalized_tag_ids = _normalize_tag_ids(tag_ids)
+        feed_link = _build_public_feed_url(
+            base_url,
+            "/list",
+            category_id=category_id,
+            tag_ids=normalized_tag_ids,
+        )
+        feed_self_link = _build_public_feed_url(
+            base_url,
+            "/backend/api/articles/rss.xml",
+            category_id=category_id,
+            tag_ids=normalized_tag_ids,
+        )
+        safe_site_name = escape(site_name or "Lumina")
+        safe_site_description = escape(site_description or "")
+
+        lines = [
+            '<?xml version="1.0" encoding="UTF-8"?>',
+            '<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">',
+            "<channel>",
+            f"<title>{safe_site_name}</title>",
+            f"<description>{safe_site_description}</description>",
+            f"<link>{escape(feed_link)}</link>",
+            (
+                '<atom:link href="'
+                f'{escape(feed_self_link)}'
+                '" rel="self" type="application/rss+xml" />'
+            ),
+        ]
+
+        for article in articles:
+            article_link = _build_public_feed_url(base_url, f"/article/{article.slug}")
+            pub_date = _to_rfc2822_datetime(article.published_at) or _to_rfc2822_datetime(
+                article.created_at
+            )
+            summary = article.ai_analysis.summary if article.ai_analysis else ""
+            lines.extend(
+                [
+                    "<item>",
+                    f"<title>{escape(article.title or '')}</title>",
+                    f"<link>{escape(article_link)}</link>",
+                    f'<guid isPermaLink="true">{escape(article_link)}</guid>',
+                    f"<description>{escape(summary or '')}</description>",
+                ]
+            )
+            if pub_date:
+                lines.append(f"<pubDate>{escape(pub_date)}</pubDate>")
+            lines.append("</item>")
+
+        lines.extend(["</channel>", "</rss>"])
+        return "\n".join(lines)

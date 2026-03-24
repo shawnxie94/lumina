@@ -1,4 +1,12 @@
 const defaultRuntimeCaching = require("next-pwa/cache");
+const normalizeUrl = (value) => (value || "").trim().replace(/\/+$/, "");
+const backendRewriteBase =
+	process.env.NODE_ENV === "development"
+		? "http://localhost:8000/backend"
+		: normalizeUrl(process.env.BACKEND_API_URL) ||
+		  normalizeUrl(process.env.API_BASE_URL) ||
+		  "http://api:8000/backend";
+
 const withPWA = require("next-pwa")({
 	dest: "public",
 	disable: process.env.NODE_ENV === "development",
@@ -72,6 +80,10 @@ const nextConfig = {
 	},
 	async rewrites() {
 		return [
+			{
+				source: "/backend/:path*",
+				destination: `${backendRewriteBase}/:path*`,
+			},
 			{
 				source: "/admin/:path*",
 				destination: "/admin",

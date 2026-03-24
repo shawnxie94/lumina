@@ -57,6 +57,7 @@ class AppSettings(BaseSettings):
     internal_api_token: str = Field(default="", alias="INTERNAL_API_TOKEN")
 
     allowed_origins: str = Field(default="", alias="ALLOWED_ORIGINS")
+    app_public_base_url: str = Field(default="", alias="APP_PUBLIC_BASE_URL")
 
     media_root: str = Field(default=DEFAULT_MEDIA_ROOT, alias="MEDIA_ROOT")
     media_base_url: str = Field(default="/backend/media", alias="MEDIA_BASE_URL")
@@ -148,6 +149,10 @@ def validate_startup_settings(settings: AppSettings) -> None:
     media_public = media.public_base_url
     if media_public and not media_public.startswith(("http://", "https://")):
         errors.append("MEDIA_PUBLIC_BASE_URL 必须以 http:// 或 https:// 开头")
+
+    app_public = settings.app_public_base_url.strip()
+    if app_public and not app_public.startswith(("http://", "https://")):
+        errors.append("APP_PUBLIC_BASE_URL 必须以 http:// 或 https:// 开头")
 
     if errors:
         detail = "\n".join(f"- {item}" for item in errors)

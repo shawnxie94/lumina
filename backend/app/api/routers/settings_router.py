@@ -16,6 +16,7 @@ from app.core.public_cache import (
     apply_public_cache_headers,
     get_public_cached,
     invalidate_public_cache,
+    invalidate_public_rss_cache,
 )
 from app.schemas import (
     BasicSettingsUpdate,
@@ -105,6 +106,7 @@ async def update_basic_settings(
     db.commit()
     db.refresh(admin)
     invalidate_public_cache(CACHE_KEY_SETTINGS_BASIC_PUBLIC)
+    invalidate_public_rss_cache()
     return {"success": True}
 
 

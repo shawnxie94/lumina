@@ -353,6 +353,16 @@ export function IconLink(props: IconProps) {
   );
 }
 
+export function IconRss(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <circle cx="6" cy="18" r="1.5" />
+      <path d="M4.5 11.5a8 8 0 0 1 8 8" />
+      <path d="M4.5 6.5a13 13 0 0 1 13 13" />
+    </IconBase>
+  );
+}
+
 export function IconFilter(props: IconProps) {
   return (
     <IconBase {...props}>

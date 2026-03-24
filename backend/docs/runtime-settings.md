@@ -25,6 +25,7 @@
 | database | `SQLITE_TEMP_STORE` | `2` | SQLite 临时存储位置（0/1/2） |
 | security | `INTERNAL_API_TOKEN` | 无（必填） | 内部请求校验 token；未设置将导致启动失败 |
 | cors | `ALLOWED_ORIGINS` | 空字符串 | 为空时允许 localhost:3000/127.0.0.1:3000 |
+| cors | `APP_PUBLIC_BASE_URL` | 空字符串 | 站点公开基址，供 RSS 等对外绝对链接生成使用 |
 | media | `MEDIA_ROOT` | `backend/data/media` | 媒体文件存储目录 |
 | media | `MEDIA_BASE_URL` | `/backend/media` | 媒体静态路由前缀 |
 | media | `MEDIA_PUBLIC_BASE_URL` | 空字符串 | 对外访问域名前缀（可选） |
@@ -44,6 +45,7 @@
 - `AI_WORKER_POLL_INTERVAL`、`AI_TASK_LOCK_TIMEOUT`、`AI_TASK_TIMEOUT` 必须大于 0。
 - `AI_TASK_TIMEOUT` 不能小于 `AI_TASK_LOCK_TIMEOUT`。
 - `MEDIA_BASE_URL` 必须以 `/` 开头。
+- `APP_PUBLIC_BASE_URL` 非空时必须以 `http://` 或 `https://` 开头。
 - `MEDIA_PUBLIC_BASE_URL` 非空时必须以 `http://` 或 `https://` 开头。
 
 ## ALLOWED_ORIGINS 写法

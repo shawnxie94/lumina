@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import uuid
+from xml.sax.saxutils import escape
 
 from app.domain.article_query_service import ArticleQueryService
-from models import Article, Category, Tag, now_str
+from models import AIAnalysis, Article, Category, Tag, now_str
 
 
 def make_article(
@@ -65,6 +66,24 @@ def make_tag(db_session, name: str) -> Tag:
     db_session.commit()
     db_session.refresh(tag)
     return tag
+
+
+def make_analysis(
+    db_session,
+    article: Article,
+    *,
+    summary: str,
+) -> AIAnalysis:
+    analysis = AIAnalysis(
+        id=str(uuid.uuid4()),
+        article_id=article.id,
+        summary=summary,
+        summary_status="completed",
+    )
+    db_session.add(analysis)
+    db_session.commit()
+    db_session.refresh(analysis)
+    return analysis
 
 
 def test_get_articles_sort_by_published_desc_handles_mixed_date_formats(db_session):
@@ -281,3 +300,164 @@ def test_get_articles_filters_by_any_selected_tag(db_session):
         "matched-by-ai",
         "matched-by-product",
     }
+
+
+def test_get_articles_for_rss_respects_visibility_category_and_tag_filters(db_session):
+    service = ArticleQueryService()
+    category_a = make_category(db_session, name="分类A", sort_order=1)
+    category_b = make_category(db_session, name="分类B", sort_order=2)
+    tag_ai = make_tag(db_session, "AI")
+    tag_ops = make_tag(db_session, "Ops")
+    tag_other = make_tag(db_session, "Other")
+
+    visible_match = make_article(
+        db_session,
+        title="visible-match",
+        published_at="2026-02-10",
+        created_at="2026-02-11T00:00:00+00:00",
+        category_id=category_a.id,
+        tags=[tag_ai],
+        is_visible=True,
+    )
+    make_analysis(db_session, visible_match, summary="matched summary")
+    visible_second_match = make_article(
+        db_session,
+        title="visible-second-match",
+        published_at="2026-02-09",
+        created_at="2026-02-10T00:00:00+00:00",
+        category_id=category_a.id,
+        tags=[tag_ops],
+        is_visible=True,
+    )
+    make_analysis(db_session, visible_second_match, summary="second summary")
+    make_article(
+        db_session,
+        title="hidden-match",
+        published_at="2026-02-08",
+        created_at="2026-02-09T00:00:00+00:00",
+        category_id=category_a.id,
+        tags=[tag_ai],
+        is_visible=False,
+    )
+    make_article(
+        db_session,
+        title="wrong-category",
+        published_at="2026-02-07",
+        created_at="2026-02-08T00:00:00+00:00",
+        category_id=category_b.id,
+        tags=[tag_ai],
+        is_visible=True,
+    )
+    make_article(
+        db_session,
+        title="wrong-tag",
+        published_at="2026-02-06",
+        created_at="2026-02-07T00:00:00+00:00",
+        category_id=category_a.id,
+        tags=[tag_other],
+        is_visible=True,
+    )
+
+    articles = service.get_articles_for_rss(
+        db_session,
+        category_id=category_a.id,
+        tag_ids=[tag_ops.id, tag_ai.id],
+    )
+
+    assert [item.title for item in articles] == [
+        "visible-match",
+        "visible-second-match",
+    ]
+
+
+def test_get_articles_for_rss_sorts_by_published_at_then_created_at_fallback(db_session):
+    service = ArticleQueryService()
+    newer_created_fallback = make_article(
+        db_session,
+        title="fallback-created",
+        published_at="not-a-date",
+        created_at="2026-02-12T00:00:00+00:00",
+        is_visible=True,
+    )
+    make_analysis(db_session, newer_created_fallback, summary="fallback summary")
+    valid_published = make_article(
+        db_session,
+        title="valid-published",
+        published_at="2026-02-10",
+        created_at="2026-02-10T00:00:00+00:00",
+        is_visible=True,
+    )
+    make_analysis(db_session, valid_published, summary="valid summary")
+
+    articles = service.get_articles_for_rss(db_session)
+
+    assert [item.title for item in articles] == [
+        "fallback-created",
+        "valid-published",
+    ]
+
+
+def test_get_articles_for_rss_normalizes_tag_id_order(db_session):
+    service = ArticleQueryService()
+    tag_alpha = make_tag(db_session, "Alpha")
+    tag_beta = make_tag(db_session, "Beta")
+    article = make_article(
+        db_session,
+        title="normalized-order",
+        published_at="2026-02-10",
+        created_at="2026-02-10T00:00:00+00:00",
+        tags=[tag_alpha],
+        is_visible=True,
+    )
+    make_analysis(db_session, article, summary="normalized summary")
+
+    left = service.get_articles_for_rss(
+        db_session,
+        tag_ids=[tag_beta.id, tag_alpha.id, tag_alpha.id],
+    )
+    right = service.get_articles_for_rss(
+        db_session,
+        tag_ids=[tag_alpha.id, tag_beta.id],
+    )
+
+    assert [item.title for item in left] == [item.title for item in right] == [
+        "normalized-order"
+    ]
+
+
+def test_render_articles_rss_uses_filtered_links_and_escapes_xml(db_session):
+    service = ArticleQueryService()
+    tag = make_tag(db_session, "AI")
+    article = make_article(
+        db_session,
+        title='AI & "Search" <Guide>',
+        published_at="2026-02-10T08:30:00+00:00",
+        created_at="2026-02-11T00:00:00+00:00",
+        tags=[tag],
+        is_visible=True,
+    )
+    make_analysis(db_session, article, summary="Summary & details <xml>")
+
+    rss = service.render_articles_rss(
+        articles=[article],
+        public_base_url="https://lumina.example.com",
+        site_name="Lumina & Co",
+        site_description="公开订阅 <feed>",
+        category_id="cat-1",
+        tag_ids=[tag.id],
+    )
+
+    assert "<title>Lumina &amp; Co</title>" in rss
+    assert "<description>公开订阅 &lt;feed&gt;</description>" in rss
+    assert "https://lumina.example.com/list?category_id=cat-1&amp;tag_ids=" in rss
+    assert (
+        f"https://lumina.example.com/backend/api/articles/rss.xml?category_id=cat-1&amp;tag_ids={tag.id}"
+        in rss
+    )
+    assert "<title>AI &amp; \"Search\" &lt;Guide&gt;</title>" in rss
+    assert "<description>Summary &amp; details &lt;xml&gt;</description>" in rss
+    assert (
+        f"<link>https://lumina.example.com/article/{escape(article.slug)}</link>"
+        in rss
+    )
+    assert "<pubDate>" in rss

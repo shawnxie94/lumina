@@ -66,3 +66,12 @@ def test_validate_startup_settings_reports_multiple_errors_together():
     assert "INTERNAL_API_TOKEN 不能为空" in message
     assert "SQLITE_BUSY_TIMEOUT_MS 必须大于 0" in message
     assert "AI_TASK_TIMEOUT 不能小于 AI_TASK_LOCK_TIMEOUT" in message
+
+
+def test_validate_startup_settings_rejects_invalid_app_public_base_url():
+    settings = make_settings(APP_PUBLIC_BASE_URL="api:8000")
+
+    with pytest.raises(RuntimeError) as exc_info:
+        validate_startup_settings(settings)
+
+    assert "APP_PUBLIC_BASE_URL 必须以 http:// 或 https:// 开头" in str(exc_info.value)

@@ -88,6 +88,58 @@ export const getApiBaseUrl = (): string => {
 	return "http://api:8000/backend";
 };
 
+export const normalizePublicRssTagIds = (tagIds?: string[] | null): string[] =>
+	[...(tagIds || [])]
+		.map((item) => item.trim())
+		.filter(Boolean)
+		.filter((item, index, values) => values.indexOf(item) === index)
+		.sort((left, right) => left.localeCompare(right));
+
+const buildPublicRssQueryString = (params?: {
+	categoryId?: string;
+	tagIds?: string[];
+}): string => {
+	const searchParams = new URLSearchParams();
+	const categoryId = params?.categoryId?.trim();
+	const tagIds = normalizePublicRssTagIds(params?.tagIds);
+	if (categoryId) {
+		searchParams.set("category_id", categoryId);
+	}
+	if (tagIds.length > 0) {
+		searchParams.set("tag_ids", tagIds.join(","));
+	}
+	const queryString = searchParams.toString();
+	return queryString ? `?${queryString}` : "";
+};
+
+export const buildPublicRssRelativeUrl = (params?: {
+	categoryId?: string;
+	tagIds?: string[];
+}): string => `/backend/api/articles/rss.xml${buildPublicRssQueryString(params)}`;
+
+export const buildPublicRssUrl = (params?: {
+	categoryId?: string;
+	tagIds?: string[];
+}): string => {
+	if (typeof window !== "undefined") {
+		return `${window.location.origin}${buildPublicRssRelativeUrl(params)}`;
+	}
+	return `${getApiBaseUrl()}/api/articles/rss.xml${buildPublicRssQueryString(params)}`;
+};
+
+export const buildClientSafePublicRssUrl = (params?: {
+	categoryId?: string;
+	tagIds?: string[];
+}): string => {
+	if (typeof window === "undefined") {
+		if (process.env.NODE_ENV === "development") {
+			return `http://localhost:8000/backend/api/articles/rss.xml${buildPublicRssQueryString(params)}`;
+		}
+		return buildPublicRssRelativeUrl(params);
+	}
+	return buildPublicRssUrl(params);
+};
+
 export const resolveMediaUrl = (url?: string | null): string => {
 	if (!url) return "";
 	const apiBase = getApiBaseUrl().replace(/\/+$/, "");

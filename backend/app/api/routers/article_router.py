@@ -1,7 +1,7 @@
 import json
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
@@ -22,6 +22,7 @@ from app.domain.article_embedding_service import (
     ArticleEmbeddingService,
 )
 from app.domain.article_query_service import ArticleQueryService
+from app.domain.article_rss_service import ArticleRssService
 from app.domain.article_tag_service import ArticleTagService
 from app.domain.article_url_ingest_service import (
     ArticleUrlIngestBadGatewayError,
@@ -36,16 +37,12 @@ from app.core.dependencies import (
     get_admin_or_internal,
 )
 from app.core.public_cache import (
-    CACHE_KEY_AUTHORS_PUBLIC,
-    CACHE_KEY_CATEGORIES_PUBLIC,
-    CACHE_KEY_SOURCES_PUBLIC,
-    CACHE_KEY_TAGS_PUBLIC,
     apply_public_cache_headers,
     get_public_cached,
-    invalidate_public_cache,
+    invalidate_public_article_derived_cache,
 )
 from app.core.note_recommendation import normalize_note_recommendation_level
-from auth import check_is_admin, get_admin_settings, get_current_admin
+from auth import check_is_admin, get_current_admin
 from media_service import cleanup_media_assets
 from models import (
     Article,
@@ -59,6 +56,7 @@ from models import (
 
 router = APIRouter()
 article_query_service = ArticleQueryService()
+article_rss_service = ArticleRssService()
 ai_task_service = AITaskService()
 article_command_service = ArticleCommandService(ai_task_service=ai_task_service)
 article_embedding_service = ArticleEmbeddingService()
@@ -73,12 +71,7 @@ MAX_PUBLIC_PAGE_SIZE = 100
 
 
 def invalidate_public_article_meta_cache() -> None:
-    invalidate_public_cache(
-        CACHE_KEY_AUTHORS_PUBLIC,
-        CACHE_KEY_SOURCES_PUBLIC,
-        CACHE_KEY_CATEGORIES_PUBLIC,
-        CACHE_KEY_TAGS_PUBLIC,
-    )
+    invalidate_public_article_derived_cache()
 
 
 def parse_tag_ids(raw_value: str | None) -> list[str]:
@@ -215,6 +208,36 @@ async def get_articles(
             "total_pages": (total + size - 1) // size,
         },
     }
+
+
+@router.get("/api/articles/rss.xml")
+async def get_articles_rss(
+    request: Request,
+    category_id: Optional[str] = None,
+    tag_ids: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    public_base_url = article_rss_service.resolve_public_base_url(request)
+    normalized_tag_ids = article_rss_service.normalize_tag_ids(tag_ids)
+    cache_key = article_rss_service.build_cache_key(
+        public_base_url,
+        category_id=category_id,
+        tag_ids=normalized_tag_ids,
+    )
+
+    def load_feed() -> str:
+        return article_rss_service.build_feed_content(
+            db=db,
+            article_query_service=article_query_service,
+            public_base_url=public_base_url,
+            category_id=category_id,
+            tag_ids=normalized_tag_ids,
+        )
+
+    content = get_public_cached(cache_key, load_feed)
+    response = article_rss_service.build_response(content)
+    apply_public_cache_headers(response)
+    return response
 
 
 @router.get("/api/articles/search")

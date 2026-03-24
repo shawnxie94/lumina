@@ -38,6 +38,12 @@
     ]
   },
   {
+    "name": "articles_rss",
+    "method": "GET",
+    "path": "/api/articles/rss.xml",
+    "expected_status": 200
+  },
+  {
     "name": "categories",
     "method": "GET",
     "path": "/api/categories",

@@ -4,7 +4,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useAuth } from '@/contexts/AuthContext';
 import { useBasicSettings } from '@/contexts/BasicSettingsContext';
-import { articleApi, getErrorTaskPollIntervalMs } from '@/lib/api';
+import {
+  articleApi,
+  buildPublicRssUrl,
+  getErrorTaskPollIntervalMs,
+  normalizePublicRssTagIds,
+} from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { notificationStore, type NotificationItem } from '@/lib/notifications';
 import {
@@ -16,11 +21,17 @@ import {
   IconSun,
   IconMoon,
   IconMonitor,
+  IconRss,
   IconTrash,
   IconGlobe,
 } from '@/components/icons';
 
 const ERROR_PAGE_SIZE = 50;
+
+const getQueryValue = (value: string | string[] | undefined): string => {
+  if (Array.isArray(value)) return value[0] || '';
+  return value || '';
+};
 
 type ErrorTaskItem = {
   id: string;
@@ -249,6 +260,19 @@ export default function AppHeader() {
   const siteLogo = basicSettings.site_logo_url || '/favicon.png';
   const resolvedAdmin = !authLoading && isAdmin;
   const resolvedGuest = !authLoading && !isAdmin;
+  const rssFilters = useMemo(() => {
+    if (router.pathname !== '/list') {
+      return {};
+    }
+    const categoryId = getQueryValue(router.query.category_id).trim();
+    const tagIds = normalizePublicRssTagIds(
+      getQueryValue(router.query.tag_ids).split(','),
+    );
+    return {
+      categoryId: categoryId || undefined,
+      tagIds,
+    };
+  }, [router.pathname, router.query.category_id, router.query.tag_ids]);
   const loginHref = useMemo(() => {
     const currentPath = router.asPath || '/';
     if (currentPath.startsWith('/login')) {
@@ -258,6 +282,10 @@ export default function AppHeader() {
   }, [router.asPath]);
   const isHomeRoute = router.pathname === '/';
   const isFeedRoute = router.pathname === '/list';
+  const handleOpenRss = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    window.open(buildPublicRssUrl(rssFilters), '_blank', 'noopener,noreferrer');
+  }, [rssFilters]);
 
   return (
     <header className="bg-surface border-b border-border shadow-sm">
@@ -461,6 +489,15 @@ export default function AppHeader() {
                 </div>
               )}
             </div>
+            <button
+              type="button"
+              onClick={handleOpenRss}
+              className="inline-flex items-center justify-center w-8 h-8 rounded-sm text-text-3 hover:text-primary hover:bg-primary-soft transition"
+              title={t('RSS订阅')}
+              aria-label={t('RSS订阅')}
+            >
+              <IconRss className="h-4 w-4" />
+            </button>
             <Link
               href="/list"
               className={`inline-flex lg:hidden h-8 items-center px-3 rounded-sm text-sm font-medium transition ${
