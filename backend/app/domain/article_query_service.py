@@ -97,6 +97,16 @@ def _article_published_desc_sort_key(article: Article) -> tuple[datetime, dateti
     )
 
 
+def _article_created_desc_sort_key(article: Article) -> tuple[datetime, str, str]:
+    created = _parse_datetime_value(article.created_at)
+    default_dt = datetime.min
+    return (
+        created or default_dt,
+        article.created_at or "",
+        article.id or "",
+    )
+
+
 def _article_time_sort_key(article: Article) -> tuple[datetime, datetime, str]:
     primary = _parse_datetime_value(article.published_at) or _parse_datetime_value(
         article.created_at
@@ -487,7 +497,7 @@ class ArticleQueryService:
             joinedload(Article.ai_analysis).load_only(AIAnalysis.summary),
         )
         articles = query.all()
-        articles.sort(key=_article_published_desc_sort_key, reverse=True)
+        articles.sort(key=_article_created_desc_sort_key, reverse=True)
         return articles[: self.RSS_ITEM_LIMIT]
 
     def render_articles_rss(
@@ -533,9 +543,7 @@ class ArticleQueryService:
 
         for article in articles:
             article_link = _build_public_feed_url(base_url, f"/article/{article.slug}")
-            pub_date = _to_rfc2822_datetime(article.published_at) or _to_rfc2822_datetime(
-                article.created_at
-            )
+            pub_date = _to_rfc2822_datetime(article.created_at)
             summary = article.ai_analysis.summary if article.ai_analysis else ""
             display_title = _get_preferred_article_title(article)
             lines.extend(

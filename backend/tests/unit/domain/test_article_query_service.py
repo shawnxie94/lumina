@@ -372,30 +372,30 @@ def test_get_articles_for_rss_respects_visibility_category_and_tag_filters(db_se
     ]
 
 
-def test_get_articles_for_rss_sorts_by_published_at_then_created_at_fallback(db_session):
+def test_get_articles_for_rss_sorts_by_created_at_desc(db_session):
     service = ArticleQueryService()
-    newer_created_fallback = make_article(
+    newer_created = make_article(
         db_session,
-        title="fallback-created",
-        published_at="not-a-date",
+        title="newer-created",
+        published_at="2026-02-01",
         created_at="2026-02-12T00:00:00+00:00",
         is_visible=True,
     )
-    make_analysis(db_session, newer_created_fallback, summary="fallback summary")
-    valid_published = make_article(
+    make_analysis(db_session, newer_created, summary="newer summary")
+    older_created = make_article(
         db_session,
-        title="valid-published",
-        published_at="2026-02-10",
+        title="older-created",
+        published_at="2026-02-20",
         created_at="2026-02-10T00:00:00+00:00",
         is_visible=True,
     )
-    make_analysis(db_session, valid_published, summary="valid summary")
+    make_analysis(db_session, older_created, summary="older summary")
 
     articles = service.get_articles_for_rss(db_session)
 
     assert [item.title for item in articles] == [
-        "fallback-created",
-        "valid-published",
+        "newer-created",
+        "older-created",
     ]
 
 
@@ -462,7 +462,7 @@ def test_render_articles_rss_uses_filtered_links_and_escapes_xml(db_session):
         f"<link>https://lumina.example.com/article/{escape(article.slug)}</link>"
         in rss
     )
-    assert "<pubDate>" in rss
+    assert "<pubDate>Wed, 11 Feb 2026 00:00:00 GMT</pubDate>" in rss
 
 
 def test_render_articles_rss_prefers_translated_title(db_session):

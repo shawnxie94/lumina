@@ -42,7 +42,7 @@ from app.core.public_cache import (
     invalidate_public_article_derived_cache,
 )
 from app.core.note_recommendation import normalize_note_recommendation_level
-from auth import check_is_admin, get_current_admin
+from auth import check_is_admin, get_admin_settings, get_current_admin
 from media_service import cleanup_media_assets
 from models import (
     Article,
