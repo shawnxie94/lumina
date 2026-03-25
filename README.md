@@ -8,14 +8,15 @@ Lumina is an information management workspace that combines a web app, FastAPI b
 
 ## Core Features
 
-- **Browser capture workflow**: one-click full-page or selection capture via popup/context menu, with built-in capture history and error logs.
-- **Structured article library**: advanced filtering by category/author/source/time plus batch actions for efficient content management.
-- **Deep reading experience**: detail page supports original/translated views, immersive mode, TOC, annotations, and comments.
-- **AI insight pipeline**: generate summary, outline, key points, translation, and similar-article recommendations with retryable background tasks.
-- **Admin control center**: configure model APIs (general/vector), prompts, recommendation strategy, categories, and site-level settings.
-- **Operations and observability**: monitor AI tasks and usage (calls/tokens/cost), comment status, and key backend health signals.
-- **Content lifecycle management**: local media storage/compression/cleanup plus JSON backup export/import for migration and recovery.
-- **Localized UI and access model**: built-in Chinese/English UI support with guest browsing and admin-authenticated management flows.
+- **Browser capture workflow**: one-click full-page or selection capture via popup/context menu, with built-in recent capture history, error logs, and site-adapter extraction.
+- **Structured article library**: title search plus category/tag/author/source/time filters, with batch category, hide, and delete actions for efficient content management.
+- **Deep reading experience**: detail page supports original/translated views, immersive mode, TOC, article notes, highlight annotations, and rendering for code, math, and common media embeds.
+- **AI insight pipeline**: generate summaries, key points, quotes, outlines, translations, auto-classification, auto-tagging, and similar-article recommendations with monitorable, cancelable, retryable background tasks.
+- **Comments and collaboration**: article comments/replies, admin moderation (hide/delete), GitHub/Google OAuth sign-in, and sensitive-word filtering for public discussions.
+- **Admin control center**: configure site basics and home copy, model APIs (general/vector), prompts, recommendation strategy, categories, comments, and storage settings.
+- **Operations and observability**: monitor AI task timelines, usage metrics (calls/tokens/cost), header notification center for failed tasks/API errors, and key backend health signals.
+- **Content lifecycle management**: local media storage/compression/cleanup, Markdown export, public RSS feeds, plus JSON backup export and strict incremental import for migration and recovery.
+- **Localized UI and access model**: built-in Chinese/English UI support, light/dark themes, guest browsing, and admin-authenticated management flows.
 
 ## Product Flow
 
@@ -86,6 +87,10 @@ flowchart LR
 - **Content export**: export article title, cover image, and summary by category.
 
 ![Export](./docs/assets/screenshots/05-page-export.png)
+
+- **RSS subscription**: public RSS feeds are available and can be filtered by category and tags.
+
+- **Notification center**: the header aggregates failed AI tasks and API error notifications in one place.
 
 More features are coming...
 
