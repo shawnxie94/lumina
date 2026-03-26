@@ -220,6 +220,8 @@ class AIAnalysis(Base):
     key_points_status = Column(String, default=None)
     quotes = Column(Text)
     quotes_status = Column(String, default=None)
+    infographic_html = Column(Text, nullable=True)
+    infographic_status = Column(String, default=None)
     mindmap = Column(Text)
     classification_status = Column(String, default=None)
     tagging_status = Column(String, default=None)

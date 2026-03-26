@@ -17,6 +17,7 @@
     "antd": "^5.15.2",
     "axios": "^1.6.2",
     "dayjs": "^1.11.11",
+    "html-to-image": "^1.11.13",
     "js-beautify": "^1.15.4",
     "katex": "^0.16.28",
     "lowlight": "^3.3.0",

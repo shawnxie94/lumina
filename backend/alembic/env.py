@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sys
 from logging.config import fileConfig
 from pathlib import Path
@@ -11,6 +12,7 @@ BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
+from app.core.db_migrations import resolve_database_url
 from app.core.settings import get_settings
 from models import Base
 
@@ -23,10 +25,12 @@ target_metadata = Base.metadata
 
 
 def get_database_url() -> str:
-    ini_url = config.get_main_option("sqlalchemy.url")
-    if ini_url:
-        return ini_url
-    return get_settings().database_url
+    return resolve_database_url(
+        override_url=config.attributes.get("database_url_override"),
+        env_url=os.getenv("DATABASE_URL"),
+        ini_url=config.get_main_option("sqlalchemy.url"),
+        settings_url=get_settings().database_url,
+    )
 
 
 def run_migrations_offline() -> None:

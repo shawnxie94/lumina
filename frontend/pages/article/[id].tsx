@@ -1,9 +1,23 @@
 import Head from "next/head";
-import { useState, useEffect, useRef, useCallback, useMemo, type ReactNode } from "react";
+import {
+	useState,
+	useEffect,
+	useRef,
+	useCallback,
+	useMemo,
+	type ReactNode,
+	type RefObject,
+} from "react";
 
 import { useRouter } from "next/router";
 import Link from "next/link";
 
+import {
+	InfographicLightbox,
+	InfographicPreviewCard,
+	copyInfographicNodeAsImage,
+	normalizeInfographicHtmlForCanvas,
+} from "@/components/article/ArticleInfographic";
 import {
 	articleApi,
 	categoryApi,
@@ -75,7 +89,13 @@ const POLLING_INTERVAL = 3000;
 const SIMILAR_ARTICLE_LIMIT = 5;
 const PENDING_JOB_STATUSES = ["pending", "processing"] as const;
 type PendingJobStatus = (typeof PENDING_JOB_STATUSES)[number];
-type AIContentType = "summary" | "key_points" | "outline" | "quotes";
+type AIContentType =
+	| "summary"
+	| "key_points"
+	| "outline"
+	| "quotes"
+	| "infographic";
+type AITabKey = Exclude<AIContentType, "summary">;
 type NoteRecommendationLevel =
 	| "strongly_recommended"
 	| "recommended"
@@ -114,6 +134,7 @@ const hasPendingArticleJob = (article: ArticleDetail | null): boolean => {
 				article.ai_analysis.key_points_status,
 				article.ai_analysis.outline_status,
 				article.ai_analysis.quotes_status,
+				article.ai_analysis.infographic_status,
 				article.ai_analysis.tagging_status,
 			]
 		: [];
@@ -127,6 +148,7 @@ interface AIContentSectionProps {
 	status: string | null | undefined;
 	onGenerate: () => void;
 	onCopy: () => void;
+	copyTitle?: string;
 	canEdit?: boolean;
 	renderMarkdown?: boolean;
 	renderMindMap?: boolean;
@@ -134,6 +156,35 @@ interface AIContentSectionProps {
 	showStatus?: boolean;
 	statusLink?: string;
 	showHeader?: boolean;
+	canCopy?: boolean;
+	customContent?: ReactNode;
+}
+
+interface AITabConfig {
+	key: AITabKey;
+	label: string;
+	enabled: boolean;
+	content: string | null | undefined;
+	status: string | null | undefined;
+	onGenerate: () => void;
+	onCopy: () => void;
+	copyTitle?: string;
+	canCopy?: boolean;
+	renderMarkdown?: boolean;
+	renderMindMap?: boolean;
+	onMindMapOpen?: () => void;
+	customContent?: ReactNode;
+}
+
+interface CreateInfographicTabConfigOptions {
+	t: (key: string) => string;
+	enabled: boolean;
+	html: string;
+	status: string | null | undefined;
+	exportRef: RefObject<HTMLDivElement | null>;
+	onGenerate: () => void;
+	onCopy: () => void;
+	onOpen: () => void;
 }
 
 interface MindMapNode {
@@ -187,6 +238,39 @@ function getTaggingStatusMeta(
 		};
 	}
 	return null;
+}
+
+function createInfographicTabConfig({
+	t,
+	enabled,
+	html,
+	status,
+	exportRef,
+	onGenerate,
+	onCopy,
+	onOpen,
+}: CreateInfographicTabConfigOptions): AITabConfig {
+	return {
+		key: "infographic",
+		label: t("信息图"),
+		enabled,
+		content: html,
+		status,
+		onGenerate,
+		onCopy,
+		copyTitle: t("复制为图片"),
+		canCopy: Boolean(html),
+		renderMarkdown: false,
+		renderMindMap: false,
+		customContent: html ? (
+			<InfographicPreviewCard
+				html={html}
+				exportRef={exportRef}
+				onOpen={onOpen}
+				previewLabel={t("预览")}
+			/>
+		) : null,
+	};
 }
 
 function normalizeMindMapNode(input: unknown): MindMapNode | null {
@@ -262,6 +346,25 @@ function getReplyMeta(content: string): { user: string; link: string } | null {
 	const link = linkMatch ? linkMatch[2].trim() : "";
 	if (!user && !link) return null;
 	return { user, link };
+}
+
+function createEmptyAiAnalysis(): NonNullable<ArticleDetail["ai_analysis"]> {
+	return {
+		summary: null,
+		summary_status: null,
+		key_points: null,
+		key_points_status: null,
+		outline: null,
+		outline_status: null,
+		quotes: null,
+		quotes_status: null,
+		infographic_status: null,
+		infographic_html: null,
+		tagging_status: null,
+		tagging_manual_override: false,
+		error_message: null,
+		updated_at: null,
+	};
 }
 
 function toDateInputValue(value?: string | null): string {
@@ -529,6 +632,7 @@ function AIContentSection({
 	status,
 	onGenerate,
 	onCopy,
+	copyTitle,
 	canEdit = false,
 	renderMarkdown = false,
 	renderMindMap = false,
@@ -536,8 +640,10 @@ function AIContentSection({
 	showStatus = false,
 	statusLink,
 	showHeader = true,
+	canCopy = true,
+	customContent,
 }: AIContentSectionProps) {
-	const { t, language } = useI18n();
+	const { t } = useI18n();
 	const getStatusBadge = () => {
 		if (!status) return null;
 		const statusConfig: Record<
@@ -606,12 +712,12 @@ function AIContentSection({
 								)}
 							</button>
 						)}
-						{content && (
+						{content && canCopy && (
 							<button
 								onClick={onCopy}
 								className="text-text-3 hover:text-primary transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
-								title={t("复制内容")}
-								aria-label={t("复制内容")}
+								title={copyTitle || t("复制内容")}
+								aria-label={copyTitle || t("复制内容")}
 								type="button"
 							>
 								<IconCopy className="h-4 w-4" />
@@ -621,7 +727,9 @@ function AIContentSection({
 				</div>
 			)}
 			{content ? (
-				renderMindMap ? (
+				customContent ? (
+					customContent
+				) : renderMindMap ? (
 					(() => {
 						const tree = parseMindMapOutline(content);
 						return tree ? (
@@ -986,9 +1094,7 @@ export default function ArticleDetailPage() {
 	const [loading, setLoading] = useState(true);
 	const [showTranslation, setShowTranslation] = useState(true);
 	const [analysisCollapsed, setAnalysisCollapsed] = useState(false);
-	const [activeAiTab, setActiveAiTab] = useState<
-		"key_points" | "outline" | "quotes"
-	>("key_points");
+	const [activeAiTab, setActiveAiTab] = useState<AITabKey>("key_points");
 
 	const [showConfigModal, setShowConfigModal] = useState(false);
 	const [configModalMode, setConfigModalMode] =
@@ -1114,6 +1220,8 @@ export default function ArticleDetailPage() {
 	const [showAiPanel, setShowAiPanel] = useState(false);
 	const [lightboxImages, setLightboxImages] = useState<string[]>([]);
 	const [lightboxIndex, setLightboxIndex] = useState(0);
+	const [showInfographicLightbox, setShowInfographicLightbox] = useState(false);
+	const infographicExportRef = useRef<HTMLDivElement | null>(null);
 	const [mindMapOpen, setMindMapOpen] = useState(false);
 	const [prevArticle, setPrevArticle] = useState<ArticleNeighbor | null>(null);
 	const [nextArticle, setNextArticle] = useState<ArticleNeighbor | null>(null);
@@ -1134,6 +1242,10 @@ export default function ArticleDetailPage() {
 	const closeLightbox = useCallback(() => {
 		setLightboxImages([]);
 		setLightboxIndex(0);
+	}, []);
+
+	const closeInfographicLightbox = useCallback(() => {
+		setShowInfographicLightbox(false);
 	}, []);
 
 	const shiftLightbox = useCallback(
@@ -1849,12 +1961,17 @@ export default function ArticleDetailPage() {
 	}, [tocItems]);
 
 	useEffect(() => {
-		if (!lightboxImage) return;
+		if (!lightboxImage && !showInfographicLightbox) return;
 		const handleKeyDown = (event: KeyboardEvent) => {
 			if (event.key === "Escape") {
-				closeLightbox();
+				if (lightboxImage) {
+					closeLightbox();
+				} else if (showInfographicLightbox) {
+					closeInfographicLightbox();
+				}
 				return;
 			}
+			if (!lightboxImage) return;
 			if (event.key === "ArrowLeft") {
 				event.preventDefault();
 				shiftLightbox(-1);
@@ -1867,17 +1984,24 @@ export default function ArticleDetailPage() {
 		};
 		window.addEventListener("keydown", handleKeyDown);
 		return () => window.removeEventListener("keydown", handleKeyDown);
-	}, [lightboxImage, closeLightbox, shiftLightbox]);
+	}, [
+		lightboxImage,
+		showInfographicLightbox,
+		closeLightbox,
+		closeInfographicLightbox,
+		shiftLightbox,
+	]);
 
 	useEffect(() => {
-		if (!lightboxImage || typeof document === "undefined") return;
+		if ((!lightboxImage && !showInfographicLightbox) || typeof document === "undefined")
+			return;
 		const body = document.body;
 		const previousOverflow = body.style.overflow;
 		body.style.overflow = "hidden";
 		return () => {
 			body.style.overflow = previousOverflow;
 		};
-	}, [lightboxImage]);
+	}, [lightboxImage, showInfographicLightbox]);
 
 	const fetchArticleTasks = useCallback(
 		async (articleId: string) => {
@@ -1977,18 +2101,9 @@ export default function ArticleDetailPage() {
 										tagging_status: "pending",
 									}
 								: {
-										summary: null,
-										summary_status: null,
-										key_points: null,
-										key_points_status: null,
-										outline: null,
-										outline_status: null,
-										quotes: null,
-										quotes_status: null,
+										...createEmptyAiAnalysis(),
 										tagging_status: "pending",
 										tagging_manual_override: false,
-										error_message: null,
-										updated_at: null,
 									},
 						}
 					: prev,
@@ -2130,6 +2245,13 @@ export default function ArticleDetailPage() {
 		isAdmin || Boolean(article?.ai_analysis?.key_points);
 	const showOutlineSection = isAdmin || Boolean(article?.ai_analysis?.outline);
 	const showQuotesSection = isAdmin || Boolean(article?.ai_analysis?.quotes);
+	const showInfographicSection =
+		isAdmin || Boolean(article?.ai_analysis?.infographic_html);
+	const infographicHtml = article?.ai_analysis?.infographic_html || "";
+	const normalizedInfographicHtml = useMemo(
+		() => normalizeInfographicHtmlForCanvas(infographicHtml),
+		[infographicHtml],
+	);
 	const aiUpdatedAt =
 		isAdmin && article?.ai_analysis?.updated_at
 			? new Date(article.ai_analysis.updated_at).toLocaleString(
@@ -2137,7 +2259,7 @@ export default function ArticleDetailPage() {
 				)
 			: "";
 
-	const aiTabConfigs = [
+	const aiTabConfigs: AITabConfig[] = [
 		{
 			key: "key_points" as const,
 			label: t("总结"),
@@ -2174,11 +2296,23 @@ export default function ArticleDetailPage() {
 			onGenerate: () => handleGenerateContent("quotes"),
 			onCopy: () => handleCopyContent(article?.ai_analysis?.quotes),
 		},
+		createInfographicTabConfig({
+			t,
+			enabled: showInfographicSection,
+			html: normalizedInfographicHtml,
+			status: article?.ai_analysis?.infographic_status,
+			exportRef: infographicExportRef,
+			onGenerate: () => handleGenerateContent("infographic"),
+			onCopy: () => {
+				void handleCopyInfographicAsImage();
+			},
+			onOpen: () => setShowInfographicLightbox(true),
+		}),
 	];
+	const visibleAiTabs = aiTabConfigs.filter((tab) => tab.enabled);
 
 	const activeTabConfig =
-		aiTabConfigs.find((tab) => tab.key === activeAiTab) ??
-		aiTabConfigs.find((tab) => tab.enabled);
+		visibleAiTabs.find((tab) => tab.key === activeAiTab) ?? visibleAiTabs[0];
 	const sortedArticleTasks = useMemo(() => {
 		return [...articleTasks].sort(
 			(a, b) =>
@@ -2319,7 +2453,8 @@ export default function ArticleDetailPage() {
 		(!activeTabConfig?.status ||
 			activeTabConfig.status === "completed" ||
 			activeTabConfig.status === "failed");
-	const showActiveCopyButton = Boolean(activeTabConfig?.content);
+	const showActiveCopyButton =
+		Boolean(activeTabConfig?.content) && activeTabConfig?.canCopy !== false;
 
 	const aiPanelContent = (
 		<div className="bg-surface rounded-lg shadow-sm border border-border p-4">
@@ -2370,7 +2505,7 @@ export default function ArticleDetailPage() {
 
 				{isAdmin && article?.ai_analysis?.error_message && (
 					<div className="p-3 bg-danger-soft border border-danger-soft rounded-lg">
-						<p className="text-danger-ink text-sm">
+						<p className="text-danger-ink text-sm whitespace-pre-wrap break-words">
 							{article.ai_analysis.error_message}
 						</p>
 					</div>
@@ -2389,31 +2524,34 @@ export default function ArticleDetailPage() {
 					/>
 				)}
 
-				{(showKeyPointsSection || showOutlineSection || showQuotesSection) && (
+				{(
+					showKeyPointsSection ||
+					showOutlineSection ||
+					showQuotesSection ||
+					showInfographicSection
+				) && (
 					<div className="space-y-4">
-						<div className="flex items-center justify-between gap-4">
+						<div className="flex items-center justify-between gap-2">
 							<div className="relative flex-1">
-								<div className="flex items-center gap-2 overflow-x-auto pb-1 pr-6">
-									{aiTabConfigs
-										.filter((tab) => tab.enabled)
-										.map((tab) => (
-											<button
-												key={tab.key}
-												type="button"
-												onClick={() => setActiveAiTab(tab.key)}
-												className={`px-3 py-1.5 text-base font-semibold rounded-sm transition ${
-													activeAiTab === tab.key
-														? "bg-muted text-text-1"
-														: "text-text-2 hover:text-text-1 hover:bg-muted"
-												}`}
-											>
-												{tab.label}
-											</button>
-										))}
+								<div className="flex items-center gap-1.5 overflow-x-auto pb-1 pr-3">
+									{visibleAiTabs.map((tab) => (
+										<button
+											key={tab.key}
+											type="button"
+											onClick={() => setActiveAiTab(tab.key)}
+											className={`shrink-0 min-w-[3.9rem] whitespace-nowrap px-2.5 py-1.5 text-base font-semibold text-center rounded-sm transition ${
+												activeAiTab === tab.key
+													? "bg-muted text-text-1"
+													: "text-text-2 hover:text-text-1 hover:bg-muted"
+											}`}
+										>
+											{tab.label}
+										</button>
+									))}
 								</div>
 								<div className="pointer-events-none absolute right-0 top-0 h-full w-8 ai-tab-fade" />
 							</div>
-							<div className="flex items-center gap-2 pr-2 shrink-0">
+							<div className="flex items-center gap-1.5 pr-1 shrink-0">
 								{activeStatusBadge && activeStatusLink ? (
 									<Link
 										href={activeStatusLink}
@@ -2445,8 +2583,8 @@ export default function ArticleDetailPage() {
 									<button
 										onClick={activeTabConfig.onCopy}
 										className="text-text-3 hover:text-primary transition"
-										title={t("复制内容")}
-										aria-label={t("复制内容")}
+										title={activeTabConfig.copyTitle || t("复制内容")}
+										aria-label={activeTabConfig.copyTitle || t("复制内容")}
 										type="button"
 									>
 										<IconCopy className="h-4 w-4" />
@@ -2462,10 +2600,13 @@ export default function ArticleDetailPage() {
 								status={activeTabConfig.status}
 								onGenerate={activeTabConfig.onGenerate}
 								onCopy={activeTabConfig.onCopy}
+								copyTitle={activeTabConfig.copyTitle}
 								canEdit={isAdmin}
 								renderMarkdown={activeTabConfig.renderMarkdown}
 								renderMindMap={activeTabConfig.renderMindMap}
 								onMindMapOpen={activeTabConfig.onMindMapOpen}
+								canCopy={activeTabConfig.canCopy}
+								customContent={activeTabConfig.customContent}
 								showStatus={isAdmin}
 								statusLink={activeStatusLink}
 								showHeader={false}
@@ -2620,10 +2761,11 @@ export default function ArticleDetailPage() {
 	}
 
 	useEffect(() => {
-		const availableTabs: Array<"key_points" | "outline" | "quotes"> = [];
+		const availableTabs: AITabKey[] = [];
 		if (showKeyPointsSection) availableTabs.push("key_points");
 		if (showOutlineSection) availableTabs.push("outline");
 		if (showQuotesSection) availableTabs.push("quotes");
+		if (showInfographicSection) availableTabs.push("infographic");
 		if (availableTabs.length === 0) return;
 		if (!availableTabs.includes(activeAiTab)) {
 			setActiveAiTab(availableTabs[0]);
@@ -2633,6 +2775,7 @@ export default function ArticleDetailPage() {
 		showKeyPointsSection,
 		showOutlineSection,
 		showQuotesSection,
+		showInfographicSection,
 	]);
 
 	const fetchConfigs = async (promptType: string) => {
@@ -2680,15 +2823,17 @@ export default function ArticleDetailPage() {
 					selectedModelConfigId || undefined,
 					selectedPromptConfigId || undefined,
 				);
-				if (article.ai_analysis) {
-					setArticle({
-						...article,
-						ai_analysis: {
-							...article.ai_analysis,
-							[`${configModalContentType}_status`]: "pending",
-						},
-					});
-				}
+				const nextAiAnalysis = article.ai_analysis
+					? { ...article.ai_analysis }
+					: createEmptyAiAnalysis();
+				setArticle({
+					...article,
+					ai_analysis: {
+						...nextAiAnalysis,
+						[`${configModalContentType}_status`]: "pending",
+						error_message: null,
+					},
+				});
 				showToast(
 					configModalMode === "generate"
 						? t("已提交生成请求")
@@ -2732,9 +2877,9 @@ export default function ArticleDetailPage() {
 					? t("生成失败")
 					: configModalMode === "retry_ai_content"
 						? t("重试失败")
-					: configModalMode === "retry_cleaning"
-						? t("重试清洗失败")
-						: t("重试翻译失败");
+						: configModalMode === "retry_cleaning"
+							? t("重试清洗失败")
+							: t("重试翻译失败");
 			showToast(error.response?.data?.detail || fallbackError, "error");
 		}
 	};
@@ -2763,12 +2908,14 @@ export default function ArticleDetailPage() {
 			key_points: aiAnalysis?.key_points_status,
 			outline: aiAnalysis?.outline_status,
 			quotes: aiAnalysis?.quotes_status,
+			infographic: aiAnalysis?.infographic_status,
 		};
 		const contentMap: Record<AIContentType, string | null | undefined> = {
 			summary: aiAnalysis?.summary,
 			key_points: aiAnalysis?.key_points,
 			outline: aiAnalysis?.outline,
 			quotes: aiAnalysis?.quotes,
+			infographic: aiAnalysis?.infographic_html,
 		};
 		const status = statusMap[contentType];
 		const hasContent = Boolean(contentMap[contentType]);
@@ -2851,6 +2998,27 @@ export default function ArticleDetailPage() {
 		} catch (error) {
 			console.error("Failed to copy:", error);
 			showToast(t("复制失败"), "error");
+		}
+	};
+
+	const handleCopyInfographicAsImage = async () => {
+		if (!infographicExportRef.current || !infographicHtml) {
+			showToast(t("信息图未生成"), "info");
+			return;
+		}
+		try {
+			const exportResult = await copyInfographicNodeAsImage(
+				infographicExportRef.current,
+				`${article?.slug || "infographic"}.png`,
+			);
+			if (exportResult === "clipboard") {
+				showToast(t("已复制为图片"));
+				return;
+			}
+			showToast(t("当前浏览器不支持直接复制图片，已为你下载 PNG"), "info");
+		} catch (error) {
+			console.error("Failed to copy infographic as image:", error);
+			showToast(t("复制图片失败"), "error");
 		}
 	};
 
@@ -4730,7 +4898,9 @@ export default function ArticleDetailPage() {
 									variant="primary"
 									onClick={handleConfigModalSubmit}
 								>
-									{configModalMode === "generate" ? t("生成") : t("提交重试")}
+									{configModalMode === "generate"
+										? t("生成")
+										: t("提交重试")}
 								</Button>
 							</div>
 						}
@@ -5195,6 +5365,16 @@ export default function ArticleDetailPage() {
 				}}
 				onCancel={() => setShowDeleteModal(false)}
 			/>
+
+			{showInfographicLightbox && normalizedInfographicHtml && (
+				<InfographicLightbox
+					html={normalizedInfographicHtml}
+					title={t("信息图")}
+					previewLabel={t("预览")}
+					closeLabel={t("关闭")}
+					onClose={closeInfographicLightbox}
+				/>
+			)}
 
 			{lightboxImage && (
 				<div

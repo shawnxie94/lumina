@@ -333,6 +333,8 @@ class ArticleQueryService:
                     AIAnalysis.outline_status,
                     AIAnalysis.quotes,
                     AIAnalysis.quotes_status,
+                    AIAnalysis.infographic_status,
+                    AIAnalysis.infographic_html,
                     AIAnalysis.classification_status,
                     AIAnalysis.tagging_status,
                     AIAnalysis.tagging_manual_override,

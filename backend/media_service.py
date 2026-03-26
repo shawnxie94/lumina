@@ -4,12 +4,12 @@ import os
 import re
 import uuid
 from datetime import datetime
+from io import BytesIO
 from typing import Literal, cast
 from urllib.parse import urlparse
 
 import httpx
 from PIL import Image
-from io import BytesIO
 from fastapi import HTTPException, UploadFile
 from sqlalchemy import func
 from sqlalchemy.orm import Session

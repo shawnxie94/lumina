@@ -238,6 +238,7 @@ type PromptType =
 	| "key_points"
 	| "outline"
 	| "quotes"
+	| "infographic"
 	| "content_cleaning"
 	| "content_validation"
 	| "classification"
@@ -289,6 +290,7 @@ const PROMPT_TYPES = [
 	{ value: "key_points" as PromptType, labelKey: "总结" },
 	{ value: "outline" as PromptType, labelKey: "大纲" },
 	{ value: "quotes" as PromptType, labelKey: "金句" },
+	{ value: "infographic" as PromptType, labelKey: "信息图" },
 ];
 
 const supportsChunkOptionsForPromptType = (
@@ -686,6 +688,17 @@ export default function AdminPage() {
 	>([]);
 	const [retryTaskOptionsLoading, setRetryTaskOptionsLoading] = useState(false);
 	const [retryTaskSubmitting, setRetryTaskSubmitting] = useState(false);
+	const [showInfographicRepairModal, setShowInfographicRepairModal] =
+		useState(false);
+	const [infographicRepairOptionsLoading, setInfographicRepairOptionsLoading] =
+		useState(false);
+	const [infographicRepairSubmitting, setInfographicRepairSubmitting] =
+		useState(false);
+	const [infographicRepairError, setInfographicRepairError] = useState("");
+	const [infographicRepairModelConfigId, setInfographicRepairModelConfigId] =
+		useState("");
+	const [infographicRepairModelOptions, setInfographicRepairModelOptions] =
+		useState<ModelAPIConfig[]>([]);
 
 	const [usageLogs, setUsageLogs] = useState<AIUsageLogItem[]>([]);
 	const [usageSummary, setUsageSummary] = useState<
@@ -910,6 +923,15 @@ export default function AdminPage() {
 			taskTimelineNodes[taskTimelineNodes.length - 1]
 		);
 	}, [taskTimelineNodes, selectedTaskEventId]);
+
+	const selectedTaskTimelineUsageNode =
+		selectedTaskTimelineNode?.kind === "usage"
+			? selectedTaskTimelineNode.usage || null
+			: null;
+	const selectedTaskTimelineUsageContentType =
+		selectedTaskTimelineUsageNode?.content_type ||
+		selectedTaskTimeline?.task.content_type ||
+		null;
 
 	const [editingModelAPIConfig, setEditingModelAPIConfig] =
 		useState<ModelAPIConfig | null>(null);
@@ -2274,6 +2296,7 @@ export default function AdminPage() {
 				"key_points",
 				"outline",
 				"quotes",
+				"infographic",
 			] as string[]).includes(task.content_type)
 		) {
 			return task.content_type as PromptType;
@@ -2514,6 +2537,73 @@ export default function AdminPage() {
 		}
 	};
 
+	const closeInfographicRepairModal = () => {
+		setShowInfographicRepairModal(false);
+		setInfographicRepairOptionsLoading(false);
+		setInfographicRepairSubmitting(false);
+		setInfographicRepairError("");
+		setInfographicRepairModelConfigId("");
+		setInfographicRepairModelOptions([]);
+	};
+
+	const handleOpenInfographicRepairModal = async () => {
+		const articleSlug = selectedTaskTimeline?.task.article_slug;
+		if (
+			!articleSlug ||
+			selectedTaskTimelineNode?.kind !== "usage" ||
+			selectedTaskTimelineUsageContentType !== "infographic"
+		) {
+			showToast(t("操作失败"), "error");
+			return;
+		}
+		setInfographicRepairError(
+			selectedTaskTimelineUsageNode?.error_message ||
+				selectedTaskTimeline?.task.last_error ||
+				"",
+		);
+		setInfographicRepairModelConfigId("");
+		setInfographicRepairModelOptions([]);
+		setInfographicRepairOptionsLoading(true);
+		setShowInfographicRepairModal(true);
+		try {
+			const models = await articleApi.getModelAPIConfigs();
+			setInfographicRepairModelOptions(
+				(models as ModelAPIConfig[]).filter(
+					(config) => config.is_enabled && config.model_type !== "vector",
+				),
+			);
+		} catch (error) {
+			console.error("Failed to load infographic repair configs:", error);
+			showToast(t("加载修复配置失败"), "error");
+		} finally {
+			setInfographicRepairOptionsLoading(false);
+		}
+	};
+
+	const handleSubmitInfographicRepair = async () => {
+		const articleSlug = selectedTaskTimeline?.task.article_slug;
+		if (!articleSlug || infographicRepairSubmitting) return;
+		setInfographicRepairSubmitting(true);
+		try {
+			await articleApi.repairInfographic(
+				articleSlug,
+				infographicRepairError,
+				infographicRepairModelConfigId || undefined,
+			);
+			showToast(t("已提交信息图修复请求"));
+			closeInfographicRepairModal();
+			await handleRefreshTaskTimeline();
+		} catch (error: any) {
+			console.error("Failed to submit infographic repair:", error);
+			showToast(
+				error?.response?.data?.detail || t("信息图修复失败"),
+				"error",
+			);
+		} finally {
+			setInfographicRepairSubmitting(false);
+		}
+	};
+
 	const handleOpenUsageRelatedTask = (taskId: string, usageId?: string) => {
 		setActiveSection("monitoring");
 		setMonitoringSubSection("tasks");
@@ -2528,6 +2618,7 @@ export default function AdminPage() {
 		setSelectedTaskEventId(null);
 		setTaskTimelineRefreshing(false);
 		setTaskTimelineError("");
+		closeInfographicRepairModal();
 	};
 
 	const getTaskTypeLabel = (taskType: string, contentType?: string | null) => {
@@ -2542,6 +2633,7 @@ export default function AdminPage() {
 			if (contentType === "key_points") return t("总结");
 			if (contentType === "outline") return t("大纲");
 			if (contentType === "quotes") return t("金句");
+			if (contentType === "infographic") return t("信息图");
 			return t("AI内容");
 		}
 		return t("其他");
@@ -2871,6 +2963,7 @@ export default function AdminPage() {
 		if (contentType === "key_points") return t("总结");
 		if (contentType === "outline") return t("大纲");
 		if (contentType === "quotes") return t("金句");
+		if (contentType === "infographic") return t("信息图");
 		if (contentType === "translation") return t("翻译");
 		if (contentType === "content_cleaning") return t("清洗");
 		if (contentType === "content_validation") return t("校验");
@@ -3856,6 +3949,7 @@ export default function AdminPage() {
 														{ value: "key_points", label: t("总结") },
 														{ value: "outline", label: t("大纲") },
 														{ value: "quotes", label: t("金句") },
+														{ value: "infographic", label: t("信息图") },
 														{ value: "translation", label: t("翻译") },
 														{ value: "content_cleaning", label: t("清洗") },
 														{ value: "content_validation", label: t("校验") },
@@ -5438,10 +5532,14 @@ export default function AdminPage() {
 														value: "process_ai_content:quotes",
 														label: t("金句"),
 													},
-														{
-															value: "process_ai_content:key_points",
-															label: t("总结"),
-														},
+													{
+														value: "process_ai_content:key_points",
+														label: t("总结"),
+													},
+													{
+														value: "process_ai_content:infographic",
+														label: t("信息图"),
+													},
 													]}
 												/>
 											<ArticleSearchSelect
@@ -6890,11 +6988,21 @@ export default function AdminPage() {
 														}
 														const usage =
 															selectedTaskTimelineNode.usage as AITaskTimelineUsage;
+														const usageContentType =
+															usage.content_type ||
+															selectedTaskTimeline?.task.content_type ||
+															null;
+														const usageDisplayStatus =
+															nodeDisplayStatus || usage.status;
+														const showManualInfographicRepairAction =
+															Boolean(
+																selectedTaskTimeline?.task.article_slug &&
+																	usageContentType === "infographic" &&
+																	usageDisplayStatus === "failed",
+															);
 														const usageMeta = {
 															model: usage.model_api_config_name || t("未知模型"),
-															status: getUsageStatusLabel(
-																nodeDisplayStatus || usage.status,
-															),
+															status: getUsageStatusLabel(usageDisplayStatus),
 															prompt_tokens: usage.prompt_tokens,
 															completion_tokens: usage.completion_tokens,
 															total_tokens: usage.total_tokens,
@@ -6919,28 +7027,40 @@ export default function AdminPage() {
 																				tone={visual.tagTone}
 																				className={visual.tagClassName}
 																			>
-																				{getUsageStatusLabel(
-																					nodeDisplayStatus || usage.status,
-																				)}
+																				{getUsageStatusLabel(usageDisplayStatus)}
 																			</StatusTag>
 																		</div>
 																		<div>
 																			{formatTimelineDateTime(usage.created_at)}
 																		</div>
 																	</div>
-																	<IconButton
-																		type="button"
-																		onClick={handleCopyTaskEventDetails}
-																		variant="ghost"
-																		size="sm"
-																		title={t("复制参数")}
-																		disabled={
-																			!usage.request_payload &&
-																			!usage.response_payload
-																		}
-																	>
-																		<IconCopy className="h-4 w-4" />
-																	</IconButton>
+																	<div className="flex items-center gap-2">
+																		{showManualInfographicRepairAction && (
+																			<IconButton
+																				type="button"
+																				variant="ghost"
+																				size="sm"
+																				onClick={handleOpenInfographicRepairModal}
+																				title={t("手动修复")}
+																				aria-label={t("手动修复")}
+																			>
+																				<IconEdit className="h-4 w-4" />
+																			</IconButton>
+																		)}
+																		<IconButton
+																			type="button"
+																			onClick={handleCopyTaskEventDetails}
+																			variant="ghost"
+																			size="sm"
+																			title={t("复制参数")}
+																			disabled={
+																				!usage.request_payload &&
+																				!usage.response_payload
+																			}
+																		>
+																			<IconCopy className="h-4 w-4" />
+																		</IconButton>
+																	</div>
 																</div>
 
 																<div>
@@ -7007,6 +7127,67 @@ export default function AdminPage() {
 
 							</div>
 						) : null}
+					</ModalShell>
+				)}
+
+				{showInfographicRepairModal && (
+					<ModalShell
+						isOpen={showInfographicRepairModal}
+						onClose={closeInfographicRepairModal}
+						title={t("选择信息图修复配置")}
+						widthClassName="max-w-md"
+						footer={
+							<div className="flex justify-end gap-2">
+								<Button
+									type="button"
+									variant="secondary"
+									onClick={closeInfographicRepairModal}
+									disabled={infographicRepairSubmitting}
+								>
+									{t("取消")}
+								</Button>
+								<Button
+									type="button"
+									variant="primary"
+									onClick={handleSubmitInfographicRepair}
+									disabled={
+										infographicRepairSubmitting ||
+										infographicRepairOptionsLoading ||
+										!selectedTaskTimeline?.task.article_slug
+									}
+								>
+									{t("提交修复")}
+								</Button>
+							</div>
+						}
+					>
+						<div className="space-y-4">
+							<FormField label={t("模型配置")}>
+								<SelectField
+									value={infographicRepairModelConfigId}
+									onChange={(value) => setInfographicRepairModelConfigId(value)}
+									className="w-full"
+									disabled={infographicRepairOptionsLoading}
+									options={[
+										{ value: "", label: t("使用默认配置") },
+										...infographicRepairModelOptions.map((config) => ({
+											value: config.id,
+											label: `${config.name} (${config.model_name})`,
+										})),
+									]}
+								/>
+							</FormField>
+
+							<FormField label={t("修复说明")}>
+								<TextArea
+									value={infographicRepairError}
+									onChange={(e) => setInfographicRepairError(e.target.value)}
+									rows={6}
+									placeholder={t("请描述当前信息图存在的布局或样式问题")}
+									disabled={infographicRepairSubmitting}
+								/>
+							</FormField>
+						</div>
 					</ModalShell>
 				)}
 

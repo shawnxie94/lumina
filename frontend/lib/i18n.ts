@@ -352,6 +352,7 @@ const translations: Record<Language, Record<string | number, string>> = {
 		总结: "Key Points",
 		大纲: "Outline",
 		金句: "Quotes",
+		信息图: "Infographic",
 		其他: "Other",
 		默认: "Default",
 		美元: "USD",
@@ -545,6 +546,7 @@ const translations: Record<Language, Record<string | number, string>> = {
 		未配置登录方式: "No login providers configured",
 		发布: "Publish",
 		选择生成配置: "Select generation config",
+		选择信息图修复配置: "Select infographic repair config",
 		使用默认配置: "Use default config",
 		编辑文章: "Edit article",
 		编辑批注: "Edit note",
@@ -619,6 +621,7 @@ const translations: Record<Language, Record<string | number, string>> = {
 		已删除划线批注: "Highlight note deleted",
 		已提交向量化任务: "Embedding task submitted",
 		已提交生成请求: "Generation request submitted",
+		已提交信息图修复请求: "Infographic repair request submitted",
 		已更新划线批注: "Highlight note updated",
 		已重新提交清洗任务: "Cleaning task resubmitted",
 		已重新提交翻译请求: "Translation request resubmitted",
@@ -683,6 +686,19 @@ const translations: Record<Language, Record<string | number, string>> = {
 			"Gather all streams, distill with intelligence, and settle into true knowledge.",
 		查看全部: "View all",
 		更新时间: "Updated",
+		复制为图片: "Copy as image",
+		手动修复: "Manual repair",
+		提交修复: "Submit repair",
+		修复说明: "Repair instructions",
+		请描述当前信息图存在的布局或样式问题:
+			"Describe the current layout or style problems in the infographic",
+		加载修复配置失败: "Failed to load repair config",
+		信息图修复失败: "Infographic repair failed",
+		已复制为图片: "Copied as image",
+		复制图片失败: "Failed to copy image",
+		信息图未生成: "Infographic is not available yet",
+		"当前浏览器不支持直接复制图片，已为你下载 PNG":
+			"Your browser cannot copy images directly, so a PNG was downloaded instead",
 	},
 };
 

@@ -5,6 +5,7 @@ from app.domain.article_embedding_service import ArticleEmbeddingService
 from app.domain.article_query_service import ArticleQueryService
 from app.domain.article_rss_service import ArticleRssService
 from app.domain.article_url_ingest_service import ArticleUrlIngestService
+from app.domain.infographic_pipeline_support import InfographicPipelineSupport
 
 __all__ = [
     "AITaskService",
@@ -14,4 +15,5 @@ __all__ = [
     "ArticleQueryService",
     "ArticleRssService",
     "ArticleUrlIngestService",
+    "InfographicPipelineSupport",
 ]

@@ -68,6 +68,11 @@ class ArticleNotesUpdate(BaseModel):
     ] = None
 
 
+class ArticleInfographicRepairRequest(BaseModel):
+    error_message: str
+    model_config_id: Optional[str] = None
+
+
 class ExportRequest(BaseModel):
     article_slugs: Optional[list[str]] = None
     category_id: Optional[str] = None

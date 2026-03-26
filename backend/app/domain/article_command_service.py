@@ -209,3 +209,38 @@ class ArticleCommandService:
                 "prompt_config_id": prompt_config_id,
             },
         )
+
+    async def repair_infographic_html(
+        self,
+        db: Session,
+        article_id: str,
+        error_message: str,
+        model_config_id: str | None = None,
+    ) -> None:
+        article = db.query(Article).filter(Article.id == article_id).first()
+        if not article:
+            raise ValueError("文章不存在")
+        if not article.ai_analysis:
+            raise ValueError("信息图尚未生成，暂无可修复内容")
+
+        normalized_error = (error_message or "").strip()
+        if not normalized_error:
+            raise ValueError("请填写修复说明")
+
+        article.ai_analysis.infographic_status = "pending"
+        article.ai_analysis.error_message = None
+        article.ai_analysis.updated_at = now_str()
+        db.commit()
+
+        self.ai_task_service.enqueue_task(
+            db,
+            task_type="process_ai_content",
+            article_id=article_id,
+            content_type="infographic",
+            payload={
+                "category_id": article.category_id,
+                "model_config_id": model_config_id,
+                "repair_only": True,
+                "manual_repair_error": normalized_error,
+            },
+        )

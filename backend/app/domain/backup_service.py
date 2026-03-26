@@ -941,6 +941,8 @@ class BackupService:
                     key_points_status=self._optional_str(item.get("key_points_status")),
                     quotes=self._optional_str(item.get("quotes")),
                     quotes_status=self._optional_str(item.get("quotes_status")),
+                    infographic_html=self._optional_str(item.get("infographic_html")),
+                    infographic_status=self._optional_str(item.get("infographic_status")),
                     mindmap=self._optional_str(item.get("mindmap")),
                     classification_status=self._optional_str(item.get("classification_status")),
                     tagging_status=self._optional_str(item.get("tagging_status")),
@@ -1100,7 +1102,7 @@ class BackupService:
             "updated_at": article.updated_at,
             "note_content": article.note_content,
             "note_annotations": article.note_annotations,
-            "note_recommendation_level": self._normalize_note_recommendation_level(
+            "note_recommendation_level": BackupService._normalize_note_recommendation_level(
                 article.note_recommendation_level
             ),
             "original_language": article.original_language,
@@ -1120,6 +1122,8 @@ class BackupService:
             "key_points_status": analysis.key_points_status,
             "quotes": analysis.quotes,
             "quotes_status": analysis.quotes_status,
+            "infographic_html": analysis.infographic_html,
+            "infographic_status": analysis.infographic_status,
             "mindmap": analysis.mindmap,
             "classification_status": analysis.classification_status,
             "tagging_status": analysis.tagging_status,

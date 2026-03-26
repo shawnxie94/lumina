@@ -395,6 +395,8 @@ export interface ArticleDetail extends Article {
 		outline_status: string | null;
 		quotes: string | null;
 		quotes_status: string | null;
+		infographic_status: string | null;
+		infographic_html?: string | null;
 		tagging_status: string | null;
 		tagging_manual_override?: boolean | null;
 		error_message?: string | null;
@@ -943,6 +945,18 @@ export const articleApi = {
 		const queryString = params.toString();
 		const url = `/api/articles/${id}/generate/${contentType}${queryString ? `?${queryString}` : ""}`;
 		const response = await api.post(url);
+		return response.data;
+	},
+
+	repairInfographic: async (
+		id: string,
+		errorMessage: string,
+		modelConfigId?: string,
+	) => {
+		const response = await api.post(`/api/articles/${id}/repair-infographic`, {
+			error_message: errorMessage,
+			model_config_id: modelConfigId,
+		});
 		return response.data;
 	},
 

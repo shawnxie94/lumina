@@ -10,6 +10,7 @@ from app.schemas import (
     ArticleBatchDelete,
     ArticleBatchVisibility,
     ArticleCreate,
+    ArticleInfographicRepairRequest,
     ArticleNotesUpdate,
     ArticleReportByUrlRequest,
     ArticleUpdate,
@@ -326,6 +327,12 @@ async def get_article(
             else None,
             "quotes": article.ai_analysis.quotes if article.ai_analysis else None,
             "quotes_status": article.ai_analysis.quotes_status
+            if article.ai_analysis
+            else None,
+            "infographic_status": article.ai_analysis.infographic_status
+            if article.ai_analysis
+            else None,
+            "infographic_html": article.ai_analysis.infographic_html
             if article.ai_analysis
             else None,
             "classification_status": article.ai_analysis.classification_status
@@ -794,7 +801,7 @@ async def generate_ai_content(
     db: Session = Depends(get_db),
     _: bool = Depends(get_current_admin),
 ):
-    valid_types = ["summary", "key_points", "outline", "quotes"]
+    valid_types = ["summary", "key_points", "outline", "quotes", "infographic"]
     if content_type not in valid_types:
         raise HTTPException(
             status_code=400, detail=f"无效的内容类型，支持: {', '.join(valid_types)}"
@@ -812,6 +819,30 @@ async def generate_ai_content(
             prompt_config_id=prompt_config_id,
         )
         return {"id": article.id, "content_type": content_type, "status": "processing"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/api/articles/{article_slug}/repair-infographic")
+async def repair_infographic_html(
+    article_slug: str,
+    payload: ArticleInfographicRepairRequest,
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
+    try:
+        article = article_query_service.get_article_by_slug(db, article_slug)
+        if not article:
+            raise HTTPException(status_code=404, detail="文章不存在")
+        await article_command_service.repair_infographic_html(
+            db,
+            article.id,
+            error_message=payload.error_message,
+            model_config_id=payload.model_config_id,
+        )
+        return {"id": article.id, "content_type": "infographic", "status": "processing"}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:

@@ -152,6 +152,7 @@ export default function AppHeader() {
         if (task.content_type === 'key_points') return t('总结');
         if (task.content_type === 'outline') return t('大纲');
         if (task.content_type === 'quotes') return t('金句');
+        if (task.content_type === 'infographic') return t('信息图');
         return t('AI内容');
       }
       return t('其他');

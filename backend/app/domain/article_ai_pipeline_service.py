@@ -14,6 +14,14 @@ from app.core.public_cache import (
     invalidate_public_cache,
     invalidate_public_rss_cache,
 )
+from app.domain.infographic_pipeline_support import (
+    DEFAULT_INFOGRAPHIC_LAYOUT_BRIEF,
+    LEGACY_INFOGRAPHIC_PROMPT_PREFIX,
+    LEGACY_INFOGRAPHIC_SYSTEM_PROMPT,
+    MAX_INFOGRAPHIC_REPAIR_ATTEMPTS,
+    InfographicPipelineSupport,
+)
+from app.domain.infographic_render_service import InfographicRenderService
 from app.domain.article_tag_service import ArticleTagService
 from models import (
     AIAnalysis,
@@ -81,9 +89,14 @@ def build_parameters(model) -> dict:
 class ArticleAIPipelineService:
     DEFAULT_SAFETY_MARGIN_TOKENS = 1000
     DEFAULT_CLEANING_MAX_TOKENS = 16000
+    MAX_INFOGRAPHIC_REPAIR_ATTEMPTS = MAX_INFOGRAPHIC_REPAIR_ATTEMPTS
+    LEGACY_INFOGRAPHIC_PROMPT_PREFIX = LEGACY_INFOGRAPHIC_PROMPT_PREFIX
+    LEGACY_INFOGRAPHIC_SYSTEM_PROMPT = LEGACY_INFOGRAPHIC_SYSTEM_PROMPT
+    DEFAULT_INFOGRAPHIC_LAYOUT_BRIEF = DEFAULT_INFOGRAPHIC_LAYOUT_BRIEF
     DEFAULT_AI_CONTENT_MAX_TOKENS = {
         "key_points": 1000,
         "outline": 1000,
+        "infographic": 2200,
     }
 
     def __init__(
@@ -93,6 +106,18 @@ class ArticleAIPipelineService:
     ):
         self.current_task_id = current_task_id
         self.enqueue_task_func = enqueue_task_func
+        self.infographic_support = InfographicPipelineSupport(
+            get_prompt_config=lambda *args, **kwargs: self._get_prompt_config(
+                *args, **kwargs
+            ),
+            get_ai_config=lambda *args, **kwargs: self.get_ai_config(*args, **kwargs),
+            assert_general_model=lambda *args, **kwargs: self._assert_general_model(
+                *args, **kwargs
+            ),
+            create_render_service=lambda: self.create_infographic_render_service(),
+            log_ai_usage=lambda *args, **kwargs: self._log_ai_usage(*args, **kwargs),
+            max_tokens=self.DEFAULT_AI_CONTENT_MAX_TOKENS["infographic"],
+        )
 
     def _enqueue_task(self, db, **kwargs):
         if self.enqueue_task_func:
@@ -202,6 +227,128 @@ class ArticleAIPipelineService:
             api_key=config["api_key"],
             model_name=config["model_name"],
         )
+
+    def create_infographic_render_service(self) -> InfographicRenderService:
+        return InfographicRenderService()
+
+    def _build_infographic_generation_prompt(
+        self,
+        custom_prompt: str | None,
+        custom_system_prompt: str | None = None,
+    ) -> str:
+        return self.infographic_support.build_generation_prompt(
+            custom_prompt,
+            custom_system_prompt,
+        )
+
+    def _build_infographic_generation_parameters(
+        self,
+        parameters: dict | None,
+    ) -> dict:
+        return self.infographic_support.build_generation_parameters(parameters)
+
+    def _resolve_infographic_layout_brief(
+        self,
+        prompt_text: str | None,
+        system_prompt_text: str | None = None,
+    ) -> str:
+        return self.infographic_support.resolve_layout_brief(
+            prompt_text,
+            system_prompt_text,
+        )
+
+    def _build_infographic_repair_prompt(self, validation_error: str) -> str:
+        return self.infographic_support.build_repair_prompt(validation_error)
+
+    async def _sanitize_infographic_html_with_repair(
+        self,
+        db,
+        ai_client,
+        article_id: str,
+        raw_html: str,
+        parameters: dict | None,
+        pricing: dict,
+    ) -> str:
+        return await self.infographic_support.sanitize_html_with_repair(
+            db=db,
+            ai_client=ai_client,
+            article_id=article_id,
+            raw_html=raw_html,
+            parameters=parameters,
+            pricing=pricing,
+        )
+
+    async def repair_infographic_html(
+        self,
+        article_id: str,
+        category_id: str | None,
+        validation_error: str,
+        model_config_id: str | None = None,
+    ):
+        db = SessionLocal()
+        try:
+            article = db.query(Article).filter(Article.id == article_id).first()
+            if not article or not article.ai_analysis:
+                return
+
+            article.ai_analysis.infographic_status = "processing"
+            article.ai_analysis.updated_at = now_str()
+            db.commit()
+
+            candidate_html = self.infographic_support.resolve_repair_source_html(
+                db, article
+            )
+            normalized_validation_error = (validation_error or "").strip()
+            if not normalized_validation_error:
+                raise TaskDataError("请填写修复说明")
+
+            ai_config, parameters = self.infographic_support.resolve_repair_ai_config(
+                db,
+                category_id,
+                model_config_id,
+            )
+            ai_client = self.create_ai_client(ai_config)
+            pricing = {
+                "model_api_config_id": ai_config.get("model_api_config_id"),
+                "price_input_per_1k": ai_config.get("price_input_per_1k"),
+                "price_output_per_1k": ai_config.get("price_output_per_1k"),
+                "currency": ai_config.get("currency"),
+            }
+
+            repaired_html = await self.infographic_support.repair_html(
+                db=db,
+                ai_client=ai_client,
+                article_id=article_id,
+                raw_html=candidate_html,
+                validation_error=normalized_validation_error,
+                parameters=parameters,
+                pricing=pricing,
+            )
+            sanitized_html = await self._sanitize_infographic_html_with_repair(
+                db=db,
+                ai_client=ai_client,
+                article_id=article_id,
+                raw_html=repaired_html,
+                parameters=parameters,
+                pricing=pricing,
+            )
+
+            article.ai_analysis.infographic_html = sanitized_html
+            article.ai_analysis.infographic_status = "completed"
+            article.ai_analysis.error_message = None
+            article.ai_analysis.updated_at = now_str()
+            db.commit()
+        except Exception as exc:
+            logger.exception("infographic_manual_repair_failed: article_id=%s", article_id)
+            article = db.query(Article).filter(Article.id == article_id).first()
+            if article and article.ai_analysis:
+                article.ai_analysis.infographic_status = "failed"
+                article.ai_analysis.error_message = str(exc)
+                article.ai_analysis.updated_at = now_str()
+                db.commit()
+            raise
+        finally:
+            db.close()
 
     def _assert_general_model(self, model_config: ModelAPIConfig) -> None:
         if (model_config.model_type or "general") == "vector":
@@ -3035,6 +3182,12 @@ class ArticleAIPipelineService:
             parameters = ai_config.get("parameters") or {}
             if prompt_parameters:
                 parameters = {**parameters, **prompt_parameters}
+            if content_type == "infographic":
+                prompt = self._build_infographic_generation_prompt(
+                    prompt,
+                    parameters.get("system_prompt"),
+                )
+                parameters = self._build_infographic_generation_parameters(parameters)
             pricing = {
                 "model_api_config_id": ai_config.get("model_api_config_id"),
                 "price_input_per_1k": ai_config.get("price_input_per_1k"),
@@ -3071,11 +3224,29 @@ class ArticleAIPipelineService:
                     )
                     result = result.get("content")
 
-                setattr(article.ai_analysis, content_type, result)
-                setattr(article.ai_analysis, f"{content_type}_status", "completed")
+                if content_type == "infographic":
+                    sanitized_html = await self._sanitize_infographic_html_with_repair(
+                        db=db,
+                        ai_client=ai_client,
+                        article_id=article_id,
+                        raw_html=result or "",
+                        parameters=parameters,
+                        pricing=pricing,
+                    )
+                    article.ai_analysis.infographic_html = sanitized_html
+                    article.ai_analysis.infographic_status = "completed"
+                    result = sanitized_html
+                    logger.info(
+                        "infographic_generated: %s",
+                        article.title,
+                    )
+                else:
+                    setattr(article.ai_analysis, content_type, result)
+                    setattr(article.ai_analysis, f"{content_type}_status", "completed")
                 article.ai_analysis.error_message = None
                 article.ai_analysis.updated_at = now_str()
-                print(f"{content_type} 生成完成: {article.title}")
+                if content_type != "infographic":
+                    print(f"{content_type} 生成完成: {article.title}")
                 if content_type == "summary":
                     summary_text = (result or "").strip()
                     if summary_text:
