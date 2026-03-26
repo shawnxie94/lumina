@@ -1,8 +1,8 @@
 """add infographic ai analysis fields and seed infographic prompt
 
-Revision ID: 20260325_0010
+Revision ID: 20260326_0011
 Revises: 20260322_0009
-Create Date: 2026-03-25 22:10:00
+Create Date: 2026-03-26 17:10:00
 
 """
 
@@ -16,7 +16,7 @@ import sqlalchemy as sa
 from sqlalchemy import text
 
 # revision identifiers, used by Alembic.
-revision = "20260325_0010"
+revision = "20260326_0011"
 down_revision = "20260322_0009"
 branch_labels = None
 depends_on = None

@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from app.core.db_migrations import resolve_database_url
 
 
@@ -36,3 +38,12 @@ def test_resolve_database_url_falls_back_to_ini_then_settings():
         resolve_database_url(settings_url="sqlite:///settings.db")
         == "sqlite:///settings.db"
     )
+
+
+def test_infographic_migration_is_merged_into_single_revision():
+    versions_dir = Path(__file__).resolve().parents[3] / "alembic" / "versions"
+    infographic_migrations = sorted(versions_dir.glob("*infographic*.py"))
+
+    assert [path.name for path in infographic_migrations] == [
+        "20260326_0011_ai_infographic.py"
+    ]
