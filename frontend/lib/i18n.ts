@@ -353,6 +353,10 @@ const translations: Record<Language, Record<string | number, string>> = {
 		大纲: "Outline",
 		金句: "Quotes",
 		信息图: "Infographic",
+		启用RSS订阅: "Enable RSS feed",
+		"关闭后将不再暴露公开 RSS 地址":
+			"Disable the public RSS feed URL when turned off",
+		RSS未开启: "RSS feed is disabled",
 		其他: "Other",
 		默认: "Default",
 		美元: "USD",

@@ -75,12 +75,17 @@ def make_analysis(
     article: Article,
     *,
     summary: str,
+    quotes: str | None = None,
+    infographic_image_url: str | None = None,
 ) -> AIAnalysis:
     analysis = AIAnalysis(
         id=str(uuid.uuid4()),
         article_id=article.id,
         summary=summary,
         summary_status="completed",
+        quotes=quotes,
+        quotes_status="completed" if quotes else None,
+        infographic_image_url=infographic_image_url,
     )
     db_session.add(analysis)
     db_session.commit()
@@ -221,6 +226,36 @@ def test_export_articles_by_filters_matches_list_conditions(db_session):
     assert "wrong-source-domain" not in markdown
     assert "wrong-author" not in markdown
     assert "outside-date-range" not in markdown
+
+
+def test_export_articles_by_filters_orders_same_category_by_published_time(db_session):
+    service = ArticleQueryService()
+    category = make_category(db_session, name="同分类", sort_order=1)
+    make_article(
+        db_session,
+        title="older-exported",
+        published_at="2026-02-20",
+        created_at="2026-02-21T08:00:00+00:00",
+        category_id=category.id,
+        is_visible=True,
+    )
+    make_article(
+        db_session,
+        title="newer-exported",
+        published_at="2026-02-24",
+        created_at="2026-02-24T10:00:00+00:00",
+        category_id=category.id,
+        is_visible=True,
+    )
+
+    markdown = service.export_articles_by_filters(
+        db=db_session,
+        category_id=category.id,
+        is_admin=True,
+        public_base_url="https://lumina.example.com",
+    )
+
+    assert markdown.index("older-exported") < markdown.index("newer-exported")
 
 
 def test_export_articles_by_filters_respects_visibility_for_non_admin(db_session):
@@ -457,12 +492,54 @@ def test_render_articles_rss_uses_filtered_links_and_escapes_xml(db_session):
         in rss
     )
     assert "<title>AI &amp; \"Search\" &lt;Guide&gt;</title>" in rss
-    assert "<description>Summary &amp; details &lt;xml&gt;</description>" in rss
+    assert "<![CDATA[" in rss
+    assert "<p>Summary &amp; details &lt;xml&gt;</p>" in rss
+    assert "<h3>信息图</h3>" not in rss
+    assert "<img " not in rss
     assert (
         f"<link>https://lumina.example.com/article/{escape(article.slug)}</link>"
         in rss
     )
     assert "<pubDate>Wed, 11 Feb 2026 00:00:00 GMT</pubDate>" in rss
+
+
+def test_render_articles_rss_includes_top_image_quotes_and_infographic_image(
+    db_session,
+):
+    service = ArticleQueryService()
+    article = make_article(
+        db_session,
+        title="rss-rich-article",
+        published_at="2026-02-10T08:30:00+00:00",
+        created_at="2026-02-11T00:00:00+00:00",
+        is_visible=True,
+    )
+    article.top_image = "/media/top-image.webp"
+    db_session.commit()
+    make_analysis(
+        db_session,
+        article,
+        summary="摘要内容",
+        quotes="第一句金句\n第二句金句",
+        infographic_image_url="/media/infographic-image.png",
+    )
+
+    rss = service.render_articles_rss(
+        articles=[article],
+        public_base_url="https://lumina.example.com",
+        site_name="Lumina",
+        site_description="公开订阅",
+    )
+
+    assert '<enclosure url="https://lumina.example.com/media/top-image.webp"' in rss
+    assert '<media:content url="https://lumina.example.com/media/top-image.webp"' in rss
+    assert "<![CDATA[" in rss
+    assert "<p>摘要内容</p>" in rss
+    assert "<h3>金句</h3>" in rss
+    assert "<li>第一句金句</li>" in rss
+    assert "<li>第二句金句</li>" in rss
+    assert "<h3>信息图</h3>" in rss
+    assert 'src="https://lumina.example.com/media/infographic-image.png"' in rss
 
 
 def test_render_articles_rss_prefers_translated_title(db_session):

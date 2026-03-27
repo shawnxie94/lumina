@@ -19,6 +19,7 @@ DEFAULT_BASIC_SETTINGS = {
     "site_name": "Lumina",
     "site_description": "信息灯塔",
     "site_logo_url": "",
+    "rss_enabled": False,
     "home_badge_text": "",
     "home_tagline_text": "",
     "home_primary_button_text": "",
@@ -71,6 +72,7 @@ def build_basic_settings(admin: Optional[AdminSettings]) -> dict:
         "site_description": admin.site_description
         or DEFAULT_BASIC_SETTINGS["site_description"],
         "site_logo_url": admin.site_logo_url or "",
+        "rss_enabled": bool(admin.rss_enabled),
         "home_badge_text": admin.home_badge_text or "",
         "home_tagline_text": admin.home_tagline_text or "",
         "home_primary_button_text": admin.home_primary_button_text or "",

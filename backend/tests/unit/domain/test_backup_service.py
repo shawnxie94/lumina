@@ -30,6 +30,7 @@ def test_backup_service_exports_and_imports_infographic_fields(db_session, tmp_p
         summary_status="completed",
         infographic_html="<div>infographic</div>",
         infographic_status="completed",
+        infographic_image_url="/media/infographic.png",
         updated_at=now_str(),
     )
     db_session.add(analysis)
@@ -41,6 +42,7 @@ def test_backup_service_exports_and_imports_infographic_fields(db_session, tmp_p
 
     assert exported_analysis["infographic_html"] == "<div>infographic</div>"
     assert exported_analysis["infographic_status"] == "completed"
+    assert exported_analysis["infographic_image_url"] == "/media/infographic.png"
 
     import_engine = create_engine(
         f"sqlite:///{tmp_path / 'backup-import.db'}",
@@ -65,6 +67,7 @@ def test_backup_service_exports_and_imports_infographic_fields(db_session, tmp_p
         )
         assert imported_analysis.infographic_html == "<div>infographic</div>"
         assert imported_analysis.infographic_status == "completed"
+        assert imported_analysis.infographic_image_url == "/media/infographic.png"
     finally:
         import_session.close()
         Base.metadata.drop_all(bind=import_engine)

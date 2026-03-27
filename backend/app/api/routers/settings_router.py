@@ -84,6 +84,8 @@ async def update_basic_settings(
         admin.site_description = payload.site_description or "信息灯塔"
     if payload.site_logo_url is not None:
         admin.site_logo_url = payload.site_logo_url or ""
+    if payload.rss_enabled is not None:
+        admin.rss_enabled = bool(payload.rss_enabled)
     if payload.home_badge_text is not None:
         admin.home_badge_text = payload.home_badge_text or ""
     if payload.home_tagline_text is not None:

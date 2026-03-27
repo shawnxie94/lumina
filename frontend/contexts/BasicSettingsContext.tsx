@@ -9,6 +9,7 @@ const DEFAULT_BASIC_SETTINGS: BasicSettings = {
 	site_name: "Lumina",
 	site_description: "信息灯塔",
 	site_logo_url: "",
+	rss_enabled: false,
 	home_badge_text: "",
 	home_tagline_text: "",
 	home_primary_button_text: "",

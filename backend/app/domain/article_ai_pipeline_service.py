@@ -334,6 +334,7 @@ class ArticleAIPipelineService:
             )
 
             article.ai_analysis.infographic_html = sanitized_html
+            article.ai_analysis.infographic_image_url = None
             article.ai_analysis.infographic_status = "completed"
             article.ai_analysis.error_message = None
             article.ai_analysis.updated_at = now_str()
@@ -3234,6 +3235,7 @@ class ArticleAIPipelineService:
                         pricing=pricing,
                     )
                     article.ai_analysis.infographic_html = sanitized_html
+                    article.ai_analysis.infographic_image_url = None
                     article.ai_analysis.infographic_status = "completed"
                     result = sanitized_html
                     logger.info(

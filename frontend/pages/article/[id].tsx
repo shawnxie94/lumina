@@ -6,17 +6,18 @@ import {
 	useCallback,
 	useMemo,
 	type ReactNode,
-	type RefObject,
 } from "react";
 
 import { useRouter } from "next/router";
 import Link from "next/link";
 
 import {
+	InfographicExportCanvas,
 	InfographicLightbox,
 	InfographicPreviewCard,
 	copyInfographicNodeAsImage,
 	normalizeInfographicHtmlForCanvas,
+	renderInfographicNodeToBlob,
 } from "@/components/article/ArticleInfographic";
 import {
 	articleApi,
@@ -181,7 +182,6 @@ interface CreateInfographicTabConfigOptions {
 	enabled: boolean;
 	html: string;
 	status: string | null | undefined;
-	exportRef: RefObject<HTMLDivElement | null>;
 	onGenerate: () => void;
 	onCopy: () => void;
 	onOpen: () => void;
@@ -245,7 +245,6 @@ function createInfographicTabConfig({
 	enabled,
 	html,
 	status,
-	exportRef,
 	onGenerate,
 	onCopy,
 	onOpen,
@@ -265,7 +264,6 @@ function createInfographicTabConfig({
 		customContent: html ? (
 			<InfographicPreviewCard
 				html={html}
-				exportRef={exportRef}
 				onOpen={onOpen}
 				previewLabel={t("预览")}
 			/>
@@ -359,6 +357,7 @@ function createEmptyAiAnalysis(): NonNullable<ArticleDetail["ai_analysis"]> {
 		quotes: null,
 		quotes_status: null,
 		infographic_status: null,
+		infographic_image_url: null,
 		infographic_html: null,
 		tagging_status: null,
 		tagging_manual_override: false,
@@ -1222,6 +1221,8 @@ export default function ArticleDetailPage() {
 	const [lightboxIndex, setLightboxIndex] = useState(0);
 	const [showInfographicLightbox, setShowInfographicLightbox] = useState(false);
 	const infographicExportRef = useRef<HTMLDivElement | null>(null);
+	const infographicUploadSignatureRef = useRef("");
+	const infographicUploadingRef = useRef(false);
 	const [mindMapOpen, setMindMapOpen] = useState(false);
 	const [prevArticle, setPrevArticle] = useState<ArticleNeighbor | null>(null);
 	const [nextArticle, setNextArticle] = useState<ArticleNeighbor | null>(null);
@@ -2248,6 +2249,7 @@ export default function ArticleDetailPage() {
 	const showInfographicSection =
 		isAdmin || Boolean(article?.ai_analysis?.infographic_html);
 	const infographicHtml = article?.ai_analysis?.infographic_html || "";
+	const infographicImageUrl = article?.ai_analysis?.infographic_image_url || "";
 	const normalizedInfographicHtml = useMemo(
 		() => normalizeInfographicHtmlForCanvas(infographicHtml),
 		[infographicHtml],
@@ -2301,7 +2303,6 @@ export default function ArticleDetailPage() {
 			enabled: showInfographicSection,
 			html: normalizedInfographicHtml,
 			status: article?.ai_analysis?.infographic_status,
-			exportRef: infographicExportRef,
 			onGenerate: () => handleGenerateContent("infographic"),
 			onCopy: () => {
 				void handleCopyInfographicAsImage();
@@ -2310,6 +2311,74 @@ export default function ArticleDetailPage() {
 		}),
 	];
 	const visibleAiTabs = aiTabConfigs.filter((tab) => tab.enabled);
+
+	useEffect(() => {
+		if (
+			!isAdmin ||
+			!article?.slug ||
+			!normalizedInfographicHtml ||
+			infographicImageUrl ||
+			!infographicExportRef.current
+		) {
+			return;
+		}
+
+		const signature = [
+			article.slug,
+			article.ai_analysis?.updated_at || "",
+			normalizedInfographicHtml,
+		].join("::");
+		if (
+			infographicUploadingRef.current ||
+			infographicUploadSignatureRef.current === signature
+		) {
+			return;
+		}
+
+		infographicUploadingRef.current = true;
+		infographicUploadSignatureRef.current = signature;
+		let cancelled = false;
+
+		void (async () => {
+			try {
+				const blob = await renderInfographicNodeToBlob(infographicExportRef.current!);
+				if (cancelled) return;
+				const file = new File([blob], `${article.slug}-infographic.png`, {
+					type: blob.type || "image/png",
+				});
+				const uploaded = await articleApi.uploadInfographicImage(article.slug, file);
+				if (cancelled) return;
+				setArticle((prev) =>
+					prev?.slug === article.slug
+						? {
+								...prev,
+								ai_analysis: prev.ai_analysis
+									? {
+											...prev.ai_analysis,
+											infographic_image_url: uploaded.url,
+										}
+									: prev.ai_analysis,
+							}
+						: prev,
+				);
+			} catch (error) {
+				console.error("Failed to upload infographic image:", error);
+				infographicUploadSignatureRef.current = "";
+			} finally {
+				infographicUploadingRef.current = false;
+			}
+		})();
+
+		return () => {
+			cancelled = true;
+		};
+	}, [
+		article?.ai_analysis?.updated_at,
+		article?.slug,
+		infographicImageUrl,
+		isAdmin,
+		normalizedInfographicHtml,
+	]);
 
 	const activeTabConfig =
 		visibleAiTabs.find((tab) => tab.key === activeAiTab) ?? visibleAiTabs[0];
@@ -5365,6 +5434,13 @@ export default function ArticleDetailPage() {
 				}}
 				onCancel={() => setShowDeleteModal(false)}
 			/>
+
+			{normalizedInfographicHtml && (
+				<InfographicExportCanvas
+					html={normalizedInfographicHtml}
+					exportRef={infographicExportRef}
+				/>
+			)}
 
 			{showInfographicLightbox && normalizedInfographicHtml && (
 				<InfographicLightbox

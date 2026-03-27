@@ -121,6 +121,32 @@ def _article_time_sort_key(article: Article) -> tuple[datetime, datetime, str]:
     )
 
 
+def _normalize_public_asset_url(
+    base_url: str,
+    asset_url: str | None,
+) -> str | None:
+    raw = (asset_url or "").strip()
+    if not raw:
+        return None
+    if raw.startswith(("http://", "https://")):
+        return raw
+    if raw.startswith("/"):
+        return f"{base_url}{raw}"
+    return f"{base_url}/{raw.lstrip('/')}"
+
+
+def _split_quotes_content(value: str | None) -> list[str]:
+    raw = (value or "").strip()
+    if not raw:
+        return []
+    lines = []
+    for chunk in raw.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+        normalized = chunk.strip().lstrip("-").lstrip("•").strip()
+        if normalized:
+            lines.append(normalized)
+    return lines
+
+
 def _normalize_public_base_url(public_base_url: str | None) -> str:
     return (public_base_url or "").strip().rstrip("/")
 
@@ -334,6 +360,7 @@ class ArticleQueryService:
                     AIAnalysis.quotes,
                     AIAnalysis.quotes_status,
                     AIAnalysis.infographic_status,
+                    AIAnalysis.infographic_image_url,
                     AIAnalysis.infographic_html,
                     AIAnalysis.classification_status,
                     AIAnalysis.tagging_status,
@@ -493,10 +520,15 @@ class ArticleQueryService:
                 Article.id,
                 Article.slug,
                 Article.title,
+                Article.top_image,
                 Article.published_at,
                 Article.created_at,
             ),
-            joinedload(Article.ai_analysis).load_only(AIAnalysis.summary),
+            joinedload(Article.ai_analysis).load_only(
+                AIAnalysis.summary,
+                AIAnalysis.quotes,
+                AIAnalysis.infographic_image_url,
+            ),
         )
         articles = query.all()
         articles.sort(key=_article_created_desc_sort_key, reverse=True)
@@ -531,7 +563,7 @@ class ArticleQueryService:
 
         lines = [
             '<?xml version="1.0" encoding="UTF-8"?>',
-            '<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">',
+            '<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/">',
             "<channel>",
             f"<title>{safe_site_name}</title>",
             f"<description>{safe_site_description}</description>",
@@ -546,17 +578,54 @@ class ArticleQueryService:
         for article in articles:
             article_link = _build_public_feed_url(base_url, f"/article/{article.slug}")
             pub_date = _to_rfc2822_datetime(article.created_at)
-            summary = article.ai_analysis.summary if article.ai_analysis else ""
             display_title = _get_preferred_article_title(article)
+            summary = article.ai_analysis.summary if article.ai_analysis else ""
+            quotes = article.ai_analysis.quotes if article.ai_analysis else ""
+            infographic_image_url = (
+                article.ai_analysis.infographic_image_url if article.ai_analysis else ""
+            )
+            top_image_url = _normalize_public_asset_url(base_url, article.top_image)
+            infographic_image_url = _normalize_public_asset_url(
+                base_url,
+                infographic_image_url,
+            )
+            description_parts: list[str] = []
+            if (summary or "").strip():
+                description_parts.append(f"<p>{escape(summary.strip())}</p>")
+
+            quote_lines = _split_quotes_content(quotes)
+            if quote_lines:
+                quotes_html = "".join(
+                    f"<li>{escape(line)}</li>" for line in quote_lines
+                )
+                description_parts.append(f"<h3>金句</h3><ul>{quotes_html}</ul>")
+
+            if infographic_image_url:
+                description_parts.append(
+                    "<h3>信息图</h3>"
+                    f'<p><img src="{escape(infographic_image_url)}" '
+                    f'alt="{escape(display_title)} 信息图" /></p>'
+                )
             lines.extend(
                 [
                     "<item>",
                     f"<title>{escape(display_title)}</title>",
                     f"<link>{escape(article_link)}</link>",
                     f'<guid isPermaLink="true">{escape(article_link)}</guid>',
-                    f"<description>{escape(summary or '')}</description>",
+                    (
+                        "<description><![CDATA["
+                        f"{''.join(description_parts)}"
+                        "]]></description>"
+                    ),
                 ]
             )
+            if top_image_url:
+                lines.append(
+                    f'<enclosure url="{escape(top_image_url)}" type="image/*" />'
+                )
+                lines.append(
+                    f'<media:content url="{escape(top_image_url)}" medium="image" />'
+                )
             if pub_date:
                 lines.append(f"<pubDate>{escape(pub_date)}</pubDate>")
             lines.append("</item>")

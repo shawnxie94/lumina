@@ -40,10 +40,11 @@ def test_resolve_database_url_falls_back_to_ini_then_settings():
     )
 
 
-def test_infographic_migration_is_merged_into_single_revision():
+def test_infographic_related_migrations_are_ordered_and_explicit():
     versions_dir = Path(__file__).resolve().parents[3] / "alembic" / "versions"
     infographic_migrations = sorted(versions_dir.glob("*infographic*.py"))
 
     assert [path.name for path in infographic_migrations] == [
-        "20260326_0011_ai_infographic.py"
+        "20260326_0011_ai_infographic.py",
+        "20260326_0012_rss_toggle_and_infographic_image.py",
     ]

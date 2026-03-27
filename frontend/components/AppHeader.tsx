@@ -490,15 +490,17 @@ export default function AppHeader() {
                 </div>
               )}
             </div>
-            <button
-              type="button"
-              onClick={handleOpenRss}
-              className="inline-flex items-center justify-center w-8 h-8 rounded-sm text-text-3 hover:text-primary hover:bg-primary-soft transition"
-              title={t('RSS订阅')}
-              aria-label={t('RSS订阅')}
-            >
-              <IconRss className="h-4 w-4" />
-            </button>
+            {basicSettings.rss_enabled && (
+              <button
+                type="button"
+                onClick={handleOpenRss}
+                className="inline-flex items-center justify-center w-8 h-8 rounded-sm text-text-3 hover:text-primary hover:bg-primary-soft transition"
+                title={t('RSS订阅')}
+                aria-label={t('RSS订阅')}
+              >
+                <IconRss className="h-4 w-4" />
+              </button>
+            )}
             <Link
               href="/list"
               className={`inline-flex lg:hidden h-8 items-center px-3 rounded-sm text-sm font-medium transition ${

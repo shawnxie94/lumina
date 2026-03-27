@@ -942,6 +942,9 @@ class BackupService:
                     quotes=self._optional_str(item.get("quotes")),
                     quotes_status=self._optional_str(item.get("quotes_status")),
                     infographic_html=self._optional_str(item.get("infographic_html")),
+                    infographic_image_url=self._optional_str(
+                        item.get("infographic_image_url")
+                    ),
                     infographic_status=self._optional_str(item.get("infographic_status")),
                     mindmap=self._optional_str(item.get("mindmap")),
                     classification_status=self._optional_str(item.get("classification_status")),
@@ -1123,6 +1126,7 @@ class BackupService:
             "quotes": analysis.quotes,
             "quotes_status": analysis.quotes_status,
             "infographic_html": analysis.infographic_html,
+            "infographic_image_url": analysis.infographic_image_url,
             "infographic_status": analysis.infographic_status,
             "mindmap": analysis.mindmap,
             "classification_status": analysis.classification_status,

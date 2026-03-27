@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from urllib.parse import quote
 
-from fastapi import Request
+from fastapi import HTTPException, Request
 from fastapi.responses import Response as FastAPIResponse
 from sqlalchemy.orm import Session
 
@@ -17,6 +17,11 @@ if TYPE_CHECKING:
 
 
 class ArticleRssService:
+    def assert_rss_enabled(self, db: Session) -> None:
+        basic_settings = build_basic_settings(get_admin_settings(db))
+        if not basic_settings.get("rss_enabled"):
+            raise HTTPException(status_code=404, detail="RSS未开启")
+
     def normalize_tag_ids(self, raw_value: str | None) -> list[str]:
         if not raw_value:
             return []

@@ -241,6 +241,14 @@ export const removeToken = (): void => {
 api.interceptors.request.use(
 	(config) => {
 		config.baseURL = getApiBaseUrl();
+		if (typeof FormData !== "undefined" && config.data instanceof FormData) {
+			if (config.headers && typeof (config.headers as { delete?: (name: string) => void }).delete === "function") {
+				(config.headers as { delete: (name: string) => void }).delete("Content-Type");
+			} else if (config.headers) {
+				delete (config.headers as Record<string, unknown>)["Content-Type"];
+				delete (config.headers as Record<string, unknown>)["content-type"];
+			}
+		}
 		const token = getToken();
 		if (token) {
 			config.headers.Authorization = `Bearer ${token}`;
@@ -396,6 +404,7 @@ export interface ArticleDetail extends Article {
 		quotes: string | null;
 		quotes_status: string | null;
 		infographic_status: string | null;
+		infographic_image_url?: string | null;
 		infographic_html?: string | null;
 		tagging_status: string | null;
 		tagging_manual_override?: boolean | null;
@@ -473,6 +482,7 @@ export interface BasicSettings {
 	site_name: string;
 	site_description: string;
 	site_logo_url: string;
+	rss_enabled: boolean;
 	home_badge_text: string;
 	home_tagline_text: string;
 	home_primary_button_text: string;
@@ -960,6 +970,19 @@ export const articleApi = {
 		return response.data;
 	},
 
+	uploadInfographicImage: async (id: string, file: File) => {
+		const formData = new FormData();
+		formData.append("file", file);
+		const response = await api.post(`/api/articles/${id}/infographic-image`, formData);
+		return response.data as {
+			asset_id: string;
+			url: string;
+			filename: string;
+			size: number;
+			content_type: string;
+		};
+	},
+
 	getAuthors: async () => {
 		const response = await api.get("/api/authors");
 		return response.data as string[];
@@ -1359,9 +1382,7 @@ export const mediaApi = {
 		form.append("file", file);
 		form.append("article_id", articleId);
 		form.append("kind", kind);
-		const response = await api.post("/api/media/upload", form, {
-			headers: { "Content-Type": "multipart/form-data" },
-		});
+		const response = await api.post("/api/media/upload", form);
 		return response.data as {
 			asset_id: string;
 			url: string;

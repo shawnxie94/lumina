@@ -15,7 +15,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.settings import get_settings
-from models import AdminSettings, MediaAsset, Article, now_str
+from models import AIAnalysis, AdminSettings, MediaAsset, Article, now_str
 
 logger = logging.getLogger("media_service")
 
@@ -521,6 +521,34 @@ def cleanup_media_assets(db: Session, article_ids: list[str]) -> int:
     return count
 
 
+def delete_media_asset_by_url(db: Session, url: str | None) -> bool:
+    rel_path = _extract_internal_media_rel_path(url or "")
+    if not rel_path:
+        return False
+
+    asset = (
+        db.query(MediaAsset)
+        .filter(MediaAsset.storage_path == rel_path)
+        .order_by(MediaAsset.created_at.desc())
+        .first()
+    )
+    removed = False
+    full_path = os.path.join(MEDIA_ROOT, rel_path)
+    try:
+        os.remove(full_path)
+        removed = True
+    except FileNotFoundError:
+        pass
+    except Exception as exc:
+        logger.warning("media_delete_failed: %s", str(exc))
+
+    if asset:
+        db.delete(asset)
+        db.commit()
+        removed = True
+    return removed
+
+
 def _extract_internal_media_rel_path(url: str) -> str | None:
     if not url:
         return None
@@ -560,10 +588,15 @@ def _extract_media_paths_from_markdown(content: str) -> set[str]:
 def cleanup_orphan_media(db: Session) -> dict:
     ensure_media_root()
     articles = db.query(Article.id, Article.content_md, Article.top_image).all()
+    infographic_rows = db.query(AIAnalysis.infographic_image_url).all()
     referenced_paths: set[str] = set()
     for article_id, content_md, top_image in articles:
         referenced_paths |= _extract_media_paths_from_markdown(content_md or "")
         rel = _extract_internal_media_rel_path(top_image or "")
+        if rel:
+            referenced_paths.add(rel)
+    for (infographic_image_url,) in infographic_rows:
+        rel = _extract_internal_media_rel_path(infographic_image_url or "")
         if rel:
             referenced_paths.add(rel)
 

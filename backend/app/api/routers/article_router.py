@@ -1,7 +1,8 @@
 import json
+import os
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
@@ -44,7 +45,7 @@ from app.core.public_cache import (
 )
 from app.core.note_recommendation import normalize_note_recommendation_level
 from auth import check_is_admin, get_admin_settings, get_current_admin
-from media_service import cleanup_media_assets
+from media_service import cleanup_media_assets, delete_media_asset_by_url, save_upload_image
 from models import (
     Article,
     ArticleComment,
@@ -218,6 +219,7 @@ async def get_articles_rss(
     tag_ids: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
+    article_rss_service.assert_rss_enabled(db)
     public_base_url = article_rss_service.resolve_public_base_url(request)
     normalized_tag_ids = article_rss_service.normalize_tag_ids(tag_ids)
     cache_key = article_rss_service.build_cache_key(
@@ -330,6 +332,9 @@ async def get_article(
             if article.ai_analysis
             else None,
             "infographic_status": article.ai_analysis.infographic_status
+            if article.ai_analysis
+            else None,
+            "infographic_image_url": article.ai_analysis.infographic_image_url
             if article.ai_analysis
             else None,
             "infographic_html": article.ai_analysis.infographic_html
@@ -847,6 +852,39 @@ async def repair_infographic_html(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/api/articles/{article_slug}/infographic-image")
+async def upload_infographic_image(
+    article_slug: str,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
+    article = article_query_service.get_article_by_slug(db, article_slug)
+    if not article:
+        raise HTTPException(status_code=404, detail="文章不存在")
+    if not article.ai_analysis or not (article.ai_analysis.infographic_html or "").strip():
+        raise HTTPException(status_code=400, detail="信息图尚未生成")
+
+    old_image_url = article.ai_analysis.infographic_image_url
+    asset, url = await save_upload_image(db, article.id, file, kind="image")
+    article.ai_analysis.infographic_image_url = url
+    article.ai_analysis.updated_at = now_str()
+    db.commit()
+    db.refresh(article.ai_analysis)
+    invalidate_public_article_derived_cache()
+
+    if old_image_url and old_image_url != url:
+        delete_media_asset_by_url(db, old_image_url)
+
+    return {
+        "asset_id": asset.id,
+        "url": url,
+        "filename": os.path.basename(asset.storage_path),
+        "size": asset.size,
+        "content_type": asset.content_type,
+    }
 
 
 def _list_authors(db: Session) -> list[str]:

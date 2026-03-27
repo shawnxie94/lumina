@@ -28,9 +28,13 @@ interface InfographicCanvasProps {
 
 interface InfographicPreviewCardProps {
 	html: string;
-	exportRef: RefObject<HTMLDivElement | null>;
 	onOpen: () => void;
 	previewLabel: string;
+}
+
+interface InfographicExportCanvasProps {
+	html: string;
+	exportRef: RefObject<HTMLDivElement | null>;
 }
 
 interface InfographicLightboxProps {
@@ -168,20 +172,7 @@ export async function copyInfographicNodeAsImage(
 	node: HTMLElement,
 	fileName = "infographic.png",
 ): Promise<InfographicImageExportResult> {
-	const { toBlob } = await import("html-to-image");
-	await waitForInfographicRender();
-	const blob = await toBlob(node, {
-		cacheBust: true,
-		pixelRatio: 2,
-		width: INFOGRAPHIC_CANVAS_WIDTH,
-		height: INFOGRAPHIC_CANVAS_HEIGHT,
-		canvasWidth: INFOGRAPHIC_CANVAS_WIDTH * 2,
-		canvasHeight: INFOGRAPHIC_CANVAS_HEIGHT * 2,
-		skipAutoScale: true,
-	});
-	if (!blob) {
-		throw new Error("empty infographic blob");
-	}
+	const blob = await renderInfographicNodeToBlob(node);
 	if (typeof ClipboardItem !== "undefined" && navigator.clipboard?.write) {
 		await navigator.clipboard.write([
 			new ClipboardItem({
@@ -201,6 +192,26 @@ export async function copyInfographicNodeAsImage(
 		URL.revokeObjectURL(objectUrl);
 	}
 	return "download";
+}
+
+export async function renderInfographicNodeToBlob(
+	node: HTMLElement,
+): Promise<Blob> {
+	const { toBlob } = await import("html-to-image");
+	await waitForInfographicRender();
+	const blob = await toBlob(node, {
+		cacheBust: true,
+		pixelRatio: 2,
+		width: INFOGRAPHIC_CANVAS_WIDTH,
+		height: INFOGRAPHIC_CANVAS_HEIGHT,
+		canvasWidth: INFOGRAPHIC_CANVAS_WIDTH * 2,
+		canvasHeight: INFOGRAPHIC_CANVAS_HEIGHT * 2,
+		skipAutoScale: true,
+	});
+	if (!blob) {
+		throw new Error("empty infographic blob");
+	}
+	return blob;
 }
 
 function InfographicCanvas({
@@ -320,14 +331,11 @@ function InfographicCanvas({
 
 export function InfographicPreviewCard({
 	html,
-	exportRef,
 	onOpen,
 	previewLabel,
 }: InfographicPreviewCardProps) {
-	const surfaceColor = extractInfographicSurfaceColor(html);
-
 	return (
-		<div className="space-y-3">
+		<div>
 			<button
 				type="button"
 				onClick={onOpen}
@@ -340,28 +348,34 @@ export function InfographicPreviewCard({
 						className="aspect-[3/4] w-full overflow-hidden rounded-[24px] transition duration-200 group-hover:opacity-95"
 						paddingClassName="box-border h-full w-full"
 						contentClassName="h-full w-full"
-						style={
-							surfaceColor ? { backgroundColor: surfaceColor } : undefined
-						}
+						style={buildInfographicSurfaceStyle(html)}
 					/>
 				</div>
 			</button>
-			<div aria-hidden="true" className="fixed left-[-200vw] top-0">
-				<InfographicCanvas
-					html={html}
-					canvasRef={exportRef}
-					className="overflow-hidden rounded-[24px]"
-					paddingClassName="box-border h-full w-full"
-					contentClassName="h-full w-full"
-					style={{
-						width: `${INFOGRAPHIC_CANVAS_WIDTH}px`,
-						height: `${INFOGRAPHIC_CANVAS_HEIGHT}px`,
-						borderRadius: "24px",
-						overflow: "hidden",
-						...(surfaceColor ? { backgroundColor: surfaceColor } : {}),
-					}}
-				/>
-			</div>
+		</div>
+	);
+}
+
+export function InfographicExportCanvas({
+	html,
+	exportRef,
+}: InfographicExportCanvasProps) {
+	return (
+		<div aria-hidden="true" className="fixed left-[-200vw] top-0">
+			<InfographicCanvas
+				html={html}
+				canvasRef={exportRef}
+				className="overflow-hidden rounded-[24px]"
+				paddingClassName="box-border h-full w-full"
+				contentClassName="h-full w-full"
+				style={{
+					width: `${INFOGRAPHIC_CANVAS_WIDTH}px`,
+					height: `${INFOGRAPHIC_CANVAS_HEIGHT}px`,
+					borderRadius: "24px",
+					overflow: "hidden",
+					...buildInfographicSurfaceStyle(html),
+				}}
+			/>
 		</div>
 	);
 }
@@ -373,8 +387,6 @@ export function InfographicLightbox({
 	closeLabel,
 	onClose,
 }: InfographicLightboxProps) {
-	const surfaceColor = extractInfographicSurfaceColor(html);
-
 	return (
 		<div
 			className="fixed inset-0 z-[70] bg-black/75 backdrop-blur-[1px]"
@@ -409,12 +421,17 @@ export function InfographicLightbox({
 						className="h-full w-full overflow-hidden rounded-[28px] shadow-[0_30px_80px_rgba(0,0,0,0.35)]"
 						paddingClassName="box-border h-full w-full"
 						contentClassName="h-full w-full"
-						style={
-							surfaceColor ? { backgroundColor: surfaceColor } : undefined
-						}
+						style={buildInfographicSurfaceStyle(html)}
 					/>
 				</div>
 			</div>
 		</div>
 	);
+}
+
+function buildInfographicSurfaceStyle(
+	html: string,
+): CSSProperties | undefined {
+	const surfaceColor = extractInfographicSurfaceColor(html);
+	return surfaceColor ? { backgroundColor: surfaceColor } : undefined;
 }

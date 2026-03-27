@@ -783,6 +783,7 @@ export default function AdminPage() {
 		site_name: "Lumina",
 		site_description: "信息灯塔",
 		site_logo_url: "",
+		rss_enabled: false,
 		home_badge_text: "",
 		home_tagline_text: "",
 		home_primary_button_text: "",
@@ -4833,6 +4834,33 @@ export default function AdminPage() {
 														]}
 													/>
 												</div>
+											</div>
+											<div className="flex items-center justify-between rounded-sm border border-border bg-surface p-4">
+												<div>
+													<div className="text-sm font-medium text-text-1">
+														{t("启用RSS订阅")}
+													</div>
+													<div className="mt-1 text-xs text-text-3">
+														{t("关闭后将不再暴露公开 RSS 地址")}
+													</div>
+												</div>
+												<label className="inline-flex cursor-pointer items-center gap-2 text-sm text-text-2">
+													<CheckboxInput
+														checked={basicSettingsForm.rss_enabled}
+														onChange={(e) =>
+															setBasicSettingsForm((prev) => ({
+																...prev,
+																rss_enabled: e.target.checked,
+															}))
+														}
+														className="h-4 w-4"
+													/>
+													<span>
+														{basicSettingsForm.rss_enabled
+															? t("已开启")
+															: t("已关闭")}
+													</span>
+												</label>
 											</div>
 										</div>
 									)}

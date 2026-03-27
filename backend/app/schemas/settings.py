@@ -31,6 +31,7 @@ class BasicSettingsUpdate(BaseModel):
     site_name: Optional[str] = None
     site_description: Optional[str] = None
     site_logo_url: Optional[str] = None
+    rss_enabled: Optional[bool] = None
     home_badge_text: Optional[str] = None
     home_tagline_text: Optional[str] = None
     home_primary_button_text: Optional[str] = None
