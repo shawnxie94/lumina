@@ -290,6 +290,50 @@ def test_export_articles_by_filters_respects_visibility_for_non_admin(db_session
     assert hidden.title not in markdown
 
 
+def test_export_articles_by_filters_prefers_translated_title(db_session):
+    service = ArticleQueryService()
+    article = make_article(
+        db_session,
+        title="Original Export Title",
+        title_trans="  导出译文标题  ",
+        published_at="2026-03-01",
+        created_at="2026-03-01T08:00:00+00:00",
+        is_visible=True,
+    )
+
+    markdown = service.export_articles_by_filters(
+        db=db_session,
+        is_admin=True,
+        public_base_url="https://lumina.example.com",
+    )
+
+    assert f"### [导出译文标题](https://lumina.example.com/article/{article.slug})" in markdown
+    assert "### [Original Export Title]" not in markdown
+
+
+def test_get_articles_search_matches_translated_title(db_session):
+    service = ArticleQueryService()
+    make_article(
+        db_session,
+        title="Original Search Title",
+        title_trans="译文可搜索标题",
+        published_at="2026-03-20",
+        created_at="2026-03-20T08:00:00+00:00",
+        is_visible=True,
+    )
+
+    articles, total = service.get_articles(
+        db=db_session,
+        page=1,
+        size=10,
+        search="可搜索",
+        is_admin=True,
+    )
+
+    assert total == 1
+    assert [item.title for item in articles] == ["Original Search Title"]
+
+
 def test_get_articles_filters_by_any_selected_tag(db_session):
     service = ArticleQueryService()
     ai_tag = make_tag(db_session, "AI")

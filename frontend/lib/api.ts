@@ -782,6 +782,20 @@ export const articleApi = {
 		return response.data;
 	},
 
+	deleteAIContent: async (
+		id: string,
+		contentType: "key_points" | "outline" | "quotes" | "infographic",
+	) => {
+		const response = await api.delete(
+			`/api/articles/${id}/ai-content/${contentType}`,
+		);
+		return response.data as {
+			id: string;
+			content_type: "key_points" | "outline" | "quotes" | "infographic";
+			status: "deleted";
+		};
+	},
+
 	updateArticle: async (
 		id: string,
 		data: {
@@ -844,7 +858,17 @@ export const articleApi = {
 		return response.data;
 	},
 
-	searchArticles: async (query: string): Promise<{id: string; title: string; slug: string}[]> => {
+	searchArticles: async (
+		query: string,
+	): Promise<
+		{
+			id: string;
+			title: string;
+			title_trans?: string | null;
+			display_title: string;
+			slug: string;
+		}[]
+	> => {
 		const response = await api.get("/api/articles/search", { params: { query } });
 		return response.data;
 	},

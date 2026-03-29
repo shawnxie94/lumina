@@ -5,9 +5,12 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
+from fastapi import Response
 from fastapi import UploadFile
 
 from app.api.routers import article_router
+from app.core.public_cache import CACHE_KEY_AUTHORS_PUBLIC, CACHE_KEY_SOURCES_PUBLIC
+from models import Article, now_str
 
 
 @pytest.fixture
@@ -76,6 +79,98 @@ async def test_generate_ai_content_accepts_infographic(monkeypatch, db_session):
         "model_config_id": "model-1",
         "prompt_config_id": "prompt-1",
     }
+
+
+@pytest.mark.anyio
+async def test_delete_ai_content_accepts_non_summary_types(monkeypatch, db_session):
+    article = SimpleNamespace(id="article-1")
+    captured: dict[str, str] = {}
+
+    def fake_delete(db, article_id: str, content_type: str) -> None:
+        captured["article_id"] = article_id
+        captured["content_type"] = content_type
+
+    monkeypatch.setattr(
+        article_router.article_query_service,
+        "get_article_by_slug",
+        lambda db, slug: article,
+    )
+    monkeypatch.setattr(
+        article_router.article_command_service,
+        "delete_ai_content",
+        fake_delete,
+    )
+    monkeypatch.setattr(
+        article_router,
+        "invalidate_public_article_derived_cache",
+        lambda: captured.__setitem__("cache_invalidated", "1"),
+    )
+
+    response = await article_router.delete_ai_content(
+        article_slug="demo-article",
+        content_type="quotes",
+        db=db_session,
+        _=True,
+    )
+
+    assert response == {
+        "id": "article-1",
+        "content_type": "quotes",
+        "status": "deleted",
+    }
+    assert captured == {
+        "article_id": "article-1",
+        "content_type": "quotes",
+        "cache_invalidated": "1",
+    }
+
+
+@pytest.mark.anyio
+async def test_delete_ai_content_rejects_summary(db_session):
+    with pytest.raises(HTTPException) as exc_info:
+        await article_router.delete_ai_content(
+            article_slug="demo-article",
+            content_type="summary",
+            db=db_session,
+            _=True,
+        )
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "无效的内容类型，支持: key_points, outline, quotes, infographic"
+
+
+@pytest.mark.anyio
+async def test_search_articles_matches_translated_title(db_session):
+    article = Article(
+        title="Original Search API Title",
+        title_trans="接口译文标题",
+        slug="search-api-title",
+        content_md="content",
+        content_trans="",
+        top_image="",
+        author="Tester",
+        published_at=now_str(),
+        source_domain="example.com",
+        status="completed",
+        is_visible=True,
+        created_at=now_str(),
+        updated_at=now_str(),
+    )
+    db_session.add(article)
+    db_session.commit()
+
+    response = await article_router.search_articles(
+        query="接口译文",
+        limit=20,
+        db=db_session,
+        _=True,
+    )
+
+    assert len(response) == 1
+    assert response[0]["slug"] == "search-api-title"
+    assert response[0]["title"] == "Original Search API Title"
+    assert response[0]["title_trans"] == "接口译文标题"
+    assert response[0]["display_title"] == "接口译文标题"
 
 
 @pytest.mark.anyio
@@ -151,6 +246,45 @@ async def test_get_articles_rss_rejects_when_disabled(monkeypatch, db_session):
 
     assert exc_info.value.status_code == 404
     assert exc_info.value.detail == "RSS未开启"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("endpoint", "cache_key", "payload"),
+    [
+        ("get_authors", CACHE_KEY_AUTHORS_PUBLIC, ["Alice", "Bob"]),
+        ("get_sources", CACHE_KEY_SOURCES_PUBLIC, ["example.com", "news.test"]),
+    ],
+)
+async def test_public_metadata_endpoints_use_expected_cache_keys(
+    monkeypatch,
+    db_session,
+    endpoint,
+    cache_key,
+    payload,
+):
+    captured: dict[str, object] = {}
+
+    def fake_get_public_cached(key, loader):
+        captured["key"] = key
+        return payload
+
+    def fake_apply_public_cache_headers(response):
+        response.headers["X-Cache-Checked"] = "1"
+
+    monkeypatch.setattr(article_router, "get_public_cached", fake_get_public_cached)
+    monkeypatch.setattr(
+        article_router,
+        "apply_public_cache_headers",
+        fake_apply_public_cache_headers,
+    )
+
+    response = Response()
+    result = await getattr(article_router, endpoint)(response=response, db=db_session)
+
+    assert result == payload
+    assert captured["key"] == cache_key
+    assert response.headers["X-Cache-Checked"] == "1"
 
 
 @pytest.mark.anyio

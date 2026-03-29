@@ -97,6 +97,12 @@ type AIContentType =
 	| "quotes"
 	| "infographic";
 type AITabKey = Exclude<AIContentType, "summary">;
+const DELETABLE_AI_CONTENT_TYPES: readonly AITabKey[] = [
+	"key_points",
+	"outline",
+	"quotes",
+	"infographic",
+];
 type NoteRecommendationLevel =
 	| "strongly_recommended"
 	| "recommended"
@@ -1204,6 +1210,10 @@ export default function ArticleDetailPage() {
 	const [showDeleteAnnotationModal, setShowDeleteAnnotationModal] =
 		useState(false);
 	const [showDeleteNoteModal, setShowDeleteNoteModal] = useState(false);
+	const [pendingDeleteAiContentType, setPendingDeleteAiContentType] =
+		useState<AITabKey | null>(null);
+	const [showDeleteAiContentModal, setShowDeleteAiContentModal] =
+		useState(false);
 	const [expandedReplies, setExpandedReplies] = useState<
 		Record<string, boolean>
 	>({});
@@ -1516,6 +1526,11 @@ export default function ArticleDetailPage() {
 				setPendingDeleteAnnotationId(null);
 				return;
 			}
+			if (showDeleteAiContentModal) {
+				setShowDeleteAiContentModal(false);
+				setPendingDeleteAiContentType(null);
+				return;
+			}
 			if (showDeleteModal) {
 				setShowDeleteModal(false);
 				return;
@@ -1539,6 +1554,7 @@ export default function ArticleDetailPage() {
 		showAnnotationView,
 		showDeleteCommentModal,
 		showDeleteAnnotationModal,
+		showDeleteAiContentModal,
 		showDeleteModal,
 	]);
 
@@ -2524,6 +2540,11 @@ export default function ArticleDetailPage() {
 			activeTabConfig.status === "failed");
 	const showActiveCopyButton =
 		Boolean(activeTabConfig?.content) && activeTabConfig?.canCopy !== false;
+	const showActiveDeleteButton =
+		isAdmin &&
+		Boolean(activeTabConfig?.content) &&
+		Boolean(activeTabConfig?.key) &&
+		!isPendingJobStatus(activeTabConfig?.status);
 
 	const aiPanelContent = (
 		<div className="bg-surface rounded-lg shadow-sm border border-border p-4">
@@ -2600,8 +2621,8 @@ export default function ArticleDetailPage() {
 					showInfographicSection
 				) && (
 					<div className="space-y-4">
-						<div className="flex items-center justify-between gap-2">
-							<div className="relative flex-1">
+						<div className="flex flex-wrap items-center justify-between gap-2">
+							<div className="relative min-w-0 flex-1">
 								<div className="flex items-center gap-1.5 overflow-x-auto pb-1 pr-3">
 									{visibleAiTabs.map((tab) => (
 										<button
@@ -2620,7 +2641,7 @@ export default function ArticleDetailPage() {
 								</div>
 								<div className="pointer-events-none absolute right-0 top-0 h-full w-8 ai-tab-fade" />
 							</div>
-							<div className="flex items-center gap-1.5 pr-1 shrink-0">
+							<div className="ml-auto flex shrink-0 items-center gap-1.5 pr-1">
 								{activeStatusBadge && activeStatusLink ? (
 									<Link
 										href={activeStatusLink}
@@ -2657,6 +2678,20 @@ export default function ArticleDetailPage() {
 										type="button"
 									>
 										<IconCopy className="h-4 w-4" />
+									</button>
+								)}
+								{showActiveDeleteButton && activeTabConfig && (
+									<button
+										onClick={() => {
+											setPendingDeleteAiContentType(activeTabConfig.key);
+											setShowDeleteAiContentModal(true);
+										}}
+										className="text-text-3 hover:text-danger-ink transition"
+										title={t("删除内容")}
+										aria-label={t("删除内容")}
+										type="button"
+									>
+										<IconTrash className="h-4 w-4" />
 									</button>
 								)}
 							</div>
@@ -3067,6 +3102,45 @@ export default function ArticleDetailPage() {
 		} catch (error) {
 			console.error("Failed to copy:", error);
 			showToast(t("复制失败"), "error");
+		}
+	};
+
+	const handleDeleteAIContent = async (contentType: AITabKey) => {
+		if (!id || !article || !DELETABLE_AI_CONTENT_TYPES.includes(contentType)) {
+			return;
+		}
+
+		try {
+			await articleApi.deleteAIContent(id as string, contentType);
+			const updatedAt = new Date().toISOString();
+			setArticle((prev) => {
+				if (!prev) return prev;
+				const currentAnalysis = prev.ai_analysis ?? createEmptyAiAnalysis();
+				const nextAnalysis = {
+					...currentAnalysis,
+					error_message: null,
+					updated_at: updatedAt,
+				};
+				if (contentType === "infographic") {
+					nextAnalysis.infographic_html = null;
+					nextAnalysis.infographic_image_url = null;
+					nextAnalysis.infographic_status = null;
+				} else {
+					nextAnalysis[contentType] = null;
+					nextAnalysis[`${contentType}_status`] = null;
+				}
+				return {
+					...prev,
+					ai_analysis: nextAnalysis,
+				};
+			});
+			if (contentType === "infographic") {
+				setShowInfographicLightbox(false);
+			}
+			showToast(t("AI解读已删除"));
+		} catch (error) {
+			console.error("Failed to delete AI content:", error);
+			showToast(t("删除AI解读失败"), "error");
 		}
 	};
 
@@ -5419,6 +5493,25 @@ export default function ArticleDetailPage() {
 				onCancel={() => {
 					setShowDeleteCommentModal(false);
 					setPendingDeleteCommentId(null);
+				}}
+			/>
+
+			<ConfirmModal
+				isOpen={showDeleteAiContentModal}
+				title={t("删除 AI 解读")}
+				message={t("确定要删除当前 AI 解读内容吗？此操作不可撤销。")}
+				confirmText={t("删除")}
+				cancelText={t("取消")}
+				onConfirm={async () => {
+					if (pendingDeleteAiContentType) {
+						await handleDeleteAIContent(pendingDeleteAiContentType);
+					}
+					setShowDeleteAiContentModal(false);
+					setPendingDeleteAiContentType(null);
+				}}
+				onCancel={() => {
+					setShowDeleteAiContentModal(false);
+					setPendingDeleteAiContentType(null);
 				}}
 			/>
 

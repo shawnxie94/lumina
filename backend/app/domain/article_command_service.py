@@ -2,8 +2,8 @@ import json
 import logging
 
 from ai_client import is_english_content
-from media_service import maybe_ingest_top_image
-from models import AIAnalysis, Article, Category, generate_uuid, now_str
+from media_service import delete_media_asset_by_url, maybe_ingest_top_image
+from models import AIAnalysis, AITask, Article, Category, generate_uuid, now_str
 from slug_utils import generate_article_slug
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -12,6 +12,17 @@ from app.domain.ai_task_service import AITaskService
 from app.domain.article_top_image_service import resolve_top_image
 
 logger = logging.getLogger("article_service")
+
+DELETABLE_AI_CONTENT_FIELDS: dict[str, tuple[str, ...]] = {
+    "key_points": ("key_points", "key_points_status"),
+    "outline": ("outline", "outline_status"),
+    "quotes": ("quotes", "quotes_status"),
+    "infographic": (
+        "infographic_html",
+        "infographic_image_url",
+        "infographic_status",
+    ),
+}
 
 
 class ArticleCommandService:
@@ -244,3 +255,35 @@ class ArticleCommandService:
                 "manual_repair_error": normalized_error,
             },
         )
+
+    def delete_ai_content(self, db: Session, article_id: str, content_type: str) -> None:
+        article = db.query(Article).filter(Article.id == article_id).first()
+        if not article:
+            raise ValueError("文章不存在")
+        if content_type not in DELETABLE_AI_CONTENT_FIELDS:
+            raise ValueError("不支持删除该类型的 AI 解读")
+        if not article.ai_analysis:
+            raise ValueError("AI解读不存在")
+        active_task = (
+            db.query(AITask.id)
+            .filter(
+                AITask.article_id == article_id,
+                AITask.task_type == "process_ai_content",
+                AITask.content_type == content_type,
+                AITask.status.in_(["pending", "processing"]),
+            )
+            .first()
+        )
+        if active_task:
+            raise ValueError("当前类型的 AI 解读正在生成中，请稍后再试")
+
+        analysis = article.ai_analysis
+        if content_type == "infographic" and analysis.infographic_image_url:
+            delete_media_asset_by_url(db, analysis.infographic_image_url)
+
+        for field_name in DELETABLE_AI_CONTENT_FIELDS[content_type]:
+            setattr(analysis, field_name, None)
+
+        analysis.error_message = None
+        analysis.updated_at = now_str()
+        db.commit()

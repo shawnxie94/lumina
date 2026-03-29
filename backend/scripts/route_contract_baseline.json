@@ -114,6 +114,12 @@
     ]
   },
   {
+    "path": "/api/articles/{article_slug}/ai-content/{content_type}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
     "path": "/api/articles/{article_slug}/comments",
     "methods": [
       "GET"
@@ -138,9 +144,21 @@
     ]
   },
   {
+    "path": "/api/articles/{article_slug}/infographic-image",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/articles/{article_slug}/notes",
     "methods": [
       "PUT"
+    ]
+  },
+  {
+    "path": "/api/articles/{article_slug}/repair-infographic",
+    "methods": [
+      "POST"
     ]
   },
   {

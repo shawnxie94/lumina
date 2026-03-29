@@ -40,6 +40,8 @@ from app.core.dependencies import (
 )
 from app.core.public_cache import (
     apply_public_cache_headers,
+    CACHE_KEY_AUTHORS_PUBLIC,
+    CACHE_KEY_SOURCES_PUBLIC,
     get_public_cached,
     invalidate_public_article_derived_cache,
 )
@@ -253,15 +255,22 @@ async def search_articles(
     if not query or len(query) < 1:
         return []
 
-    articles = (
-        db.query(Article.id, Article.title, Article.slug)
-        .filter(Article.title.contains(query))
-        .order_by(Article.created_at.desc())
-        .limit(limit)
-        .all()
+    articles = article_query_service.search_articles_by_title(
+        db,
+        query_text=query,
+        limit=limit,
     )
 
-    return [{"id": a.id, "title": a.title, "slug": a.slug} for a in articles]
+    return [
+        {
+            "id": a.id,
+            "title": a.title,
+            "title_trans": a.title_trans,
+            "display_title": (a.title_trans or "").strip() or (a.title or ""),
+            "slug": a.slug,
+        }
+        for a in articles
+    ]
 
 
 @router.get("/api/articles/{article_slug}")
@@ -824,6 +833,32 @@ async def generate_ai_content(
             prompt_config_id=prompt_config_id,
         )
         return {"id": article.id, "content_type": content_type, "status": "processing"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.delete("/api/articles/{article_slug}/ai-content/{content_type}")
+async def delete_ai_content(
+    article_slug: str,
+    content_type: str,
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
+    valid_types = ["key_points", "outline", "quotes", "infographic"]
+    if content_type not in valid_types:
+        raise HTTPException(
+            status_code=400, detail=f"无效的内容类型，支持: {', '.join(valid_types)}"
+        )
+
+    try:
+        article = article_query_service.get_article_by_slug(db, article_slug)
+        if not article:
+            raise HTTPException(status_code=404, detail="文章不存在")
+        article_command_service.delete_ai_content(db, article.id, content_type)
+        invalidate_public_article_derived_cache()
+        return {"id": article.id, "content_type": content_type, "status": "deleted"}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:

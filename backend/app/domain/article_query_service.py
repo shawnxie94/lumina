@@ -4,7 +4,7 @@ import re
 from urllib.parse import urlencode
 from xml.sax.saxutils import escape
 
-from sqlalchemy import func, literal
+from sqlalchemy import func, literal, or_
 from sqlalchemy.orm import Session, joinedload, load_only
 
 from models import AIAnalysis, Article, Category, Tag
@@ -195,8 +195,7 @@ def _build_filtered_query(
         normalized_tag_ids = [tag_id.strip() for tag_id in tag_ids if tag_id and tag_id.strip()]
         if normalized_tag_ids:
             query = query.filter(Article.tags.any(Tag.id.in_(normalized_tag_ids)))
-    if search:
-        query = query.filter(Article.title.contains(search))
+    query = _apply_title_search_filter(query, search)
     if source_domain:
         query = query.filter(Article.source_domain == source_domain)
     if author:
@@ -222,6 +221,18 @@ def _build_filtered_query(
     if created_end_bound:
         query = query.filter(Article.created_at < created_end_bound)
     return query
+
+
+def _apply_title_search_filter(query, search: str | None):
+    normalized_search = (search or "").strip()
+    if not normalized_search:
+        return query
+    return query.filter(
+        or_(
+            Article.title.contains(normalized_search),
+            func.coalesce(Article.title_trans, "").contains(normalized_search),
+        )
+    )
 
 
 def _render_export_markdown(articles: list[Article], public_base_url: str | None = None) -> str:
@@ -251,7 +262,8 @@ def _render_export_markdown(articles: list[Article], public_base_url: str | None
             article_url = (
                 f"{base_url}/article/{article.slug}" if base_url else f"/article/{article.slug}"
             )
-            lines.append(f"### [{article.title}]({article_url})")
+            preferred_title = _get_preferred_article_title(article)
+            lines.append(f"### [{preferred_title}]({article_url})")
             lines.append("")
             top_image = _to_absolute_url(article.top_image, base_url)
             if top_image:
@@ -308,6 +320,13 @@ def _build_public_feed_url(
 
 class ArticleQueryService:
     RSS_ITEM_LIMIT = 50
+
+    def search_articles_by_title(self, db: Session, query_text: str, limit: int = 20):
+        query = _apply_title_search_filter(
+            db.query(Article.id, Article.title, Article.title_trans, Article.slug),
+            query_text,
+        )
+        return query.order_by(Article.created_at.desc()).limit(limit).all()
 
     def get_article_neighbors(
         self,

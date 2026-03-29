@@ -5,6 +5,8 @@ import { useI18n } from '@/lib/i18n';
 interface ArticleOption {
   id: string;
   title: string;
+  title_trans?: string | null;
+  display_title: string;
   slug: string;
 }
 
@@ -86,7 +88,7 @@ export function ArticleSearchSelect({
 
   // 选择文章
   const handleSelect = (article: ArticleOption) => {
-    setInputValue(article.title);
+    setInputValue(article.display_title || article.title);
     setSelectedArticle(article);
     setIsOpen(false);
     onChange(article.title, article);
@@ -155,7 +157,10 @@ export function ArticleSearchSelect({
                 onClick={() => handleSelect(article)}
                 className="w-full px-3 py-2 text-left text-sm text-text-1 hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35 focus-visible:ring-inset"
               >
-                <div className="truncate">{article.title}</div>
+                <div className="truncate">{article.display_title || article.title}</div>
+                {article.display_title && article.display_title !== article.title && (
+                  <div className="truncate text-xs text-text-3 mt-0.5">{article.title}</div>
+                )}
               </button>
             ))
           ) : inputValue ? (

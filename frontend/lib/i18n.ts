@@ -123,6 +123,7 @@ const translations: Record<Language, Record<string | number, string>> = {
 		暂无评论: "No comments",
 		原评论: "Original comment",
 		复制内容: "Copy content",
+		删除内容: "Delete content",
 		未分类: "Uncategorized",
 		标签: "Tags",
 		选择标签: "Select tags",
@@ -148,7 +149,10 @@ const translations: Record<Language, Record<string | number, string>> = {
 		已选内容: "Selected content",
 		输入划线批注内容: "Enter highlight annotation",
 		删除评论: "Delete comment",
+		"删除 AI 解读": "Delete AI insight",
 		评论详情: "Comment details",
+		"确定要删除当前 AI 解读内容吗？此操作不可撤销。":
+			"Are you sure you want to delete the current AI insight content? This action cannot be undone.",
 		"确定要删除这条评论吗？此操作不可撤销。": "Are you sure you want to delete this comment? This action cannot be undone.",
 		"确定要删除这条划线批注吗？此操作不可撤销。": "Are you sure you want to delete this highlight note? This action cannot be undone.",
 		"确定要删除文章开头批注吗？此操作不可撤销。": "Are you sure you want to delete the article note? This action cannot be undone.",
@@ -700,6 +704,8 @@ const translations: Record<Language, Record<string | number, string>> = {
 		信息图修复失败: "Infographic repair failed",
 		已复制为图片: "Copied as image",
 		复制图片失败: "Failed to copy image",
+		AI解读已删除: "AI insight deleted",
+		删除AI解读失败: "Failed to delete AI insight",
 		信息图未生成: "Infographic is not available yet",
 		"当前浏览器不支持直接复制图片，已为你下载 PNG":
 			"Your browser cannot copy images directly, so a PNG was downloaded instead",
