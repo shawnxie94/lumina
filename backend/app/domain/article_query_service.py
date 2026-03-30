@@ -339,6 +339,7 @@ class ArticleQueryService:
                 Article.id,
                 Article.slug,
                 Article.title,
+                Article.title_trans,
                 Article.created_at,
                 Article.is_visible,
             )

@@ -79,9 +79,10 @@ export function ContinueReadingBanner() {
         <div className="py-2">
           {recentArticles.map((article) => {
             const isCurrentArticle = isArticlePage && router.query.id === article.slug;
-            const truncatedTitle = article.title.length > 20
-              ? `${article.title.slice(0, 20)}...`
-              : article.title;
+            const displayTitle = article.title_trans?.trim() || article.title;
+            const truncatedTitle = displayTitle.length > 20
+              ? `${displayTitle.slice(0, 20)}...`
+              : displayTitle;
 
             return (
               <div
@@ -97,7 +98,7 @@ export function ContinueReadingBanner() {
                       ? 'text-primary-ink'
                       : 'text-text-2 hover:text-text-1'
                   }`}
-                  title={article.title}
+                  title={displayTitle}
                 >
                   {truncatedTitle}
                 </Link>

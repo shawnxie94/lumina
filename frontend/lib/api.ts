@@ -411,14 +411,25 @@ export interface ArticleDetail extends Article {
 		error_message?: string | null;
 		updated_at?: string | null;
 	} | null;
-	prev_article?: { id: string; slug: string; title: string } | null;
-	next_article?: { id: string; slug: string; title: string } | null;
+	prev_article?: {
+		id: string;
+		slug: string;
+		title: string;
+		title_trans?: string | null;
+	} | null;
+	next_article?: {
+		id: string;
+		slug: string;
+		title: string;
+		title_trans?: string | null;
+	} | null;
 }
 
 export interface SimilarArticleItem {
 	id: string;
 	slug: string;
 	title: string;
+	title_trans?: string | null;
 	published_at: string | null;
 	created_at: string;
 	category_id?: string | null;

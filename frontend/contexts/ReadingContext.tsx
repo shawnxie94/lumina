@@ -4,6 +4,7 @@ interface ReadingArticle {
   id: string;
   slug: string;
   title: string;
+  title_trans?: string | null;
 }
 
 interface ReadingContextType {

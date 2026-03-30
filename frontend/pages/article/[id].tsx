@@ -992,7 +992,13 @@ interface ArticleNeighbor {
 	id: string;
 	slug: string;
 	title: string;
-}
+	title_trans?: string | null;
+};
+
+const getPreferredNeighborTitle = (article: ArticleNeighbor): string => {
+	const translatedTitle = article.title_trans?.trim();
+	return translatedTitle || article.title;
+};
 
 interface ArticleAnnotation {
 	id: string;
@@ -1907,9 +1913,14 @@ export default function ArticleDetailPage() {
 
 	useEffect(() => {
 		if (article?.id && article?.title && article?.slug) {
-			addArticle({ id: article.id, slug: article.slug, title: article.title });
+			addArticle({
+				id: article.id,
+				slug: article.slug,
+				title: article.title,
+				title_trans: article.title_trans,
+			});
 		}
-	}, [article?.id, article?.slug, article?.title, addArticle]);
+	}, [article?.id, article?.slug, article?.title, article?.title_trans, addArticle]);
 
 	useEffect(() => {
 		if (loading) return;
@@ -2764,34 +2775,37 @@ export default function ArticleDetailPage() {
 								{t("暂无推荐文章")}
 							</div>
 						) : (
-							<div className="space-y-2 text-sm text-text-2">
-								{similarArticles.map((item) => (
-									<div key={item.id} className="flex items-start gap-2">
-										<span className="text-text-3">·</span>
-										<div className="min-w-0 flex items-center gap-2">
-											{item.category_name && (
-												<span
-													className="shrink-0 rounded px-2 py-0.5 text-xs"
-													style={{
-														backgroundColor: item.category_color
-															? `${item.category_color}20`
-															: "var(--bg-muted)",
-														color: item.category_color || "var(--text-2)",
-													}}
-												>
-													{item.category_name}
-												</span>
-											)}
-											<Link
-												href={buildArticleHref(item.slug)}
-												className="hover:text-text-1 transition truncate"
-												title={item.title}
-											>
-												{item.title}
-											</Link>
-										</div>
-									</div>
-								))}
+								<div className="space-y-2 text-sm text-text-2">
+									{similarArticles.map((item) => {
+										const displayTitle = item.title_trans?.trim() || item.title;
+										return (
+											<div key={item.id} className="flex items-start gap-2">
+												<span className="text-text-3">·</span>
+												<div className="min-w-0 flex items-center gap-2">
+													{item.category_name && (
+														<span
+															className="shrink-0 rounded px-2 py-0.5 text-xs"
+															style={{
+																backgroundColor: item.category_color
+																	? `${item.category_color}20`
+																	: "var(--bg-muted)",
+																color: item.category_color || "var(--text-2)",
+															}}
+														>
+															{item.category_name}
+														</span>
+													)}
+													<Link
+														href={buildArticleHref(item.slug)}
+														className="hover:text-text-1 transition truncate"
+														title={displayTitle}
+													>
+														{displayTitle}
+													</Link>
+												</div>
+											</div>
+										);
+								})}
 							</div>
 						)}
 					</div>
@@ -4177,14 +4191,18 @@ export default function ArticleDetailPage() {
 										? "bg-muted text-text-2 hover:bg-surface hover:text-text-1"
 										: "bg-muted text-text-3 cursor-not-allowed"
 								}`}
-								title={prevArticle ? prevArticle.title : t("无上一篇")}
+								title={
+									prevArticle
+										? getPreferredNeighborTitle(prevArticle)
+										: t("无上一篇")
+								}
 							>
 								<span className="block">← {t("上一篇")}</span>
 								{prevArticle && (
 									<span className="block text-xs text-text-3">
-										{prevArticle.title.length > 20
-											? `${prevArticle.title.slice(0, 20)}...`
-											: prevArticle.title}
+										{getPreferredNeighborTitle(prevArticle).length > 20
+											? `${getPreferredNeighborTitle(prevArticle).slice(0, 20)}...`
+											: getPreferredNeighborTitle(prevArticle)}
 									</span>
 								)}
 							</button>
@@ -4199,14 +4217,18 @@ export default function ArticleDetailPage() {
 										? "bg-muted text-text-2 hover:bg-surface hover:text-text-1"
 										: "bg-muted text-text-3 cursor-not-allowed"
 								}`}
-								title={nextArticle ? nextArticle.title : t("无下一篇")}
+								title={
+									nextArticle
+										? getPreferredNeighborTitle(nextArticle)
+										: t("无下一篇")
+								}
 							>
 								<span className="block">{t("下一篇")} →</span>
 								{nextArticle && (
 									<span className="block text-xs text-text-3">
-										{nextArticle.title.length > 20
-											? `${nextArticle.title.slice(0, 20)}...`
-											: nextArticle.title}
+										{getPreferredNeighborTitle(nextArticle).length > 20
+											? `${getPreferredNeighborTitle(nextArticle).slice(0, 20)}...`
+											: getPreferredNeighborTitle(nextArticle)}
 									</span>
 								)}
 							</button>

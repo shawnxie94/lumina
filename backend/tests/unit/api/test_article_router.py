@@ -10,7 +10,7 @@ from fastapi import UploadFile
 
 from app.api.routers import article_router
 from app.core.public_cache import CACHE_KEY_AUTHORS_PUBLIC, CACHE_KEY_SOURCES_PUBLIC
-from models import Article, now_str
+from models import Article, ArticleEmbedding, now_str
 
 
 @pytest.fixture
@@ -29,6 +29,111 @@ async def test_get_similar_articles_returns_disabled_when_remote_config_unavaila
     )
 
     assert response == {"status": "disabled", "items": []}
+
+
+@pytest.mark.anyio
+async def test_get_similar_articles_includes_translated_title(db_session, monkeypatch):
+    current_article = Article(
+        title="Current Article",
+        slug="current-article",
+        content_md="current content",
+        content_trans="",
+        top_image="",
+        author="Tester",
+        published_at="2026-03-27T10:00:00",
+        source_domain="example.com",
+        status="completed",
+        is_visible=True,
+        created_at="2026-03-27T10:00:00",
+        updated_at="2026-03-27T10:00:00",
+    )
+    similar_article = Article(
+        title="Similar Original Title",
+        title_trans="相似文章译文标题",
+        slug="similar-article",
+        content_md="similar content",
+        content_trans="",
+        top_image="",
+        author="Tester",
+        published_at="2026-03-26T10:00:00",
+        source_domain="example.com",
+        status="completed",
+        is_visible=True,
+        created_at="2026-03-26T10:00:00",
+        updated_at="2026-03-26T10:00:00",
+    )
+    db_session.add_all([current_article, similar_article])
+    db_session.commit()
+
+    db_session.add_all(
+        [
+            ArticleEmbedding(
+                article_id=current_article.id,
+                model="test-model",
+                embedding="[1, 0]",
+                source_hash="expected-hash",
+                created_at=now_str(),
+                updated_at=now_str(),
+            ),
+            ArticleEmbedding(
+                article_id=similar_article.id,
+                model="test-model",
+                embedding="[1, 0]",
+                source_hash="candidate-hash",
+                created_at=now_str(),
+                updated_at=now_str(),
+            ),
+        ]
+    )
+    db_session.commit()
+
+    monkeypatch.setattr(
+        article_router,
+        "get_admin_settings",
+        lambda db: SimpleNamespace(recommendations_enabled=True),
+    )
+    monkeypatch.setattr(
+        article_router.article_embedding_service,
+        "has_available_remote_config",
+        lambda db: True,
+    )
+    monkeypatch.setattr(
+        article_router.article_embedding_service,
+        "has_summary_source",
+        lambda article: True,
+    )
+    monkeypatch.setattr(
+        article_router.article_embedding_service,
+        "get_embedding_source_hash",
+        lambda article: "expected-hash",
+    )
+    monkeypatch.setattr(
+        article_router.article_embedding_service,
+        "cosine_similarity",
+        lambda left, right: 0.95,
+    )
+
+    response = await article_router.get_similar_articles(
+        article_slug="current-article",
+        limit=5,
+        db=db_session,
+        is_admin=True,
+    )
+
+    assert response["status"] == "ready"
+    assert response["items"] == [
+        {
+            "id": similar_article.id,
+            "slug": "similar-article",
+            "title": "Similar Original Title",
+            "title_trans": "相似文章译文标题",
+            "published_at": "2026-03-26T10:00:00",
+            "created_at": "2026-03-26T10:00:00",
+            "category_id": None,
+            "category_name": None,
+            "category_color": None,
+        }
+    ]
 
 
 @pytest.mark.anyio
@@ -171,6 +276,78 @@ async def test_search_articles_matches_translated_title(db_session):
     assert response[0]["title"] == "Original Search API Title"
     assert response[0]["title_trans"] == "接口译文标题"
     assert response[0]["display_title"] == "接口译文标题"
+
+
+@pytest.mark.anyio
+async def test_get_article_includes_translated_titles_for_neighbors(db_session):
+    previous_article = Article(
+        title="Previous Original Title",
+        title_trans="上一篇译文标题",
+        slug="previous-article",
+        content_md="previous content",
+        content_trans="",
+        top_image="",
+        author="Tester",
+        published_at="2026-03-28T10:00:00",
+        source_domain="example.com",
+        status="completed",
+        is_visible=True,
+        created_at="2026-03-28T10:00:00",
+        updated_at="2026-03-28T10:00:00",
+    )
+    current_article = Article(
+        title="Current Original Title",
+        title_trans="当前译文标题",
+        slug="current-article",
+        content_md="current content",
+        content_trans="",
+        top_image="",
+        author="Tester",
+        published_at="2026-03-27T10:00:00",
+        source_domain="example.com",
+        status="completed",
+        is_visible=True,
+        created_at="2026-03-27T10:00:00",
+        updated_at="2026-03-27T10:00:00",
+    )
+    next_article = Article(
+        title="Next Original Title",
+        title_trans="下一篇译文标题",
+        slug="next-article",
+        content_md="next content",
+        content_trans="",
+        top_image="",
+        author="Tester",
+        published_at="2026-03-26T10:00:00",
+        source_domain="example.com",
+        status="completed",
+        is_visible=True,
+        created_at="2026-03-26T10:00:00",
+        updated_at="2026-03-26T10:00:00",
+    )
+    db_session.add_all([previous_article, current_article, next_article])
+    db_session.commit()
+
+    response = await article_router.get_article(
+        article_slug="current-article",
+        response=Response(),
+        db=db_session,
+        is_admin=True,
+    )
+
+    assert response["title_trans"] == "当前译文标题"
+    assert response["prev_article"] == {
+        "id": previous_article.id,
+        "slug": "previous-article",
+        "title": "Previous Original Title",
+        "title_trans": "上一篇译文标题",
+    }
+    assert response["next_article"] == {
+        "id": next_article.id,
+        "slug": "next-article",
+        "title": "Next Original Title",
+        "title_trans": "下一篇译文标题",
+    }
 
 
 @pytest.mark.anyio

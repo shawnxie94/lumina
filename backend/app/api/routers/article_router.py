@@ -369,6 +369,7 @@ async def get_article(
             "id": prev_article.id,
             "slug": prev_article.slug,
             "title": prev_article.title,
+            "title_trans": prev_article.title_trans,
         }
         if prev_article
         else None,
@@ -376,6 +377,7 @@ async def get_article(
             "id": next_article.id,
             "slug": next_article.slug,
             "title": next_article.title,
+            "title_trans": next_article.title_trans,
         }
         if next_article
         else None,
@@ -474,6 +476,7 @@ async def get_similar_articles(
                 "id": candidate_article.id,
                 "slug": candidate_article.slug,
                 "title": candidate_article.title,
+                "title_trans": candidate_article.title_trans,
                 "published_at": candidate_article.published_at,
                 "created_at": candidate_article.created_at,
                 "category_id": candidate_article.category_id,

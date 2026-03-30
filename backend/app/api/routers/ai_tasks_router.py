@@ -22,6 +22,16 @@ from task_state import append_task_event, ensure_task_status_transition
 router = APIRouter()
 
 
+def _get_preferred_article_title(article) -> str | None:
+    if not article:
+        return None
+    translated_title = (getattr(article, "title_trans", None) or "").strip()
+    if translated_title:
+        return translated_title
+    title = getattr(article, "title", None)
+    return title or None
+
+
 @router.get("/api/ai-tasks")
 async def list_ai_tasks(
     page: int = 1,
@@ -49,7 +59,14 @@ async def list_ai_tasks(
         query = query.filter(AITask.article_id == article_id)
     if article_title:
         matching_articles = (
-            db.query(Article.id).filter(Article.title.contains(article_title)).all()
+            db.query(Article.id)
+            .filter(
+                or_(
+                    Article.title.contains(article_title),
+                    Article.title_trans.contains(article_title),
+                )
+            )
+            .all()
         )
         article_ids = [article.id for article in matching_articles]
         if article_ids:
@@ -88,12 +105,15 @@ async def list_ai_tasks(
     article_map = {}
     if article_ids:
         articles = (
-            db.query(Article.id, Article.title, Article.slug)
+            db.query(Article.id, Article.title, Article.title_trans, Article.slug)
             .filter(Article.id.in_(article_ids))
             .all()
         )
         article_map = {
-            article.id: {"title": article.title, "slug": article.slug}
+            article.id: {
+                "title": _get_preferred_article_title(article),
+                "slug": article.slug,
+            }
             for article in articles
         }
 
@@ -146,12 +166,12 @@ async def get_ai_task(
     article_title = None
     if task.article_id:
         article = (
-            db.query(Article.id, Article.title)
+            db.query(Article.id, Article.title, Article.title_trans)
             .filter(Article.id == task.article_id)
             .first()
         )
         if article:
-            article_title = article.title
+            article_title = _get_preferred_article_title(article)
 
     return {
         "id": task.id,
@@ -187,7 +207,7 @@ async def get_ai_task_timeline(
     article = None
     if task.article_id:
         article = (
-            db.query(Article.id, Article.title, Article.slug)
+            db.query(Article.id, Article.title, Article.title_trans, Article.slug)
             .filter(Article.id == task.article_id)
             .first()
         )
@@ -275,7 +295,7 @@ async def get_ai_task_timeline(
         "task": {
             "id": task.id,
             "article_id": task.article_id,
-            "article_title": article.title if article else None,
+            "article_title": _get_preferred_article_title(article),
             "article_slug": article.slug if article else None,
             "task_type": task.task_type,
             "content_type": task.content_type,
