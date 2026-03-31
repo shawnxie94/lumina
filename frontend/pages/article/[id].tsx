@@ -149,6 +149,15 @@ const hasPendingArticleJob = (article: ArticleDetail | null): boolean => {
 	return statuses.some((status) => isPendingJobStatus(status));
 };
 
+const hasAiTabContent = (content: string | null | undefined): boolean =>
+	Boolean(content?.trim());
+
+const sortAiTabsByContent = (tabs: AITabConfig[]): AITabConfig[] =>
+	[...tabs].sort(
+		(left, right) =>
+			Number(hasAiTabContent(right.content)) - Number(hasAiTabContent(left.content)),
+	);
+
 interface AIContentSectionProps {
 	title: string;
 	content: string | null | undefined;
@@ -1106,6 +1115,7 @@ export default function ArticleDetailPage() {
 	const [showTranslation, setShowTranslation] = useState(true);
 	const [analysisCollapsed, setAnalysisCollapsed] = useState(false);
 	const [activeAiTab, setActiveAiTab] = useState<AITabKey>("key_points");
+	const hasManuallySelectedAiTabRef = useRef(false);
 
 	const [showConfigModal, setShowConfigModal] = useState(false);
 	const [configModalMode, setConfigModalMode] =
@@ -2337,7 +2347,9 @@ export default function ArticleDetailPage() {
 			onOpen: () => setShowInfographicLightbox(true),
 		}),
 	];
-	const visibleAiTabs = aiTabConfigs.filter((tab) => tab.enabled);
+	const visibleAiTabs = sortAiTabsByContent(
+		aiTabConfigs.filter((tab) => tab.enabled),
+	);
 
 	useEffect(() => {
 		if (
@@ -2639,7 +2651,7 @@ export default function ArticleDetailPage() {
 										<button
 											key={tab.key}
 											type="button"
-											onClick={() => setActiveAiTab(tab.key)}
+											onClick={() => handleSelectAiTab(tab.key)}
 											className={`shrink-0 min-w-[3.9rem] whitespace-nowrap px-2.5 py-1.5 text-base font-semibold text-center rounded-sm transition ${
 												activeAiTab === tab.key
 													? "bg-muted text-text-1"
@@ -2879,22 +2891,29 @@ export default function ArticleDetailPage() {
 	}
 
 	useEffect(() => {
-		const availableTabs: AITabKey[] = [];
-		if (showKeyPointsSection) availableTabs.push("key_points");
-		if (showOutlineSection) availableTabs.push("outline");
-		if (showQuotesSection) availableTabs.push("quotes");
-		if (showInfographicSection) availableTabs.push("infographic");
-		if (availableTabs.length === 0) return;
-		if (!availableTabs.includes(activeAiTab)) {
-			setActiveAiTab(availableTabs[0]);
+		hasManuallySelectedAiTabRef.current = false;
+	}, [article?.slug]);
+
+	useEffect(() => {
+		if (visibleAiTabs.length === 0) return;
+		const preferredTab = visibleAiTabs[0]?.key;
+		if (!preferredTab) return;
+		const hasActiveTab = visibleAiTabs.some((tab) => tab.key === activeAiTab);
+
+		if (!hasActiveTab) {
+			setActiveAiTab(preferredTab);
+			return;
 		}
-	}, [
-		activeAiTab,
-		showKeyPointsSection,
-		showOutlineSection,
-		showQuotesSection,
-		showInfographicSection,
-	]);
+
+		if (!hasManuallySelectedAiTabRef.current && activeAiTab !== preferredTab) {
+			setActiveAiTab(preferredTab);
+		}
+	}, [activeAiTab, visibleAiTabs]);
+
+	const handleSelectAiTab = useCallback((tabKey: AITabKey) => {
+		hasManuallySelectedAiTabRef.current = true;
+		setActiveAiTab(tabKey);
+	}, []);
 
 	const fetchConfigs = async (promptType: string) => {
 		try {
