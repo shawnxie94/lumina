@@ -393,16 +393,17 @@ async def get_article(
 async def record_article_view(
     article_slug: str,
     db: Session = Depends(get_db),
+    is_admin: bool = Depends(check_is_admin_or_internal),
 ):
-    updated = (
-        db.query(Article)
-        .filter(Article.slug == article_slug, Article.is_visible == True)
-        .update(
-            {
-                Article.view_count: func.coalesce(Article.view_count, 0) + 1,
-            },
-            synchronize_session=False,
-        )
+    query = db.query(Article).filter(Article.slug == article_slug)
+    if not is_admin:
+        query = query.filter(Article.is_visible == True)
+
+    updated = query.update(
+        {
+            Article.view_count: func.coalesce(Article.view_count, 0) + 1,
+        },
+        synchronize_session=False,
     )
     if updated == 0:
         raise HTTPException(status_code=404, detail="文章不存在")

@@ -521,10 +521,46 @@ async def test_record_article_view_rejects_hidden_article(db_session):
         await article_router.record_article_view(
             article_slug="hidden-article-view",
             db=db_session,
+            is_admin=False,
         )
 
     assert exc_info.value.status_code == 404
     assert exc_info.value.detail == "文章不存在"
+
+
+@pytest.mark.anyio
+async def test_record_article_view_allows_hidden_article_for_admin(db_session):
+    article = Article(
+        title="Hidden Admin Article",
+        slug="hidden-admin-article-view",
+        content_md="content",
+        content_trans="",
+        top_image="",
+        author="Tester",
+        published_at="2026-03-27T10:00:00",
+        source_domain="example.com",
+        status="completed",
+        is_visible=False,
+        view_count=4,
+        created_at="2026-03-27T10:00:00",
+        updated_at="2026-03-27T10:00:00",
+    )
+    db_session.add(article)
+    db_session.commit()
+
+    response = await article_router.record_article_view(
+        article_slug="hidden-admin-article-view",
+        db=db_session,
+        is_admin=True,
+    )
+
+    db_session.refresh(article)
+    assert response == {
+        "article_slug": "hidden-admin-article-view",
+        "view_count": 5,
+        "counted": True,
+    }
+    assert article.view_count == 5
 
 
 @pytest.mark.anyio
