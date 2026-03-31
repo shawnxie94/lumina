@@ -4,7 +4,7 @@ import uuid
 from xml.sax.saxutils import escape
 
 from app.domain.article_query_service import ArticleQueryService
-from models import AIAnalysis, Article, Category, Tag, now_str
+from models import AIAnalysis, Article, ArticleComment, Category, Tag, now_str
 
 
 def make_article(
@@ -19,6 +19,7 @@ def make_article(
     source_domain: str | None = None,
     author: str | None = None,
     is_visible: bool = True,
+    view_count: int = 0,
 ) -> Article:
     article = Article(
         id=str(uuid.uuid4()),
@@ -34,6 +35,7 @@ def make_article(
         updated_at=now_str(),
         status="completed",
         is_visible=is_visible,
+        view_count=view_count,
     )
     if tags:
         article.tags = list(tags)
@@ -93,6 +95,29 @@ def make_analysis(
     return analysis
 
 
+def make_comment(
+    db_session,
+    article: Article,
+    *,
+    content: str,
+    is_hidden: bool = False,
+) -> ArticleComment:
+    comment = ArticleComment(
+        id=str(uuid.uuid4()),
+        article_id=article.id,
+        user_id=f"user-{uuid.uuid4().hex[:8]}",
+        user_name="Tester",
+        content=content,
+        is_hidden=is_hidden,
+        created_at=now_str(),
+        updated_at=now_str(),
+    )
+    db_session.add(comment)
+    db_session.commit()
+    db_session.refresh(comment)
+    return comment
+
+
 def test_get_articles_sort_by_published_desc_handles_mixed_date_formats(db_session):
     service = ArticleQueryService()
     make_article(
@@ -150,6 +175,31 @@ def test_get_articles_sort_by_published_desc_falls_back_to_created_at(db_session
         "invalid-published-date",
         "valid-published-date",
     ]
+
+
+def test_get_articles_include_view_count_and_public_comment_count(db_session):
+    service = ArticleQueryService()
+    article = make_article(
+        db_session,
+        title="stats-article",
+        published_at="2026-03-20",
+        created_at="2026-03-20T08:00:00+00:00",
+        is_visible=True,
+        view_count=12,
+    )
+    make_comment(db_session, article, content="visible-comment")
+    make_comment(db_session, article, content="hidden-comment", is_hidden=True)
+
+    articles, total = service.get_articles(
+        db=db_session,
+        page=1,
+        size=10,
+        is_admin=True,
+    )
+
+    assert total == 1
+    assert articles[0].view_count == 12
+    assert articles[0].comment_count == 1
 
 
 def test_export_articles_by_filters_matches_list_conditions(db_session):

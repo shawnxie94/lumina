@@ -88,6 +88,8 @@ import { signIn, signOut, useSession } from "next-auth/react";
 // 轮询间隔（毫秒）
 const POLLING_INTERVAL = 3000;
 const SIMILAR_ARTICLE_LIMIT = 5;
+const VIEW_COUNT_STORAGE_PREFIX = "article-view::";
+const VIEW_COUNT_DEDUPE_WINDOW_MS = 24 * 60 * 60 * 1000;
 const PENDING_JOB_STATUSES = ["pending", "processing"] as const;
 type PendingJobStatus = (typeof PENDING_JOB_STATUSES)[number];
 type AIContentType =
@@ -316,6 +318,9 @@ function parseMindMapOutline(content: string): MindMapNode | null {
 		return null;
 	}
 }
+
+const getArticleViewStorageKey = (slug: string): string =>
+	`${VIEW_COUNT_STORAGE_PREFIX}${slug}`;
 
 function extractReplyPrefix(content: string): { prefix: string; body: string } {
 	if (!content) return { prefix: "", body: "" };
@@ -1243,6 +1248,7 @@ export default function ArticleDetailPage() {
 	const [pdfHeightScale, setPdfHeightScale] = useState(1);
 	const [isMobile, setIsMobile] = useState(false);
 	const [showAiPanel, setShowAiPanel] = useState(false);
+	const trackedViewSlugRef = useRef<string | null>(null);
 	const [lightboxImages, setLightboxImages] = useState<string[]>([]);
 	const [lightboxIndex, setLightboxIndex] = useState(0);
 	const [showInfographicLightbox, setShowInfographicLightbox] = useState(false);
@@ -1399,6 +1405,16 @@ export default function ArticleDetailPage() {
 		});
 		return grouped;
 	}, [comments]);
+	const publicVisibleCommentCount = useMemo(
+		() => comments.filter((comment) => !comment.is_hidden).length,
+		[comments],
+	);
+	const displayCommentCount =
+		commentSettingsLoaded && commentsEnabled && !commentsLoading
+			? publicVisibleCommentCount
+			: (article?.comment_count ?? 0);
+	const showTitleViewStat = (article?.view_count ?? 0) > 0;
+	const showTitleCommentStat = displayCommentCount > 0;
 
 	const totalTopComments = sortedTopComments.length;
 	const totalCommentPages = Math.max(
@@ -1776,6 +1792,34 @@ export default function ArticleDetailPage() {
 			}
 		};
 	}, [article?.slug, similarStatus]);
+
+	useEffect(() => {
+		if (!article?.slug) return;
+		if (trackedViewSlugRef.current === article.slug) return;
+		trackedViewSlugRef.current = article.slug;
+		if (typeof window === "undefined") return;
+
+		const storageKey = getArticleViewStorageKey(article.slug);
+		const lastTrackedAt = Number(window.localStorage.getItem(storageKey) || "0");
+		const now = Date.now();
+		if (Number.isFinite(lastTrackedAt) && now - lastTrackedAt < VIEW_COUNT_DEDUPE_WINDOW_MS) {
+			return;
+		}
+
+		void articleApi
+			.recordArticleView(article.slug)
+			.then((result) => {
+				window.localStorage.setItem(storageKey, String(now));
+				setArticle((prev) =>
+					prev && prev.slug === article.slug
+						? { ...prev, view_count: result.view_count }
+						: prev,
+				);
+			})
+			.catch((error) => {
+				console.error("Failed to record article view:", error);
+			});
+	}, [article?.slug]);
 
 	useEffect(() => {
 		if (id && commentsEnabled && commentSettingsLoaded) {
@@ -3856,91 +3900,118 @@ export default function ArticleDetailPage() {
 				className={`bg-surface ${immersiveMode ? "" : "border-b border-border"}`}
 			>
 				<div className="max-w-7xl mx-auto px-4 py-5 sm:py-6">
-					<h1 className="text-2xl font-bold text-text-1 text-center mb-3">
-						{displayTitle}
-					</h1>
-					<ArticleMetaRow
-						className={`justify-center gap-4 ${immersiveMode ? "" : "pb-3"}`}
-						publishedAt={article.published_at}
-						createdAt={article.created_at}
-						items={[
-							article.category ? (
-								<div>
-									<span className="font-medium text-text-2">{t("分类")}：</span>
-									<Link
-										href={`/list?category_id=${article.category.id}`}
-										className="inline-flex items-center gap-1"
-									>
-										<span className="text-primary hover:underline">
-											{article.category.name}
+					<div className="mb-3 flex justify-center">
+						<div className="inline-flex max-w-full flex-wrap items-center justify-center gap-x-2 gap-y-1">
+							<h1 className="text-2xl font-bold text-text-1 text-center">
+								{displayTitle}
+							</h1>
+							{showTitleViewStat || showTitleCommentStat ? (
+								<div className="inline-flex items-center gap-1.5 text-xs font-semibold leading-none text-text-3 sm:text-sm">
+									{showTitleViewStat ? (
+										<span className="inline-flex items-center gap-0.5">
+											<IconEye className="h-4 w-4 shrink-0" />
+											<span>{article.view_count}</span>
 										</span>
-									</Link>
+									) : null}
+									{showTitleCommentStat ? (
+										<span className="inline-flex items-center gap-0.5">
+											<IconEdit className="h-4 w-4 shrink-0" />
+											<span>{displayCommentCount}</span>
+										</span>
+									) : null}
 								</div>
-							) : null,
-							authorItems.length > 0 ? (
-								<div>
-									<span className="font-medium text-text-2">{t("作者")}：</span>
-									<span className="inline-flex flex-wrap items-center gap-1">
-										{authorItems.map((authorName, index) => (
-											<span key={`${authorName}-${index}`} className="inline-flex items-center gap-1">
-												{index > 0 && <span className="text-text-3">,</span>}
-												<Link
-													href={`/list?author=${encodeURIComponent(authorName)}`}
-													className="text-primary hover:underline"
-												>
-													{authorName}
-												</Link>
+							) : null}
+						</div>
+					</div>
+					{immersiveMode ? (
+						<div className="mx-auto mt-3 w-full max-w-4xl border-t border-border-strong" />
+					) : null}
+					{!immersiveMode && (
+						<>
+							<ArticleMetaRow
+								className="justify-center gap-4 pb-3"
+								publishedAt={article.published_at}
+								createdAt={article.created_at}
+								items={[
+									article.category ? (
+										<div>
+											<span className="font-medium text-text-2">{t("分类")}：</span>
+											<Link
+												href={`/list?category_id=${article.category.id}`}
+												className="inline-flex items-center gap-1"
+											>
+												<span className="text-primary hover:underline">
+													{article.category.name}
+												</span>
+											</Link>
+										</div>
+									) : null,
+									authorItems.length > 0 ? (
+										<div>
+											<span className="font-medium text-text-2">{t("作者")}：</span>
+											<span className="inline-flex flex-wrap items-center gap-1">
+												{authorItems.map((authorName, index) => (
+													<span key={`${authorName}-${index}`} className="inline-flex items-center gap-1">
+														{index > 0 && <span className="text-text-3">,</span>}
+														<Link
+															href={`/list?author=${encodeURIComponent(authorName)}`}
+															className="text-primary hover:underline"
+														>
+															{authorName}
+														</Link>
+													</span>
+												))}
 											</span>
-										))}
-									</span>
-								</div>
-							) : null,
-							article.source_url ? (
-								<div>
-									<span className="font-medium text-text-2">{t("来源")}：</span>
-									<a
-										href={article.source_url}
-										target="_blank"
-										rel="noopener noreferrer"
-										className="text-primary hover:underline"
-									>
-										{t("跳转")}
-									</a>
-								</div>
-							) : null,
-						]}
-					/>
-					<ArticleTagBar
-						tags={article.tags}
-						className="mt-1.5"
-						actions={
-							isAdmin ? (
-								<span className="inline-flex items-center gap-1">
-									{taggingStatusMeta && (
-										<IconButton
-											size="sm"
-											variant="ghost"
-											title={`${t("自动打标状态")}：${taggingStatusMeta.label}`}
-											className={`cursor-help ${taggingStatusMeta.className}`}
-										>
-											{taggingStatusMeta.icon}
-										</IconButton>
-									)}
-									<IconButton
-										size="sm"
-										variant="ghost"
-										title={t("重新自动打标")}
-										onClick={handleRegenerateTags}
-										loading={tagRegenerating}
-										disabled={isTaggingBusy}
-										className="text-text-3 hover:text-primary"
-									>
-										<IconRefresh className="h-3.5 w-3.5" />
-									</IconButton>
-								</span>
-							) : null
-						}
-					/>
+										</div>
+									) : null,
+									article.source_url ? (
+										<div>
+											<span className="font-medium text-text-2">{t("来源")}：</span>
+											<a
+												href={article.source_url}
+												target="_blank"
+												rel="noopener noreferrer"
+												className="text-primary hover:underline"
+											>
+												{t("跳转")}
+											</a>
+										</div>
+									) : null,
+								]}
+							/>
+							<ArticleTagBar
+								tags={article.tags}
+								className="mt-1.5"
+								actions={
+									isAdmin ? (
+										<span className="inline-flex items-center gap-1">
+											{taggingStatusMeta && (
+												<IconButton
+													size="sm"
+													variant="ghost"
+													title={`${t("自动打标状态")}：${taggingStatusMeta.label}`}
+													className={`cursor-help ${taggingStatusMeta.className}`}
+												>
+													{taggingStatusMeta.icon}
+												</IconButton>
+											)}
+											<IconButton
+												size="sm"
+												variant="ghost"
+												title={t("重新自动打标")}
+												onClick={handleRegenerateTags}
+												loading={tagRegenerating}
+												disabled={isTaggingBusy}
+												className="text-text-3 hover:text-primary"
+											>
+												<IconRefresh className="h-3.5 w-3.5" />
+											</IconButton>
+										</span>
+									) : null
+								}
+							/>
+						</>
+					)}
 				</div>
 			</section>
 

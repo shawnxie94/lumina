@@ -36,7 +36,7 @@ import TagSelectField from '@/components/ui/TagSelectField';
 import TextInput from '@/components/ui/TextInput';
 import { useToast } from '@/components/Toast';
 import { BackToTop } from '@/components/BackToTop';
-import { IconEye, IconEyeOff, IconSearch, IconTag, IconTrash, IconPlus } from '@/components/icons';
+import { IconEdit, IconEye, IconEyeOff, IconSearch, IconTag, IconTrash, IconPlus } from '@/components/icons';
 import { useAuth } from '@/contexts/AuthContext';
 import { useBasicSettings } from '@/contexts/BasicSettingsContext';
 import { useI18n } from '@/lib/i18n';
@@ -1678,6 +1678,27 @@ export default function Home() {
                       const displayTitle = article.title_trans?.trim() || article.title;
                       const selected = showAdminDesktop && selectedArticleSlugs.has(article.slug);
                       const cardTopImageUrl = resolveMediaUrl(article.top_image || basicSettings.site_logo_url || '/logo.png');
+                      const showViewStat = (article.view_count ?? 0) > 0;
+                      const showCommentStat = (article.comment_count ?? 0) > 0;
+                      const mediaStatsOverlay = (showViewStat || showCommentStat) ? (
+                        <div
+                          className="absolute inset-x-2 bottom-1.5 flex items-center justify-end gap-2 pointer-events-none text-[11px] font-semibold leading-none text-white"
+                          style={{ textShadow: '0 1px 8px rgba(0, 0, 0, 0.88)' }}
+                        >
+                          {showViewStat ? (
+                            <span className="inline-flex items-center gap-0.5">
+                              <IconEye className="h-4 w-4 shrink-0 drop-shadow-[0_1px_6px_rgba(0,0,0,0.92)]" />
+                              <span>{article.view_count}</span>
+                            </span>
+                          ) : null}
+                          {showCommentStat ? (
+                            <span className="inline-flex items-center gap-0.5">
+                              <IconEdit className="h-4 w-4 shrink-0 drop-shadow-[0_1px_6px_rgba(0,0,0,0.92)]" />
+                              <span>{article.comment_count}</span>
+                            </span>
+                          ) : null}
+                        </div>
+                      ) : null;
                       const mediaBlock = (
                         showAdminDesktop ? (
                           <div className="relative w-full sm:w-40 aspect-video sm:aspect-square overflow-hidden rounded-lg bg-muted">
@@ -1689,6 +1710,7 @@ export default function Home() {
                               decoding="async"
                             />
                             <ArticleLanguageTag article={article} className="absolute left-2 top-2 px-2 py-0.5 text-xs" />
+                            {mediaStatsOverlay}
                           </div>
                         ) : (
                           <Link
@@ -1705,6 +1727,7 @@ export default function Home() {
                               decoding="async"
                             />
                             <ArticleLanguageTag article={article} className="absolute left-2 top-2 px-2 py-0.5 text-xs" />
+                            {mediaStatsOverlay}
                           </Link>
                         )
                       );
@@ -1792,11 +1815,11 @@ export default function Home() {
                                       {article.category.name}
                                     </span>
                                   ) : null,
-                                  article.tags.length > 0 ? (
-                                    <span className="inline-flex flex-wrap items-center gap-2 min-w-0">
-                                      {article.tags.slice(0, 2).map((tag) => (
-                                        <span
-                                          key={tag.id}
+								  article.tags.length > 0 ? (
+									<span className="inline-flex flex-wrap items-center gap-2 min-w-0">
+									  {article.tags.slice(0, 2).map((tag) => (
+										<span
+										  key={tag.id}
                                           className="px-2 py-1 text-xs rounded-sm bg-muted text-text-2"
                                         >
                                           {tag.name}
@@ -1806,12 +1829,12 @@ export default function Home() {
                                         <span className="px-2 py-1 text-xs rounded-sm bg-surface text-text-3 border border-border">
                                           +{article.tags.length - 2}
                                         </span>
-                                      )}
-                                    </span>
-                                  ) : null,
-                                  article.author ? <span>{t('作者')}: {article.author}</span> : null,
-                                ]}
-                              />
+									  )}
+									</span>
+								  ) : null,
+								  article.author ? <span>{t('作者')}: {article.author}</span> : null,
+								]}
+							  />
                               {article.summary && (
                                 <p className="mt-2 text-text-2 line-clamp-3">
                                   {article.summary}

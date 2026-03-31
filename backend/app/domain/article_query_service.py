@@ -7,7 +7,7 @@ from xml.sax.saxutils import escape
 from sqlalchemy import func, literal, or_
 from sqlalchemy.orm import Session, joinedload, load_only
 
-from models import AIAnalysis, Article, Category, Tag
+from models import AIAnalysis, Article, ArticleComment, Category, Tag
 
 
 def _normalize_start_date_bound(value: str | None) -> str | None:
@@ -277,6 +277,32 @@ def _render_export_markdown(articles: list[Article], public_base_url: str | None
     return "\n".join(lines).strip()
 
 
+def _load_public_comment_count_map(
+    db: Session,
+    article_ids: list[str],
+) -> dict[str, int]:
+    normalized_ids = [article_id for article_id in article_ids if article_id]
+    if not normalized_ids:
+        return {}
+    rows = (
+        db.query(
+            ArticleComment.article_id,
+            func.count(ArticleComment.id).label("comment_count"),
+        )
+        .filter(ArticleComment.article_id.in_(normalized_ids))
+        .filter(
+            (ArticleComment.is_hidden == False)
+            | (ArticleComment.is_hidden.is_(None))
+        )
+        .group_by(ArticleComment.article_id)
+        .all()
+    )
+    return {
+        str(row.article_id): int(row.comment_count or 0)
+        for row in rows
+    }
+
+
 def _to_rfc2822_datetime(value: str | None) -> str:
     parsed = _parse_datetime_value(value)
     if parsed is None:
@@ -389,7 +415,10 @@ class ArticleQueryService:
                     AIAnalysis.updated_at,
                 ),
             )
-        return query.filter(Article.slug == slug).first()
+        article = query.filter(Article.slug == slug).first()
+        if article is not None:
+            article.comment_count = self.get_public_comment_count(db, article.id)
+        return article
 
     def get_articles(
         self,
@@ -449,13 +478,31 @@ class ArticleQueryService:
         if sort_by == "created_at_desc":
             query = query.order_by(Article.created_at.desc())
             articles = query.offset((page - 1) * size).limit(size).all()
+            self.attach_public_comment_counts(db, articles)
             return articles, total
 
         articles = query.all()
         articles.sort(key=_article_published_desc_sort_key, reverse=True)
         offset = max(0, (page - 1) * size)
         articles = articles[offset : offset + size]
+        self.attach_public_comment_counts(db, articles)
         return articles, total
+
+    def attach_public_comment_counts(
+        self,
+        db: Session,
+        articles: list[Article],
+    ) -> None:
+        comment_count_map = _load_public_comment_count_map(
+            db,
+            [article.id for article in articles],
+        )
+        for article in articles:
+            article.comment_count = int(comment_count_map.get(article.id, 0))
+
+    def get_public_comment_count(self, db: Session, article_id: str) -> int:
+        comment_count_map = _load_public_comment_count_map(db, [article_id])
+        return int(comment_count_map.get(article_id, 0))
 
     def export_articles(
         self,

@@ -10,7 +10,7 @@ from fastapi import UploadFile
 
 from app.api.routers import article_router
 from app.core.public_cache import CACHE_KEY_AUTHORS_PUBLIC, CACHE_KEY_SOURCES_PUBLIC
-from models import Article, ArticleEmbedding, now_str
+from models import Article, ArticleComment, ArticleEmbedding, now_str
 
 
 @pytest.fixture
@@ -348,6 +348,183 @@ async def test_get_article_includes_translated_titles_for_neighbors(db_session):
         "title": "Next Original Title",
         "title_trans": "下一篇译文标题",
     }
+
+
+@pytest.mark.anyio
+async def test_get_articles_includes_view_count_and_public_comment_count(
+    db_session,
+):
+    article = Article(
+        title="Stats List Article",
+        slug="stats-list-article",
+        content_md="content",
+        content_trans="",
+        top_image="",
+        author="Tester",
+        published_at="2026-03-27T10:00:00",
+        source_domain="example.com",
+        status="completed",
+        is_visible=True,
+        view_count=7,
+        created_at="2026-03-27T10:00:00",
+        updated_at="2026-03-27T10:00:00",
+    )
+    db_session.add(article)
+    db_session.commit()
+    db_session.refresh(article)
+    db_session.add_all(
+        [
+            ArticleComment(
+                article_id=article.id,
+                user_id="user-visible",
+                user_name="Visible",
+                content="visible",
+                is_hidden=False,
+                created_at=now_str(),
+                updated_at=now_str(),
+            ),
+            ArticleComment(
+                article_id=article.id,
+                user_id="user-hidden",
+                user_name="Hidden",
+                content="hidden",
+                is_hidden=True,
+                created_at=now_str(),
+                updated_at=now_str(),
+            ),
+        ]
+    )
+    db_session.commit()
+
+    response = await article_router.get_articles(
+        response=Response(),
+        page=1,
+        size=10,
+        db=db_session,
+        is_admin=True,
+    )
+
+    assert response["data"][0]["view_count"] == 7
+    assert response["data"][0]["comment_count"] == 1
+
+
+@pytest.mark.anyio
+async def test_get_article_includes_view_count_and_public_comment_count(db_session):
+    article = Article(
+        title="Stats Detail Article",
+        slug="stats-detail-article",
+        content_md="content",
+        content_trans="",
+        top_image="",
+        author="Tester",
+        published_at="2026-03-27T10:00:00",
+        source_domain="example.com",
+        status="completed",
+        is_visible=True,
+        view_count=9,
+        created_at="2026-03-27T10:00:00",
+        updated_at="2026-03-27T10:00:00",
+    )
+    db_session.add(article)
+    db_session.commit()
+    db_session.refresh(article)
+    db_session.add_all(
+        [
+            ArticleComment(
+                article_id=article.id,
+                user_id="user-visible",
+                user_name="Visible",
+                content="visible",
+                is_hidden=False,
+                created_at=now_str(),
+                updated_at=now_str(),
+            ),
+            ArticleComment(
+                article_id=article.id,
+                user_id="user-hidden",
+                user_name="Hidden",
+                content="hidden",
+                is_hidden=True,
+                created_at=now_str(),
+                updated_at=now_str(),
+            ),
+        ]
+    )
+    db_session.commit()
+
+    response = await article_router.get_article(
+        article_slug="stats-detail-article",
+        response=Response(),
+        db=db_session,
+        is_admin=True,
+    )
+
+    assert response["view_count"] == 9
+    assert response["comment_count"] == 1
+
+
+@pytest.mark.anyio
+async def test_record_article_view_increments_visible_article_counter(db_session):
+    article = Article(
+        title="View Count Article",
+        slug="view-count-article",
+        content_md="content",
+        content_trans="",
+        top_image="",
+        author="Tester",
+        published_at="2026-03-27T10:00:00",
+        source_domain="example.com",
+        status="completed",
+        is_visible=True,
+        view_count=2,
+        created_at="2026-03-27T10:00:00",
+        updated_at="2026-03-27T10:00:00",
+    )
+    db_session.add(article)
+    db_session.commit()
+
+    response = await article_router.record_article_view(
+        article_slug="view-count-article",
+        db=db_session,
+    )
+
+    db_session.refresh(article)
+    assert response == {
+        "article_slug": "view-count-article",
+        "view_count": 3,
+        "counted": True,
+    }
+    assert article.view_count == 3
+
+
+@pytest.mark.anyio
+async def test_record_article_view_rejects_hidden_article(db_session):
+    article = Article(
+        title="Hidden Article",
+        slug="hidden-article-view",
+        content_md="content",
+        content_trans="",
+        top_image="",
+        author="Tester",
+        published_at="2026-03-27T10:00:00",
+        source_domain="example.com",
+        status="completed",
+        is_visible=False,
+        view_count=4,
+        created_at="2026-03-27T10:00:00",
+        updated_at="2026-03-27T10:00:00",
+    )
+    db_session.add(article)
+    db_session.commit()
+
+    with pytest.raises(HTTPException) as exc_info:
+        await article_router.record_article_view(
+            article_slug="hidden-article-view",
+            db=db_session,
+        )
+
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.detail == "文章不存在"
 
 
 @pytest.mark.anyio

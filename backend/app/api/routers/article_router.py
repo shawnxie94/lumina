@@ -4,7 +4,8 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile
 from fastapi.responses import JSONResponse
-from sqlalchemy.orm import Session
+from sqlalchemy import func
+from sqlalchemy.orm import Session, load_only
 
 from app.schemas import (
     ArticleBatchCategory,
@@ -198,6 +199,8 @@ async def get_articles(
                 "published_at": a.published_at,
                 "created_at": a.created_at,
                 "is_visible": a.is_visible,
+                "view_count": int(a.view_count or 0),
+                "comment_count": int(getattr(a, "comment_count", 0) or 0),
                 "original_language": a.original_language,
                 "note_recommendation_level": normalize_note_recommendation_level(
                     a.note_recommendation_level
@@ -318,6 +321,8 @@ async def get_article(
         "is_visible": article.is_visible,
         "published_at": article.published_at,
         "created_at": article.created_at,
+        "view_count": int(article.view_count or 0),
+        "comment_count": int(getattr(article, "comment_count", 0) or 0),
         "note_content": article.note_content,
         "note_annotations": article.note_annotations,
         "note_recommendation_level": normalize_note_recommendation_level(
@@ -381,6 +386,40 @@ async def get_article(
         }
         if next_article
         else None,
+    }
+
+
+@router.post("/api/articles/{article_slug}/view")
+async def record_article_view(
+    article_slug: str,
+    db: Session = Depends(get_db),
+):
+    updated = (
+        db.query(Article)
+        .filter(Article.slug == article_slug, Article.is_visible == True)
+        .update(
+            {
+                Article.view_count: func.coalesce(Article.view_count, 0) + 1,
+            },
+            synchronize_session=False,
+        )
+    )
+    if updated == 0:
+        raise HTTPException(status_code=404, detail="文章不存在")
+
+    db.commit()
+    article = (
+        db.query(Article)
+        .filter(Article.slug == article_slug)
+        .options(load_only(Article.slug, Article.view_count))
+        .first()
+    )
+    if article is None:
+        raise HTTPException(status_code=404, detail="文章不存在")
+    return {
+        "article_slug": article.slug,
+        "view_count": int(article.view_count or 0),
+        "counted": True,
     }
 
 

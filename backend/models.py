@@ -137,6 +137,7 @@ class Article(Base):
     source_domain = Column(String)
     status = Column(String, default="pending")
     is_visible = Column(Boolean, default=False)
+    view_count = Column(Integer, nullable=False, default=0)
     category_id = Column(String, ForeignKey("categories.id"))
     created_at = Column(String, default=now_str)
     updated_at = Column(String, default=now_str)

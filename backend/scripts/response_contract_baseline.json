@@ -34,7 +34,9 @@
       "/data/0/slug",
       "/data/0/title",
       "/data/0/status",
-      "/data/0/tags"
+      "/data/0/tags",
+      "/data/0/view_count",
+      "/data/0/comment_count"
     ]
   },
   {

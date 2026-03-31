@@ -257,6 +257,8 @@ const translations: Record<Language, Record<string | number, string>> = {
 		来源: "Source",
 		全部来源: "All sources",
 		作者: "Author",
+		阅读数: "Views",
+		评论数: "Comments",
 		内容: "Content",
 		全部作者: "All authors",
 		发表时间: "Published time",

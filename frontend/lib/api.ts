@@ -368,6 +368,8 @@ export interface Article {
 	published_at: string | null;
 	created_at: string;
 	is_visible: boolean;
+	view_count: number;
+	comment_count: number;
 	original_language?: string;
 	note_recommendation_level?:
 		| "strongly_recommended"
@@ -754,6 +756,16 @@ export const articleApi = {
 
 	getArticle: async (id: string) => {
 		const response = await api.get(`/api/articles/${id}`);
+		return response.data;
+	},
+	recordArticleView: async (
+		slug: string,
+	): Promise<{
+		article_slug: string;
+		view_count: number;
+		counted: boolean;
+	}> => {
+		const response = await api.post(`/api/articles/${slug}/view`);
 		return response.data;
 	},
 
