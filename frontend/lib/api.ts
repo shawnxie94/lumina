@@ -704,7 +704,6 @@ export interface PromptConfig {
 	type: string;
 	prompt: string;
 	system_prompt?: string | null;
-	response_format?: string | null;
 	temperature?: number | null;
 	max_tokens?: number | null;
 	top_p?: number | null;
@@ -1127,7 +1126,6 @@ export const articleApi = {
 		type: string;
 		prompt: string;
 		system_prompt?: string | null;
-		response_format?: string | null;
 		temperature?: number | null;
 		max_tokens?: number | null;
 		top_p?: number | null;
@@ -1150,7 +1148,6 @@ export const articleApi = {
 			type?: string;
 			prompt?: string;
 			system_prompt?: string | null;
-			response_format?: string | null;
 			temperature?: number | null;
 			max_tokens?: number | null;
 			top_p?: number | null;

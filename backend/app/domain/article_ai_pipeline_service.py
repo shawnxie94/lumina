@@ -1,9 +1,11 @@
 import asyncio
+from dataclasses import dataclass
 from difflib import SequenceMatcher
 import json
 import logging
 import re
 from html import unescape
+from typing import Any
 from xml.etree import ElementTree as ET
 
 from ai_client import ConfigurableAIClient, is_english_content
@@ -55,6 +57,13 @@ BOOK_URL_PATTERN = re.compile(
 article_tag_service = ArticleTagService()
 
 
+@dataclass(frozen=True)
+class PromptOutputContract:
+    mode: str
+    response_format: dict[str, Any] | str | None
+    system_instruction: str | None = None
+
+
 def build_parameters(model) -> dict:
     if not model:
         return {}
@@ -98,6 +107,94 @@ class ArticleAIPipelineService:
         "outline": 1000,
         "infographic": 2200,
     }
+    STRUCTURED_OUTPUT_CONTRACTS = {
+        "summary": PromptOutputContract(mode="text", response_format=None),
+        "translation": PromptOutputContract(mode="text", response_format=None),
+        "key_points": PromptOutputContract(mode="text", response_format=None),
+        "quotes": PromptOutputContract(mode="text", response_format=None),
+        "infographic": PromptOutputContract(mode="html_text", response_format="text"),
+        "content_cleaning": PromptOutputContract(
+            mode="markdown_text",
+            response_format=None,
+        ),
+        "outline": PromptOutputContract(
+            mode="json_object",
+            response_format={"type": "json_object"},
+            system_instruction=(
+                "固定输出协议：必须返回单个 JSON 对象；每个节点仅允许包含 title 和 children。"
+                "title 必须是字符串；children 必须是数组；禁止输出解释、Markdown 代码块或额外字段。"
+            ),
+        ),
+        "classification": PromptOutputContract(
+            mode="structured_json",
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "article_classification_result",
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "category_id": {
+                                "type": "string",
+                            }
+                        },
+                        "required": ["category_id"],
+                        "additionalProperties": False,
+                    },
+                },
+            },
+            system_instruction=(
+                "固定输出协议：必须返回单个 JSON 对象，且只包含 category_id 字段。"
+                "category_id 必须是字符串；无匹配时返回空字符串；禁止输出解释或额外字段。"
+            ),
+        ),
+        "tagging": PromptOutputContract(
+            mode="structured_json",
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "article_tagging_result",
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "tags": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                            }
+                        },
+                        "required": ["tags"],
+                        "additionalProperties": False,
+                    },
+                },
+            },
+            system_instruction=(
+                "固定输出协议：必须返回单个 JSON 对象，且只包含 tags 字段。"
+                "tags 必须是字符串数组；禁止输出解释、Markdown 代码块或额外字段。"
+            ),
+        ),
+        "content_validation": PromptOutputContract(
+            mode="structured_json",
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "content_validation_result",
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "is_valid": {"type": "boolean"},
+                            "error": {"type": "string"},
+                        },
+                        "required": ["is_valid", "error"],
+                        "additionalProperties": False,
+                    },
+                },
+            },
+            system_instruction=(
+                "固定输出协议：必须返回单个 JSON 对象，且只包含 is_valid 和 error 字段。"
+                "is_valid 必须是布尔值；error 必须是字符串；合规时 error 为空字符串；禁止输出额外字段。"
+            ),
+        ),
+    }
 
     def __init__(
         self,
@@ -116,6 +213,9 @@ class ArticleAIPipelineService:
             ),
             create_render_service=lambda: self.create_infographic_render_service(),
             log_ai_usage=lambda *args, **kwargs: self._log_ai_usage(*args, **kwargs),
+            merge_protocol_parameters=lambda *args, **kwargs: self._merge_protocol_parameters(
+                *args, **kwargs
+            ),
             max_tokens=self.DEFAULT_AI_CONTENT_MAX_TOKENS["infographic"],
         )
 
@@ -230,6 +330,141 @@ class ArticleAIPipelineService:
 
     def create_infographic_render_service(self) -> InfographicRenderService:
         return InfographicRenderService()
+
+    def _get_prompt_output_contract(self, prompt_type: str) -> PromptOutputContract:
+        return self.STRUCTURED_OUTPUT_CONTRACTS.get(
+            prompt_type,
+            PromptOutputContract(mode="text", response_format=None),
+        )
+
+    def _merge_protocol_parameters(
+        self,
+        prompt_type: str,
+        parameters: dict | None,
+    ) -> dict:
+        merged = dict(parameters or {})
+        contract = self._get_prompt_output_contract(prompt_type)
+        if contract.response_format is not None:
+            merged["response_format"] = contract.response_format
+        if contract.system_instruction:
+            existing_system_prompt = str(merged.get("system_prompt") or "").strip()
+            protocol_block = (
+                "固定输出协议（系统注入，不可配置）：\n"
+                f"{contract.system_instruction}"
+            )
+            if existing_system_prompt:
+                merged["system_prompt"] = (
+                    f"{existing_system_prompt}\n\n{protocol_block}"
+                )
+            else:
+                merged["system_prompt"] = protocol_block
+        return merged
+
+    def _parse_structured_task_result(
+        self,
+        prompt_type: str,
+        raw_output: Any,
+    ) -> dict[str, Any]:
+        if isinstance(raw_output, (dict, list)):
+            parsed = raw_output
+        else:
+            raw_text = str(raw_output or "").strip()
+            if not raw_text:
+                raise TaskDataError(f"{prompt_type} 输出为空")
+            try:
+                parsed = json.loads(raw_text)
+            except json.JSONDecodeError as exc:
+                raise TaskDataError(f"{prompt_type} 输出不是合法 JSON") from exc
+
+        if not isinstance(parsed, dict):
+            raise TaskDataError(f"{prompt_type} 输出必须是 JSON 对象")
+
+        if prompt_type == "classification":
+            category_id = parsed.get("category_id")
+            if category_id is None:
+                raise TaskDataError("classification 输出缺少 category_id")
+            if not isinstance(category_id, str):
+                raise TaskDataError("classification.category_id 必须是字符串")
+            return {"category_id": category_id}
+
+        if prompt_type == "tagging":
+            tags = parsed.get("tags")
+            if not isinstance(tags, list):
+                raise TaskDataError("tagging.tags 必须是字符串数组")
+            if any(not isinstance(item, str) for item in tags):
+                raise TaskDataError("tagging.tags 必须是字符串数组")
+            return {"tags": tags}
+
+        if prompt_type == "content_validation":
+            is_valid = parsed.get("is_valid")
+            error = parsed.get("error")
+            if not isinstance(is_valid, bool):
+                raise TaskDataError("content_validation.is_valid 必须是布尔值")
+            if not isinstance(error, str):
+                raise TaskDataError("content_validation.error 必须是字符串")
+            return {"is_valid": is_valid, "error": error}
+
+        return parsed
+
+    def _normalize_outline_node(self, raw_node: Any) -> dict[str, Any]:
+        if isinstance(raw_node, str):
+            title = raw_node.strip()
+            if not title:
+                raise TaskDataError("outline 节点标题不能为空")
+            return {"title": title, "children": []}
+
+        if not isinstance(raw_node, dict):
+            raise TaskDataError("outline 节点必须是对象或字符串")
+
+        title_value = raw_node.get("title", "")
+        if title_value is None:
+            title_value = ""
+        if not isinstance(title_value, str):
+            raise TaskDataError("outline.title 必须是字符串")
+        title = title_value.strip()
+
+        children_value = raw_node.get("children", [])
+        if children_value is None:
+            children_value = []
+        if not isinstance(children_value, list):
+            raise TaskDataError("outline.children 必须是数组")
+
+        children = [
+            self._normalize_outline_node(child)
+            for child in children_value
+        ]
+        if not title and not children:
+            raise TaskDataError("outline 节点不能为空")
+        return {"title": title, "children": children}
+
+    def _parse_outline_task_result(self, raw_output: Any) -> str:
+        if isinstance(raw_output, (dict, list)):
+            parsed = raw_output
+        else:
+            raw_text = str(raw_output or "").strip()
+            if not raw_text:
+                raise TaskDataError("outline 输出为空")
+            try:
+                parsed = json.loads(raw_text)
+            except json.JSONDecodeError as exc:
+                raise TaskDataError("outline 输出不是合法 JSON") from exc
+
+        if isinstance(parsed, list):
+            normalized = {
+                "title": "",
+                "children": [
+                    self._normalize_outline_node(child)
+                    for child in parsed
+                ],
+            }
+        elif isinstance(parsed, dict):
+            normalized = self._normalize_outline_node(parsed)
+        else:
+            raise TaskDataError("outline 输出必须是 JSON 对象或数组")
+
+        if not normalized["title"] and not normalized["children"]:
+            raise TaskDataError("outline 输出不能为空")
+        return json.dumps(normalized, ensure_ascii=False)
 
     def _build_infographic_generation_prompt(
         self,
@@ -1931,6 +2166,10 @@ class ArticleAIPipelineService:
                 parameters = {**parameters, **prompt_parameters}
             elif not parameters and default_config and not has_custom_prompt:
                 parameters = default_config.get("parameters") or {}
+            parameters = self._merge_protocol_parameters(
+                "content_cleaning",
+                parameters,
+            )
             prompt = self._build_cleaning_prompt(prompt, resolved_source_format)
             pricing = {
                 "model_api_config_id": cleaning_config.get("model_api_config_id"),
@@ -2241,7 +2480,10 @@ class ArticleAIPipelineService:
                 raise TaskConfigError("未配置AI服务，请先在配置页面设置AI参数")
 
             validation_client = self.create_ai_client(validation_config)
-            parameters = validation_config.get("parameters") or {}
+            parameters = self._merge_protocol_parameters(
+                "content_validation",
+                validation_config.get("parameters"),
+            )
             prompt = validation_config.get("prompt_template")
             pricing = {
                 "model_api_config_id": validation_config.get("model_api_config_id"),
@@ -2272,25 +2514,10 @@ class ArticleAIPipelineService:
                         response_payload=result.get("response_payload"),
                     )
                     result = result.get("content")
-                raw = (result or "").strip()
-                if not raw:
-                    validation_result = {
-                        "is_valid": False,
-                        "error": "格式异常：校验输出为空",
-                    }
-                else:
-                    try:
-                        validation_result = json.loads(raw)
-                    except json.JSONDecodeError:
-                        validation_result = {
-                            "is_valid": False,
-                            "error": "格式异常：校验输出解析失败",
-                        }
-                if not isinstance(validation_result, dict):
-                    validation_result = {
-                        "is_valid": False,
-                        "error": "格式异常：校验输出格式错误",
-                    }
+                validation_result = self._parse_structured_task_result(
+                    "content_validation",
+                    result,
+                )
             except asyncio.TimeoutError:
                 self._log_ai_usage(
                     db,
@@ -2441,7 +2668,10 @@ class ArticleAIPipelineService:
                     prompt = prompt.replace("{categories}", categories_payload)
                 else:
                     prompt = f"{prompt}\n\n分类列表：\n{categories_payload}"
-            parameters = classification_config.get("parameters") or {}
+            parameters = self._merge_protocol_parameters(
+                "classification",
+                classification_config.get("parameters"),
+            )
             pricing = {
                 "model_api_config_id": classification_config.get("model_api_config_id"),
                 "price_input_per_1k": classification_config.get("price_input_per_1k"),
@@ -2474,7 +2704,11 @@ class ArticleAIPipelineService:
                     )
                     result = result.get("content")
 
-                category_output = (result or "").strip().strip('"').strip("'")
+                parsed_result = self._parse_structured_task_result(
+                    "classification",
+                    result,
+                )
+                category_output = parsed_result.get("category_id", "").strip()
                 if category_output:
                     category = (
                         db.query(Category).filter(Category.id == category_output).first()
@@ -2627,7 +2861,10 @@ class ArticleAIPipelineService:
                     prompt = prompt.replace("{category_name}", category_name)
                 elif category_name:
                     prompt = f"{prompt}\n\n参考分类：{category_name}"
-            parameters = tagging_config.get("parameters") or {}
+            parameters = self._merge_protocol_parameters(
+                "tagging",
+                tagging_config.get("parameters"),
+            )
             pricing = {
                 "model_api_config_id": tagging_config.get("model_api_config_id"),
                 "price_input_per_1k": tagging_config.get("price_input_per_1k"),
@@ -2661,7 +2898,8 @@ class ArticleAIPipelineService:
                     )
                     result = result.get("content")
 
-                tag_names = article_tag_service.parse_tag_names(result)
+                parsed_result = self._parse_structured_task_result("tagging", result)
+                tag_names = article_tag_service.parse_tag_names(parsed_result["tags"])
                 article_tag_service.set_article_tags(
                     db,
                     article,
@@ -2846,6 +3084,10 @@ class ArticleAIPipelineService:
                 parameters = {**parameters, **prompt_parameters}
             elif not parameters and default_translation_config and not has_custom_prompt:
                 parameters = default_translation_config.get("parameters") or {}
+            parameters = self._merge_protocol_parameters(
+                "translation",
+                parameters,
+            )
             pricing = {
                 "model_api_config_id": ai_config.get("model_api_config_id"),
                 "price_input_per_1k": ai_config.get("price_input_per_1k"),
@@ -3103,6 +3345,9 @@ class ArticleAIPipelineService:
             ai_config = None
             prompt = None
             prompt_parameters = {}
+            default_config = self.get_ai_config(
+                db, category_id, prompt_type=content_type
+            )
 
             if model_config_id:
                 model_config = (
@@ -3124,6 +3369,7 @@ class ArticleAIPipelineService:
                     "price_input_per_1k": model_config.price_input_per_1k,
                     "price_output_per_1k": model_config.price_output_per_1k,
                     "currency": model_config.currency,
+                    "parameters": default_config.get("parameters") if default_config else None,
                 }
 
             if prompt_config_id:
@@ -3162,13 +3408,10 @@ class ArticleAIPipelineService:
                     }
 
             if not ai_config:
-                default_config = self.get_ai_config(
-                    db, category_id, prompt_type=content_type
-                )
                 if default_config:
                     ai_config = default_config
-                    if not prompt:
-                        prompt = default_config.get("prompt_template")
+            if not prompt and default_config:
+                prompt = default_config.get("prompt_template")
 
             if not ai_config:
                 setattr(article.ai_analysis, f"{content_type}_status", "failed")
@@ -3183,12 +3426,15 @@ class ArticleAIPipelineService:
             parameters = ai_config.get("parameters") or {}
             if prompt_parameters:
                 parameters = {**parameters, **prompt_parameters}
+            elif not parameters and default_config:
+                parameters = default_config.get("parameters") or {}
             if content_type == "infographic":
                 prompt = self._build_infographic_generation_prompt(
                     prompt,
                     parameters.get("system_prompt"),
                 )
                 parameters = self._build_infographic_generation_parameters(parameters)
+            parameters = self._merge_protocol_parameters(content_type, parameters)
             pricing = {
                 "model_api_config_id": ai_config.get("model_api_config_id"),
                 "price_input_per_1k": ai_config.get("price_input_per_1k"),
@@ -3242,6 +3488,11 @@ class ArticleAIPipelineService:
                         "infographic_generated: %s",
                         article.title,
                     )
+                elif content_type == "outline":
+                    article.ai_analysis.outline = self._parse_outline_task_result(
+                        result
+                    )
+                    article.ai_analysis.outline_status = "completed"
                 else:
                     setattr(article.ai_analysis, content_type, result)
                     setattr(article.ai_analysis, f"{content_type}_status", "completed")

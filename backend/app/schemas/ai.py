@@ -57,7 +57,6 @@ class PromptConfigBase(BaseModel):
     type: str
     prompt: str
     system_prompt: Optional[str] = None
-    response_format: Optional[str] = None
     temperature: Optional[float] = None
     max_tokens: Optional[int] = None
     top_p: Optional[float] = None

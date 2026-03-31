@@ -74,7 +74,6 @@ def _build_parameters(model) -> dict:
         return {}
     params = {}
     system_prompt = getattr(model, "system_prompt", None)
-    response_format = getattr(model, "response_format", None)
     temperature = getattr(model, "temperature", None)
     max_tokens = getattr(model, "max_tokens", None)
     top_p = getattr(model, "top_p", None)
@@ -83,8 +82,6 @@ def _build_parameters(model) -> dict:
     max_continue_rounds = getattr(model, "max_continue_rounds", None)
     if system_prompt:
         params["system_prompt"] = system_prompt
-    if response_format:
-        params["response_format"] = response_format
     if temperature is not None:
         params["temperature"] = temperature
     if max_tokens is not None:
@@ -109,6 +106,7 @@ class InfographicPipelineSupport:
         assert_general_model: Callable[[ModelAPIConfig], None],
         create_render_service: Callable[[], InfographicRenderService],
         log_ai_usage: Callable[..., None],
+        merge_protocol_parameters: Callable[[str, dict | None], dict],
         max_tokens: int,
     ) -> None:
         self._get_prompt_config = get_prompt_config
@@ -116,6 +114,7 @@ class InfographicPipelineSupport:
         self._assert_general_model = assert_general_model
         self._create_render_service = create_render_service
         self._log_ai_usage = log_ai_usage
+        self._merge_protocol_parameters = merge_protocol_parameters
         self._max_tokens = max_tokens
 
     @staticmethod
@@ -222,11 +221,10 @@ class InfographicPipelineSupport:
         generated_parameters["system_prompt"] = self.build_system_prompt(
             generated_parameters.get("system_prompt")
         )
-        generated_parameters["response_format"] = "text"
         temperature = generated_parameters.get("temperature")
         if temperature is None or temperature > 0.3:
             generated_parameters["temperature"] = 0.2
-        return generated_parameters
+        return self._merge_protocol_parameters("infographic", generated_parameters)
 
     def build_overflow_repair_hint(self) -> str:
         return (
@@ -274,11 +272,10 @@ class InfographicPipelineSupport:
         repair_parameters["system_prompt"] = self.build_system_prompt(
             repair_parameters.get("system_prompt")
         )
-        repair_parameters["response_format"] = "text"
         temperature = repair_parameters.get("temperature")
         if temperature is None or temperature > 0.3:
             repair_parameters["temperature"] = 0.2
-        return repair_parameters
+        return self._merge_protocol_parameters("infographic", repair_parameters)
 
     @staticmethod
     def format_repair_error(initial_error: str, repair_error: str) -> str:

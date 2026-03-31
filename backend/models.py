@@ -366,7 +366,6 @@ class PromptConfig(Base):
     type = Column(String, nullable=False)  # summary, outline, key_points, mindmap, etc.
     prompt = Column(Text, nullable=False)
     system_prompt = Column(Text, nullable=True)
-    response_format = Column(String, nullable=True)
     temperature = Column(Float, nullable=True)
     max_tokens = Column(Integer, nullable=True)
     top_p = Column(Float, nullable=True)

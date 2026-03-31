@@ -252,7 +252,6 @@ const createEmptyPromptFormData = (
 	type: PromptType;
 	prompt: string;
 	system_prompt: string;
-	response_format: string;
 	temperature: string;
 	max_tokens: string;
 	top_p: string;
@@ -268,7 +267,6 @@ const createEmptyPromptFormData = (
 	type,
 	prompt: "",
 	system_prompt: "",
-	response_format: "",
 	temperature: "",
 	max_tokens: "",
 	top_p: "",
@@ -2125,7 +2123,6 @@ export default function AdminPage() {
 			type: config.type as PromptType,
 			prompt: config.prompt,
 			system_prompt: config.system_prompt || "",
-			response_format: config.response_format || "",
 			temperature: config.temperature?.toString() || "",
 			max_tokens: config.max_tokens?.toString() || "",
 			top_p: config.top_p?.toString() || "",
@@ -2152,7 +2149,6 @@ export default function AdminPage() {
 			type: config.type as PromptType,
 			prompt: config.prompt,
 			system_prompt: config.system_prompt || "",
-			response_format: config.response_format || "",
 			temperature: config.temperature?.toString() || "",
 			max_tokens: config.max_tokens?.toString() || "",
 			top_p: config.top_p?.toString() || "",
@@ -2242,7 +2238,6 @@ export default function AdminPage() {
 				category_id: promptFormData.category_id || undefined,
 				model_api_config_id: promptFormData.model_api_config_id || undefined,
 				system_prompt: promptFormData.system_prompt || undefined,
-				response_format: promptFormData.response_format || undefined,
 				temperature: promptFormData.temperature
 					? Number(promptFormData.temperature)
 					: undefined,
@@ -3290,7 +3285,6 @@ export default function AdminPage() {
 					system_prompt: systemPrompt,
 					category_id: item.category_id || undefined,
 					model_api_config_id: item.model_api_config_id || undefined,
-					response_format: item.response_format || undefined,
 					temperature: item.temperature ?? undefined,
 					max_tokens: item.max_tokens ?? undefined,
 					top_p: item.top_p ?? undefined,
@@ -4538,7 +4532,6 @@ export default function AdminPage() {
 																		</code>
 																	</div>
 																	{(config.system_prompt ||
-																		config.response_format ||
 																		config.temperature != null ||
 																		config.max_tokens != null ||
 																		config.top_p != null ||
@@ -4547,12 +4540,6 @@ export default function AdminPage() {
 																				config.chunk_overlap_tokens != null ||
 																				config.max_continue_rounds != null))) && (
 																		<div className="flex flex-wrap gap-2 pt-1">
-																			{config.response_format && (
-																				<StatusTag tone="neutral">
-																					{t("响应格式")}:{" "}
-																					{config.response_format}
-																				</StatusTag>
-																			)}
 																			{config.temperature != null && (
 																				<StatusTag tone="neutral">
 																					{t("温度")}: {config.temperature}
@@ -7460,25 +7447,6 @@ export default function AdminPage() {
 							{showPromptAdvanced && (
 								<div className="space-y-4 border-t border-border p-4">
 									<div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-										<FormField label={t("响应格式")}>
-											<SelectField
-												value={promptFormData.response_format}
-												onChange={(value) =>
-													setPromptFormData({
-														...promptFormData,
-														response_format: value,
-													})
-												}
-												className="w-full"
-												popupClassName="select-modern-dropdown"
-												options={[
-													{ value: "", label: t("默认") },
-													{ value: "text", label: "text" },
-													{ value: "json_object", label: "json_object" },
-												]}
-											/>
-										</FormField>
-
 										<FormField label={t("温度")}>
 											<TextInput
 												type="number"
@@ -7793,10 +7761,6 @@ export default function AdminPage() {
 						</div>
 
 						<div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-							<div className="rounded-lg border border-border bg-muted p-3 text-sm text-text-2">
-								<div className="text-xs text-text-3">{t("响应格式")}</div>
-								<div>{showPromptPreview.response_format || t("默认")}</div>
-							</div>
 							<div className="rounded-lg border border-border bg-muted p-3 text-sm text-text-2">
 								<div className="text-xs text-text-3">{t("温度")}</div>
 								<div>{showPromptPreview.temperature ?? t("默认")}</div>

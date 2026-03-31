@@ -626,7 +626,6 @@ class BackupService:
                     type=prompt_type,
                     prompt=prompt,
                     system_prompt=self._optional_str(item.get("system_prompt")),
-                    response_format=self._optional_str(item.get("response_format")),
                     temperature=self._safe_float(item.get("temperature")),
                     max_tokens=(
                         self._safe_int(item.get("max_tokens"))
@@ -1065,7 +1064,6 @@ class BackupService:
             "type": config.type,
             "prompt": config.prompt,
             "system_prompt": config.system_prompt,
-            "response_format": config.response_format,
             "temperature": config.temperature,
             "max_tokens": config.max_tokens,
             "top_p": config.top_p,

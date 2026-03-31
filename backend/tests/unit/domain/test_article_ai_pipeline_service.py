@@ -3,7 +3,7 @@ import uuid
 
 import app.domain.article_ai_pipeline_service as article_ai_pipeline_module
 from app.domain.article_ai_pipeline_service import ArticleAIPipelineService
-from models import AIAnalysis, Article, now_str
+from models import AIAnalysis, Article, Category, ModelAPIConfig, PromptConfig, now_str
 
 
 def test_detect_media_kind_supports_book_links():
@@ -223,6 +223,7 @@ def test_process_ai_content_infographic_persists_html_and_status(
     )
     db_session.add(analysis)
     db_session.commit()
+    article_id = article.id
 
     service = ArticleAIPipelineService()
 
@@ -313,6 +314,7 @@ def test_process_ai_content_infographic_marks_failed_when_html_invalid(
     )
     db_session.add(analysis)
     db_session.commit()
+    article_id = article.id
 
     service = ArticleAIPipelineService()
 
@@ -379,6 +381,88 @@ def test_process_ai_content_infographic_marks_failed_when_html_invalid(
     assert persisted.infographic_html == "<div>existing</div>"
 
 
+def test_process_ai_content_keeps_default_prompt_when_only_model_is_overridden(
+    db_session,
+    monkeypatch,
+):
+    article_id = str(uuid.uuid4())
+    article = Article(
+        id=article_id,
+        title="Prompt Routing",
+        slug="prompt-routing",
+        content_md="Article body",
+        created_at=now_str(),
+        updated_at=now_str(),
+    )
+    db_session.add(article)
+    db_session.commit()
+    db_session.add(
+        AIAnalysis(
+            article_id=article_id,
+            key_points_status="pending",
+            updated_at=now_str(),
+        )
+    )
+    model_config = ModelAPIConfig(
+        id=str(uuid.uuid4()),
+        name="Manual Model",
+        base_url="https://example.com",
+        api_key="test-key",
+        model_name="test-model",
+        model_type="general",
+        is_enabled=True,
+        is_default=False,
+        created_at=now_str(),
+        updated_at=now_str(),
+    )
+    prompt_config = PromptConfig(
+        id=str(uuid.uuid4()),
+        name="默认-总结",
+        type="key_points",
+        prompt="请输出总结：{content}",
+        model_api_config_id=model_config.id,
+        is_enabled=True,
+        is_default=True,
+        created_at=now_str(),
+        updated_at=now_str(),
+    )
+    db_session.add(model_config)
+    db_session.add(prompt_config)
+    db_session.commit()
+
+    service = ArticleAIPipelineService()
+
+    class FakeClient:
+        async def generate_summary(self, content, **kwargs):
+            assert content == "Article body"
+            assert kwargs.get("prompt") == "请输出总结：{content}"
+            return {
+                "content": "总结完成",
+                "usage": None,
+                "latency_ms": 5,
+                "request_payload": {},
+                "response_payload": {},
+            }
+
+    monkeypatch.setattr(article_ai_pipeline_module, "SessionLocal", lambda: db_session)
+    monkeypatch.setattr(service, "create_ai_client", lambda config: FakeClient())
+
+    asyncio.run(
+        service.process_ai_content(
+            article_id=article_id,
+            category_id=None,
+            content_type="key_points",
+            model_config_id=model_config.id,
+        )
+    )
+
+    persisted = (
+        db_session.query(AIAnalysis).filter(AIAnalysis.article_id == article_id).one()
+    )
+    assert persisted.key_points_status == "completed"
+    assert persisted.key_points == "总结完成"
+
+
 def test_process_ai_content_infographic_repairs_invalid_html_once(
     db_session,
     monkeypatch,
@@ -401,6 +485,7 @@ def test_process_ai_content_infographic_repairs_invalid_html_once(
     )
     db_session.add(analysis)
     db_session.commit()
+    article_id = article.id
 
     service = ArticleAIPipelineService()
 
@@ -503,6 +588,7 @@ def test_process_ai_content_infographic_repairs_layout_overflow_once(
     )
     db_session.add(analysis)
     db_session.commit()
+    article_id = article.id
 
     service = ArticleAIPipelineService()
 
@@ -580,6 +666,450 @@ def test_process_ai_content_infographic_repairs_layout_overflow_once(
     assert persisted.infographic_status == "completed"
     assert persisted.infographic_html == repaired_html
     assert persisted.error_message is None
+
+
+def test_get_prompt_output_contract_returns_structured_contracts():
+    service = ArticleAIPipelineService()
+
+    infographic = service._get_prompt_output_contract("infographic")
+    outline = service._get_prompt_output_contract("outline")
+    classification = service._get_prompt_output_contract("classification")
+    tagging = service._get_prompt_output_contract("tagging")
+    validation = service._get_prompt_output_contract("content_validation")
+
+    assert infographic.mode == "html_text"
+    assert infographic.response_format == "text"
+    assert outline.mode == "json_object"
+    assert "children" in (outline.system_instruction or "")
+    assert classification.mode == "structured_json"
+    assert classification.response_format["type"] == "json_schema"
+    assert "category_id" in (classification.system_instruction or "")
+    assert tagging.mode == "structured_json"
+    assert tagging.response_format["type"] == "json_schema"
+    assert "tags" in (tagging.system_instruction or "")
+    assert validation.mode == "structured_json"
+    assert validation.response_format["type"] == "json_schema"
+    assert "is_valid" in (validation.system_instruction or "")
+
+
+def test_process_ai_content_outline_normalizes_json_payload(
+    db_session,
+    monkeypatch,
+):
+    article = Article(
+        id=str(uuid.uuid4()),
+        title="Outline Article",
+        slug="outline-article",
+        content_md="这是一篇关于 AI 工作流的文章。",
+        created_at=now_str(),
+        updated_at=now_str(),
+    )
+    db_session.add(article)
+    db_session.commit()
+    analysis = AIAnalysis(
+        article_id=article.id,
+        outline_status="pending",
+        updated_at=now_str(),
+    )
+    db_session.add(analysis)
+    db_session.commit()
+    article_id = article.id
+
+    service = ArticleAIPipelineService()
+
+    class FakeClient:
+        async def generate_summary(self, content, **kwargs):
+            assert content == article.content_md
+            assert (kwargs.get("parameters") or {}).get("response_format") == {
+                "type": "json_object"
+            }
+            assert "children" in (
+                (kwargs.get("parameters") or {}).get("system_prompt") or ""
+            )
+            return {
+                "content": (
+                    '{"title":"AI 工作流","children":["问题定义",'
+                    '{"title":"执行","children":["分解任务","验收结果"]}]}'
+                ),
+                "usage": None,
+                "latency_ms": 7,
+                "request_payload": {},
+                "response_payload": {},
+            }
+
+    monkeypatch.setattr(article_ai_pipeline_module, "SessionLocal", lambda: db_session)
+    monkeypatch.setattr(
+        service,
+        "get_ai_config",
+        lambda *args, **kwargs: {
+            "base_url": "https://example.com",
+            "api_key": "test-key",
+            "model_name": "test-model",
+            "model_api_config_id": None,
+            "price_input_per_1k": None,
+            "price_output_per_1k": None,
+            "currency": None,
+            "prompt_template": "请输出文章大纲：{content}",
+            "parameters": {
+                "system_prompt": "请根据文章内容组织层级",
+                "response_format": "text",
+            },
+        },
+    )
+    monkeypatch.setattr(service, "create_ai_client", lambda config: FakeClient())
+
+    asyncio.run(
+        service.process_ai_content(
+            article_id=article_id,
+            category_id=None,
+            content_type="outline",
+        )
+    )
+
+    persisted = (
+        db_session.query(AIAnalysis).filter(AIAnalysis.article_id == article_id).one()
+    )
+    assert persisted.outline_status == "completed"
+    assert (
+        persisted.outline
+        == '{"title": "AI 工作流", "children": [{"title": "问题定义", "children": []}, {"title": "执行", "children": [{"title": "分解任务", "children": []}, {"title": "验收结果", "children": []}]}]}'
+    )
+    assert persisted.error_message is None
+
+
+def test_process_ai_content_outline_accepts_top_level_array_payload(
+    db_session,
+    monkeypatch,
+):
+    article = Article(
+        id=str(uuid.uuid4()),
+        title="Outline Array Article",
+        slug="outline-array-article",
+        content_md="这是一篇关于知识整理的文章。",
+        created_at=now_str(),
+        updated_at=now_str(),
+    )
+    db_session.add(article)
+    db_session.commit()
+    analysis = AIAnalysis(
+        article_id=article.id,
+        outline_status="pending",
+        updated_at=now_str(),
+    )
+    db_session.add(analysis)
+    db_session.commit()
+    article_id = article.id
+
+    service = ArticleAIPipelineService()
+
+    class FakeClient:
+        async def generate_summary(self, content, **kwargs):
+            assert content == article.content_md
+            return {
+                "content": (
+                    '[{"title":"核心观点","children":["要点A"]},'
+                    '{"title":"结论与启示","children":["行动建议"]}]'
+                ),
+                "usage": None,
+                "latency_ms": 5,
+                "request_payload": {},
+                "response_payload": {},
+            }
+
+    monkeypatch.setattr(article_ai_pipeline_module, "SessionLocal", lambda: db_session)
+    monkeypatch.setattr(
+        service,
+        "get_ai_config",
+        lambda *args, **kwargs: {
+            "base_url": "https://example.com",
+            "api_key": "test-key",
+            "model_name": "test-model",
+            "model_api_config_id": None,
+            "price_input_per_1k": None,
+            "price_output_per_1k": None,
+            "currency": None,
+            "prompt_template": "请输出文章大纲：{content}",
+            "parameters": {
+                "system_prompt": "请根据文章内容组织层级",
+            },
+        },
+    )
+    monkeypatch.setattr(service, "create_ai_client", lambda config: FakeClient())
+
+    asyncio.run(
+        service.process_ai_content(
+            article_id=article_id,
+            category_id=None,
+            content_type="outline",
+        )
+    )
+
+    persisted = (
+        db_session.query(AIAnalysis).filter(AIAnalysis.article_id == article_id).one()
+    )
+    assert persisted.outline_status == "completed"
+    assert (
+        persisted.outline
+        == '{"title": "", "children": [{"title": "核心观点", "children": [{"title": "要点A", "children": []}]}, {"title": "结论与启示", "children": [{"title": "行动建议", "children": []}]}]}'
+    )
+    assert persisted.error_message is None
+
+
+def test_process_article_classification_uses_structured_category_id(
+    db_session,
+    monkeypatch,
+):
+    article = Article(
+        title="Classification Article",
+        slug="classification-article",
+        content_md="这是一篇关于 AI 产品与浏览器插件的文章。",
+        created_at=now_str(),
+        updated_at=now_str(),
+    )
+    category_a = Category(
+        id=str(uuid.uuid4()),
+        name="产品",
+        description="产品设计",
+        sort_order=1,
+        created_at=now_str(),
+    )
+    category_b = Category(
+        id=str(uuid.uuid4()),
+        name="工具",
+        description="效率工具",
+        sort_order=2,
+        created_at=now_str(),
+    )
+    db_session.add_all([article, category_a, category_b])
+    db_session.commit()
+    db_session.refresh(article)
+    article_id = article.id
+    category_b_id = category_b.id
+
+    service = ArticleAIPipelineService()
+    enqueued = []
+
+    class FakeClient:
+        async def generate_summary(self, content, **kwargs):
+            assert content == article.content_md
+            assert (kwargs.get("parameters") or {}).get("response_format", {}).get(
+                "type"
+            ) == "json_schema"
+            assert "category_id" in (
+                (kwargs.get("parameters") or {}).get("system_prompt") or ""
+            )
+            return {
+                "content": f'{{"category_id":"{category_b_id}"}}',
+                "usage": None,
+                "latency_ms": 10,
+                "request_payload": {},
+                "response_payload": {},
+            }
+
+    monkeypatch.setattr(article_ai_pipeline_module, "SessionLocal", lambda: db_session)
+    monkeypatch.setattr(
+        service,
+        "get_ai_config",
+        lambda *args, **kwargs: {
+            "base_url": "https://example.com",
+            "api_key": "test-key",
+            "model_name": "test-model",
+            "model_api_config_id": None,
+            "price_input_per_1k": None,
+            "price_output_per_1k": None,
+            "currency": None,
+            "prompt_template": "请分类：{content}",
+            "parameters": {
+                "system_prompt": "请根据主题做最匹配分类判断",
+                "response_format": "text",
+            },
+        },
+    )
+    monkeypatch.setattr(service, "create_ai_client", lambda config: FakeClient())
+    monkeypatch.setattr(
+        service,
+        "_enqueue_task",
+        lambda db, **kwargs: enqueued.append(kwargs),
+    )
+
+    asyncio.run(service.process_article_classification(article_id, None))
+
+    persisted_article = db_session.get(Article, article_id)
+    persisted_analysis = (
+        db_session.query(AIAnalysis).filter(AIAnalysis.article_id == article_id).one()
+    )
+    assert persisted_article.category_id == category_b_id
+    assert persisted_analysis.classification_status == "completed"
+    assert [item["task_type"] for item in enqueued] == [
+        "process_article_tagging",
+        "process_ai_content",
+    ]
+
+
+def test_process_article_tagging_uses_structured_tag_list(
+    db_session,
+    monkeypatch,
+):
+    article = Article(
+        title="Tagging Article",
+        slug="tagging-article",
+        content_md="这是一篇关于 AI 产品、浏览器插件与知识管理的文章。",
+        created_at=now_str(),
+        updated_at=now_str(),
+    )
+    db_session.add(article)
+    db_session.commit()
+    db_session.refresh(article)
+    article_id = article.id
+
+    service = ArticleAIPipelineService()
+
+    class FakeClient:
+        async def generate_summary(self, content, **kwargs):
+            assert content == article.content_md
+            assert (kwargs.get("parameters") or {}).get("response_format", {}).get(
+                "type"
+            ) == "json_schema"
+            assert "tags" in (
+                (kwargs.get("parameters") or {}).get("system_prompt") or ""
+            )
+            return {
+                "content": '{"tags":["AI 产品","浏览器插件","知识管理","AI 产品"]}',
+                "usage": None,
+                "latency_ms": 8,
+                "request_payload": {},
+                "response_payload": {},
+            }
+
+    monkeypatch.setattr(article_ai_pipeline_module, "SessionLocal", lambda: db_session)
+    monkeypatch.setattr(
+        service,
+        "get_ai_config",
+        lambda *args, **kwargs: {
+            "base_url": "https://example.com",
+            "api_key": "test-key",
+            "model_name": "test-model",
+            "model_api_config_id": None,
+            "price_input_per_1k": None,
+            "price_output_per_1k": None,
+            "currency": None,
+            "prompt_template": "请打标签：{content}",
+            "parameters": {
+                "system_prompt": "请提炼高价值标签",
+                "response_format": "text",
+            },
+        },
+    )
+    monkeypatch.setattr(service, "create_ai_client", lambda config: FakeClient())
+
+    asyncio.run(service.process_article_tagging(article_id, None))
+
+    persisted_article = db_session.get(Article, article_id)
+    persisted_analysis = (
+        db_session.query(AIAnalysis).filter(AIAnalysis.article_id == article_id).one()
+    )
+    assert sorted(tag.name for tag in persisted_article.tags) == sorted(
+        [
+        "AI 产品",
+        "浏览器插件",
+        "知识管理",
+        ]
+    )
+    assert persisted_analysis.tagging_status == "completed"
+
+
+def test_process_article_validation_uses_structured_validation_payload(
+    db_session,
+    monkeypatch,
+):
+    article = Article(
+        title="Validation Article",
+        slug="validation-article",
+        content_md="旧内容",
+        created_at=now_str(),
+        updated_at=now_str(),
+    )
+    analysis = AIAnalysis(
+        article_id=article.id,
+        cleaned_md_draft="## 干净内容\n\n正文",
+        updated_at=now_str(),
+    )
+    db_session.add(article)
+    db_session.commit()
+    analysis.article_id = article.id
+    db_session.add(analysis)
+    db_session.commit()
+
+    service = ArticleAIPipelineService()
+    enqueued = []
+
+    class FakeClient:
+        async def generate_summary(self, content, **kwargs):
+            assert content == "## 干净内容\n\n正文"
+            assert (kwargs.get("parameters") or {}).get("response_format", {}).get(
+                "type"
+            ) == "json_schema"
+            assert "is_valid" in (
+                (kwargs.get("parameters") or {}).get("system_prompt") or ""
+            )
+            return {
+                "content": '{"is_valid": true, "error": ""}',
+                "usage": None,
+                "latency_ms": 6,
+                "request_payload": {},
+                "response_payload": {},
+            }
+
+    async def fake_ingest(db, target_article):
+        assert target_article.id == article.id
+        return {"total": 0, "success": 0, "failed": 0, "updated": False}
+
+    monkeypatch.setattr(article_ai_pipeline_module, "SessionLocal", lambda: db_session)
+    monkeypatch.setattr(
+        article_ai_pipeline_module,
+        "maybe_ingest_article_images_with_stats",
+        fake_ingest,
+    )
+    monkeypatch.setattr(
+        service,
+        "get_ai_config",
+        lambda *args, **kwargs: {
+            "base_url": "https://example.com",
+            "api_key": "test-key",
+            "model_name": "test-model",
+            "model_api_config_id": None,
+            "price_input_per_1k": None,
+            "price_output_per_1k": None,
+            "currency": None,
+            "prompt_template": "请校验：{content}",
+            "parameters": {
+                "system_prompt": "请严格判断内容是否合规",
+                "response_format": "text",
+            },
+        },
+    )
+    monkeypatch.setattr(
+        service,
+        "_get_prompt_config",
+        lambda *args, **kwargs: object(),
+    )
+    monkeypatch.setattr(service, "create_ai_client", lambda config: FakeClient())
+    monkeypatch.setattr(
+        service,
+        "_enqueue_task",
+        lambda db, **kwargs: enqueued.append(kwargs),
+    )
+
+    asyncio.run(service.process_article_validation(article.id, None))
+
+    persisted_article = db_session.get(Article, article.id)
+    persisted_analysis = (
+        db_session.query(AIAnalysis).filter(AIAnalysis.article_id == article.id).one()
+    )
+    assert persisted_article.content_md == "## 干净内容\n\n正文"
+    assert persisted_analysis.error_message is None
+    assert persisted_analysis.cleaned_md_draft is None
+    assert [item["task_type"] for item in enqueued] == ["process_article_classification"]
 
 
 def test_repair_infographic_html_uses_latest_logged_candidate_on_failed_status(

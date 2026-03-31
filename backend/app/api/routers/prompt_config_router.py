@@ -19,7 +19,6 @@ def serialize_prompt_config(config: PromptConfig) -> dict:
         "type": config.type,
         "prompt": config.prompt,
         "system_prompt": config.system_prompt,
-        "response_format": config.response_format,
         "temperature": config.temperature,
         "max_tokens": config.max_tokens,
         "top_p": config.top_p,
@@ -35,6 +34,10 @@ def serialize_prompt_config(config: PromptConfig) -> dict:
         "created_at": config.created_at,
         "updated_at": config.updated_at,
     }
+
+
+def _prompt_config_write_data(config: PromptConfigBase) -> dict:
+    return config.model_dump()
 
 
 def _has_advanced_chunk_options(config: PromptConfigBase) -> bool:
@@ -139,7 +142,7 @@ async def create_prompt_config(
                 PromptConfig.is_default == True,
             ).update({"is_default": False})
 
-        new_config = PromptConfig(**config.dict())
+        new_config = PromptConfig(**_prompt_config_write_data(config))
         db.add(new_config)
         db.commit()
         db.refresh(new_config)
@@ -175,7 +178,6 @@ async def update_prompt_config(
         existing_config.type = config.type
         existing_config.prompt = config.prompt
         existing_config.system_prompt = config.system_prompt
-        existing_config.response_format = config.response_format
         existing_config.temperature = config.temperature
         existing_config.max_tokens = config.max_tokens
         existing_config.top_p = config.top_p
