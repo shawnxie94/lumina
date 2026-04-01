@@ -231,6 +231,8 @@ export default function AppHeader() {
 
   const activeTheme = themeOptions.find((option) => option.value === theme);
   const notificationCount = notifications.length;
+  const headerIconButtonClass =
+    'inline-flex items-center justify-center w-8 h-8 rounded-sm text-text-3 hover:text-text-1 hover:bg-muted transition';
 
   const handleDismissNotification = useCallback((id: string) => {
     notificationStore.remove(id);
@@ -329,7 +331,7 @@ export default function AppHeader() {
                 <button
                   type="button"
                   onClick={() => setErrorMenuOpen((prev) => !prev)}
-                  className="relative flex items-center justify-center h-9 w-9 rounded-sm text-text-3 hover:text-text-1 hover:bg-muted transition"
+                  className={`relative ${headerIconButtonClass}`}
                   title={t('通知中心')}
                   aria-label={t('通知中心')}
                 >
@@ -419,7 +421,7 @@ export default function AppHeader() {
               <button
                 type="button"
                 onClick={() => setThemeMenuOpen((prev) => !prev)}
-                className="flex items-center justify-center w-8 h-8 lg:w-auto lg:h-auto lg:px-3 lg:py-1 lg:gap-1 rounded-sm text-sm text-text-3 hover:text-text-1 hover:bg-muted transition"
+                className={headerIconButtonClass}
                 title={t('切换主题')}
                 aria-label={t('切换主题')}
               >
@@ -456,7 +458,7 @@ export default function AppHeader() {
               <button
                 type="button"
                 onClick={() => setLanguageMenuOpen((prev) => !prev)}
-                className="flex items-center justify-center w-8 h-8 rounded-sm text-text-3 hover:text-text-1 hover:bg-muted transition"
+                className={headerIconButtonClass}
                 title={t('语言')}
                 aria-label={t('语言')}
               >
@@ -494,7 +496,7 @@ export default function AppHeader() {
               <button
                 type="button"
                 onClick={handleOpenRss}
-                className="inline-flex items-center justify-center w-8 h-8 rounded-sm text-text-3 hover:text-primary hover:bg-primary-soft transition"
+                className={headerIconButtonClass}
                 title={t('RSS订阅')}
                 aria-label={t('RSS订阅')}
               >
@@ -512,7 +514,7 @@ export default function AppHeader() {
             {resolvedAdmin && (
               <Link
                 href="/admin"
-                className="hidden lg:flex items-center gap-1 px-3 py-1 rounded-sm text-sm text-text-3 hover:text-text-1 hover:bg-muted transition"
+                className={`hidden lg:inline-flex ${headerIconButtonClass}`}
                 title={t('管理')}
                 aria-label={t('管理')}
               >
@@ -522,7 +524,7 @@ export default function AppHeader() {
             {resolvedAdmin ? (
               <button
                 onClick={logout}
-                className="hidden lg:flex items-center gap-1 px-3 py-1 rounded-sm text-sm text-text-3 hover:text-danger-ink hover:bg-danger-soft transition"
+                className="hidden lg:inline-flex items-center justify-center w-8 h-8 rounded-sm text-text-3 hover:text-danger-ink hover:bg-danger-soft transition"
                 title={t('退出登录')}
                 aria-label={t('退出登录')}
                 type="button"
@@ -532,7 +534,7 @@ export default function AppHeader() {
             ) : resolvedGuest ? (
               <Link
                 href={loginHref}
-                className="hidden lg:flex items-center gap-1 px-3 py-1 rounded-sm text-sm text-text-3 hover:text-primary hover:bg-primary-soft transition"
+                className="hidden lg:inline-flex items-center justify-center w-8 h-8 rounded-sm text-text-3 hover:text-primary hover:bg-primary-soft transition"
                 title={t('管理员登录')}
                 aria-label={t('管理员登录')}
               >
