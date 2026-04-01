@@ -399,15 +399,25 @@ export interface ArticleDetail extends Article {
 	ai_analysis: {
 		summary: string | null;
 		summary_status: string | null;
+		summary_current_version_id?: string | null;
+		summary_current_version_number?: number | null;
 		key_points: string | null;
 		key_points_status: string | null;
+		key_points_current_version_id?: string | null;
+		key_points_current_version_number?: number | null;
 		outline: string | null;
 		outline_status: string | null;
+		outline_current_version_id?: string | null;
+		outline_current_version_number?: number | null;
 		quotes: string | null;
 		quotes_status: string | null;
+		quotes_current_version_id?: string | null;
+		quotes_current_version_number?: number | null;
 		infographic_status: string | null;
 		infographic_image_url?: string | null;
 		infographic_html?: string | null;
+		infographic_current_version_id?: string | null;
+		infographic_current_version_number?: number | null;
 		tagging_status: string | null;
 		tagging_manual_override?: boolean | null;
 		error_message?: string | null;
@@ -443,6 +453,35 @@ export interface SimilarArticleResponse {
 	status: "ready" | "pending" | "disabled";
 	items: SimilarArticleItem[];
 }
+
+export type VersionedAIContentType =
+	| "summary"
+	| "key_points"
+	| "outline"
+	| "quotes"
+	| "infographic";
+
+export interface AIContentVersion {
+	id: string;
+	content_type: VersionedAIContentType;
+	version_number: number;
+	status: string;
+	content_text?: string | null;
+	content_html?: string | null;
+	content_image_url?: string | null;
+	created_by_mode: "generation" | "rollback" | string;
+	rollback_from_version_id?: string | null;
+	created_at: string;
+	is_current?: boolean;
+}
+
+export interface AIContentVersionListResponse {
+	article_id: string;
+	content_type: VersionedAIContentType;
+	versions: AIContentVersion[];
+}
+
+export type DeletableAIContentType = Exclude<VersionedAIContentType, "summary">;
 
 export interface RecommendationSettings {
 	recommendations_enabled: boolean;
@@ -519,6 +558,7 @@ export interface BackupPayload {
 		settings: Record<string, unknown>;
 		articles: Record<string, unknown>[];
 		ai_analyses: Record<string, unknown>[];
+		ai_analysis_versions: Record<string, unknown>[];
 	};
 }
 
@@ -535,6 +575,7 @@ export interface BackupImportResult {
 		prompt_configs: { created: number; skipped: number; errors: number };
 		articles: { created: number; skipped: number; errors: number };
 		ai_analyses: { created: number; skipped: number; errors: number };
+		ai_analysis_versions: { created: number; skipped: number; errors: number };
 		settings: { created: number; skipped: number; errors: number };
 	};
 	skipped_total: number;
@@ -806,16 +847,41 @@ export const articleApi = {
 
 	deleteAIContent: async (
 		id: string,
-		contentType: "key_points" | "outline" | "quotes" | "infographic",
+		contentType: DeletableAIContentType,
 	) => {
 		const response = await api.delete(
 			`/api/articles/${id}/ai-content/${contentType}`,
 		);
 		return response.data as {
 			id: string;
-			content_type: "key_points" | "outline" | "quotes" | "infographic";
+			content_type: DeletableAIContentType;
 			status: "deleted";
 		};
+	},
+
+	getAIContentVersions: async (
+		id: string,
+		contentType: VersionedAIContentType,
+	): Promise<AIContentVersionListResponse> => {
+		const response = await api.get(`/api/articles/${id}/ai-versions/${contentType}`);
+		return response.data;
+	},
+
+	rollbackAIContentVersion: async (
+		id: string,
+		contentType: VersionedAIContentType,
+		versionId: string,
+	): Promise<{
+		article_id: string;
+		content_type: VersionedAIContentType;
+		status: "rolled_back";
+		current_version_id: string;
+		current_version_number: number;
+	}> => {
+		const response = await api.post(
+			`/api/articles/${id}/ai-versions/${contentType}/${versionId}/rollback`,
+		);
+		return response.data;
 	},
 
 	updateArticle: async (

@@ -3,10 +3,10 @@ import uuid
 
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker
 
-from app.core.db_migrations import resolve_database_url
+from app.core.db_migrations import resolve_database_url, run_db_migrations
 from models import Base, PromptConfig, now_str
 
 
@@ -201,3 +201,73 @@ def test_prompt_protocol_text_migration_keeps_user_modified_builtin_prompts(tmp_
         session.close()
         Base.metadata.drop_all(bind=engine)
         engine.dispose()
+
+
+def test_run_db_migrations_repairs_ai_analysis_versioning_schema_drift(tmp_path):
+    db_path = tmp_path / "schema-drift.db"
+    engine = create_engine(
+        f"sqlite:///{db_path}",
+        connect_args={"check_same_thread": False},
+    )
+
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                CREATE TABLE articles (
+                    id VARCHAR NOT NULL PRIMARY KEY,
+                    slug VARCHAR
+                )
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                CREATE TABLE ai_analyses (
+                    id VARCHAR NOT NULL PRIMARY KEY,
+                    article_id VARCHAR,
+                    summary TEXT,
+                    outline TEXT,
+                    key_points TEXT,
+                    mindmap TEXT,
+                    error_message TEXT,
+                    updated_at VARCHAR,
+                    quotes TEXT,
+                    summary_status VARCHAR,
+                    key_points_status VARCHAR,
+                    outline_status VARCHAR,
+                    quotes_status VARCHAR,
+                    classification_status VARCHAR,
+                    cleaned_md_draft TEXT,
+                    tagging_status VARCHAR,
+                    tagging_source_hash VARCHAR,
+                    tagging_manual_override BOOLEAN,
+                    infographic_html TEXT,
+                    infographic_status VARCHAR,
+                    infographic_image_url VARCHAR,
+                    FOREIGN KEY(article_id) REFERENCES articles (id)
+                )
+                """
+            )
+        )
+        conn.execute(text("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL)"))
+        conn.execute(
+            text("INSERT INTO alembic_version (version_num) VALUES ('20260401_0016')")
+        )
+
+    run_db_migrations(f"sqlite:///{db_path}")
+
+    inspector = inspect(engine)
+    ai_analysis_columns = {
+        column["name"] for column in inspector.get_columns("ai_analyses")
+    }
+
+    assert "ai_analysis_versions" in inspector.get_table_names()
+    assert "current_summary_version_id" in ai_analysis_columns
+    assert "current_key_points_version_id" in ai_analysis_columns
+    assert "current_outline_version_id" in ai_analysis_columns
+    assert "current_quotes_version_id" in ai_analysis_columns
+    assert "current_infographic_version_id" in ai_analysis_columns
+
+    engine.dispose()

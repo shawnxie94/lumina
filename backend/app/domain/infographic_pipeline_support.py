@@ -106,7 +106,8 @@ class InfographicPipelineSupport:
         assert_general_model: Callable[[ModelAPIConfig], None],
         create_render_service: Callable[[], InfographicRenderService],
         log_ai_usage: Callable[..., None],
-        merge_protocol_parameters: Callable[[str, dict | None], dict],
+        merge_protocol_parameters: Callable[[str, dict | None], dict]
+        | None = None,
         max_tokens: int,
     ) -> None:
         self._get_prompt_config = get_prompt_config
@@ -114,7 +115,11 @@ class InfographicPipelineSupport:
         self._assert_general_model = assert_general_model
         self._create_render_service = create_render_service
         self._log_ai_usage = log_ai_usage
-        self._merge_protocol_parameters = merge_protocol_parameters
+        self._merge_protocol_parameters = (
+            merge_protocol_parameters
+            if merge_protocol_parameters is not None
+            else lambda _content_type, parameters: parameters or {}
+        )
         self._max_tokens = max_tokens
 
     @staticmethod

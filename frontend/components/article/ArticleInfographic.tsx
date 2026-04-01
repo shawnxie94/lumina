@@ -30,6 +30,7 @@ interface InfographicPreviewCardProps {
 	html: string;
 	onOpen: () => void;
 	previewLabel: string;
+	interactive?: boolean;
 }
 
 interface InfographicExportCanvasProps {
@@ -124,7 +125,10 @@ function extractInfographicSurfaceColor(html: string): string | undefined {
 }
 
 export function normalizeInfographicHtmlForCanvas(html: string): string {
-	const raw = (html || "").trim();
+	const fencedHtmlMatch = (html || "")
+		.trim()
+		.match(/^```(?:html)?\s*([\s\S]*?)\s*```$/i);
+	const raw = (fencedHtmlMatch?.[1] || html || "").trim();
 	if (!raw) return "";
 
 	const startTagMatch = raw.match(/^<([a-z0-9]+)([^>]*)>/i);
@@ -333,7 +337,24 @@ export function InfographicPreviewCard({
 	html,
 	onOpen,
 	previewLabel,
+	interactive = true,
 }: InfographicPreviewCardProps) {
+	const content = (
+		<div className="relative w-full">
+			<InfographicCanvas
+				html={html}
+				className="aspect-[3/4] w-full overflow-hidden rounded-[24px] transition duration-200 group-hover:opacity-95"
+				paddingClassName="box-border h-full w-full"
+				contentClassName="h-full w-full"
+				style={buildInfographicSurfaceStyle(html)}
+			/>
+		</div>
+	);
+
+	if (!interactive) {
+		return <div>{content}</div>;
+	}
+
 	return (
 		<div>
 			<button
@@ -342,15 +363,7 @@ export function InfographicPreviewCard({
 				className="group block w-full text-left"
 				aria-label={previewLabel}
 			>
-				<div className="relative w-full">
-					<InfographicCanvas
-						html={html}
-						className="aspect-[3/4] w-full overflow-hidden rounded-[24px] transition duration-200 group-hover:opacity-95"
-						paddingClassName="box-border h-full w-full"
-						contentClassName="h-full w-full"
-						style={buildInfographicSurfaceStyle(html)}
-					/>
-				</div>
+				{content}
 			</button>
 		</div>
 	);

@@ -72,7 +72,7 @@ def build_basic_settings(admin: Optional[AdminSettings]) -> dict:
         "site_description": admin.site_description
         or DEFAULT_BASIC_SETTINGS["site_description"],
         "site_logo_url": admin.site_logo_url or "",
-        "rss_enabled": bool(admin.rss_enabled),
+        "rss_enabled": bool(getattr(admin, "rss_enabled", False)),
         "home_badge_text": admin.home_badge_text or "",
         "home_tagline_text": admin.home_tagline_text or "",
         "home_primary_button_text": admin.home_primary_button_text or "",

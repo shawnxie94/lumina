@@ -13,6 +13,7 @@ from app.domain.article_tag_service import ArticleTagService
 from auth import get_admin_settings
 from models import (
     AIAnalysis,
+    AIAnalysisVersion,
     AdminSettings,
     Article,
     Category,
@@ -138,6 +139,31 @@ class BackupService:
                     first_analysis = False
                 offset += self.EXPORT_BATCH_SIZE
             yield "]"
+
+            yield ",\"ai_analysis_versions\":["
+            first_version = True
+            offset = 0
+            while True:
+                rows = (
+                    db.query(AIAnalysisVersion, Article.slug)
+                    .join(Article, Article.id == AIAnalysisVersion.article_id)
+                    .order_by(AIAnalysisVersion.created_at.desc())
+                    .offset(offset)
+                    .limit(self.EXPORT_BATCH_SIZE)
+                    .all()
+                )
+                if not rows:
+                    break
+                for version, article_slug in rows:
+                    if not first_version:
+                        yield ","
+                    yield json.dumps(
+                        self._serialize_ai_analysis_version(version, article_slug),
+                        ensure_ascii=False,
+                    )
+                    first_version = False
+                offset += self.EXPORT_BATCH_SIZE
+            yield "]"
             yield "}}"
 
         return stream()
@@ -160,6 +186,7 @@ class BackupService:
             "model_api_configs": self._new_stats(),
             "prompt_configs": self._new_stats(),
             "articles": self._new_stats(),
+            "ai_analysis_versions": self._new_stats(),
             "ai_analyses": self._new_stats(),
             "settings": self._new_stats(),
         }
@@ -200,6 +227,7 @@ class BackupService:
             category_id_map=category_id_map,
             model_id_map=model_id_map,
         )
+        ai_analysis_version_id_map: dict[str, str] = {}
         self._import_articles(
             db=db,
             items=self._as_list(data.get("articles"), "articles"),
@@ -210,6 +238,17 @@ class BackupService:
             article_id_map=article_id_map,
             article_slug_map=article_slug_map,
         )
+        self._import_ai_analysis_versions(
+            db=db,
+            items=self._as_list(
+                data.get("ai_analysis_versions"), "ai_analysis_versions"
+            ),
+            section_stats=stats["ai_analysis_versions"],
+            skipped=skipped,
+            article_id_map=article_id_map,
+            article_slug_map=article_slug_map,
+            version_id_map=ai_analysis_version_id_map,
+        )
         self._import_ai_analyses(
             db=db,
             items=self._as_list(data.get("ai_analyses"), "ai_analyses"),
@@ -217,6 +256,7 @@ class BackupService:
             skipped=skipped,
             article_id_map=article_id_map,
             article_slug_map=article_slug_map,
+            version_id_map=ai_analysis_version_id_map,
         )
         self._import_settings(
             db=db,
@@ -877,6 +917,7 @@ class BackupService:
         skipped: _SkipRecorder,
         article_id_map: dict[str, str],
         article_slug_map: dict[str, str],
+        version_id_map: dict[str, str],
     ) -> None:
         committed_article_ids: set[str] = set()
 
@@ -945,6 +986,21 @@ class BackupService:
                         item.get("infographic_image_url")
                     ),
                     infographic_status=self._optional_str(item.get("infographic_status")),
+                    current_summary_version_id=version_id_map.get(
+                        self._clean_str(item.get("current_summary_version_id"))
+                    ),
+                    current_key_points_version_id=version_id_map.get(
+                        self._clean_str(item.get("current_key_points_version_id"))
+                    ),
+                    current_outline_version_id=version_id_map.get(
+                        self._clean_str(item.get("current_outline_version_id"))
+                    ),
+                    current_quotes_version_id=version_id_map.get(
+                        self._clean_str(item.get("current_quotes_version_id"))
+                    ),
+                    current_infographic_version_id=version_id_map.get(
+                        self._clean_str(item.get("current_infographic_version_id"))
+                    ),
                     mindmap=self._optional_str(item.get("mindmap")),
                     classification_status=self._optional_str(item.get("classification_status")),
                     tagging_status=self._optional_str(item.get("tagging_status")),
@@ -987,6 +1043,83 @@ class BackupService:
             except Exception:
                 db.rollback()
                 section_stats["errors"] += len(pending)
+
+    def _import_ai_analysis_versions(
+        self,
+        db: Session,
+        items: list[Any],
+        section_stats: dict[str, int],
+        skipped: _SkipRecorder,
+        article_id_map: dict[str, str],
+        article_slug_map: dict[str, str],
+        version_id_map: dict[str, str],
+    ) -> None:
+        pending_rollbacks: list[tuple[AIAnalysisVersion, str]] = []
+
+        for item in items:
+            if not isinstance(item, dict):
+                section_stats["errors"] += 1
+                continue
+            source_article_id = self._clean_str(item.get("article_id"))
+            source_article_slug = self._clean_str(item.get("article_slug"))
+            source_version_id = self._clean_str(item.get("id"))
+            target_article_id = article_id_map.get(source_article_id) or article_slug_map.get(
+                source_article_slug
+            )
+            if not target_article_id:
+                section_stats["skipped"] += 1
+                skipped.add(
+                    "ai_analysis_versions",
+                    source_article_slug or source_article_id or "-",
+                    "关联文章未导入，已跳过",
+                )
+                continue
+
+            version = AIAnalysisVersion(
+                id=generate_uuid(),
+                article_id=target_article_id,
+                content_type=self._optional_str(item.get("content_type")),
+                version_number=self._safe_int(item.get("version_number"), default=1),
+                status=self._optional_str(item.get("status")) or "completed",
+                content_text=self._optional_str(item.get("content_text")),
+                content_html=self._optional_str(item.get("content_html")),
+                content_image_url=self._optional_str(item.get("content_image_url")),
+                source_task_id=self._optional_str(item.get("source_task_id")),
+                source_model_config_id=self._optional_str(item.get("source_model_config_id")),
+                source_prompt_config_id=self._optional_str(
+                    item.get("source_prompt_config_id")
+                ),
+                created_by_mode=self._optional_str(item.get("created_by_mode"))
+                or "generation",
+                created_at=self._optional_str(item.get("created_at")) or now_str(),
+            )
+            rollback_from = self._clean_str(item.get("rollback_from_version_id"))
+            if rollback_from:
+                pending_rollbacks.append((version, rollback_from))
+            try:
+                db.add(version)
+                db.commit()
+                section_stats["created"] += 1
+                if source_version_id:
+                    version_id_map[source_version_id] = version.id
+            except IntegrityError:
+                db.rollback()
+                section_stats["skipped"] += 1
+                skipped.add(
+                    "ai_analysis_versions",
+                    source_version_id or version.id,
+                    "唯一键冲突(id/article_id/content_type/version_number)",
+                )
+            except Exception:
+                db.rollback()
+                section_stats["errors"] += 1
+
+        for version, source_rollback_id in pending_rollbacks:
+            mapped_id = version_id_map.get(source_rollback_id)
+            if not mapped_id:
+                continue
+            version.rollback_from_version_id = mapped_id
+            db.commit()
 
     def _import_settings(
         self,
@@ -1126,6 +1259,11 @@ class BackupService:
             "infographic_html": analysis.infographic_html,
             "infographic_image_url": analysis.infographic_image_url,
             "infographic_status": analysis.infographic_status,
+            "current_summary_version_id": analysis.current_summary_version_id,
+            "current_key_points_version_id": analysis.current_key_points_version_id,
+            "current_outline_version_id": analysis.current_outline_version_id,
+            "current_quotes_version_id": analysis.current_quotes_version_id,
+            "current_infographic_version_id": analysis.current_infographic_version_id,
             "mindmap": analysis.mindmap,
             "classification_status": analysis.classification_status,
             "tagging_status": analysis.tagging_status,
@@ -1134,6 +1272,29 @@ class BackupService:
             "cleaned_md_draft": analysis.cleaned_md_draft,
             "error_message": analysis.error_message,
             "updated_at": analysis.updated_at,
+        }
+
+    @staticmethod
+    def _serialize_ai_analysis_version(
+        version: AIAnalysisVersion,
+        article_slug: str | None,
+    ) -> dict[str, Any]:
+        return {
+            "id": version.id,
+            "article_id": version.article_id,
+            "article_slug": article_slug,
+            "content_type": version.content_type,
+            "version_number": version.version_number,
+            "status": version.status,
+            "content_text": version.content_text,
+            "content_html": version.content_html,
+            "content_image_url": version.content_image_url,
+            "source_task_id": version.source_task_id,
+            "source_model_config_id": version.source_model_config_id,
+            "source_prompt_config_id": version.source_prompt_config_id,
+            "created_by_mode": version.created_by_mode,
+            "rollback_from_version_id": version.rollback_from_version_id,
+            "created_at": version.created_at,
         }
 
     def _serialize_settings(self, db: Session) -> dict[str, Any]:

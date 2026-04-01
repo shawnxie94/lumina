@@ -224,6 +224,21 @@ class AIAnalysis(Base):
     infographic_html = Column(Text, nullable=True)
     infographic_image_url = Column(String, nullable=True)
     infographic_status = Column(String, default=None)
+    current_summary_version_id = Column(
+        String, ForeignKey("ai_analysis_versions.id", ondelete="SET NULL"), nullable=True
+    )
+    current_key_points_version_id = Column(
+        String, ForeignKey("ai_analysis_versions.id", ondelete="SET NULL"), nullable=True
+    )
+    current_outline_version_id = Column(
+        String, ForeignKey("ai_analysis_versions.id", ondelete="SET NULL"), nullable=True
+    )
+    current_quotes_version_id = Column(
+        String, ForeignKey("ai_analysis_versions.id", ondelete="SET NULL"), nullable=True
+    )
+    current_infographic_version_id = Column(
+        String, ForeignKey("ai_analysis_versions.id", ondelete="SET NULL"), nullable=True
+    )
     mindmap = Column(Text)
     classification_status = Column(String, default=None)
     tagging_status = Column(String, default=None)
@@ -234,6 +249,36 @@ class AIAnalysis(Base):
     updated_at = Column(String, default=today_str)
 
     article = relationship("Article", back_populates="ai_analysis")
+
+
+class AIAnalysisVersion(Base):
+    __tablename__ = "ai_analysis_versions"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    article_id = Column(
+        String,
+        ForeignKey("articles.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    content_type = Column(String, nullable=False, index=True)
+    version_number = Column(Integer, nullable=False)
+    status = Column(String, nullable=False, default="completed")
+    content_text = Column(Text, nullable=True)
+    content_html = Column(Text, nullable=True)
+    content_image_url = Column(String, nullable=True)
+    source_task_id = Column(String, nullable=True)
+    source_model_config_id = Column(String, nullable=True)
+    source_prompt_config_id = Column(String, nullable=True)
+    created_by_mode = Column(String, nullable=False, default="generation")
+    rollback_from_version_id = Column(
+        String,
+        ForeignKey("ai_analysis_versions.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    created_at = Column(String, default=now_str)
+
+    article = relationship("Article")
 
 
 class AITask(Base):

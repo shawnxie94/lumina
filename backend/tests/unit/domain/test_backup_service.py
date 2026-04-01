@@ -7,7 +7,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.domain.backup_service import BackupService
-from models import AIAnalysis, Article, Base, PromptConfig, now_str
+from models import AIAnalysis, AIAnalysisVersion, Article, Base, PromptConfig, now_str
 
 
 def test_backup_service_exports_and_imports_infographic_fields(db_session, tmp_path):
@@ -68,6 +68,89 @@ def test_backup_service_exports_and_imports_infographic_fields(db_session, tmp_p
         assert imported_analysis.infographic_html == "<div>infographic</div>"
         assert imported_analysis.infographic_status == "completed"
         assert imported_analysis.infographic_image_url == "/media/infographic.png"
+    finally:
+        import_session.close()
+        Base.metadata.drop_all(bind=import_engine)
+        import_engine.dispose()
+
+
+def test_backup_service_exports_and_imports_ai_analysis_versions(db_session, tmp_path):
+    article = Article(
+        id=str(uuid.uuid4()),
+        title="backup-versions",
+        slug="backup-versions",
+        content_md="正文内容",
+        created_at=now_str(),
+        updated_at=now_str(),
+        status="completed",
+        is_visible=True,
+    )
+    db_session.add(article)
+    db_session.commit()
+
+    analysis = AIAnalysis(
+        article_id=article.id,
+        summary="当前摘要",
+        summary_status="completed",
+        updated_at=now_str(),
+    )
+    db_session.add(analysis)
+    db_session.commit()
+
+    version = AIAnalysisVersion(
+        article_id=article.id,
+        content_type="summary",
+        version_number=1,
+        status="completed",
+        content_text="历史摘要 v1",
+        source_task_id="task-1",
+        source_model_config_id="model-1",
+        source_prompt_config_id="prompt-1",
+        created_by_mode="generation",
+        created_at=now_str(),
+    )
+    db_session.add(version)
+    db_session.commit()
+    analysis.current_summary_version_id = version.id
+    db_session.commit()
+
+    service = BackupService()
+    export_payload = json.loads("".join(service.export_backup_stream(db_session)))
+
+    exported_versions = export_payload["data"]["ai_analysis_versions"]
+    assert len(exported_versions) == 1
+    assert exported_versions[0]["content_type"] == "summary"
+    assert exported_versions[0]["content_text"] == "历史摘要 v1"
+
+    import_engine = create_engine(
+        f"sqlite:///{tmp_path / 'backup-import-versions.db'}",
+        connect_args={"check_same_thread": False},
+    )
+    ImportSession = sessionmaker(autocommit=False, autoflush=False, bind=import_engine)
+    Base.metadata.create_all(bind=import_engine)
+    import_session = ImportSession()
+    try:
+        result = service.import_backup(import_session, export_payload)
+        assert result["stats"]["ai_analysis_versions"]["created"] == 1
+
+        imported_article = (
+            import_session.query(Article)
+            .filter(Article.slug == "backup-versions")
+            .one()
+        )
+        imported_version = (
+            import_session.query(AIAnalysisVersion)
+            .filter(AIAnalysisVersion.article_id == imported_article.id)
+            .filter(AIAnalysisVersion.content_type == "summary")
+            .one()
+        )
+        imported_analysis = (
+            import_session.query(AIAnalysis)
+            .filter(AIAnalysis.article_id == imported_article.id)
+            .one()
+        )
+        assert imported_version.content_text == "历史摘要 v1"
+        assert imported_analysis.current_summary_version_id == imported_version.id
     finally:
         import_session.close()
         Base.metadata.drop_all(bind=import_engine)

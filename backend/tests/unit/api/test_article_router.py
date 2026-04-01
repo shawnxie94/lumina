@@ -241,7 +241,88 @@ async def test_delete_ai_content_rejects_summary(db_session):
         )
 
     assert exc_info.value.status_code == 400
-    assert exc_info.value.detail == "无效的内容类型，支持: key_points, outline, quotes, infographic"
+    assert "无效的内容类型" in str(exc_info.value.detail)
+
+
+@pytest.mark.anyio
+async def test_get_ai_content_versions_returns_descending_versions(monkeypatch, db_session):
+    versions = [
+        {
+            "id": "version-2",
+            "content_type": "summary",
+            "version_number": 2,
+            "created_by_mode": "rollback",
+            "created_at": "2026-03-31 10:00:00",
+        },
+        {
+            "id": "version-1",
+            "content_type": "summary",
+            "version_number": 1,
+            "created_by_mode": "generation",
+            "created_at": "2026-03-30 10:00:00",
+        },
+    ]
+    article = SimpleNamespace(id="article-1", is_visible=True)
+
+    monkeypatch.setattr(
+        article_router.article_query_service,
+        "get_article_by_slug",
+        lambda db, slug, include_relations=False: article,
+    )
+    monkeypatch.setattr(
+        article_router.article_ai_version_service,
+        "list_versions",
+        lambda db, article_id, content_type: versions,
+    )
+
+    response = await article_router.get_ai_content_versions(
+        article_slug="demo-article",
+        content_type="summary",
+        db=db_session,
+        _=True,
+    )
+
+    assert response == {
+        "article_id": "article-1",
+        "content_type": "summary",
+        "versions": versions,
+    }
+
+@pytest.mark.anyio
+async def test_rollback_ai_content_version_returns_new_current_version(monkeypatch, db_session):
+    article = SimpleNamespace(id="article-1", is_visible=True)
+    rollback_result = {
+        "current_version_id": "version-3",
+        "current_version_number": 3,
+        "content_type": "summary",
+    }
+
+    monkeypatch.setattr(
+        article_router.article_query_service,
+        "get_article_by_slug",
+        lambda db, slug, include_relations=False: article,
+    )
+    monkeypatch.setattr(
+        article_router.article_ai_version_service,
+        "rollback_to_version",
+        lambda db, article_id, content_type, version_id: rollback_result,
+    )
+
+    response = await article_router.rollback_ai_content_version(
+        article_slug="demo-article",
+        content_type="summary",
+        version_id="version-1",
+        db=db_session,
+        _=True,
+    )
+
+    assert response == {
+        "article_id": "article-1",
+        "content_type": "summary",
+        "status": "rolled_back",
+        "current_version_id": "version-3",
+        "current_version_number": 3,
+    }
 
 
 @pytest.mark.anyio

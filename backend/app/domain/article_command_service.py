@@ -2,13 +2,14 @@ import json
 import logging
 
 from ai_client import is_english_content
-from media_service import delete_media_asset_by_url, maybe_ingest_top_image
+from media_service import maybe_ingest_top_image
 from models import AIAnalysis, AITask, Article, Category, generate_uuid, now_str
 from slug_utils import generate_article_slug
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.domain.ai_task_service import AITaskService
+from app.domain.article_ai_version_service import ArticleAIVersionService
 from app.domain.article_top_image_service import resolve_top_image
 
 logger = logging.getLogger("article_service")
@@ -28,6 +29,7 @@ DELETABLE_AI_CONTENT_FIELDS: dict[str, tuple[str, ...]] = {
 class ArticleCommandService:
     def __init__(self, ai_task_service: AITaskService | None = None):
         self.ai_task_service = ai_task_service or AITaskService()
+        self.article_ai_version_service = ArticleAIVersionService()
 
     async def create_article(self, article_data: dict, db: Session) -> str:
         if not article_data.get("content_html") and not article_data.get("content_md"):
@@ -277,13 +279,5 @@ class ArticleCommandService:
         if active_task:
             raise ValueError("当前类型的 AI 解读正在生成中，请稍后再试")
 
-        analysis = article.ai_analysis
-        if content_type == "infographic" and analysis.infographic_image_url:
-            delete_media_asset_by_url(db, analysis.infographic_image_url)
-
-        for field_name in DELETABLE_AI_CONTENT_FIELDS[content_type]:
-            setattr(analysis, field_name, None)
-
-        analysis.error_message = None
-        analysis.updated_at = now_str()
+        self.article_ai_version_service.clear_current_content(db, article_id, content_type)
         db.commit()

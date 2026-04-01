@@ -16,6 +16,7 @@ from app.core.public_cache import (
     invalidate_public_cache,
     invalidate_public_rss_cache,
 )
+from app.domain.article_embedding_service import ArticleEmbeddingService
 from app.domain.infographic_pipeline_support import (
     DEFAULT_INFOGRAPHIC_LAYOUT_BRIEF,
     LEGACY_INFOGRAPHIC_PROMPT_PREFIX,
@@ -25,6 +26,7 @@ from app.domain.infographic_pipeline_support import (
 )
 from app.domain.infographic_render_service import InfographicRenderService
 from app.domain.article_tag_service import ArticleTagService
+from app.domain.article_ai_version_service import ArticleAIVersionService
 from models import (
     AIAnalysis,
     AITask,
@@ -203,6 +205,7 @@ class ArticleAIPipelineService:
     ):
         self.current_task_id = current_task_id
         self.enqueue_task_func = enqueue_task_func
+        self.article_ai_version_service = ArticleAIVersionService()
         self.infographic_support = InfographicPipelineSupport(
             get_prompt_config=lambda *args, **kwargs: self._get_prompt_config(
                 *args, **kwargs
@@ -3498,15 +3501,20 @@ class ArticleAIPipelineService:
                     setattr(article.ai_analysis, f"{content_type}_status", "completed")
                 article.ai_analysis.error_message = None
                 article.ai_analysis.updated_at = now_str()
+                if content_type in ("summary", "key_points", "outline", "quotes", "infographic"):
+                    self.article_ai_version_service.record_version(
+                        db,
+                        article_id=article_id,
+                        content_type=content_type,
+                        source_task_id=self.current_task_id,
+                        source_model_config_id=ai_config.get("model_api_config_id"),
+                        source_prompt_config_id=prompt_config_id,
+                    )
                 if content_type != "infographic":
                     print(f"{content_type} 生成完成: {article.title}")
                 if content_type == "summary":
                     summary_text = (result or "").strip()
                     if summary_text:
-                        from app.domain.article_embedding_service import (
-                            ArticleEmbeddingService,
-                        )
-
                         if ArticleEmbeddingService().has_available_remote_config(db):
                             self._enqueue_task(
                                 db,

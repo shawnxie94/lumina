@@ -36,6 +36,7 @@ app/core/settings.py
 app/domain/__init__.py
 app/domain/ai_task_service.py
 app/domain/article_ai_pipeline_service.py
+app/domain/article_ai_version_service.py
 app/domain/article_command_service.py
 app/domain/article_embedding_service.py
 app/domain/article_query_service.py

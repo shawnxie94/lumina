@@ -120,6 +120,18 @@
     ]
   },
   {
+    "path": "/api/articles/{article_slug}/ai-versions/{content_type}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/articles/{article_slug}/ai-versions/{content_type}/{version_id}/rollback",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/articles/{article_slug}/comments",
     "methods": [
       "GET"

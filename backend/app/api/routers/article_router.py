@@ -20,6 +20,7 @@ from app.schemas import (
 )
 from app.domain.ai_task_service import AITaskService
 from app.domain.article_command_service import ArticleCommandService
+from app.domain.article_ai_version_service import ArticleAIVersionService
 from app.domain.article_embedding_service import (
     REMOTE_EMBEDDING_REQUIRED_MESSAGE,
     ArticleEmbeddingService,
@@ -52,6 +53,7 @@ from media_service import cleanup_media_assets, delete_media_asset_by_url, save_
 from models import (
     Article,
     ArticleComment,
+    AIAnalysisVersion,
     ArticleEmbedding,
     Category,
     article_tags,
@@ -66,6 +68,7 @@ ai_task_service = AITaskService()
 article_command_service = ArticleCommandService(ai_task_service=ai_task_service)
 article_embedding_service = ArticleEmbeddingService()
 article_tag_service = ArticleTagService()
+article_ai_version_service = ArticleAIVersionService()
 article_url_ingest_service = ArticleUrlIngestService(
     article_command_service=article_command_service
 )
@@ -83,6 +86,13 @@ def parse_tag_ids(raw_value: str | None) -> list[str]:
     if not raw_value:
         return []
     return [item.strip() for item in raw_value.split(",") if item and item.strip()]
+
+
+def resolve_current_version_number(db: Session, version_id: str | None) -> int | None:
+    if not version_id:
+        return None
+    version = db.query(AIAnalysisVersion).filter(AIAnalysisVersion.id == version_id).first()
+    return version.version_number if version else None
 
 
 @router.post("/api/articles")
@@ -333,18 +343,46 @@ async def get_article(
             "summary_status": article.ai_analysis.summary_status
             if article.ai_analysis
             else None,
+            "summary_current_version_id": article.ai_analysis.current_summary_version_id
+            if article.ai_analysis
+            else None,
+            "summary_current_version_number": resolve_current_version_number(
+                db,
+                article.ai_analysis.current_summary_version_id if article.ai_analysis else None,
+            ),
             "key_points": article.ai_analysis.key_points if article.ai_analysis else None,
             "key_points_status": article.ai_analysis.key_points_status
             if article.ai_analysis
             else None,
+            "key_points_current_version_id": article.ai_analysis.current_key_points_version_id
+            if article.ai_analysis
+            else None,
+            "key_points_current_version_number": resolve_current_version_number(
+                db,
+                article.ai_analysis.current_key_points_version_id if article.ai_analysis else None,
+            ),
             "outline": article.ai_analysis.outline if article.ai_analysis else None,
             "outline_status": article.ai_analysis.outline_status
             if article.ai_analysis
             else None,
+            "outline_current_version_id": article.ai_analysis.current_outline_version_id
+            if article.ai_analysis
+            else None,
+            "outline_current_version_number": resolve_current_version_number(
+                db,
+                article.ai_analysis.current_outline_version_id if article.ai_analysis else None,
+            ),
             "quotes": article.ai_analysis.quotes if article.ai_analysis else None,
             "quotes_status": article.ai_analysis.quotes_status
             if article.ai_analysis
             else None,
+            "quotes_current_version_id": article.ai_analysis.current_quotes_version_id
+            if article.ai_analysis
+            else None,
+            "quotes_current_version_number": resolve_current_version_number(
+                db,
+                article.ai_analysis.current_quotes_version_id if article.ai_analysis else None,
+            ),
             "infographic_status": article.ai_analysis.infographic_status
             if article.ai_analysis
             else None,
@@ -354,6 +392,15 @@ async def get_article(
             "infographic_html": article.ai_analysis.infographic_html
             if article.ai_analysis
             else None,
+            "infographic_current_version_id": article.ai_analysis.current_infographic_version_id
+            if article.ai_analysis
+            else None,
+            "infographic_current_version_number": resolve_current_version_number(
+                db,
+                article.ai_analysis.current_infographic_version_id
+                if article.ai_analysis
+                else None,
+            ),
             "classification_status": article.ai_analysis.classification_status
             if article.ai_analysis
             else None,
@@ -858,7 +905,7 @@ async def generate_ai_content(
     db: Session = Depends(get_db),
     _: bool = Depends(get_current_admin),
 ):
-    valid_types = ["summary", "key_points", "outline", "quotes", "infographic"]
+    valid_types = ["key_points", "outline", "quotes", "infographic"]
     if content_type not in valid_types:
         raise HTTPException(
             status_code=400, detail=f"无效的内容类型，支持: {', '.join(valid_types)}"
@@ -906,6 +953,70 @@ async def delete_ai_content(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/api/articles/{article_slug}/ai-versions/{content_type}")
+async def get_ai_content_versions(
+    article_slug: str,
+    content_type: str,
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
+    valid_types = ["summary", "key_points", "outline", "quotes", "infographic"]
+    if content_type not in valid_types:
+        raise HTTPException(
+            status_code=400, detail=f"无效的内容类型，支持: {', '.join(valid_types)}"
+        )
+
+    article = article_query_service.get_article_by_slug(
+        db, article_slug, include_relations=False
+    )
+    if not article:
+        raise HTTPException(status_code=404, detail="文章不存在")
+    return {
+        "article_id": article.id,
+        "content_type": content_type,
+        "versions": article_ai_version_service.list_versions(
+            db, article.id, content_type
+        ),
+    }
+
+@router.post("/api/articles/{article_slug}/ai-versions/{content_type}/{version_id}/rollback")
+async def rollback_ai_content_version(
+    article_slug: str,
+    content_type: str,
+    version_id: str,
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
+    article = article_query_service.get_article_by_slug(
+        db, article_slug, include_relations=False
+    )
+    if not article:
+        raise HTTPException(status_code=404, detail="文章不存在")
+    try:
+        payload = article_ai_version_service.rollback_to_version(
+            db,
+            article.id,
+            content_type,
+            version_id,
+        )
+        current_version_id = payload["current_version_id"] if isinstance(payload, dict) else payload.id
+        current_version_number = (
+            payload["current_version_number"]
+            if isinstance(payload, dict)
+            else payload.version_number
+        )
+        invalidate_public_article_derived_cache()
+        return {
+            "article_id": article.id,
+            "content_type": content_type,
+            "status": "rolled_back",
+            "current_version_id": current_version_id,
+            "current_version_number": current_version_number,
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
 @router.post("/api/articles/{article_slug}/repair-infographic")

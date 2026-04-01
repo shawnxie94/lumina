@@ -1,7 +1,10 @@
 import asyncio
 
+import pytest
+
+import app.domain.article_command_service as article_command_service_module
 from app.domain.article_command_service import ArticleCommandService
-from models import AIAnalysis, AITask, Article, now_str
+from models import AIAnalysis, AIAnalysisVersion, AITask, Article, now_str
 
 
 class StubAITaskService:
@@ -149,6 +152,7 @@ def test_delete_ai_content_clears_only_requested_content_type(db_session):
 def test_delete_ai_content_clears_infographic_html_and_image(db_session):
     service = ArticleCommandService(ai_task_service=StubAITaskService())
     article = make_article_with_analysis(db_session)
+    assert not hasattr(article_command_service_module, "delete_media_asset_by_url")
 
     service.delete_ai_content(db_session, article.id, "infographic")
 
@@ -163,12 +167,34 @@ def test_delete_ai_content_rejects_summary(db_session):
     service = ArticleCommandService(ai_task_service=StubAITaskService())
     article = make_article_with_analysis(db_session)
 
-    try:
+    version = AIAnalysisVersion(
+        article_id=article.id,
+        content_type="summary",
+        version_number=1,
+        status="completed",
+        content_text="summary stays",
+        created_by_mode="generation",
+        created_at=now_str(),
+    )
+    db_session.add(version)
+    db_session.commit()
+    article.ai_analysis.current_summary_version_id = version.id
+    db_session.commit()
+
+    with pytest.raises(ValueError, match="不支持删除该类型的 AI 解读"):
         service.delete_ai_content(db_session, article.id, "summary")
-    except ValueError as exc:
-        assert str(exc) == "不支持删除该类型的 AI 解读"
-    else:
-        raise AssertionError("expected delete_ai_content to reject summary")
+
+    db_session.refresh(article)
+    assert article.ai_analysis.summary == "summary stays"
+    assert article.ai_analysis.summary_status == "completed"
+    assert article.ai_analysis.current_summary_version_id == version.id
+    assert (
+        db_session.query(AIAnalysisVersion)
+        .filter(AIAnalysisVersion.article_id == article.id)
+        .filter(AIAnalysisVersion.content_type == "summary")
+        .count()
+        == 1
+    )
 
 
 def test_delete_ai_content_rejects_inflight_ai_task(db_session):

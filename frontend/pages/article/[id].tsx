@@ -31,12 +31,15 @@ import {
 	normalizeMediaHtml,
 	resolveMediaUrl,
 	type ArticleComment,
+	type AIContentVersion,
+	type DeletableAIContentType,
 	type ArticleDetail,
 	type Category,
 	type ModelAPIConfig,
 	type PromptConfig,
 	type SimilarArticleItem,
 	type Tag,
+	type VersionedAIContentType,
 } from "@/lib/api";
 import AppFooter from "@/components/AppFooter";
 import AppHeader from "@/components/AppHeader";
@@ -99,7 +102,7 @@ type AIContentType =
 	| "quotes"
 	| "infographic";
 type AITabKey = Exclude<AIContentType, "summary">;
-const DELETABLE_AI_CONTENT_TYPES: readonly AITabKey[] = [
+const DELETABLE_AI_CONTENT_TYPES: readonly AIContentType[] = [
 	"key_points",
 	"outline",
 	"quotes",
@@ -176,6 +179,8 @@ interface AIContentSectionProps {
 	showHeader?: boolean;
 	canCopy?: boolean;
 	customContent?: ReactNode;
+	extraActions?: ReactNode;
+	footerContent?: ReactNode;
 }
 
 interface AITabConfig {
@@ -198,10 +203,12 @@ interface CreateInfographicTabConfigOptions {
 	t: (key: string) => string;
 	enabled: boolean;
 	html: string;
+	imageUrl?: string;
 	status: string | null | undefined;
 	onGenerate: () => void;
 	onCopy: () => void;
 	onOpen: () => void;
+	onOpenImage?: () => void;
 }
 
 interface MindMapNode {
@@ -261,16 +268,20 @@ function createInfographicTabConfig({
 	t,
 	enabled,
 	html,
+	imageUrl,
 	status,
 	onGenerate,
 	onCopy,
 	onOpen,
+	onOpenImage,
 }: CreateInfographicTabConfigOptions): AITabConfig {
+	const resolvedContent = html || imageUrl || "";
+
 	return {
 		key: "infographic",
 		label: t("信息图"),
 		enabled,
-		content: html,
+		content: resolvedContent,
 		status,
 		onGenerate,
 		onCopy,
@@ -284,6 +295,19 @@ function createInfographicTabConfig({
 				onOpen={onOpen}
 				previewLabel={t("预览")}
 			/>
+		) : imageUrl ? (
+			<button
+				type="button"
+				onClick={onOpenImage}
+				className="group block w-full text-left"
+				aria-label={t("预览")}
+			>
+				<img
+					src={resolveMediaUrl(imageUrl)}
+					alt={t("信息图")}
+					className="w-full rounded-[24px] border border-border bg-surface transition duration-200 group-hover:opacity-95"
+				/>
+			</button>
 		) : null,
 	};
 }
@@ -370,20 +394,55 @@ function createEmptyAiAnalysis(): NonNullable<ArticleDetail["ai_analysis"]> {
 	return {
 		summary: null,
 		summary_status: null,
+		summary_current_version_id: null,
+		summary_current_version_number: null,
 		key_points: null,
 		key_points_status: null,
+		key_points_current_version_id: null,
+		key_points_current_version_number: null,
 		outline: null,
 		outline_status: null,
+		outline_current_version_id: null,
+		outline_current_version_number: null,
 		quotes: null,
 		quotes_status: null,
+		quotes_current_version_id: null,
+		quotes_current_version_number: null,
 		infographic_status: null,
 		infographic_image_url: null,
 		infographic_html: null,
+		infographic_current_version_id: null,
+		infographic_current_version_number: null,
 		tagging_status: null,
 		tagging_manual_override: false,
 		error_message: null,
 		updated_at: null,
 	};
+}
+
+function getAiContentLabel(
+	contentType: AIContentType,
+	t: (key: string) => string,
+): string {
+	switch (contentType) {
+		case "summary":
+			return t("摘要");
+		case "key_points":
+			return t("总结");
+		case "outline":
+			return t("大纲");
+		case "quotes":
+			return t("金句");
+		case "infographic":
+			return t("信息图");
+	}
+}
+
+function formatVersionSourceLabel(
+	value: AIContentVersion["created_by_mode"],
+	t: (key: string) => string,
+): string {
+	return value === "rollback" ? t("回滚") : t("生成");
 }
 
 function toDateInputValue(value?: string | null): string {
@@ -661,6 +720,8 @@ function AIContentSection({
 	showHeader = true,
 	canCopy = true,
 	customContent,
+	extraActions,
+	footerContent,
 }: AIContentSectionProps) {
 	const { t } = useI18n();
 	const getStatusBadge = () => {
@@ -716,6 +777,7 @@ function AIContentSection({
 						) : (
 							statusBadge
 						)}
+						{extraActions}
 						{showGenerateButton && (
 							<button
 								onClick={onGenerate}
@@ -795,6 +857,7 @@ function AIContentSection({
 					{status === "processing" ? t("正在生成...") : t("未生成")}
 				</p>
 			) : null}
+			{footerContent ? <div className="mt-3">{footerContent}</div> : null}
 		</div>
 	);
 }
@@ -1232,9 +1295,28 @@ export default function ArticleDetailPage() {
 		useState(false);
 	const [showDeleteNoteModal, setShowDeleteNoteModal] = useState(false);
 	const [pendingDeleteAiContentType, setPendingDeleteAiContentType] =
-		useState<AITabKey | null>(null);
+		useState<AIContentType | null>(null);
 	const [showDeleteAiContentModal, setShowDeleteAiContentModal] =
 		useState(false);
+	const [showVersionHistoryModal, setShowVersionHistoryModal] = useState(false);
+	const [pendingRollbackVersion, setPendingRollbackVersion] = useState<{
+		contentType: AIContentType;
+		versionId: string;
+	} | null>(null);
+	const [showRollbackVersionModal, setShowRollbackVersionModal] =
+		useState(false);
+	const [historyContentType, setHistoryContentType] =
+		useState<AIContentType>("summary");
+	const [versionHistories, setVersionHistories] = useState<
+		Partial<Record<AIContentType, AIContentVersion[]>>
+	>({});
+	const [versionHistoryLoading, setVersionHistoryLoading] = useState<
+		Partial<Record<AIContentType, boolean>>
+	>({});
+	const [previewVersionIds, setPreviewVersionIds] = useState<
+		Partial<Record<AIContentType, string | null>>
+	>({});
+	const lastAiAnalysisUpdatedAtRef = useRef("");
 	const [expandedReplies, setExpandedReplies] = useState<
 		Record<string, boolean>
 	>({});
@@ -1563,6 +1645,15 @@ export default function ArticleDetailPage() {
 				setPendingDeleteAiContentType(null);
 				return;
 			}
+			if (showRollbackVersionModal) {
+				setShowRollbackVersionModal(false);
+				setPendingRollbackVersion(null);
+				return;
+			}
+			if (showVersionHistoryModal) {
+				setShowVersionHistoryModal(false);
+				return;
+			}
 			if (showDeleteModal) {
 				setShowDeleteModal(false);
 				return;
@@ -1587,6 +1678,8 @@ export default function ArticleDetailPage() {
 		showDeleteCommentModal,
 		showDeleteAnnotationModal,
 		showDeleteAiContentModal,
+		showRollbackVersionModal,
+		showVersionHistoryModal,
 		showDeleteModal,
 	]);
 
@@ -2133,6 +2226,85 @@ export default function ArticleDetailPage() {
 		}
 	};
 
+	const loadVersionHistory = useCallback(
+		async (contentType: AIContentType, force = false) => {
+			if (!id) return [] as AIContentVersion[];
+			const cachedVersions = versionHistories[contentType];
+			if (!force && cachedVersions && cachedVersions.length > 0) {
+				return versionHistories[contentType] || [];
+			}
+			setVersionHistoryLoading((prev) => ({ ...prev, [contentType]: true }));
+			try {
+				const response = await articleApi.getAIContentVersions(
+					id as string,
+					contentType as VersionedAIContentType,
+				);
+				setVersionHistories((prev) => ({
+					...prev,
+					[contentType]: response.versions || [],
+				}));
+				return response.versions || [];
+			} catch (error) {
+				console.error("Failed to load AI content versions:", error);
+				showToast(t("版本历史加载失败"), "error");
+				return [] as AIContentVersion[];
+			} finally {
+				setVersionHistoryLoading((prev) => ({ ...prev, [contentType]: false }));
+			}
+		},
+		[id, showToast, t, versionHistories],
+	);
+
+	const openVersionHistory = useCallback(
+		async (contentType: AIContentType) => {
+			setHistoryContentType(contentType);
+			setShowVersionHistoryModal(true);
+			const versions = await loadVersionHistory(contentType);
+			setPreviewVersionIds((prev) => ({
+				...prev,
+				[contentType]: versions[0]?.id || null,
+			}));
+		},
+		[loadVersionHistory],
+	);
+
+	const handleRollbackVersion = useCallback(
+		async (contentType: AIContentType, versionId: string) => {
+			if (!id) return;
+			try {
+				await articleApi.rollbackAIContentVersion(
+					id as string,
+					contentType as VersionedAIContentType,
+					versionId,
+				);
+				await fetchArticle();
+				const versions = await loadVersionHistory(contentType, true);
+				setPreviewVersionIds((prev) => ({
+					...prev,
+					[contentType]: versions[0]?.id || null,
+				}));
+				showToast(t("版本已回滚"));
+			} catch (error) {
+				console.error("Failed to rollback AI content version:", error);
+				showToast(t("版本回滚失败"), "error");
+			}
+		},
+		[fetchArticle, id, loadVersionHistory, showToast, t],
+	);
+
+	useEffect(() => {
+		const nextUpdatedAt = article?.ai_analysis?.updated_at || "";
+		const previousUpdatedAt = lastAiAnalysisUpdatedAtRef.current;
+		lastAiAnalysisUpdatedAtRef.current = nextUpdatedAt;
+
+		if (!previousUpdatedAt || previousUpdatedAt === nextUpdatedAt) {
+			return;
+		}
+
+		setVersionHistories({});
+		setVersionHistoryLoading({});
+	}, [article?.ai_analysis?.updated_at]);
+
 	const fetchSimilarArticles = async (detail: ArticleDetail) => {
 		if (!detail?.slug) return;
 		setSimilarLoading(true);
@@ -2328,11 +2500,15 @@ export default function ArticleDetailPage() {
 	const showOutlineSection = isAdmin || Boolean(article?.ai_analysis?.outline);
 	const showQuotesSection = isAdmin || Boolean(article?.ai_analysis?.quotes);
 	const showInfographicSection =
-		isAdmin || Boolean(article?.ai_analysis?.infographic_html);
+		isAdmin ||
+		Boolean(
+			article?.ai_analysis?.infographic_html ||
+				article?.ai_analysis?.infographic_image_url,
+		);
 	const infographicHtml = article?.ai_analysis?.infographic_html || "";
 	const infographicImageUrl = article?.ai_analysis?.infographic_image_url || "";
 	const normalizedInfographicHtml = useMemo(
-		() => normalizeInfographicHtmlForCanvas(infographicHtml),
+		() => normalizeMediaHtml(normalizeInfographicHtmlForCanvas(infographicHtml)),
 		[infographicHtml],
 	);
 	const aiUpdatedAt =
@@ -2383,12 +2559,19 @@ export default function ArticleDetailPage() {
 			t,
 			enabled: showInfographicSection,
 			html: normalizedInfographicHtml,
+			imageUrl: infographicImageUrl,
 			status: article?.ai_analysis?.infographic_status,
 			onGenerate: () => handleGenerateContent("infographic"),
 			onCopy: () => {
 				void handleCopyInfographicAsImage();
 			},
 			onOpen: () => setShowInfographicLightbox(true),
+			onOpenImage: () => {
+				const resolvedUrl = resolveMediaUrl(infographicImageUrl);
+				if (!resolvedUrl) return;
+				setLightboxImages([resolvedUrl]);
+				setLightboxIndex(0);
+			},
 		}),
 	];
 	const visibleAiTabs = sortAiTabsByContent(
@@ -2612,6 +2795,86 @@ export default function ArticleDetailPage() {
 		Boolean(activeTabConfig?.content) &&
 		Boolean(activeTabConfig?.key) &&
 		!isPendingJobStatus(activeTabConfig?.status);
+	const historyVersions = versionHistories[historyContentType] || [];
+	const selectedPreviewVersionId = previewVersionIds[historyContentType] || null;
+	const previewVersion =
+		historyVersions.find((item) => item.id === selectedPreviewVersionId) || null;
+
+	const renderHistoryPreview = (
+		contentType: AIContentType,
+		version: AIContentVersion | null,
+	) => {
+		if (!version) return null;
+		if (contentType === "infographic") {
+			const normalizedVersionHtml = normalizeMediaHtml(
+				normalizeInfographicHtmlForCanvas(version.content_html || ""),
+			);
+			if (normalizedVersionHtml) {
+				return (
+					<div className="mx-auto max-w-[360px]">
+						<InfographicPreviewCard
+							html={normalizedVersionHtml}
+							onOpen={() => {}}
+							previewLabel={t("预览")}
+							interactive={false}
+						/>
+					</div>
+				);
+			}
+			if (version.content_image_url) {
+				return (
+					<img
+						src={resolveMediaUrl(version.content_image_url)}
+						alt={`v${version.version_number}`}
+						className="w-full rounded-lg border border-border bg-surface"
+					/>
+				);
+			}
+			return <p className="text-sm text-text-3">{t("暂无预览")}</p>;
+		}
+
+		if (contentType === "outline") {
+			const tree = parseMindMapOutline(version.content_text || "");
+			if (!tree) {
+				return (
+					<div className="max-h-[420px] overflow-auto rounded-lg border border-border bg-surface p-3 text-sm whitespace-pre-wrap text-text-2">
+						{version.content_text || t("暂无内容")}
+					</div>
+				);
+			}
+			return (
+				<div className="max-h-[420px] overflow-auto rounded-lg border border-border bg-surface p-4">
+					<MindMapTree node={tree} isRoot compact />
+				</div>
+			);
+		}
+
+		return (
+			<div
+				className="prose prose-sm max-w-none rounded-lg border border-border bg-surface p-3 text-text-2"
+				dangerouslySetInnerHTML={{
+					__html: renderSafeMarkdown(version.content_text || ""),
+				}}
+			/>
+		);
+	};
+	const buildVersionActions = (contentType: AIContentType) => (
+		<>
+			{isAdmin && (
+				<button
+					type="button"
+					onClick={() => {
+						void openVersionHistory(contentType);
+					}}
+					className="text-text-3 hover:text-primary transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
+					title={t("历史")}
+					aria-label={t("历史")}
+				>
+					<IconClock className="h-4 w-4" />
+				</button>
+			)}
+		</>
+	);
 
 	const aiPanelContent = (
 		<div className="bg-surface rounded-lg shadow-sm border border-border p-4">
@@ -2678,6 +2941,11 @@ export default function ArticleDetailPage() {
 						canEdit={isAdmin}
 						showStatus={isAdmin}
 						statusLink={summaryStatusLink}
+						extraActions={
+							<>
+								{buildVersionActions("summary")}
+							</>
+						}
 					/>
 				)}
 
@@ -2719,6 +2987,9 @@ export default function ArticleDetailPage() {
 								) : (
 									activeStatusBadge
 								)}
+								{activeTabConfig
+									? buildVersionActions(activeTabConfig.key)
+									: null}
 								{showActiveGenerateButton && activeTabConfig && (
 									<button
 										onClick={activeTabConfig.onGenerate}
@@ -3182,13 +3453,16 @@ export default function ArticleDetailPage() {
 		}
 	};
 
-	const handleDeleteAIContent = async (contentType: AITabKey) => {
+	const handleDeleteAIContent = async (contentType: AIContentType) => {
 		if (!id || !article || !DELETABLE_AI_CONTENT_TYPES.includes(contentType)) {
 			return;
 		}
 
 		try {
-			await articleApi.deleteAIContent(id as string, contentType);
+			await articleApi.deleteAIContent(
+				id as string,
+				contentType as DeletableAIContentType,
+			);
 			const updatedAt = new Date().toISOString();
 			setArticle((prev) => {
 				if (!prev) return prev;
@@ -3202,15 +3476,20 @@ export default function ArticleDetailPage() {
 					nextAnalysis.infographic_html = null;
 					nextAnalysis.infographic_image_url = null;
 					nextAnalysis.infographic_status = null;
+					nextAnalysis.infographic_current_version_id = null;
+					nextAnalysis.infographic_current_version_number = null;
 				} else {
 					nextAnalysis[contentType] = null;
 					nextAnalysis[`${contentType}_status`] = null;
+					nextAnalysis[`${contentType}_current_version_id`] = null;
+					nextAnalysis[`${contentType}_current_version_number`] = null;
 				}
 				return {
 					...prev,
 					ai_analysis: nextAnalysis,
 				};
 			});
+			await loadVersionHistory(contentType, true);
 			if (contentType === "infographic") {
 				setShowInfographicLightbox(false);
 			}
@@ -5125,6 +5404,120 @@ export default function ArticleDetailPage() {
 				</div>
 			</div>
 
+				{showVersionHistoryModal && (
+					<ModalShell
+						isOpen={showVersionHistoryModal}
+						onClose={() => setShowVersionHistoryModal(false)}
+						title={`${getAiContentLabel(historyContentType, t)} · ${t("版本历史")}`}
+						widthClassName="max-w-4xl"
+					>
+						<div className="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
+							<div className="space-y-3">
+								<div className="text-xs text-text-3">
+									{versionHistoryLoading[historyContentType]
+										? t("加载中")
+										: historyVersions.length > 0
+											? `${historyVersions.length} ${t("个版本")}`
+											: t("暂无历史版本")}
+								</div>
+								<div className="space-y-2">
+									{historyVersions.map((version) => {
+										const isPreview =
+											previewVersionIds[historyContentType] === version.id;
+										return (
+											<div
+												key={version.id}
+												onClick={() =>
+													setPreviewVersionIds((prev) => ({
+														...prev,
+														[historyContentType]: version.id,
+													}))
+												}
+												onKeyDown={(event) => {
+													if (event.key === "Enter" || event.key === " ") {
+														event.preventDefault();
+														setPreviewVersionIds((prev) => ({
+															...prev,
+															[historyContentType]: version.id,
+														}));
+													}
+												}}
+												role="button"
+												tabIndex={0}
+												className={`cursor-pointer rounded-lg border p-3 transition ${
+													version.is_current
+														? "border-success-soft bg-success-soft"
+														: isPreview
+															? "border-primary/35 bg-primary-soft/20"
+															: "border-border bg-muted"
+												}`}
+											>
+												<div className="flex items-center justify-between gap-2">
+													<div>
+														<div className="text-sm font-medium text-text-1">
+															v{version.version_number}
+															{version.is_current ? ` · ${t("当前版本")}` : ""}
+														</div>
+														<div className="mt-1 text-xs text-text-3">
+															{formatVersionSourceLabel(
+																version.created_by_mode,
+																t,
+															)} ·{" "}
+															{new Date(version.created_at).toLocaleString(
+																language === "en" ? "en-US" : "zh-CN",
+															)}
+														</div>
+													</div>
+													{!version.is_current && (
+														<button
+															type="button"
+															onClick={(event) => {
+																event.stopPropagation();
+																setPendingRollbackVersion({
+																	contentType: historyContentType,
+																	versionId: version.id,
+																});
+																setShowRollbackVersionModal(true);
+															}}
+															className="text-text-3 hover:text-primary transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
+															title={t("回滚为当前版本")}
+															aria-label={t("回滚为当前版本")}
+														>
+															<IconRefresh className="h-4 w-4" />
+														</button>
+													)}
+												</div>
+											</div>
+										);
+									})}
+								</div>
+							</div>
+							<div className="rounded-lg border border-border bg-muted p-4">
+								{previewVersion ? (
+									<div className="space-y-3">
+										<div className="flex items-center justify-between gap-2">
+											<h3 className="text-sm font-medium text-text-1">
+												{t("预览")} · v{previewVersion.version_number}
+											</h3>
+											<span className="text-xs text-text-3">
+												{formatVersionSourceLabel(
+													previewVersion.created_by_mode,
+													t,
+												)}
+											</span>
+										</div>
+										{renderHistoryPreview(historyContentType, previewVersion)}
+									</div>
+								) : (
+									<div className="flex h-full min-h-[240px] items-center justify-center text-sm text-text-3">
+										{t("选择一个历史版本进行预览")}
+									</div>
+								)}
+							</div>
+						</div>
+					</ModalShell>
+				)}
+
 				{showConfigModal && (
 					<ModalShell
 						isOpen={showConfigModal}
@@ -5624,6 +6017,28 @@ export default function ArticleDetailPage() {
 				onCancel={() => {
 					setShowDeleteAiContentModal(false);
 					setPendingDeleteAiContentType(null);
+				}}
+			/>
+
+			<ConfirmModal
+				isOpen={showRollbackVersionModal}
+				title={t("确认回滚")}
+				message={t("是否回滚到此版本？生成一个新版本，并删除旧版本。")}
+				confirmText={t("回滚")}
+				cancelText={t("取消")}
+				onConfirm={async () => {
+					if (pendingRollbackVersion) {
+						await handleRollbackVersion(
+							pendingRollbackVersion.contentType,
+							pendingRollbackVersion.versionId,
+						);
+					}
+					setShowRollbackVersionModal(false);
+					setPendingRollbackVersion(null);
+				}}
+				onCancel={() => {
+					setShowRollbackVersionModal(false);
+					setPendingRollbackVersion(null);
 				}}
 			/>
 

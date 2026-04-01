@@ -3,7 +3,15 @@ import uuid
 
 import app.domain.article_ai_pipeline_service as article_ai_pipeline_module
 from app.domain.article_ai_pipeline_service import ArticleAIPipelineService
-from models import AIAnalysis, Article, Category, ModelAPIConfig, PromptConfig, now_str
+from models import (
+    AIAnalysis,
+    AIAnalysisVersion,
+    Article,
+    Category,
+    ModelAPIConfig,
+    PromptConfig,
+    now_str,
+)
 
 
 def test_detect_media_kind_supports_book_links():
@@ -1110,6 +1118,84 @@ def test_process_article_validation_uses_structured_validation_payload(
     assert persisted_analysis.error_message is None
     assert persisted_analysis.cleaned_md_draft is None
     assert [item["task_type"] for item in enqueued] == ["process_article_classification"]
+
+
+def test_process_ai_content_creates_summary_version_snapshot(db_session, monkeypatch):
+    article = Article(
+        title="Version Snapshot Article",
+        slug="version-snapshot-article",
+        content_md="测试摘要正文",
+        created_at=now_str(),
+        updated_at=now_str(),
+    )
+    db_session.add(article)
+    db_session.commit()
+    analysis = AIAnalysis(
+        article_id=article.id,
+        summary_status="pending",
+        updated_at=now_str(),
+    )
+    db_session.add(analysis)
+    db_session.commit()
+
+    service = ArticleAIPipelineService(current_task_id="task-summary-version")
+
+    class FakeClient:
+        async def generate_summary(self, content, **kwargs):
+            assert content == "测试摘要正文"
+            return {
+                "content": "新的摘要版本",
+                "usage": None,
+                "latency_ms": 5,
+                "request_payload": {},
+                "response_payload": {},
+            }
+
+    monkeypatch.setattr(article_ai_pipeline_module, "SessionLocal", lambda: db_session)
+    monkeypatch.setattr(
+        service,
+        "get_ai_config",
+        lambda *args, **kwargs: {
+            "base_url": "https://example.com",
+            "api_key": "test-key",
+            "model_name": "test-model",
+            "model_api_config_id": "model-1",
+            "price_input_per_1k": None,
+            "price_output_per_1k": None,
+            "currency": None,
+            "prompt_template": "请总结：{content}",
+            "parameters": {},
+        },
+    )
+    monkeypatch.setattr(service, "create_ai_client", lambda config: FakeClient())
+    monkeypatch.setattr(
+        service,
+        "_enqueue_task",
+        lambda db, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        article_ai_pipeline_module.ArticleEmbeddingService,
+        "has_available_remote_config",
+        lambda self, db: False,
+    )
+
+    asyncio.run(service.process_ai_content(article.id, None, "summary"))
+
+    persisted_analysis = (
+        db_session.query(AIAnalysis).filter(AIAnalysis.article_id == article.id).one()
+    )
+    versions = (
+        db_session.query(AIAnalysisVersion)
+        .filter(AIAnalysisVersion.article_id == article.id)
+        .filter(AIAnalysisVersion.content_type == "summary")
+        .all()
+    )
+    assert persisted_analysis.summary == "新的摘要版本"
+    assert persisted_analysis.summary_status == "completed"
+    assert len(versions) == 1
+    assert versions[0].content_text == "新的摘要版本"
+    assert versions[0].source_task_id == "task-summary-version"
+    assert persisted_analysis.current_summary_version_id == versions[0].id
 
 
 def test_repair_infographic_html_uses_latest_logged_candidate_on_failed_status(
