@@ -74,7 +74,6 @@ import {
 	aiUsageApi,
 	articleApi,
 	backupApi,
-	type BackupImportResult,
 	type BasicSettings,
 	basicSettingsApi,
 	categoryApi,
@@ -3329,33 +3328,17 @@ export default function AdminPage() {
 		}
 	};
 
-	const buildBackupSummary = (result: BackupImportResult) => {
-		const sections: Array<[string, keyof BackupImportResult["stats"]]> = [
-			["分类", "categories"],
-			["模型配置", "model_api_configs"],
-			["提示词配置", "prompt_configs"],
-			["文章", "articles"],
-			["AI分析", "ai_analyses"],
-			["系统设置", "settings"],
-		];
-		return sections
-			.map(([label, key]) => {
-				const current = result.stats[key];
-				return `${t(label)}: +${current.created}/${t("跳过")}${current.skipped}/${t(
-					"错误",
-				)}${current.errors}`;
-			})
-			.join("; ");
+	const formatBackupTimestamp = (value: string) => {
+		const parsed = new Date(value);
+		if (Number.isNaN(parsed.getTime())) return value;
+		return parsed.toLocaleString();
 	};
 
 	const handleExportBackup = async () => {
 		if (backupExporting) return;
 		setBackupExporting(true);
 		try {
-			const data = await backupApi.exportBackup();
-			const blob = new Blob([JSON.stringify(data, null, 2)], {
-				type: "application/json",
-			});
+			const blob = await backupApi.exportBackup();
 			const url = URL.createObjectURL(blob);
 			const link = document.createElement("a");
 			const now = new Date();
@@ -3368,7 +3351,7 @@ export default function AdminPage() {
 				now.getSeconds(),
 			).padStart(2, "0")}`;
 			link.href = url;
-			link.download = `lumina-backup-${timestamp}.json`;
+			link.download = `lumina-backup-${timestamp}.zip`;
 			document.body.appendChild(link);
 			link.click();
 			document.body.removeChild(link);
@@ -3388,68 +3371,63 @@ export default function AdminPage() {
 		if (backupImporting) return;
 		const file = event.target.files?.[0];
 		if (!file) return;
-		try {
-			const text = await file.text();
-			const parsed = JSON.parse(text) as Record<string, unknown>;
-			if (
-				typeof parsed !== "object" ||
-				parsed === null ||
-				!("meta" in parsed) ||
-				!("data" in parsed)
-			) {
-				showToast(t("导入失败：格式不正确"), "error");
-				return;
-			}
-			const parsedPayload =
-				parsed as unknown as Parameters<typeof backupApi.importBackup>[0];
-
-			setConfirmState({
-				isOpen: true,
-				title: t("导入备份数据"),
-				message: t("将按严格增量导入，冲突数据会自动跳过，是否继续？"),
-				confirmText: t("开始导入"),
-				cancelText: t("取消"),
-				onConfirm: async () => {
-					setBackupImporting(true);
-					try {
-						const result = await backupApi.importBackup(parsedPayload);
-						showToast(
-							t("导入完成：{summary}，共跳过 {count} 条")
-								.replace("{summary}", buildBackupSummary(result))
-								.replace("{count}", String(result.skipped_total)),
-						);
-						await Promise.all([
-							fetchCategories(),
-							fetchModelAPIConfigs(),
-							fetchPromptConfigs(),
-							fetchStorageSettings(),
-							fetchBasicSettings(),
-							fetchCommentSettings(),
-							fetchRecommendationSettings(),
-						]);
-					} catch (importError) {
-						console.error("Failed to import backup:", importError);
-						showToast(t("导入失败，请检查备份文件或版本"), "error");
-					} finally {
-						setBackupImporting(false);
-						if (backupImportInputRef.current) {
-							backupImportInputRef.current.value = "";
-						}
-					}
-				},
-				onCancel: () => {
-					if (backupImportInputRef.current) {
-						backupImportInputRef.current.value = "";
-					}
-				},
-			});
-		} catch (error) {
-			console.error("Failed to parse backup file:", error);
-			showToast(t("导入失败：格式不正确"), "error");
+		const lowerName = file.name.toLowerCase();
+		if (!lowerName.endsWith(".zip")) {
+			showToast(t("导入失败：仅支持 zip 备份文件"), "error");
 			if (backupImportInputRef.current) {
 				backupImportInputRef.current.value = "";
 			}
+			return;
 		}
+
+		setConfirmState({
+			isOpen: true,
+			title: t("导入备份数据"),
+			message: t(
+				"将执行镜像恢复并覆盖当前文章、AI 解读、配置、评论与媒体文件；统计、任务、向量和日志不会恢复，且备份文件包含敏感配置，是否继续？",
+			),
+			confirmText: t("开始恢复"),
+			cancelText: t("取消"),
+			onConfirm: async () => {
+				setBackupImporting(true);
+				try {
+					const result = await backupApi.importBackup(file);
+					showToast(
+						t("镜像恢复完成：备份时间 {backup}，恢复时间 {restored}")
+							.replace(
+								"{backup}",
+								formatBackupTimestamp(result.meta.backup_exported_at),
+							)
+							.replace(
+								"{restored}",
+								formatBackupTimestamp(result.meta.restored_at),
+							),
+					);
+					await Promise.all([
+						fetchCategories(),
+						fetchModelAPIConfigs(),
+						fetchPromptConfigs(),
+						fetchStorageSettings(),
+						fetchBasicSettings(),
+						fetchCommentSettings(),
+						fetchRecommendationSettings(),
+					]);
+				} catch (importError) {
+					console.error("Failed to import backup:", importError);
+					showToast(t("镜像恢复失败，请检查备份文件或版本"), "error");
+				} finally {
+					setBackupImporting(false);
+					if (backupImportInputRef.current) {
+						backupImportInputRef.current.value = "";
+					}
+				}
+			},
+			onCancel: () => {
+				if (backupImportInputRef.current) {
+					backupImportInputRef.current.value = "";
+				}
+			},
+		});
 	};
 
 	// Category handlers
@@ -5399,18 +5377,18 @@ export default function AdminPage() {
 											</div>
 
 											<div className="rounded-sm border border-border bg-muted/40 p-4 space-y-3">
-												<div className="flex flex-wrap items-start justify-between gap-3">
-													<div>
+												<div className="flex flex-wrap items-start justify-between gap-3 md:flex-nowrap">
+													<div className="min-w-0 flex-1">
 														<div className="text-sm font-medium text-text-1">
 															{t("数据备份与恢复")}
 														</div>
-														<p className="mt-1 text-xs text-text-3">
+														<p className="mt-1 break-words text-xs text-text-3">
 															{t(
-																"备份文章与配置；导入按增量模式执行，冲突数据自动跳过。",
+																"导出业务全量镜像 zip，除去统计、任务、向量和日志，且包含敏感配置。",
 															)}
 														</p>
 													</div>
-													<div className="flex flex-wrap items-center gap-2">
+													<div className="flex shrink-0 flex-wrap items-center gap-2 md:ml-auto">
 														<Button
 															onClick={handleExportBackup}
 															disabled={backupExporting || backupImporting}
@@ -5434,15 +5412,10 @@ export default function AdminPage() {
 														</Button>
 													</div>
 												</div>
-												<p className="text-xs text-text-3">
-													{t(
-														"说明：仅支持 JSON 备份文件；不会覆盖已有冲突数据。",
-													)}
-												</p>
 												<TextInput
 													ref={backupImportInputRef}
 													type="file"
-													accept="application/json"
+													accept=".zip,application/zip"
 													className="hidden"
 													onChange={handleImportBackup}
 													disabled={backupImporting}

@@ -6,7 +6,7 @@ from app.schemas.ai import (
     ModelAPITestRequest,
     PromptConfigBase,
 )
-from app.schemas.backup import BackupImportRequest
+from app.schemas.backup import BackupRestoreResult
 from app.schemas.article import (
     ArticleBatchCategory,
     ArticleBatchDelete,
@@ -42,7 +42,7 @@ __all__ = [
     "ArticleUpdate",
     "ArticleVisibilityUpdate",
     "BasicSettingsUpdate",
-    "BackupImportRequest",
+    "BackupRestoreResult",
     "CategoryCreate",
     "CategorySortItem",
     "CategorySortRequest",

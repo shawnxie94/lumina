@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -17,7 +17,7 @@ from app.core.public_cache import (
 )
 from app.core.dependencies import get_admin_or_internal
 from app.domain.backup_service import BackupService
-from app.schemas import BackupImportRequest
+from app.schemas import BackupRestoreResult
 from auth import get_current_admin
 from models import get_db
 
@@ -31,23 +31,23 @@ async def export_backup(
     _: bool = Depends(get_admin_or_internal),
 ):
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"lumina-backup-{timestamp}.json"
+    filename = f"lumina-backup-{timestamp}.zip"
     headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
     return StreamingResponse(
         backup_service.export_backup_stream(db),
-        media_type="application/json; charset=utf-8",
+        media_type="application/zip",
         headers=headers,
     )
 
 
-@router.post("/api/backup/import")
+@router.post("/api/backup/import", response_model=BackupRestoreResult)
 async def import_backup(
-    request: BackupImportRequest,
+    file: UploadFile = File(...),
     db: Session = Depends(get_db),
     _: bool = Depends(get_current_admin),
 ):
     try:
-        result = backup_service.import_backup(db, request.model_dump())
+        result = backup_service.import_backup(db, file.file)
         invalidate_public_cache(
             CACHE_KEY_AUTHORS_PUBLIC,
             CACHE_KEY_CATEGORIES_PUBLIC,

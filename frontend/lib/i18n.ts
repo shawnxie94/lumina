@@ -94,12 +94,12 @@ const translations: Record<Language, Record<string | number, string>> = {
 		"启用后会将外链图片转存为本地文件": "External images will be stored locally when enabled",
 		"压缩阈值 (KB)": "Compression threshold (KB)",
 		数据备份与恢复: "Backup & Restore",
-		"备份文章与配置；导入按增量模式执行，冲突数据自动跳过。":
-			"Back up articles and settings; imports run incrementally and skip conflicting data automatically.",
+		"导出业务全量镜像 zip，除去统计、任务、向量和日志，且包含敏感配置。":
+			"Export a full business snapshot zip, excluding stats, tasks, vectors, and logs, and including sensitive secrets.",
 		导出备份: "Export backup",
 		导入备份: "Import backup",
-		"说明：仅支持 JSON 备份文件；不会覆盖已有冲突数据。":
-			"Note: only JSON backup files are supported; conflicting existing data will not be overwritten.",
+		"说明：仅支持 zip 镜像备份；不会恢复统计、任务、向量和日志数据，且备份文件包含敏感配置。":
+			"Note: only zip snapshot backups are supported; stats, tasks, vectors, and logs are not restored, and the archive contains sensitive secrets.",
 		原评论不存在: "Original comment not found",
 		请输入评论内容: "Please enter a comment",
 		获取评论失败: "Failed to fetch comments",
@@ -501,14 +501,22 @@ const translations: Record<Language, Record<string | number, string>> = {
 		备份导出成功: "Backup export succeeded",
 		备份导出失败: "Backup export failed",
 		"导入失败：格式不正确": "Import failed: invalid format",
+		"导入失败：仅支持 zip 备份文件": "Import failed: only zip backup files are supported",
 		导入备份数据: "Import backup data",
 		"将按严格增量导入，冲突数据会自动跳过，是否继续？":
 			"Data will be imported in strict incremental mode, and conflicting records will be skipped. Continue?",
 		开始导入: "Start import",
+		开始恢复: "Start restore",
 		"导入完成：{summary}，共跳过 {count} 条":
 			"Import complete: {summary}; {count} skipped in total",
 		"导入失败，请检查备份文件或版本":
 			"Import failed, please check the backup file or version",
+		"将执行镜像恢复并覆盖当前文章、AI 解读、配置、评论与媒体文件；统计、任务、向量和日志不会恢复，且备份文件包含敏感配置，是否继续？":
+			"This will run a snapshot restore and replace current articles, AI insights, settings, comments, and media files. Stats, tasks, vectors, and logs will not be restored, and the backup contains sensitive secrets. Continue?",
+		"镜像恢复完成：备份时间 {backup}，恢复时间 {restored}":
+			"Snapshot restore completed: backup time {backup}, restored at {restored}",
+		"镜像恢复失败，请检查备份文件或版本":
+			"Snapshot restore failed, please check the backup file or version",
 		"导入失败，请检查文件内容": "Import failed. Please check the file.",
 		分类已创建: "Category created",
 		删除分类: "Delete category",
