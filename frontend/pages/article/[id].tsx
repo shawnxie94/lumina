@@ -85,6 +85,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useBasicSettings } from "@/contexts/BasicSettingsContext";
 import { useReading } from "@/contexts/ReadingContext";
 import { useI18n } from "@/lib/i18n";
+import { shouldShowAiHistoryButton } from "@/lib/aiHistoryVisibility";
 import { renderSafeMarkdown, sanitizeRichHtml } from "@/lib/safeHtml";
 import { signIn, signOut, useSession } from "next-auth/react";
 
@@ -396,23 +397,28 @@ function createEmptyAiAnalysis(): NonNullable<ArticleDetail["ai_analysis"]> {
 		summary_status: null,
 		summary_current_version_id: null,
 		summary_current_version_number: null,
+		summary_has_history: false,
 		key_points: null,
 		key_points_status: null,
 		key_points_current_version_id: null,
 		key_points_current_version_number: null,
+		key_points_has_history: false,
 		outline: null,
 		outline_status: null,
 		outline_current_version_id: null,
 		outline_current_version_number: null,
+		outline_has_history: false,
 		quotes: null,
 		quotes_status: null,
 		quotes_current_version_id: null,
 		quotes_current_version_number: null,
+		quotes_has_history: false,
 		infographic_status: null,
 		infographic_image_url: null,
 		infographic_html: null,
 		infographic_current_version_id: null,
 		infographic_current_version_number: null,
+		infographic_has_history: false,
 		tagging_status: null,
 		tagging_manual_override: false,
 		error_message: null,
@@ -2860,7 +2866,7 @@ export default function ArticleDetailPage() {
 	};
 	const buildVersionActions = (contentType: AIContentType) => (
 		<>
-			{isAdmin && (
+			{shouldShowAiHistoryButton(isAdmin, contentType, article?.ai_analysis) && (
 				<button
 					type="button"
 					onClick={() => {
@@ -3472,18 +3478,20 @@ export default function ArticleDetailPage() {
 					error_message: null,
 					updated_at: updatedAt,
 				};
-				if (contentType === "infographic") {
-					nextAnalysis.infographic_html = null;
-					nextAnalysis.infographic_image_url = null;
-					nextAnalysis.infographic_status = null;
-					nextAnalysis.infographic_current_version_id = null;
-					nextAnalysis.infographic_current_version_number = null;
-				} else {
-					nextAnalysis[contentType] = null;
-					nextAnalysis[`${contentType}_status`] = null;
-					nextAnalysis[`${contentType}_current_version_id`] = null;
-					nextAnalysis[`${contentType}_current_version_number`] = null;
-				}
+					if (contentType === "infographic") {
+						nextAnalysis.infographic_html = null;
+						nextAnalysis.infographic_image_url = null;
+						nextAnalysis.infographic_status = null;
+						nextAnalysis.infographic_current_version_id = null;
+						nextAnalysis.infographic_current_version_number = null;
+						nextAnalysis.infographic_has_history = true;
+					} else {
+						nextAnalysis[contentType] = null;
+						nextAnalysis[`${contentType}_status`] = null;
+						nextAnalysis[`${contentType}_current_version_id`] = null;
+						nextAnalysis[`${contentType}_current_version_number`] = null;
+						nextAnalysis[`${contentType}_has_history`] = true;
+					}
 				return {
 					...prev,
 					ai_analysis: nextAnalysis,

@@ -10,7 +10,7 @@ from fastapi import UploadFile
 
 from app.api.routers import article_router
 from app.core.public_cache import CACHE_KEY_AUTHORS_PUBLIC, CACHE_KEY_SOURCES_PUBLIC
-from models import Article, ArticleComment, ArticleEmbedding, now_str
+from models import AIAnalysis, AIAnalysisVersion, Article, ArticleComment, ArticleEmbedding, now_str
 
 
 @pytest.fixture
@@ -592,6 +592,57 @@ async def test_get_article_includes_view_count_and_public_comment_count(db_sessi
 
     assert response["view_count"] == 9
     assert response["comment_count"] == 1
+
+
+@pytest.mark.anyio
+async def test_get_article_marks_history_available_when_current_content_cleared(db_session):
+    article = Article(
+        title="History Available Article",
+        slug="history-available-article",
+        content_md="content",
+        content_trans="",
+        top_image="",
+        author="Tester",
+        published_at="2026-03-27T10:00:00",
+        source_domain="example.com",
+        status="completed",
+        is_visible=True,
+        created_at="2026-03-27T10:00:00",
+        updated_at="2026-03-27T10:00:00",
+    )
+    db_session.add(article)
+    db_session.commit()
+
+    analysis = AIAnalysis(
+        article_id=article.id,
+        summary=None,
+        summary_status=None,
+        updated_at=now_str(),
+    )
+    db_session.add(analysis)
+    db_session.commit()
+
+    version = AIAnalysisVersion(
+        article_id=article.id,
+        content_type="summary",
+        version_number=1,
+        status="completed",
+        content_text="历史摘要 v1",
+        created_by_mode="generation",
+        created_at=now_str(),
+    )
+    db_session.add(version)
+    db_session.commit()
+
+    response = await article_router.get_article(
+        article_slug="history-available-article",
+        response=Response(),
+        db=db_session,
+        is_admin=True,
+    )
+
+    assert response["ai_analysis"]["summary"] is None
+    assert response["ai_analysis"]["summary_has_history"] is True
 
 
 @pytest.mark.anyio

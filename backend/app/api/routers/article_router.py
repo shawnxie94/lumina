@@ -95,6 +95,25 @@ def resolve_current_version_number(db: Session, version_id: str | None) -> int |
     return version.version_number if version else None
 
 
+def resolve_has_version_history(
+    db: Session,
+    article_id: str | None,
+    content_type: str,
+    current_version_id: str | None,
+) -> bool:
+    if current_version_id:
+        return True
+    if not article_id:
+        return False
+    return (
+        db.query(AIAnalysisVersion.id)
+        .filter(AIAnalysisVersion.article_id == article_id)
+        .filter(AIAnalysisVersion.content_type == content_type)
+        .first()
+        is not None
+    )
+
+
 @router.post("/api/articles")
 async def create_article(
     article: ArticleCreate,
@@ -350,6 +369,12 @@ async def get_article(
                 db,
                 article.ai_analysis.current_summary_version_id if article.ai_analysis else None,
             ),
+            "summary_has_history": resolve_has_version_history(
+                db,
+                article.id,
+                "summary",
+                article.ai_analysis.current_summary_version_id if article.ai_analysis else None,
+            ),
             "key_points": article.ai_analysis.key_points if article.ai_analysis else None,
             "key_points_status": article.ai_analysis.key_points_status
             if article.ai_analysis
@@ -359,6 +384,12 @@ async def get_article(
             else None,
             "key_points_current_version_number": resolve_current_version_number(
                 db,
+                article.ai_analysis.current_key_points_version_id if article.ai_analysis else None,
+            ),
+            "key_points_has_history": resolve_has_version_history(
+                db,
+                article.id,
+                "key_points",
                 article.ai_analysis.current_key_points_version_id if article.ai_analysis else None,
             ),
             "outline": article.ai_analysis.outline if article.ai_analysis else None,
@@ -372,6 +403,12 @@ async def get_article(
                 db,
                 article.ai_analysis.current_outline_version_id if article.ai_analysis else None,
             ),
+            "outline_has_history": resolve_has_version_history(
+                db,
+                article.id,
+                "outline",
+                article.ai_analysis.current_outline_version_id if article.ai_analysis else None,
+            ),
             "quotes": article.ai_analysis.quotes if article.ai_analysis else None,
             "quotes_status": article.ai_analysis.quotes_status
             if article.ai_analysis
@@ -381,6 +418,12 @@ async def get_article(
             else None,
             "quotes_current_version_number": resolve_current_version_number(
                 db,
+                article.ai_analysis.current_quotes_version_id if article.ai_analysis else None,
+            ),
+            "quotes_has_history": resolve_has_version_history(
+                db,
+                article.id,
+                "quotes",
                 article.ai_analysis.current_quotes_version_id if article.ai_analysis else None,
             ),
             "infographic_status": article.ai_analysis.infographic_status
@@ -400,6 +443,12 @@ async def get_article(
                 article.ai_analysis.current_infographic_version_id
                 if article.ai_analysis
                 else None,
+            ),
+            "infographic_has_history": resolve_has_version_history(
+                db,
+                article.id,
+                "infographic",
+                article.ai_analysis.current_infographic_version_id if article.ai_analysis else None,
             ),
             "classification_status": article.ai_analysis.classification_status
             if article.ai_analysis
