@@ -905,7 +905,7 @@ async def generate_ai_content(
     db: Session = Depends(get_db),
     _: bool = Depends(get_current_admin),
 ):
-    valid_types = ["key_points", "outline", "quotes", "infographic"]
+    valid_types = ["summary", "key_points", "outline", "quotes", "infographic"]
     if content_type not in valid_types:
         raise HTTPException(
             status_code=400, detail=f"无效的内容类型，支持: {', '.join(valid_types)}"

@@ -187,6 +187,56 @@ async def test_generate_ai_content_accepts_infographic(monkeypatch, db_session):
 
 
 @pytest.mark.anyio
+async def test_generate_ai_content_accepts_summary(monkeypatch, db_session):
+    article = SimpleNamespace(id="article-1")
+    captured: dict[str, str | None] = {}
+
+    async def fake_generate(
+        db,
+        article_id: str,
+        content_type: str,
+        model_config_id: str | None = None,
+        prompt_config_id: str | None = None,
+    ) -> None:
+        captured["article_id"] = article_id
+        captured["content_type"] = content_type
+        captured["model_config_id"] = model_config_id
+        captured["prompt_config_id"] = prompt_config_id
+
+    monkeypatch.setattr(
+        article_router.article_query_service,
+        "get_article_by_slug",
+        lambda db, slug: article,
+    )
+    monkeypatch.setattr(
+        article_router.article_command_service,
+        "generate_ai_content",
+        fake_generate,
+    )
+
+    response = await article_router.generate_ai_content(
+        article_slug="demo-article",
+        content_type="summary",
+        model_config_id="model-1",
+        prompt_config_id="prompt-1",
+        db=db_session,
+        _=True,
+    )
+
+    assert response == {
+        "id": "article-1",
+        "content_type": "summary",
+        "status": "processing",
+    }
+    assert captured == {
+        "article_id": "article-1",
+        "content_type": "summary",
+        "model_config_id": "model-1",
+        "prompt_config_id": "prompt-1",
+    }
+
+
+@pytest.mark.anyio
 async def test_delete_ai_content_accepts_non_summary_types(monkeypatch, db_session):
     article = SimpleNamespace(id="article-1")
     captured: dict[str, str] = {}

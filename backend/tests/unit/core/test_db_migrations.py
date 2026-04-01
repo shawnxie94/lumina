@@ -3,10 +3,10 @@ import uuid
 
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import create_engine, inspect, text
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
-from app.core.db_migrations import resolve_database_url, run_db_migrations
+from app.core.db_migrations import resolve_database_url
 from models import Base, PromptConfig, now_str
 
 
@@ -203,13 +203,12 @@ def test_prompt_protocol_text_migration_keeps_user_modified_builtin_prompts(tmp_
         engine.dispose()
 
 
-def test_run_db_migrations_repairs_ai_analysis_versioning_schema_drift(tmp_path):
-    db_path = tmp_path / "schema-drift.db"
+def test_ai_analysis_version_migration_backfills_existing_content(tmp_path):
+    db_path = tmp_path / "migration-ai-analysis-versions.db"
     engine = create_engine(
         f"sqlite:///{db_path}",
         connect_args={"check_same_thread": False},
     )
-
     with engine.begin() as conn:
         conn.execute(
             text(
@@ -251,23 +250,64 @@ def test_run_db_migrations_repairs_ai_analysis_versioning_schema_drift(tmp_path)
                 """
             )
         )
-        conn.execute(text("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL)"))
         conn.execute(
-            text("INSERT INTO alembic_version (version_num) VALUES ('20260401_0016')")
+            text(
+                """
+                INSERT INTO articles (id, slug)
+                VALUES ('article-1', 'legacy-article')
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                INSERT INTO ai_analyses (
+                    id,
+                    article_id,
+                    summary,
+                    summary_status,
+                    updated_at
+                )
+                VALUES (
+                    'analysis-1',
+                    'article-1',
+                    '升级前已有摘要',
+                    'completed',
+                    '2026-04-01T10:00:00'
+                )
+                """
+            )
         )
 
-    run_db_migrations(f"sqlite:///{db_path}")
+    backend_dir = Path(__file__).resolve().parents[3]
+    config = Config(str(backend_dir / "alembic.ini"))
+    config.set_main_option("sqlalchemy.url", f"sqlite:///{db_path}")
+    config.attributes["database_url_override"] = f"sqlite:///{db_path}"
+    command.stamp(config, "20260331_0015")
+    command.upgrade(config, "head")
 
-    inspector = inspect(engine)
-    ai_analysis_columns = {
-        column["name"] for column in inspector.get_columns("ai_analyses")
-    }
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text(
+                """
+                SELECT content_type, version_number, content_text
+                FROM ai_analysis_versions
+                WHERE article_id = 'article-1'
+                ORDER BY version_number ASC
+                """
+            )
+        ).fetchall()
+        current_version_id = conn.execute(
+            text(
+                """
+                SELECT current_summary_version_id
+                FROM ai_analyses
+                WHERE article_id = 'article-1'
+                """
+            )
+        ).scalar_one()
 
-    assert "ai_analysis_versions" in inspector.get_table_names()
-    assert "current_summary_version_id" in ai_analysis_columns
-    assert "current_key_points_version_id" in ai_analysis_columns
-    assert "current_outline_version_id" in ai_analysis_columns
-    assert "current_quotes_version_id" in ai_analysis_columns
-    assert "current_infographic_version_id" in ai_analysis_columns
+    assert rows == [("summary", 1, "升级前已有摘要")]
+    assert current_version_id
 
     engine.dispose()

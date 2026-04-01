@@ -195,6 +195,7 @@ class BackupService:
         category_id_map: dict[str, str] = {}
         tag_id_map: dict[str, str] = {}
         model_id_map: dict[str, str] = {}
+        prompt_id_map: dict[str, str] = {}
         article_id_map: dict[str, str] = {}
         article_slug_map: dict[str, str] = {}
 
@@ -226,6 +227,7 @@ class BackupService:
             skipped=skipped,
             category_id_map=category_id_map,
             model_id_map=model_id_map,
+            prompt_id_map=prompt_id_map,
         )
         ai_analysis_version_id_map: dict[str, str] = {}
         self._import_articles(
@@ -247,6 +249,8 @@ class BackupService:
             skipped=skipped,
             article_id_map=article_id_map,
             article_slug_map=article_slug_map,
+            model_id_map=model_id_map,
+            prompt_id_map=prompt_id_map,
             version_id_map=ai_analysis_version_id_map,
         )
         self._import_ai_analyses(
@@ -601,21 +605,23 @@ class BackupService:
         skipped: _SkipRecorder,
         category_id_map: dict[str, str],
         model_id_map: dict[str, str],
+        prompt_id_map: dict[str, str],
     ) -> None:
-        existing_keys = {
-            (item.type, item.name, item.category_id or "")
+        existing_configs = {
+            (item.type, item.name, item.category_id or ""): item.id
             for item in db.query(PromptConfig).all()
         }
 
         for batch in _chunked(items, self.IMPORT_BATCH_SIZE):
-            pending: list[tuple[tuple[str, str, str], PromptConfig]] = []
-            reserved_keys: set[tuple[str, str, str]] = set()
+            pending: list[tuple[str | None, tuple[str, str, str], PromptConfig]] = []
+            reserved_ids: dict[tuple[str, str, str], str] = {}
 
             for item in batch:
                 if not isinstance(item, dict):
                     section_stats["errors"] += 1
                     continue
 
+                old_id = self._clean_str(item.get("id"))
                 prompt_type = self._clean_str(item.get("type"))
                 name = self._clean_str(item.get("name"))
                 prompt = self._clean_str(item.get("prompt"))
@@ -650,13 +656,18 @@ class BackupService:
                         continue
 
                 conflict_key = (prompt_type, name, mapped_category_id or "")
-                if conflict_key in existing_keys or conflict_key in reserved_keys:
+                existing_id = existing_configs.get(conflict_key) or reserved_ids.get(
+                    conflict_key
+                )
+                if existing_id:
                     section_stats["skipped"] += 1
                     skipped.add(
                         "prompt_configs",
                         f"{prompt_type}:{name}",
                         "唯一键冲突(type+name+category_id)",
                     )
+                    if old_id:
+                        prompt_id_map[old_id] = existing_id
                     continue
 
                 config = PromptConfig(
@@ -694,28 +705,32 @@ class BackupService:
                     created_at=self._optional_str(item.get("created_at")),
                     updated_at=self._optional_str(item.get("updated_at")),
                 )
-                pending.append((conflict_key, config))
-                reserved_keys.add(conflict_key)
+                pending.append((old_id, conflict_key, config))
+                reserved_ids[conflict_key] = config.id
 
             if not pending:
                 continue
 
             try:
-                for _, config in pending:
+                for _, _, config in pending:
                     db.add(config)
                 db.commit()
                 section_stats["created"] += len(pending)
-                for conflict_key, _ in pending:
-                    existing_keys.add(conflict_key)
+                for old_id, conflict_key, config in pending:
+                    existing_configs[conflict_key] = config.id
+                    if old_id:
+                        prompt_id_map[old_id] = config.id
             except IntegrityError:
                 db.rollback()
-                for conflict_key, config in pending:
+                for old_id, conflict_key, config in pending:
                     identifier = f"{config.type}:{config.name}"
                     try:
                         db.add(config)
                         db.commit()
                         section_stats["created"] += 1
-                        existing_keys.add(conflict_key)
+                        existing_configs[conflict_key] = config.id
+                        if old_id:
+                            prompt_id_map[old_id] = config.id
                     except IntegrityError:
                         db.rollback()
                         section_stats["skipped"] += 1
@@ -724,6 +739,9 @@ class BackupService:
                             identifier,
                             "唯一键冲突(type+name+category_id)",
                         )
+                        existing_id = existing_configs.get(conflict_key)
+                        if old_id and existing_id:
+                            prompt_id_map[old_id] = existing_id
                     except Exception:
                         db.rollback()
                         section_stats["errors"] += 1
@@ -1052,6 +1070,8 @@ class BackupService:
         skipped: _SkipRecorder,
         article_id_map: dict[str, str],
         article_slug_map: dict[str, str],
+        model_id_map: dict[str, str],
+        prompt_id_map: dict[str, str],
         version_id_map: dict[str, str],
     ) -> None:
         pending_rollbacks: list[tuple[AIAnalysisVersion, str]] = []
@@ -1075,6 +1095,8 @@ class BackupService:
                 )
                 continue
 
+            source_model_config_id = self._clean_str(item.get("source_model_config_id"))
+            source_prompt_config_id = self._clean_str(item.get("source_prompt_config_id"))
             version = AIAnalysisVersion(
                 id=generate_uuid(),
                 article_id=target_article_id,
@@ -1085,10 +1107,8 @@ class BackupService:
                 content_html=self._optional_str(item.get("content_html")),
                 content_image_url=self._optional_str(item.get("content_image_url")),
                 source_task_id=self._optional_str(item.get("source_task_id")),
-                source_model_config_id=self._optional_str(item.get("source_model_config_id")),
-                source_prompt_config_id=self._optional_str(
-                    item.get("source_prompt_config_id")
-                ),
+                source_model_config_id=model_id_map.get(source_model_config_id),
+                source_prompt_config_id=prompt_id_map.get(source_prompt_config_id),
                 created_by_mode=self._optional_str(item.get("created_by_mode"))
                 or "generation",
                 created_at=self._optional_str(item.get("created_at")) or now_str(),
