@@ -548,47 +548,21 @@ export interface BasicSettings {
 	home_secondary_button_url: string;
 }
 
-export interface BackupPayload {
-	meta: {
-		schema_version: number;
-		exported_at: string;
-		app: string;
-		policy: string;
-	};
-	data: {
-		categories: Record<string, unknown>[];
-		tags: Record<string, unknown>[];
-		model_api_configs: Record<string, unknown>[];
-		prompt_configs: Record<string, unknown>[];
-		settings: Record<string, unknown>;
-		articles: Record<string, unknown>[];
-		ai_analyses: Record<string, unknown>[];
-		ai_analysis_versions: Record<string, unknown>[];
-	};
-}
-
 export interface BackupImportResult {
+	success: boolean;
 	meta: {
-		schema_version: number;
-		imported_at: string;
-		policy: string;
+		backup_exported_at: string;
+		backup_format_version: number;
+		backup_source_schema_version: string;
+		restored_at: string;
 	};
-	stats: {
-		categories: { created: number; skipped: number; errors: number };
-		tags: { created: number; skipped: number; errors: number };
-		model_api_configs: { created: number; skipped: number; errors: number };
-		prompt_configs: { created: number; skipped: number; errors: number };
-		articles: { created: number; skipped: number; errors: number };
-		ai_analyses: { created: number; skipped: number; errors: number };
-		ai_analysis_versions: { created: number; skipped: number; errors: number };
-		settings: { created: number; skipped: number; errors: number };
+	restored: {
+		includes: {
+			comments: boolean;
+			media: boolean;
+			secrets: boolean;
+		};
 	};
-	skipped_total: number;
-	skipped_items: Array<{
-		section: string;
-		identifier: string;
-		reason: string;
-	}>;
 }
 
 export interface CommentListResponse {
@@ -1253,16 +1227,20 @@ export const articleApi = {
 };
 
 export const backupApi = {
-	exportBackup: async (): Promise<BackupPayload> => {
+	exportBackup: async (): Promise<Blob> => {
 		const response = await api.get("/api/backup/export", {
-			responseType: "text",
-			transformResponse: [(data) => data],
+			responseType: "blob",
 		});
-		const raw = typeof response.data === "string" ? response.data : "";
-		return JSON.parse(raw) as BackupPayload;
+		return response.data as Blob;
 	},
-	importBackup: async (payload: BackupPayload): Promise<BackupImportResult> => {
-		const response = await api.post("/api/backup/import", payload);
+	importBackup: async (file: File): Promise<BackupImportResult> => {
+		const formData = new FormData();
+		formData.append("file", file);
+		const response = await api.post("/api/backup/import", formData, {
+			headers: {
+				"Content-Type": "multipart/form-data",
+			},
+		});
 		return response.data as BackupImportResult;
 	},
 };

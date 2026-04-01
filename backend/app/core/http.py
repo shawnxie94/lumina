@@ -5,7 +5,9 @@ import uuid
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
+from app.core.backup_lock import restore_lock_active
 from app.core.settings import get_settings
 
 logger = logging.getLogger("article_api")
@@ -37,12 +39,24 @@ def configure_request_middleware(app: FastAPI) -> None:
     async def request_id_middleware(request: Request, call_next):
         request_id = request.headers.get("X-Request-Id") or str(uuid.uuid4())
         request.state.request_id = request_id
+        path = str(request.url.path)
+        if (
+            request.method.upper() not in {"GET", "HEAD", "OPTIONS"}
+            and not path.endswith("/api/backup/import")
+            and restore_lock_active()
+        ):
+            response = JSONResponse(
+                status_code=423,
+                content={"detail": "镜像恢复进行中，请稍后再试"},
+            )
+            response.headers["X-Request-Id"] = request_id
+            return response
         start_time = time.perf_counter()
         log_event(
             "request_start",
             request_id,
             method=request.method,
-            path=str(request.url.path),
+            path=path,
             client=request.client.host if request.client else None,
         )
         try:
@@ -53,7 +67,7 @@ def configure_request_middleware(app: FastAPI) -> None:
                 "request_error",
                 request_id,
                 method=request.method,
-                path=str(request.url.path),
+                path=path,
                 duration_ms=duration_ms,
                 error=str(exc),
             )
@@ -64,7 +78,7 @@ def configure_request_middleware(app: FastAPI) -> None:
             "request_end",
             request_id,
             method=request.method,
-            path=str(request.url.path),
+            path=path,
             status_code=response.status_code,
             duration_ms=duration_ms,
         )

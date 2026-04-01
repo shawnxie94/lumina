@@ -1,6 +1,7 @@
 import asyncio
 import time
 
+from app.core.backup_lock import restore_lock_active
 from app.core.settings import get_settings, validate_startup_settings
 from task_errors import normalize_task_error
 
@@ -18,6 +19,9 @@ def main() -> None:
     task_timeout_seconds = ai_worker.task_timeout
 
     while True:
+        if restore_lock_active(settings.database_url):
+            time.sleep(poll_interval)
+            continue
         db = SessionLocal()
         try:
             task_service.cleanup_stale_tasks(db)

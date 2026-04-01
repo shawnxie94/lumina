@@ -1,1371 +1,372 @@
 from __future__ import annotations
 
 import json
+import shutil
+import sqlite3
+import subprocess
+import tempfile
+import zipfile
+from collections.abc import Iterable
 from datetime import datetime, timezone
-from typing import Any, Iterable
+from pathlib import Path
+from typing import Any, BinaryIO
 
-from sqlalchemy.exc import IntegrityError
+from app.core.backup_lock import acquire_restore_lock
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
-from app.core.dependencies import build_basic_settings
-from app.core.note_recommendation import normalize_note_recommendation_level
-from app.domain.article_tag_service import ArticleTagService
-from auth import get_admin_settings
-from models import (
-    AIAnalysis,
-    AIAnalysisVersion,
-    AdminSettings,
-    Article,
-    Category,
-    ModelAPIConfig,
-    PromptConfig,
-    Tag,
-    generate_uuid,
-    now_str,
+from app.core.settings import BACKEND_DIR, get_settings
+
+BACKUP_FORMAT_VERSION = 1
+ARCHIVE_CHUNK_SIZE = 64 * 1024
+REQUIRED_SNAPSHOT_TABLES = {
+    "admin_settings",
+    "ai_analyses",
+    "ai_analysis_versions",
+    "article_comments",
+    "article_tags",
+    "articles",
+    "categories",
+    "media_assets",
+    "model_api_configs",
+    "prompt_configs",
+    "tags",
+}
+SNAPSHOT_DATA_TABLES = REQUIRED_SNAPSHOT_TABLES | {"alembic_version"}
+EXCLUDED_RUNTIME_TABLES = (
+    "ai_tasks",
+    "ai_task_events",
+    "ai_usage_logs",
+    "article_embeddings",
 )
-
-BACKUP_SCHEMA_VERSION = 1
-article_tag_service = ArticleTagService()
-
-
-class _SkipRecorder:
-    def __init__(self, limit: int) -> None:
-        self.limit = max(1, limit)
-        self.total = 0
-        self.items: list[dict[str, str]] = []
-
-    def add(self, section: str, identifier: str, reason: str) -> None:
-        self.total += 1
-        if len(self.items) >= self.limit:
-            return
-        self.items.append(
-            {
-                "section": section,
-                "identifier": identifier,
-                "reason": reason,
-            }
-        )
-
-
-def _chunked(items: list[Any], size: int) -> Iterable[list[Any]]:
-    batch_size = max(1, size)
-    for index in range(0, len(items), batch_size):
-        yield items[index : index + batch_size]
 
 
 class BackupService:
-    EXPORT_BATCH_SIZE = 500
-    IMPORT_BATCH_SIZE = 200
-    SKIPPED_ITEM_LIMIT = 200
+    def __init__(
+        self,
+        database_url: str | None = None,
+        media_root: str | None = None,
+        current_schema_version: str | None = None,
+        source_commit: str | None = None,
+    ) -> None:
+        settings = get_settings()
+        self.database_url = database_url or settings.database_url
+        self.media_root = Path(media_root or settings.media.root)
+        self.current_schema_version = (
+            current_schema_version or self._detect_current_schema_version()
+        )
+        self.source_commit = source_commit or self._detect_source_commit()
 
-    def export_backup_stream(self, db: Session) -> Iterable[str]:
-        meta = {
-            "schema_version": BACKUP_SCHEMA_VERSION,
-            "exported_at": datetime.now(timezone.utc).isoformat(),
+    def export_backup_stream(self, db: Session) -> Iterable[bytes]:
+        source_db_path = self._resolve_database_path(db)
+
+        def _stream() -> Iterable[bytes]:
+            with tempfile.TemporaryDirectory(prefix="lumina-backup-export-") as temp_dir:
+                temp_path = Path(temp_dir)
+                snapshot_path = temp_path / "snapshot.db"
+                archive_path = temp_path / "lumina-backup.zip"
+                manifest_path = temp_path / "manifest.json"
+
+                self._create_filtered_snapshot(source_db_path, snapshot_path)
+                manifest = self._build_manifest(source_db_path)
+                manifest_path.write_text(
+                    json.dumps(manifest, ensure_ascii=False, indent=2),
+                    encoding="utf-8",
+                )
+                self._build_archive(
+                    archive_path=archive_path,
+                    snapshot_path=snapshot_path,
+                    manifest_path=manifest_path,
+                )
+
+                with archive_path.open("rb") as archive_file:
+                    while True:
+                        chunk = archive_file.read(ARCHIVE_CHUNK_SIZE)
+                        if not chunk:
+                            break
+                        yield chunk
+
+        return _stream()
+
+    def import_backup(self, db: Session, archive_input: BinaryIO | bytes) -> dict[str, Any]:
+        with acquire_restore_lock(self.database_url):
+            engine = db.get_bind()
+            db.close()
+            if isinstance(engine, Engine):
+                engine.dispose()
+
+            target_db_path = self._resolve_database_path(None)
+
+            with tempfile.TemporaryDirectory(prefix="lumina-backup-import-") as temp_dir:
+                temp_path = Path(temp_dir)
+                extracted_dir = temp_path / "extracted"
+                rollback_dir = temp_path / "rollback"
+                extracted_dir.mkdir(parents=True, exist_ok=True)
+                rollback_dir.mkdir(parents=True, exist_ok=True)
+
+                self._extract_archive(archive_input, extracted_dir)
+                manifest = self._load_manifest(extracted_dir / "manifest.json")
+                snapshot_path = extracted_dir / "snapshot.db"
+                if not snapshot_path.exists():
+                    raise ValueError("导入失败：缺少 snapshot.db")
+
+                self._validate_manifest(manifest)
+                self._validate_snapshot(snapshot_path)
+
+                rollback_state = self._create_rollback(target_db_path, rollback_dir)
+
+                try:
+                    self._restore_database_file(snapshot_path, target_db_path)
+                    self._restore_media_directory(extracted_dir / "media", self.media_root)
+                except Exception:
+                    self._restore_rollback(target_db_path, rollback_state)
+                    raise
+
+                return {
+                    "success": True,
+                    "meta": {
+                        "backup_exported_at": manifest["exported_at"],
+                        "backup_format_version": int(manifest["format_version"]),
+                        "backup_source_schema_version": manifest["source_schema_version"],
+                        "restored_at": datetime.now(timezone.utc).isoformat(),
+                    },
+                    "restored": {
+                        "includes": {
+                            "comments": bool(manifest["includes"]["comments"]),
+                            "media": bool(manifest["includes"]["media"]),
+                            "secrets": bool(manifest["includes"]["secrets"]),
+                        }
+                    }
+                }
+
+    def _build_manifest(self, source_db_path: Path) -> dict[str, Any]:
+        return {
+            "format_version": BACKUP_FORMAT_VERSION,
             "app": "lumina",
-            "policy": "strict_incremental_skip_conflicts",
+            "exported_at": datetime.now(timezone.utc).isoformat(),
+            "source_schema_version": self._read_database_schema_version(source_db_path)
+            or self.current_schema_version,
+            "source_commit": self.source_commit,
+            "includes": {
+                "comments": True,
+                "media": True,
+                "secrets": True,
+            },
         }
 
-        categories = [
-            self._serialize_category(item)
-            for item in db.query(Category).order_by(Category.sort_order.asc()).all()
-        ]
-        model_api_configs = [
-            self._serialize_model_api_config(item)
-            for item in db.query(ModelAPIConfig).order_by(ModelAPIConfig.created_at.desc()).all()
-        ]
-        tags = [
-            self._serialize_tag(item)
-            for item in db.query(Tag).order_by(Tag.name.asc()).all()
-        ]
-        prompt_configs = [
-            self._serialize_prompt_config(item)
-            for item in db.query(PromptConfig).order_by(PromptConfig.created_at.desc()).all()
-        ]
-        settings_snapshot = self._serialize_settings(db)
+    def _build_archive(
+        self,
+        *,
+        archive_path: Path,
+        snapshot_path: Path,
+        manifest_path: Path,
+    ) -> None:
+        with zipfile.ZipFile(
+            archive_path, "w", compression=zipfile.ZIP_DEFLATED
+        ) as archive:
+            archive.write(manifest_path, arcname="manifest.json")
+            archive.write(snapshot_path, arcname="snapshot.db")
+            if self.media_root.exists():
+                for path in sorted(self.media_root.rglob("*")):
+                    if not path.is_file():
+                        continue
+                    relative = path.relative_to(self.media_root).as_posix()
+                    archive.write(path, arcname=f"media/{relative}")
 
-        def stream() -> Iterable[str]:
-            yield "{"
-            yield f"\"meta\":{json.dumps(meta, ensure_ascii=False)}"
-            yield ",\"data\":{"
-            yield f"\"categories\":{json.dumps(categories, ensure_ascii=False)}"
-            yield f",\"tags\":{json.dumps(tags, ensure_ascii=False)}"
-            yield f",\"model_api_configs\":{json.dumps(model_api_configs, ensure_ascii=False)}"
-            yield f",\"prompt_configs\":{json.dumps(prompt_configs, ensure_ascii=False)}"
-            yield f",\"settings\":{json.dumps(settings_snapshot, ensure_ascii=False)}"
+    def _create_filtered_snapshot(self, source_db_path: Path, snapshot_path: Path) -> None:
+        source = sqlite3.connect(str(source_db_path))
+        destination = sqlite3.connect(str(snapshot_path))
+        try:
+            source.backup(destination)
+            destination.execute("PRAGMA foreign_keys=OFF")
+            destination.execute("UPDATE articles SET view_count = 0")
+            for table_name in EXCLUDED_RUNTIME_TABLES:
+                if self._table_exists(destination, table_name):
+                    destination.execute(f'DELETE FROM "{table_name}"')
+            extra_tables = self._list_snapshot_tables(destination) - SNAPSHOT_DATA_TABLES
+            for table_name in sorted(extra_tables):
+                destination.execute(f'DELETE FROM "{table_name}"')
+            destination.commit()
+        finally:
+            destination.close()
+            source.close()
 
-            yield ",\"articles\":["
-            first_article = True
-            offset = 0
-            while True:
-                rows = (
-                    db.query(Article)
-                    .order_by(Article.created_at.desc())
-                    .offset(offset)
-                    .limit(self.EXPORT_BATCH_SIZE)
-                    .all()
-                )
-                if not rows:
-                    break
-                for article in rows:
-                    if not first_article:
-                        yield ","
-                    yield json.dumps(self._serialize_article(article), ensure_ascii=False)
-                    first_article = False
-                offset += self.EXPORT_BATCH_SIZE
-            yield "]"
+    def _extract_archive(self, archive_input: BinaryIO | bytes, extracted_dir: Path) -> None:
+        archive_path = extracted_dir.parent / "uploaded-backup.zip"
+        if isinstance(archive_input, bytes):
+            archive_path.write_bytes(archive_input)
+        else:
+            with archive_path.open("wb") as archive_file:
+                while True:
+                    chunk = archive_input.read(ARCHIVE_CHUNK_SIZE)
+                    if not chunk:
+                        break
+                    archive_file.write(chunk)
+        if not archive_path.exists() or archive_path.stat().st_size <= 0:
+            raise ValueError("导入失败：备份文件读取失败")
+        try:
+            with zipfile.ZipFile(archive_path) as archive:
+                archive.extractall(extracted_dir)
+        except zipfile.BadZipFile as exc:
+            raise ValueError("导入失败：备份文件不是有效的 zip") from exc
 
-            yield ",\"ai_analyses\":["
-            first_analysis = True
-            offset = 0
-            while True:
-                rows = (
-                    db.query(AIAnalysis, Article.slug)
-                    .join(Article, Article.id == AIAnalysis.article_id)
-                    .order_by(Article.created_at.desc())
-                    .offset(offset)
-                    .limit(self.EXPORT_BATCH_SIZE)
-                    .all()
-                )
-                if not rows:
-                    break
-                for analysis, article_slug in rows:
-                    if not first_analysis:
-                        yield ","
-                    yield json.dumps(
-                        self._serialize_ai_analysis(analysis, article_slug),
-                        ensure_ascii=False,
-                    )
-                    first_analysis = False
-                offset += self.EXPORT_BATCH_SIZE
-            yield "]"
+    def _load_manifest(self, manifest_path: Path) -> dict[str, Any]:
+        if not manifest_path.exists():
+            raise ValueError("导入失败：缺少 manifest.json")
+        try:
+            raw = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise ValueError("导入失败：manifest.json 格式不正确") from exc
+        if not isinstance(raw, dict):
+            raise ValueError("导入失败：manifest.json 格式不正确")
+        return raw
 
-            yield ",\"ai_analysis_versions\":["
-            first_version = True
-            offset = 0
-            while True:
-                rows = (
-                    db.query(AIAnalysisVersion, Article.slug)
-                    .join(Article, Article.id == AIAnalysisVersion.article_id)
-                    .order_by(AIAnalysisVersion.created_at.desc())
-                    .offset(offset)
-                    .limit(self.EXPORT_BATCH_SIZE)
-                    .all()
-                )
-                if not rows:
-                    break
-                for version, article_slug in rows:
-                    if not first_version:
-                        yield ","
-                    yield json.dumps(
-                        self._serialize_ai_analysis_version(version, article_slug),
-                        ensure_ascii=False,
-                    )
-                    first_version = False
-                offset += self.EXPORT_BATCH_SIZE
-            yield "]"
-            yield "}}"
-
-        return stream()
-
-    def import_backup(self, db: Session, payload: dict[str, Any]) -> dict[str, Any]:
-        meta = payload.get("meta")
-        data = payload.get("data")
-        if not isinstance(meta, dict) or not isinstance(data, dict):
-            raise ValueError("导入失败：备份文件格式不正确")
-
-        schema_version = meta.get("schema_version")
-        if schema_version != BACKUP_SCHEMA_VERSION:
+    def _validate_manifest(self, manifest: dict[str, Any]) -> None:
+        format_version = int(manifest.get("format_version") or 0)
+        if format_version != BACKUP_FORMAT_VERSION:
             raise ValueError(
-                f"导入失败：仅支持 schema_version={BACKUP_SCHEMA_VERSION}，当前为 {schema_version}"
+                f"导入失败：仅支持 format_version={BACKUP_FORMAT_VERSION}，当前为 {format_version}"
             )
 
-        stats = {
-            "categories": self._new_stats(),
-            "tags": self._new_stats(),
-            "model_api_configs": self._new_stats(),
-            "prompt_configs": self._new_stats(),
-            "articles": self._new_stats(),
-            "ai_analysis_versions": self._new_stats(),
-            "ai_analyses": self._new_stats(),
-            "settings": self._new_stats(),
-        }
-        skipped = _SkipRecorder(self.SKIPPED_ITEM_LIMIT)
+        source_schema_version = str(manifest.get("source_schema_version") or "").strip()
+        if (
+            source_schema_version
+            and self.current_schema_version
+            and source_schema_version > self.current_schema_version
+        ):
+            raise ValueError(
+                f"导入失败：备份来自更高版本 {source_schema_version}，当前仅支持恢复到 {self.current_schema_version}"
+            )
 
-        category_id_map: dict[str, str] = {}
-        tag_id_map: dict[str, str] = {}
-        model_id_map: dict[str, str] = {}
-        prompt_id_map: dict[str, str] = {}
-        article_id_map: dict[str, str] = {}
-        article_slug_map: dict[str, str] = {}
+        includes = manifest.get("includes")
+        if not isinstance(includes, dict):
+            raise ValueError("导入失败：manifest.json includes 字段缺失")
 
-        self._import_categories(
-            db=db,
-            items=self._as_list(data.get("categories"), "categories"),
-            section_stats=stats["categories"],
-            skipped=skipped,
-            category_id_map=category_id_map,
-        )
-        self._import_tags(
-            db=db,
-            items=self._as_list(data.get("tags"), "tags"),
-            section_stats=stats["tags"],
-            skipped=skipped,
-            tag_id_map=tag_id_map,
-        )
-        self._import_model_api_configs(
-            db=db,
-            items=self._as_list(data.get("model_api_configs"), "model_api_configs"),
-            section_stats=stats["model_api_configs"],
-            skipped=skipped,
-            model_id_map=model_id_map,
-        )
-        self._import_prompt_configs(
-            db=db,
-            items=self._as_list(data.get("prompt_configs"), "prompt_configs"),
-            section_stats=stats["prompt_configs"],
-            skipped=skipped,
-            category_id_map=category_id_map,
-            model_id_map=model_id_map,
-            prompt_id_map=prompt_id_map,
-        )
-        ai_analysis_version_id_map: dict[str, str] = {}
-        self._import_articles(
-            db=db,
-            items=self._as_list(data.get("articles"), "articles"),
-            section_stats=stats["articles"],
-            skipped=skipped,
-            category_id_map=category_id_map,
-            tag_id_map=tag_id_map,
-            article_id_map=article_id_map,
-            article_slug_map=article_slug_map,
-        )
-        self._import_ai_analysis_versions(
-            db=db,
-            items=self._as_list(
-                data.get("ai_analysis_versions"), "ai_analysis_versions"
-            ),
-            section_stats=stats["ai_analysis_versions"],
-            skipped=skipped,
-            article_id_map=article_id_map,
-            article_slug_map=article_slug_map,
-            model_id_map=model_id_map,
-            prompt_id_map=prompt_id_map,
-            version_id_map=ai_analysis_version_id_map,
-        )
-        self._import_ai_analyses(
-            db=db,
-            items=self._as_list(data.get("ai_analyses"), "ai_analyses"),
-            section_stats=stats["ai_analyses"],
-            skipped=skipped,
-            article_id_map=article_id_map,
-            article_slug_map=article_slug_map,
-            version_id_map=ai_analysis_version_id_map,
-        )
-        self._import_settings(
-            db=db,
-            settings_data=data.get("settings"),
-            section_stats=stats["settings"],
-            skipped=skipped,
-        )
-
-        return {
-            "meta": {
-                "schema_version": BACKUP_SCHEMA_VERSION,
-                "imported_at": datetime.now(timezone.utc).isoformat(),
-                "policy": "strict_incremental_skip_conflicts",
-            },
-            "stats": stats,
-            "skipped_total": skipped.total,
-            "skipped_items": skipped.items,
-        }
-
-    @staticmethod
-    def _new_stats() -> dict[str, int]:
-        return {"created": 0, "skipped": 0, "errors": 0}
-
-    @staticmethod
-    def _as_list(value: Any, field_name: str) -> list[Any]:
-        if value is None:
-            return []
-        if isinstance(value, list):
-            return value
-        raise ValueError(f"导入失败：{field_name} 必须是数组")
-
-    @staticmethod
-    def _clean_str(value: Any) -> str:
-        if value is None:
-            return ""
-        return str(value).strip()
-
-    @staticmethod
-    def _optional_str(value: Any) -> str | None:
-        text = BackupService._clean_str(value)
-        return text if text else None
-
-    @staticmethod
-    def _safe_int(value: Any, default: int = 0) -> int:
+    def _validate_snapshot(self, snapshot_path: Path) -> None:
+        connection = sqlite3.connect(str(snapshot_path))
         try:
-            return int(value)
-        except Exception:
-            return default
+            existing_tables = self._list_snapshot_tables(connection)
+        finally:
+            connection.close()
 
-    @staticmethod
-    def _safe_float(value: Any) -> float | None:
-        if value is None or value == "":
-            return None
+        missing_tables = REQUIRED_SNAPSHOT_TABLES - existing_tables
+        if missing_tables:
+            missing = ", ".join(sorted(missing_tables))
+            raise ValueError(f"导入失败：快照数据库缺少必要表：{missing}")
+
+    def _create_rollback(self, database_path: Path, rollback_dir: Path) -> dict[str, Any]:
+        database_backup = rollback_dir / "database"
+        media_backup = rollback_dir / "media"
+        database_backup.mkdir(parents=True, exist_ok=True)
+
+        rollback_state: dict[str, Any] = {
+            "db_exists": database_path.exists(),
+            "db_backup": {},
+            "media_exists": self.media_root.exists(),
+            "media_backup": media_backup,
+        }
+
+        for suffix in ("", "-wal", "-shm"):
+            original = Path(f"{database_path}{suffix}")
+            backup = database_backup / original.name
+            if original.exists():
+                shutil.copy2(original, backup)
+                rollback_state["db_backup"][suffix] = backup
+
+        if self.media_root.exists():
+            shutil.copytree(self.media_root, media_backup, dirs_exist_ok=True)
+
+        return rollback_state
+
+    def _restore_database_file(self, snapshot_path: Path, database_path: Path) -> None:
+        database_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(snapshot_path, database_path)
+        for suffix in ("-wal", "-shm"):
+            transient = Path(f"{database_path}{suffix}")
+            if transient.exists():
+                transient.unlink()
+
+    def _restore_media_directory(self, archive_media_root: Path, target_media_root: Path) -> None:
+        if target_media_root.exists():
+            shutil.rmtree(target_media_root)
+        if archive_media_root.exists():
+            shutil.copytree(archive_media_root, target_media_root)
+        else:
+            target_media_root.mkdir(parents=True, exist_ok=True)
+
+    def _restore_rollback(self, database_path: Path, rollback_state: dict[str, Any]) -> None:
+        for suffix in ("", "-wal", "-shm"):
+            target = Path(f"{database_path}{suffix}")
+            if target.exists():
+                target.unlink()
+
+        db_backup = rollback_state.get("db_backup") or {}
+        for suffix, backup_path in db_backup.items():
+            shutil.copy2(Path(backup_path), Path(f"{database_path}{suffix}"))
+
+        if self.media_root.exists():
+            shutil.rmtree(self.media_root)
+
+        media_backup = Path(rollback_state["media_backup"])
+        if rollback_state.get("media_exists") and media_backup.exists():
+            shutil.copytree(media_backup, self.media_root)
+
+    def _resolve_database_path(self, db: Session | None) -> Path:
+        database_url = self.database_url
+        if db is not None:
+            bind = db.get_bind()
+            url = getattr(bind, "url", None)
+            if url is not None:
+                database_url = str(url)
+
+        if not database_url.startswith("sqlite:///"):
+            raise ValueError("仅支持 SQLite 镜像备份")
+
+        database_path = database_url.removeprefix("sqlite:///")
+        path = Path(database_path)
+        return path if path.is_absolute() else (Path.cwd() / path).resolve()
+
+    def _read_database_schema_version(self, database_path: Path) -> str:
+        connection = sqlite3.connect(str(database_path))
         try:
-            return float(value)
+            row = connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'alembic_version'"
+            ).fetchone()
+            if not row:
+                return ""
+            version_row = connection.execute(
+                "SELECT version_num FROM alembic_version LIMIT 1"
+            ).fetchone()
+            return str(version_row[0]) if version_row and version_row[0] else ""
+        finally:
+            connection.close()
+
+    def _list_snapshot_tables(self, connection: sqlite3.Connection) -> set[str]:
+        rows = connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
+        ).fetchall()
+        return {str(row[0]) for row in rows}
+
+    def _table_exists(self, connection: sqlite3.Connection, table_name: str) -> bool:
+        row = connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
+            (table_name,),
+        ).fetchone()
+        return bool(row)
+
+    def _detect_current_schema_version(self) -> str:
+        versions_dir = BACKEND_DIR / "alembic" / "versions"
+        version_files = sorted(path.stem for path in versions_dir.glob("*.py"))
+        return version_files[-1] if version_files else ""
+
+    def _detect_source_commit(self) -> str:
+        try:
+            output = subprocess.check_output(
+                ["git", "rev-parse", "--short", "HEAD"],
+                cwd=BACKEND_DIR.parent,
+                stderr=subprocess.DEVNULL,
+                text=True,
+            )
         except Exception:
-            return None
-
-    @staticmethod
-    def _safe_bool(value: Any, default: bool = False) -> bool:
-        if value is None:
-            return default
-        if isinstance(value, bool):
-            return value
-        if isinstance(value, str):
-            normalized = value.strip().lower()
-            if normalized in {"1", "true", "yes", "y", "on"}:
-                return True
-            if normalized in {"0", "false", "no", "n", "off"}:
-                return False
-            return default
-        return bool(value)
-
-    @staticmethod
-    def _normalize_json_text(value: Any) -> str | None:
-        if value is None:
-            return None
-        if isinstance(value, (dict, list)):
-            return json.dumps(value, ensure_ascii=False)
-        text = str(value)
-        return text if text.strip() else None
-
-    @staticmethod
-    def _normalize_note_recommendation_level(value: Any) -> str:
-        if value is None:
-            return normalize_note_recommendation_level(None)
-        return normalize_note_recommendation_level(str(value).strip() or None)
-
-    def _import_categories(
-        self,
-        db: Session,
-        items: list[Any],
-        section_stats: dict[str, int],
-        skipped: _SkipRecorder,
-        category_id_map: dict[str, str],
-    ) -> None:
-        existing_by_name = {
-            row.name: row.id for row in db.query(Category.id, Category.name).all()
-        }
-
-        for batch in _chunked(items, self.IMPORT_BATCH_SIZE):
-            pending: list[tuple[str, str, Category]] = []
-            for item in batch:
-                if not isinstance(item, dict):
-                    section_stats["errors"] += 1
-                    continue
-                old_id = self._clean_str(item.get("id"))
-                name = self._clean_str(item.get("name"))
-                if not name:
-                    section_stats["errors"] += 1
-                    continue
-
-                existing_id = existing_by_name.get(name)
-                if existing_id:
-                    section_stats["skipped"] += 1
-                    skipped.add("categories", name, "唯一键冲突(name)")
-                    if old_id:
-                        category_id_map[old_id] = existing_id
-                    continue
-
-                category = Category(
-                    id=generate_uuid(),
-                    name=name,
-                    description=self._optional_str(item.get("description")),
-                    color=self._optional_str(item.get("color")),
-                    sort_order=self._safe_int(item.get("sort_order"), default=0),
-                    created_at=self._optional_str(item.get("created_at")),
-                )
-                pending.append((old_id, name, category))
-                existing_by_name[name] = category.id
-
-            if not pending:
-                continue
-
-            try:
-                for _, _, category in pending:
-                    db.add(category)
-                db.commit()
-                section_stats["created"] += len(pending)
-                for old_id, _, category in pending:
-                    if old_id:
-                        category_id_map[old_id] = category.id
-            except IntegrityError:
-                db.rollback()
-                for old_id, name, category in pending:
-                    try:
-                        db.add(category)
-                        db.commit()
-                        section_stats["created"] += 1
-                        if old_id:
-                            category_id_map[old_id] = category.id
-                    except IntegrityError:
-                        db.rollback()
-                        section_stats["skipped"] += 1
-                        skipped.add("categories", name, "唯一键冲突(name)")
-                    except Exception:
-                        db.rollback()
-                        section_stats["errors"] += 1
-            except Exception:
-                db.rollback()
-                section_stats["errors"] += len(pending)
-
-    def _import_model_api_configs(
-        self,
-        db: Session,
-        items: list[Any],
-        section_stats: dict[str, int],
-        skipped: _SkipRecorder,
-        model_id_map: dict[str, str],
-    ) -> None:
-        existing_by_name = {
-            row.name: row.id for row in db.query(ModelAPIConfig.id, ModelAPIConfig.name).all()
-        }
-
-        for batch in _chunked(items, self.IMPORT_BATCH_SIZE):
-            pending: list[tuple[str, str, ModelAPIConfig]] = []
-            for item in batch:
-                if not isinstance(item, dict):
-                    section_stats["errors"] += 1
-                    continue
-                old_id = self._clean_str(item.get("id"))
-                name = self._clean_str(item.get("name"))
-                if not name:
-                    section_stats["errors"] += 1
-                    continue
-                existing_id = existing_by_name.get(name)
-                if existing_id:
-                    section_stats["skipped"] += 1
-                    skipped.add("model_api_configs", name, "唯一键冲突(name)")
-                    if old_id:
-                        model_id_map[old_id] = existing_id
-                    continue
-
-                base_url = self._clean_str(item.get("base_url")) or "https://api.openai.com/v1"
-                api_key = self._clean_str(item.get("api_key"))
-                if not api_key:
-                    section_stats["errors"] += 1
-                    continue
-
-                config = ModelAPIConfig(
-                    id=generate_uuid(),
-                    name=name,
-                    base_url=base_url,
-                    api_key=api_key,
-                    provider=self._clean_str(item.get("provider")) or "openai",
-                    model_name=self._clean_str(item.get("model_name")) or "gpt-4o",
-                    model_type=self._clean_str(item.get("model_type")) or "general",
-                    price_input_per_1k=self._safe_float(item.get("price_input_per_1k")),
-                    price_output_per_1k=self._safe_float(item.get("price_output_per_1k")),
-                    currency=self._optional_str(item.get("currency")),
-                    context_window_tokens=(
-                        self._safe_int(item.get("context_window_tokens"))
-                        if item.get("context_window_tokens") is not None
-                        else None
-                    ),
-                    reserve_output_tokens=(
-                        self._safe_int(item.get("reserve_output_tokens"))
-                        if item.get("reserve_output_tokens") is not None
-                        else None
-                    ),
-                    is_enabled=self._safe_bool(item.get("is_enabled"), default=True),
-                    is_default=self._safe_bool(item.get("is_default"), default=False),
-                    created_at=self._optional_str(item.get("created_at")),
-                    updated_at=self._optional_str(item.get("updated_at")),
-                )
-                pending.append((old_id, name, config))
-                existing_by_name[name] = config.id
-
-            if not pending:
-                continue
-
-            try:
-                for _, _, config in pending:
-                    db.add(config)
-                db.commit()
-                section_stats["created"] += len(pending)
-                for old_id, _, config in pending:
-                    if old_id:
-                        model_id_map[old_id] = config.id
-            except IntegrityError:
-                db.rollback()
-                for old_id, name, config in pending:
-                    try:
-                        db.add(config)
-                        db.commit()
-                        section_stats["created"] += 1
-                        if old_id:
-                            model_id_map[old_id] = config.id
-                    except IntegrityError:
-                        db.rollback()
-                        section_stats["skipped"] += 1
-                        skipped.add("model_api_configs", name, "唯一键冲突(name)")
-                    except Exception:
-                        db.rollback()
-                        section_stats["errors"] += 1
-            except Exception:
-                db.rollback()
-                section_stats["errors"] += len(pending)
-
-    def _import_tags(
-        self,
-        db: Session,
-        items: list[Any],
-        section_stats: dict[str, int],
-        skipped: _SkipRecorder,
-        tag_id_map: dict[str, str],
-    ) -> None:
-        existing_by_normalized_name = {
-            row.normalized_name: row.id
-            for row in db.query(Tag.id, Tag.normalized_name).all()
-        }
-
-        for batch in _chunked(items, self.IMPORT_BATCH_SIZE):
-            pending: list[tuple[str, str, Tag]] = []
-            for item in batch:
-                if not isinstance(item, dict):
-                    section_stats["errors"] += 1
-                    continue
-                old_id = self._clean_str(item.get("id"))
-                name = article_tag_service.normalize_tag_name(self._clean_str(item.get("name")))
-                normalized_name = article_tag_service.get_normalized_name(
-                    self._clean_str(item.get("normalized_name")) or name
-                )
-                if not name or not normalized_name:
-                    section_stats["errors"] += 1
-                    continue
-
-                existing_id = existing_by_normalized_name.get(normalized_name)
-                if existing_id:
-                    section_stats["skipped"] += 1
-                    skipped.add("tags", name, "唯一键冲突(normalized_name)")
-                    if old_id:
-                        tag_id_map[old_id] = existing_id
-                    continue
-
-                tag = Tag(
-                    id=generate_uuid(),
-                    name=name,
-                    normalized_name=normalized_name,
-                    created_at=self._optional_str(item.get("created_at")) or now_str(),
-                    updated_at=self._optional_str(item.get("updated_at")) or now_str(),
-                )
-                pending.append((old_id, normalized_name, tag))
-                existing_by_normalized_name[normalized_name] = tag.id
-
-            if not pending:
-                continue
-
-            try:
-                for _, _, tag in pending:
-                    db.add(tag)
-                db.commit()
-                section_stats["created"] += len(pending)
-                for old_id, _, tag in pending:
-                    if old_id:
-                        tag_id_map[old_id] = tag.id
-            except IntegrityError:
-                db.rollback()
-                for old_id, normalized_name, tag in pending:
-                    try:
-                        db.add(tag)
-                        db.commit()
-                        section_stats["created"] += 1
-                        if old_id:
-                            tag_id_map[old_id] = tag.id
-                    except IntegrityError:
-                        db.rollback()
-                        section_stats["skipped"] += 1
-                        skipped.add("tags", normalized_name, "唯一键冲突(normalized_name)")
-                    except Exception:
-                        db.rollback()
-                        section_stats["errors"] += 1
-            except Exception:
-                db.rollback()
-                section_stats["errors"] += len(pending)
-
-    def _import_prompt_configs(
-        self,
-        db: Session,
-        items: list[Any],
-        section_stats: dict[str, int],
-        skipped: _SkipRecorder,
-        category_id_map: dict[str, str],
-        model_id_map: dict[str, str],
-        prompt_id_map: dict[str, str],
-    ) -> None:
-        existing_configs = {
-            (item.type, item.name, item.category_id or ""): item.id
-            for item in db.query(PromptConfig).all()
-        }
-
-        for batch in _chunked(items, self.IMPORT_BATCH_SIZE):
-            pending: list[tuple[str | None, tuple[str, str, str], PromptConfig]] = []
-            reserved_ids: dict[tuple[str, str, str], str] = {}
-
-            for item in batch:
-                if not isinstance(item, dict):
-                    section_stats["errors"] += 1
-                    continue
-
-                old_id = self._clean_str(item.get("id"))
-                prompt_type = self._clean_str(item.get("type"))
-                name = self._clean_str(item.get("name"))
-                prompt = self._clean_str(item.get("prompt"))
-                if not prompt_type or not name or not prompt:
-                    section_stats["errors"] += 1
-                    continue
-
-                source_category_id = self._optional_str(item.get("category_id"))
-                mapped_category_id: str | None = None
-                if source_category_id:
-                    mapped_category_id = category_id_map.get(source_category_id)
-                    if not mapped_category_id:
-                        section_stats["skipped"] += 1
-                        skipped.add(
-                            "prompt_configs",
-                            f"{prompt_type}:{name}",
-                            "关联分类不存在，已跳过",
-                        )
-                        continue
-
-                source_model_id = self._optional_str(item.get("model_api_config_id"))
-                mapped_model_id: str | None = None
-                if source_model_id:
-                    mapped_model_id = model_id_map.get(source_model_id)
-                    if not mapped_model_id:
-                        section_stats["skipped"] += 1
-                        skipped.add(
-                            "prompt_configs",
-                            f"{prompt_type}:{name}",
-                            "关联模型配置不存在，已跳过",
-                        )
-                        continue
-
-                conflict_key = (prompt_type, name, mapped_category_id or "")
-                existing_id = existing_configs.get(conflict_key) or reserved_ids.get(
-                    conflict_key
-                )
-                if existing_id:
-                    section_stats["skipped"] += 1
-                    skipped.add(
-                        "prompt_configs",
-                        f"{prompt_type}:{name}",
-                        "唯一键冲突(type+name+category_id)",
-                    )
-                    if old_id:
-                        prompt_id_map[old_id] = existing_id
-                    continue
-
-                config = PromptConfig(
-                    id=generate_uuid(),
-                    name=name,
-                    category_id=mapped_category_id,
-                    type=prompt_type,
-                    prompt=prompt,
-                    system_prompt=self._optional_str(item.get("system_prompt")),
-                    temperature=self._safe_float(item.get("temperature")),
-                    max_tokens=(
-                        self._safe_int(item.get("max_tokens"))
-                        if item.get("max_tokens") is not None
-                        else None
-                    ),
-                    top_p=self._safe_float(item.get("top_p")),
-                    chunk_size_tokens=(
-                        self._safe_int(item.get("chunk_size_tokens"))
-                        if item.get("chunk_size_tokens") is not None
-                        else None
-                    ),
-                    chunk_overlap_tokens=(
-                        self._safe_int(item.get("chunk_overlap_tokens"))
-                        if item.get("chunk_overlap_tokens") is not None
-                        else None
-                    ),
-                    max_continue_rounds=(
-                        self._safe_int(item.get("max_continue_rounds"))
-                        if item.get("max_continue_rounds") is not None
-                        else None
-                    ),
-                    model_api_config_id=mapped_model_id,
-                    is_enabled=self._safe_bool(item.get("is_enabled"), default=True),
-                    is_default=self._safe_bool(item.get("is_default"), default=False),
-                    created_at=self._optional_str(item.get("created_at")),
-                    updated_at=self._optional_str(item.get("updated_at")),
-                )
-                pending.append((old_id, conflict_key, config))
-                reserved_ids[conflict_key] = config.id
-
-            if not pending:
-                continue
-
-            try:
-                for _, _, config in pending:
-                    db.add(config)
-                db.commit()
-                section_stats["created"] += len(pending)
-                for old_id, conflict_key, config in pending:
-                    existing_configs[conflict_key] = config.id
-                    if old_id:
-                        prompt_id_map[old_id] = config.id
-            except IntegrityError:
-                db.rollback()
-                for old_id, conflict_key, config in pending:
-                    identifier = f"{config.type}:{config.name}"
-                    try:
-                        db.add(config)
-                        db.commit()
-                        section_stats["created"] += 1
-                        existing_configs[conflict_key] = config.id
-                        if old_id:
-                            prompt_id_map[old_id] = config.id
-                    except IntegrityError:
-                        db.rollback()
-                        section_stats["skipped"] += 1
-                        skipped.add(
-                            "prompt_configs",
-                            identifier,
-                            "唯一键冲突(type+name+category_id)",
-                        )
-                        existing_id = existing_configs.get(conflict_key)
-                        if old_id and existing_id:
-                            prompt_id_map[old_id] = existing_id
-                    except Exception:
-                        db.rollback()
-                        section_stats["errors"] += 1
-            except Exception:
-                db.rollback()
-                section_stats["errors"] += len(pending)
-
-    def _import_articles(
-        self,
-        db: Session,
-        items: list[Any],
-        section_stats: dict[str, int],
-        skipped: _SkipRecorder,
-        category_id_map: dict[str, str],
-        tag_id_map: dict[str, str],
-        article_id_map: dict[str, str],
-        article_slug_map: dict[str, str],
-    ) -> None:
-        committed_slugs: set[str] = set()
-        committed_source_urls: set[str] = set()
-
-        for batch in _chunked(items, self.IMPORT_BATCH_SIZE):
-            candidate_slugs = {
-                self._clean_str(item.get("slug"))
-                for item in batch
-                if isinstance(item, dict) and self._clean_str(item.get("slug"))
-            }
-            candidate_source_urls = {
-                self._clean_str(item.get("source_url"))
-                for item in batch
-                if isinstance(item, dict) and self._clean_str(item.get("source_url"))
-            }
-
-            existing_slugs = set()
-            if candidate_slugs:
-                existing_slugs = {
-                    row.slug
-                    for row in db.query(Article.slug).filter(Article.slug.in_(candidate_slugs)).all()
-                }
-            existing_source_urls = set()
-            if candidate_source_urls:
-                existing_source_urls = {
-                    row.source_url
-                    for row in db.query(Article.source_url)
-                    .filter(Article.source_url.in_(candidate_source_urls))
-                    .all()
-                    if row.source_url
-                }
-
-            pending: list[tuple[str, str, str | None, Article]] = []
-            reserved_slugs: set[str] = set()
-            reserved_source_urls: set[str] = set()
-            resolved_tag_ids_by_slug: dict[str, list[str]] = {}
-            for item in batch:
-                if not isinstance(item, dict):
-                    section_stats["errors"] += 1
-                    continue
-
-                old_id = self._clean_str(item.get("id"))
-                slug = self._clean_str(item.get("slug"))
-                title = self._clean_str(item.get("title"))
-                if not slug or not title:
-                    section_stats["errors"] += 1
-                    continue
-
-                source_url = self._optional_str(item.get("source_url"))
-                if source_url and (
-                    source_url in existing_source_urls
-                    or source_url in committed_source_urls
-                    or source_url in reserved_source_urls
-                ):
-                    section_stats["skipped"] += 1
-                    skipped.add("articles", source_url, "唯一键冲突(source_url)")
-                    continue
-                if slug in existing_slugs or slug in committed_slugs or slug in reserved_slugs:
-                    section_stats["skipped"] += 1
-                    skipped.add("articles", slug, "唯一键冲突(slug)")
-                    continue
-
-                source_category_id = self._optional_str(item.get("category_id"))
-                mapped_category_id: str | None = None
-                if source_category_id:
-                    mapped_category_id = category_id_map.get(source_category_id)
-                    if not mapped_category_id:
-                        section_stats["skipped"] += 1
-                        skipped.add("articles", slug, "关联分类不存在，已跳过")
-                        continue
-
-                resolved_tag_ids: list[str] = []
-                for source_tag_id in item.get("tag_ids") or []:
-                    mapped_tag_id = tag_id_map.get(self._clean_str(source_tag_id))
-                    if not mapped_tag_id:
-                        continue
-                    resolved_tag_ids.append(mapped_tag_id)
-
-                article = Article(
-                    id=generate_uuid(),
-                    title=title,
-                    title_trans=self._optional_str(item.get("title_trans")),
-                    slug=slug,
-                    content_html=self._optional_str(item.get("content_html")),
-                    content_structured=self._normalize_json_text(item.get("content_structured")),
-                    content_md=self._optional_str(item.get("content_md")),
-                    content_trans=self._optional_str(item.get("content_trans")),
-                    translation_status=self._optional_str(item.get("translation_status")),
-                    translation_error=self._optional_str(item.get("translation_error")),
-                    source_url=source_url,
-                    top_image=self._optional_str(item.get("top_image")),
-                    author=self._optional_str(item.get("author")),
-                    published_at=self._optional_str(item.get("published_at")),
-                    source_domain=self._optional_str(item.get("source_domain")),
-                    status=self._clean_str(item.get("status")) or "pending",
-                    is_visible=self._safe_bool(item.get("is_visible"), default=False),
-                    category_id=mapped_category_id,
-                    created_at=self._optional_str(item.get("created_at")) or now_str(),
-                    updated_at=self._optional_str(item.get("updated_at")) or now_str(),
-                    note_content=self._optional_str(item.get("note_content")),
-                    note_annotations=self._normalize_json_text(item.get("note_annotations")),
-                    note_recommendation_level=self._normalize_note_recommendation_level(
-                        item.get("note_recommendation_level")
-                    ),
-                    original_language=self._optional_str(item.get("original_language")),
-                )
-                pending.append((old_id, slug, source_url, article))
-                reserved_slugs.add(slug)
-                if source_url:
-                    reserved_source_urls.add(source_url)
-                resolved_tag_ids_by_slug[slug] = resolved_tag_ids
-
-            if not pending:
-                continue
-
-            candidate_tag_ids = {
-                tag_id
-                for tag_ids in resolved_tag_ids_by_slug.values()
-                for tag_id in tag_ids
-            }
-            tag_by_id = {}
-            if candidate_tag_ids:
-                tag_by_id = {
-                    tag.id: tag for tag in db.query(Tag).filter(Tag.id.in_(candidate_tag_ids)).all()
-                }
-            for _, slug, _, article in pending:
-                article.tags = [
-                    tag_by_id[tag_id]
-                    for tag_id in resolved_tag_ids_by_slug.get(slug, [])
-                    if tag_id in tag_by_id
-                ]
-
-            try:
-                for _, _, _, article in pending:
-                    db.add(article)
-                db.commit()
-                section_stats["created"] += len(pending)
-                for old_id, slug, source_url, article in pending:
-                    if old_id:
-                        article_id_map[old_id] = article.id
-                    article_slug_map[slug] = article.id
-                    committed_slugs.add(slug)
-                    if source_url:
-                        committed_source_urls.add(source_url)
-            except IntegrityError:
-                db.rollback()
-                for old_id, slug, source_url, article in pending:
-                    try:
-                        db.add(article)
-                        db.commit()
-                        section_stats["created"] += 1
-                        if old_id:
-                            article_id_map[old_id] = article.id
-                        article_slug_map[slug] = article.id
-                        committed_slugs.add(slug)
-                        if source_url:
-                            committed_source_urls.add(source_url)
-                    except IntegrityError:
-                        db.rollback()
-                        section_stats["skipped"] += 1
-                        skipped.add("articles", slug, "唯一键冲突(slug/source_url)")
-                    except Exception:
-                        db.rollback()
-                        section_stats["errors"] += 1
-            except Exception:
-                db.rollback()
-                section_stats["errors"] += len(pending)
-
-    def _import_ai_analyses(
-        self,
-        db: Session,
-        items: list[Any],
-        section_stats: dict[str, int],
-        skipped: _SkipRecorder,
-        article_id_map: dict[str, str],
-        article_slug_map: dict[str, str],
-        version_id_map: dict[str, str],
-    ) -> None:
-        committed_article_ids: set[str] = set()
-
-        for batch in _chunked(items, self.IMPORT_BATCH_SIZE):
-            resolved_targets: list[tuple[dict[str, Any], str, str]] = []
-            candidate_ids: set[str] = set()
-            for item in batch:
-                if not isinstance(item, dict):
-                    section_stats["errors"] += 1
-                    continue
-                source_article_id = self._clean_str(item.get("article_id"))
-                source_article_slug = self._clean_str(item.get("article_slug"))
-                target_article_id = article_id_map.get(source_article_id) or article_slug_map.get(
-                    source_article_slug
-                )
-                if not target_article_id:
-                    section_stats["skipped"] += 1
-                    skipped.add(
-                        "ai_analyses",
-                        source_article_slug or source_article_id or "-",
-                        "关联文章未导入，已跳过",
-                    )
-                    continue
-                resolved_targets.append((item, target_article_id, source_article_slug))
-                candidate_ids.add(target_article_id)
-
-            existing_ids = set()
-            if candidate_ids:
-                existing_ids = {
-                    row.article_id
-                    for row in db.query(AIAnalysis.article_id)
-                    .filter(AIAnalysis.article_id.in_(candidate_ids))
-                    .all()
-                }
-
-            pending: list[tuple[str, str, AIAnalysis]] = []
-            reserved_article_ids: set[str] = set()
-            for item, target_article_id, source_article_slug in resolved_targets:
-                identifier = source_article_slug or target_article_id
-                if (
-                    target_article_id in existing_ids
-                    or target_article_id in committed_article_ids
-                    or target_article_id in reserved_article_ids
-                ):
-                    section_stats["skipped"] += 1
-                    skipped.add(
-                        "ai_analyses",
-                        identifier,
-                        "唯一键冲突(article_id)",
-                    )
-                    continue
-
-                analysis = AIAnalysis(
-                    id=generate_uuid(),
-                    article_id=target_article_id,
-                    summary=self._optional_str(item.get("summary")),
-                    summary_status=self._optional_str(item.get("summary_status")),
-                    outline=self._optional_str(item.get("outline")),
-                    outline_status=self._optional_str(item.get("outline_status")),
-                    key_points=self._optional_str(item.get("key_points")),
-                    key_points_status=self._optional_str(item.get("key_points_status")),
-                    quotes=self._optional_str(item.get("quotes")),
-                    quotes_status=self._optional_str(item.get("quotes_status")),
-                    infographic_html=self._optional_str(item.get("infographic_html")),
-                    infographic_image_url=self._optional_str(
-                        item.get("infographic_image_url")
-                    ),
-                    infographic_status=self._optional_str(item.get("infographic_status")),
-                    current_summary_version_id=version_id_map.get(
-                        self._clean_str(item.get("current_summary_version_id"))
-                    ),
-                    current_key_points_version_id=version_id_map.get(
-                        self._clean_str(item.get("current_key_points_version_id"))
-                    ),
-                    current_outline_version_id=version_id_map.get(
-                        self._clean_str(item.get("current_outline_version_id"))
-                    ),
-                    current_quotes_version_id=version_id_map.get(
-                        self._clean_str(item.get("current_quotes_version_id"))
-                    ),
-                    current_infographic_version_id=version_id_map.get(
-                        self._clean_str(item.get("current_infographic_version_id"))
-                    ),
-                    mindmap=self._optional_str(item.get("mindmap")),
-                    classification_status=self._optional_str(item.get("classification_status")),
-                    tagging_status=self._optional_str(item.get("tagging_status")),
-                    tagging_source_hash=self._optional_str(item.get("tagging_source_hash")),
-                    tagging_manual_override=self._safe_bool(
-                        item.get("tagging_manual_override"), default=False
-                    ),
-                    cleaned_md_draft=self._optional_str(item.get("cleaned_md_draft")),
-                    error_message=self._optional_str(item.get("error_message")),
-                    updated_at=self._optional_str(item.get("updated_at")) or now_str(),
-                )
-                pending.append((identifier, target_article_id, analysis))
-                reserved_article_ids.add(target_article_id)
-
-            if not pending:
-                continue
-
-            try:
-                for _, _, analysis in pending:
-                    db.add(analysis)
-                db.commit()
-                section_stats["created"] += len(pending)
-                for _, target_article_id, _ in pending:
-                    committed_article_ids.add(target_article_id)
-            except IntegrityError:
-                db.rollback()
-                for identifier, target_article_id, analysis in pending:
-                    try:
-                        db.add(analysis)
-                        db.commit()
-                        section_stats["created"] += 1
-                        committed_article_ids.add(target_article_id)
-                    except IntegrityError:
-                        db.rollback()
-                        section_stats["skipped"] += 1
-                        skipped.add("ai_analyses", identifier, "唯一键冲突(article_id)")
-                    except Exception:
-                        db.rollback()
-                        section_stats["errors"] += 1
-            except Exception:
-                db.rollback()
-                section_stats["errors"] += len(pending)
-
-    def _import_ai_analysis_versions(
-        self,
-        db: Session,
-        items: list[Any],
-        section_stats: dict[str, int],
-        skipped: _SkipRecorder,
-        article_id_map: dict[str, str],
-        article_slug_map: dict[str, str],
-        model_id_map: dict[str, str],
-        prompt_id_map: dict[str, str],
-        version_id_map: dict[str, str],
-    ) -> None:
-        pending_rollbacks: list[tuple[AIAnalysisVersion, str]] = []
-
-        for item in items:
-            if not isinstance(item, dict):
-                section_stats["errors"] += 1
-                continue
-            source_article_id = self._clean_str(item.get("article_id"))
-            source_article_slug = self._clean_str(item.get("article_slug"))
-            source_version_id = self._clean_str(item.get("id"))
-            target_article_id = article_id_map.get(source_article_id) or article_slug_map.get(
-                source_article_slug
-            )
-            if not target_article_id:
-                section_stats["skipped"] += 1
-                skipped.add(
-                    "ai_analysis_versions",
-                    source_article_slug or source_article_id or "-",
-                    "关联文章未导入，已跳过",
-                )
-                continue
-
-            source_model_config_id = self._clean_str(item.get("source_model_config_id"))
-            source_prompt_config_id = self._clean_str(item.get("source_prompt_config_id"))
-            version = AIAnalysisVersion(
-                id=generate_uuid(),
-                article_id=target_article_id,
-                content_type=self._optional_str(item.get("content_type")),
-                version_number=self._safe_int(item.get("version_number"), default=1),
-                status=self._optional_str(item.get("status")) or "completed",
-                content_text=self._optional_str(item.get("content_text")),
-                content_html=self._optional_str(item.get("content_html")),
-                content_image_url=self._optional_str(item.get("content_image_url")),
-                source_task_id=self._optional_str(item.get("source_task_id")),
-                source_model_config_id=model_id_map.get(source_model_config_id),
-                source_prompt_config_id=prompt_id_map.get(source_prompt_config_id),
-                created_by_mode=self._optional_str(item.get("created_by_mode"))
-                or "generation",
-                created_at=self._optional_str(item.get("created_at")) or now_str(),
-            )
-            rollback_from = self._clean_str(item.get("rollback_from_version_id"))
-            if rollback_from:
-                pending_rollbacks.append((version, rollback_from))
-            try:
-                db.add(version)
-                db.commit()
-                section_stats["created"] += 1
-                if source_version_id:
-                    version_id_map[source_version_id] = version.id
-            except IntegrityError:
-                db.rollback()
-                section_stats["skipped"] += 1
-                skipped.add(
-                    "ai_analysis_versions",
-                    source_version_id or version.id,
-                    "唯一键冲突(id/article_id/content_type/version_number)",
-                )
-            except Exception:
-                db.rollback()
-                section_stats["errors"] += 1
-
-        for version, source_rollback_id in pending_rollbacks:
-            mapped_id = version_id_map.get(source_rollback_id)
-            if not mapped_id:
-                continue
-            version.rollback_from_version_id = mapped_id
-            db.commit()
-
-    def _import_settings(
-        self,
-        db: Session,
-        settings_data: Any,
-        section_stats: dict[str, int],
-        skipped: _SkipRecorder,
-    ) -> None:
-        if not isinstance(settings_data, dict):
-            return
-
-        admin = get_admin_settings(db)
-        if admin is None:
-            section_stats["errors"] += 1
-            skipped.add("settings", "global", "系统未初始化，无法导入设置")
-            return
-
-        provided_sections = [
-            key
-            for key in ("basic", "comments", "storage", "recommendations")
-            if key in settings_data
-        ]
-        for key in provided_sections:
-            section_stats["skipped"] += 1
-            skipped.add("settings", key, "目标系统已存在设置，按增量策略跳过")
-
-    @staticmethod
-    def _serialize_category(category: Category) -> dict[str, Any]:
-        return {
-            "id": category.id,
-            "name": category.name,
-            "description": category.description,
-            "color": category.color,
-            "sort_order": category.sort_order,
-            "created_at": category.created_at,
-        }
-
-    @staticmethod
-    def _serialize_tag(tag: Tag) -> dict[str, Any]:
-        return {
-            "id": tag.id,
-            "name": tag.name,
-            "normalized_name": tag.normalized_name,
-            "created_at": tag.created_at,
-            "updated_at": tag.updated_at,
-        }
-
-    @staticmethod
-    def _serialize_model_api_config(config: ModelAPIConfig) -> dict[str, Any]:
-        return {
-            "id": config.id,
-            "name": config.name,
-            "base_url": config.base_url,
-            "api_key": config.api_key,
-            "provider": config.provider,
-            "model_name": config.model_name,
-            "model_type": config.model_type,
-            "price_input_per_1k": config.price_input_per_1k,
-            "price_output_per_1k": config.price_output_per_1k,
-            "currency": config.currency,
-            "context_window_tokens": config.context_window_tokens,
-            "reserve_output_tokens": config.reserve_output_tokens,
-            "is_enabled": bool(config.is_enabled),
-            "is_default": bool(config.is_default),
-            "created_at": config.created_at,
-            "updated_at": config.updated_at,
-        }
-
-    @staticmethod
-    def _serialize_prompt_config(config: PromptConfig) -> dict[str, Any]:
-        return {
-            "id": config.id,
-            "name": config.name,
-            "category_id": config.category_id,
-            "type": config.type,
-            "prompt": config.prompt,
-            "system_prompt": config.system_prompt,
-            "temperature": config.temperature,
-            "max_tokens": config.max_tokens,
-            "top_p": config.top_p,
-            "chunk_size_tokens": config.chunk_size_tokens,
-            "chunk_overlap_tokens": config.chunk_overlap_tokens,
-            "max_continue_rounds": config.max_continue_rounds,
-            "model_api_config_id": config.model_api_config_id,
-            "is_enabled": bool(config.is_enabled),
-            "is_default": bool(config.is_default),
-            "created_at": config.created_at,
-            "updated_at": config.updated_at,
-        }
-
-    @staticmethod
-    def _serialize_article(article: Article) -> dict[str, Any]:
-        return {
-            "id": article.id,
-            "title": article.title,
-            "title_trans": article.title_trans,
-            "slug": article.slug,
-            "content_html": article.content_html,
-            "content_structured": article.content_structured,
-            "content_md": article.content_md,
-            "content_trans": article.content_trans,
-            "translation_status": article.translation_status,
-            "translation_error": article.translation_error,
-            "source_url": article.source_url,
-            "top_image": article.top_image,
-            "author": article.author,
-            "published_at": article.published_at,
-            "source_domain": article.source_domain,
-            "status": article.status,
-            "is_visible": bool(article.is_visible),
-            "category_id": article.category_id,
-            "tag_ids": [tag.id for tag in getattr(article, "tags", [])],
-            "created_at": article.created_at,
-            "updated_at": article.updated_at,
-            "note_content": article.note_content,
-            "note_annotations": article.note_annotations,
-            "note_recommendation_level": BackupService._normalize_note_recommendation_level(
-                article.note_recommendation_level
-            ),
-            "original_language": article.original_language,
-        }
-
-    @staticmethod
-    def _serialize_ai_analysis(analysis: AIAnalysis, article_slug: str | None) -> dict[str, Any]:
-        return {
-            "id": analysis.id,
-            "article_id": analysis.article_id,
-            "article_slug": article_slug,
-            "summary": analysis.summary,
-            "summary_status": analysis.summary_status,
-            "outline": analysis.outline,
-            "outline_status": analysis.outline_status,
-            "key_points": analysis.key_points,
-            "key_points_status": analysis.key_points_status,
-            "quotes": analysis.quotes,
-            "quotes_status": analysis.quotes_status,
-            "infographic_html": analysis.infographic_html,
-            "infographic_image_url": analysis.infographic_image_url,
-            "infographic_status": analysis.infographic_status,
-            "current_summary_version_id": analysis.current_summary_version_id,
-            "current_key_points_version_id": analysis.current_key_points_version_id,
-            "current_outline_version_id": analysis.current_outline_version_id,
-            "current_quotes_version_id": analysis.current_quotes_version_id,
-            "current_infographic_version_id": analysis.current_infographic_version_id,
-            "mindmap": analysis.mindmap,
-            "classification_status": analysis.classification_status,
-            "tagging_status": analysis.tagging_status,
-            "tagging_source_hash": analysis.tagging_source_hash,
-            "tagging_manual_override": bool(analysis.tagging_manual_override),
-            "cleaned_md_draft": analysis.cleaned_md_draft,
-            "error_message": analysis.error_message,
-            "updated_at": analysis.updated_at,
-        }
-
-    @staticmethod
-    def _serialize_ai_analysis_version(
-        version: AIAnalysisVersion,
-        article_slug: str | None,
-    ) -> dict[str, Any]:
-        return {
-            "id": version.id,
-            "article_id": version.article_id,
-            "article_slug": article_slug,
-            "content_type": version.content_type,
-            "version_number": version.version_number,
-            "status": version.status,
-            "content_text": version.content_text,
-            "content_html": version.content_html,
-            "content_image_url": version.content_image_url,
-            "source_task_id": version.source_task_id,
-            "source_model_config_id": version.source_model_config_id,
-            "source_prompt_config_id": version.source_prompt_config_id,
-            "created_by_mode": version.created_by_mode,
-            "rollback_from_version_id": version.rollback_from_version_id,
-            "created_at": version.created_at,
-        }
-
-    def _serialize_settings(self, db: Session) -> dict[str, Any]:
-        admin: AdminSettings | None = get_admin_settings(db)
-        basic = build_basic_settings(admin)
-        if admin is None:
-            return {
-                "basic": basic,
-                "comments": {
-                    "comments_enabled": True,
-                    "github_client_id": "",
-                    "github_client_secret": "",
-                    "google_client_id": "",
-                    "google_client_secret": "",
-                    "nextauth_secret": "",
-                    "sensitive_filter_enabled": True,
-                    "sensitive_words": "",
-                },
-                "storage": {
-                    "media_storage_enabled": False,
-                    "media_compress_threshold": 1536 * 1024,
-                    "media_max_dim": 2000,
-                    "media_webp_quality": 80,
-                },
-                "recommendations": {
-                    "recommendations_enabled": False,
-                    "recommendation_model_config_id": "",
-                },
-            }
-
-        return {
-            "basic": basic,
-            "comments": {
-                "comments_enabled": bool(admin.comments_enabled),
-                "github_client_id": admin.github_client_id or "",
-                "github_client_secret": admin.github_client_secret or "",
-                "google_client_id": admin.google_client_id or "",
-                "google_client_secret": admin.google_client_secret or "",
-                "nextauth_secret": admin.nextauth_secret or "",
-                "sensitive_filter_enabled": bool(admin.sensitive_filter_enabled),
-                "sensitive_words": admin.sensitive_words or "",
-            },
-            "storage": {
-                "media_storage_enabled": bool(admin.media_storage_enabled),
-                "media_compress_threshold": admin.media_compress_threshold,
-                "media_max_dim": admin.media_max_dim,
-                "media_webp_quality": admin.media_webp_quality,
-            },
-            "recommendations": {
-                "recommendations_enabled": bool(admin.recommendations_enabled),
-                "recommendation_model_config_id": admin.recommendation_model_config_id
-                or "",
-            },
-        }
+            return "unknown"
+        return output.strip() or "unknown"
