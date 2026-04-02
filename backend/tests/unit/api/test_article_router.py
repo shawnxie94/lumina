@@ -859,6 +859,76 @@ async def test_public_metadata_endpoints_use_expected_cache_keys(
     assert response.headers["X-Cache-Checked"] == "1"
 
 
+def test_list_authors_deduplicates_case_variants_with_stable_display_name(db_session):
+    db_session.add_all(
+        [
+            Article(
+                title="cloudflare-a",
+                slug="cloudflare-a",
+                content_md="content",
+                top_image="",
+                author="CloudFlare",
+                source_domain="example.com",
+                status="completed",
+                is_visible=True,
+                created_at=now_str(),
+                updated_at=now_str(),
+            ),
+            Article(
+                title="cloudflare-b",
+                slug="cloudflare-b",
+                content_md="content",
+                top_image="",
+                author="Cloudflare",
+                source_domain="example.com",
+                status="completed",
+                is_visible=True,
+                created_at=now_str(),
+                updated_at=now_str(),
+            ),
+            Article(
+                title="tw93-a",
+                slug="tw93-a",
+                content_md="content",
+                top_image="",
+                author="tw93",
+                source_domain="example.com",
+                status="completed",
+                is_visible=True,
+                created_at=now_str(),
+                updated_at=now_str(),
+            ),
+            Article(
+                title="tw93-b",
+                slug="tw93-b",
+                content_md="content",
+                top_image="",
+                author="Tw93",
+                source_domain="example.com",
+                status="completed",
+                is_visible=True,
+                created_at=now_str(),
+                updated_at=now_str(),
+            ),
+            Article(
+                title="multi-author",
+                slug="multi-author",
+                content_md="content",
+                top_image="",
+                author="Alice, cloudflare",
+                source_domain="example.com",
+                status="completed",
+                is_visible=True,
+                created_at=now_str(),
+                updated_at=now_str(),
+            ),
+        ]
+    )
+    db_session.commit()
+
+    assert article_router._list_authors(db_session) == ["Alice", "Cloudflare", "Tw93"]
+
+
 @pytest.mark.anyio
 async def test_upload_infographic_image_replaces_existing_asset(monkeypatch):
     analysis = SimpleNamespace(

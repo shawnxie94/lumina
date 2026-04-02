@@ -276,12 +276,30 @@ export const resolveSeoAssetUrl = (
 	return buildAbsoluteUrl(origin, normalized.startsWith("/") ? normalized : `/${normalized}`);
 };
 
+const normalizeSitemapLastmod = (value?: string | null): string | null => {
+	const normalized = (value || "").trim();
+	if (!normalized) return null;
+
+	const isoDatePrefix = normalized.match(/^(\d{4}-\d{2}-\d{2})(?:$|[T\s])/);
+	if (isoDatePrefix) {
+		const [dateOnly] = isoDatePrefix.slice(1);
+		return Number.isNaN(Date.parse(dateOnly)) ? null : dateOnly;
+	}
+
+	const parsedTimestamp = Date.parse(normalized);
+	if (Number.isNaN(parsedTimestamp)) {
+		return null;
+	}
+	return new Date(parsedTimestamp).toISOString().slice(0, 10);
+};
+
 export const buildSitemapXml = (entries: SitemapEntry[]): string => {
 	const body = entries
 		.map((entry) => {
 			const parts = [`<loc>${escapeXml(entry.loc)}</loc>`];
-			if (entry.lastmod) {
-				parts.push(`<lastmod>${escapeXml(entry.lastmod)}</lastmod>`);
+			const lastmod = normalizeSitemapLastmod(entry.lastmod);
+			if (lastmod) {
+				parts.push(`<lastmod>${escapeXml(lastmod)}</lastmod>`);
 			}
 			if (entry.changefreq) {
 				parts.push(`<changefreq>${entry.changefreq}</changefreq>`);

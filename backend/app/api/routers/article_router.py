@@ -1,5 +1,6 @@
 import json
 import os
+from collections import defaultdict
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile
@@ -1125,6 +1126,19 @@ async def upload_infographic_image(
     }
 
 
+def _author_display_preference(name: str, count: int) -> tuple[int, int, int, int, str, str]:
+    has_leading_upper = int(not (name[:1] and name[:1].isupper()))
+    interior_upper_count = sum(1 for char in name[1:] if char.isupper())
+    return (
+        -count,
+        has_leading_upper,
+        interior_upper_count,
+        len(name),
+        name.casefold(),
+        name,
+    )
+
+
 def _list_authors(db: Session) -> list[str]:
     rows = (
         db.query(Article.author)
@@ -1132,14 +1146,24 @@ def _list_authors(db: Session) -> list[str]:
         .filter(Article.author != "")
         .all()
     )
-    author_set: set[str] = set()
+    author_variants: dict[str, dict[str, int]] = defaultdict(dict)
     for row in rows:
         raw_author = (row[0] or "").replace("，", ",")
         for item in raw_author.split(","):
             author_name = item.strip()
             if author_name:
-                author_set.add(author_name)
-    return sorted(author_set)
+                normalized_name = author_name.casefold()
+                current_count = author_variants[normalized_name].get(author_name, 0)
+                author_variants[normalized_name][author_name] = current_count + 1
+
+    display_names = [
+        min(
+            variants.items(),
+            key=lambda item: _author_display_preference(item[0], item[1]),
+        )[0]
+        for variants in author_variants.values()
+    ]
+    return sorted(display_names, key=str.casefold)
 
 
 @router.get("/api/authors")

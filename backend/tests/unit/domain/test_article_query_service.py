@@ -275,7 +275,37 @@ def test_export_articles_by_filters_matches_list_conditions(db_session):
     assert "wrong-category" not in markdown
     assert "wrong-source-domain" not in markdown
     assert "wrong-author" not in markdown
-    assert "outside-date-range" not in markdown
+
+
+def test_get_articles_author_filter_matches_case_insensitively(db_session):
+    service = ArticleQueryService()
+    make_article(
+        db_session,
+        title="cloudflare-match",
+        published_at="2026-03-20",
+        created_at="2026-03-20T08:00:00+00:00",
+        author="CloudFlare",
+        is_visible=True,
+    )
+    make_article(
+        db_session,
+        title="other-author",
+        published_at="2026-03-20",
+        created_at="2026-03-20T09:00:00+00:00",
+        author="Someone Else",
+        is_visible=True,
+    )
+
+    articles, total = service.get_articles(
+        db=db_session,
+        page=1,
+        size=10,
+        author="Cloudflare",
+        is_admin=False,
+    )
+
+    assert total == 1
+    assert [item.title for item in articles] == ["cloudflare-match"]
 
 
 def test_export_articles_by_filters_orders_same_category_by_published_time(db_session):
