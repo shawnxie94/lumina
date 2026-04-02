@@ -35,6 +35,10 @@ class PopupController {
 		this.#apiClient = new ApiClient();
 	}
 
+	buildAdminPreviewArticleUrl(slug) {
+		return `${this.#apiClient.frontendUrl}/article/${slug}?admin_preview=1`;
+	}
+
 	async init() {
 		try {
 			await this.loadLanguage();
@@ -387,7 +391,7 @@ class PopupController {
 			await this.loadHistory();
 
 			if (articleSlug) {
-				const articleUrl = `${this.#apiClient.frontendUrl}/article/${articleSlug}`;
+				const articleUrl = this.buildAdminPreviewArticleUrl(articleSlug);
 				chrome.tabs.create({ url: articleUrl });
 				window.close();
 			}

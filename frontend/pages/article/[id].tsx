@@ -42,6 +42,11 @@ import {
 	type Tag,
 	type VersionedAIContentType,
 } from "@/lib/api";
+import {
+	ADMIN_PREVIEW_QUERY_KEY,
+	buildArticleHref as buildNavigableArticleHref,
+	isAdminPreviewEnabled,
+} from "@/lib/articlePreview";
 import AppFooter from "@/components/AppFooter";
 import AppHeader from "@/components/AppHeader";
 import SeoHead from "@/components/SeoHead";
@@ -1173,32 +1178,50 @@ const resolveCommentLocation = (
 
 interface ArticleDetailPageProps {
 	initialBasicSettings: BasicSettings;
-	initialArticle: ArticleDetail;
+	initialArticle: ArticleDetail | null;
 	siteOrigin: string;
+	adminPreviewFallback: boolean;
 }
 
 export const getServerSideProps: GetServerSideProps<ArticleDetailPageProps> = async ({
 	req,
 	params,
+	query,
 }) => {
 	const slug = typeof params?.id === "string" ? params.id : "";
 	const siteOrigin = resolveRequestOrigin(req);
+	const adminPreviewFallback = isAdminPreviewEnabled(
+		query?.[ADMIN_PREVIEW_QUERY_KEY],
+	);
 	if (!slug) {
 		return { notFound: true };
 	}
 
 	try {
-		const [initialBasicSettings, initialArticle] = await Promise.all([
-			fetchServerBasicSettings(req),
-			fetchServerArticle(req, slug),
-		]);
-		return {
-			props: {
-				initialBasicSettings,
-				initialArticle,
-				siteOrigin,
-			},
-		};
+		const initialBasicSettings = await fetchServerBasicSettings(req);
+		try {
+			const initialArticle = await fetchServerArticle(req, slug);
+			return {
+				props: {
+					initialBasicSettings,
+					initialArticle,
+					siteOrigin,
+					adminPreviewFallback: false,
+				},
+			};
+		} catch {
+			if (!adminPreviewFallback) {
+				return { notFound: true };
+			}
+			return {
+				props: {
+					initialBasicSettings,
+					initialArticle: null,
+					siteOrigin,
+					adminPreviewFallback: true,
+				},
+			};
+		}
 	} catch {
 		return { notFound: true };
 	}
@@ -1207,6 +1230,7 @@ export const getServerSideProps: GetServerSideProps<ArticleDetailPageProps> = as
 export default function ArticleDetailPage({
 	initialArticle,
 	siteOrigin,
+	adminPreviewFallback,
 }: ArticleDetailPageProps) {
 	const router = useRouter();
 	const { showToast } = useToast();
@@ -1224,16 +1248,25 @@ export default function ArticleDetailPage({
 		}
 		return decodedFrom;
 	}, [router.query.from]);
+	const adminPreviewEnabled = isAdminPreviewEnabled(
+		router.query[ADMIN_PREVIEW_QUERY_KEY],
+	);
 
 	const buildArticleHref = useCallback(
 		(slug: string) =>
-			`/article/${slug}?from=${encodeURIComponent(listReturnHref)}`,
-		[listReturnHref],
+			buildNavigableArticleHref(slug, {
+				from: listReturnHref,
+				adminPreview: adminPreviewEnabled,
+				preserveFrom: true,
+			}),
+		[adminPreviewEnabled, listReturnHref],
 	);
 
 	const [article, setArticle] = useState<ArticleDetail | null>(initialArticle);
 	const [articleTasks, setArticleTasks] = useState<ArticleTaskListItem[]>([]);
-	const [loading, setLoading] = useState(false);
+	const [loading, setLoading] = useState(
+		() => adminPreviewFallback && initialArticle === null,
+	);
 	const [showTranslation, setShowTranslation] = useState(true);
 	const [analysisCollapsed, setAnalysisCollapsed] = useState(false);
 	const [activeAiTab, setActiveAiTab] = useState<AITabKey>("key_points");
@@ -1393,10 +1426,10 @@ export default function ArticleDetailPage({
 	const infographicUploadingRef = useRef(false);
 	const [mindMapOpen, setMindMapOpen] = useState(false);
 	const [prevArticle, setPrevArticle] = useState<ArticleNeighbor | null>(
-		(initialArticle.prev_article as ArticleNeighbor | null) || null,
+		(initialArticle?.prev_article as ArticleNeighbor | null) || null,
 	);
 	const [nextArticle, setNextArticle] = useState<ArticleNeighbor | null>(
-		(initialArticle.next_article as ArticleNeighbor | null) || null,
+		(initialArticle?.next_article as ArticleNeighbor | null) || null,
 	);
 	const [similarArticles, setSimilarArticles] = useState<SimilarArticleItem[]>(
 		[],
@@ -1912,6 +1945,7 @@ export default function ArticleDetailPage({
 		};
 	}, [immersiveMode, renderedHtml, pdfHeightScale]);
 
+	/* eslint-disable react-hooks/exhaustive-deps */
 	useEffect(() => {
 		if (id && (!article || article.slug !== id)) {
 			fetchArticle();
@@ -1925,7 +1959,9 @@ export default function ArticleDetailPage({
 			}
 		};
 	}, [id, article?.slug]);
+	/* eslint-enable react-hooks/exhaustive-deps */
 
+	/* eslint-disable react-hooks/exhaustive-deps */
 	useEffect(() => {
 		if (!article?.slug) return;
 		if (similarPollingRef.current) {
@@ -1943,6 +1979,7 @@ export default function ArticleDetailPage({
 			}
 		};
 	}, [article?.slug, similarStatus]);
+	/* eslint-enable react-hooks/exhaustive-deps */
 
 	useEffect(() => {
 		if (!article?.slug) return;
@@ -1972,15 +2009,19 @@ export default function ArticleDetailPage({
 			});
 	}, [article?.slug]);
 
+	/* eslint-disable react-hooks/exhaustive-deps */
 	useEffect(() => {
 		if (id && commentsEnabled && commentSettingsLoaded) {
 			fetchComments();
 		}
 	}, [id, commentsEnabled, commentSettingsLoaded]);
+	/* eslint-enable react-hooks/exhaustive-deps */
 
+	/* eslint-disable react-hooks/exhaustive-deps */
 	useEffect(() => {
 		fetchCommentSettings();
 	}, []);
+	/* eslint-enable react-hooks/exhaustive-deps */
 
 	useEffect(() => {
 		if (!showEditModal || categories.length > 0 || categoriesLoading) return;
@@ -2014,10 +2055,12 @@ export default function ArticleDetailPage({
 		fetchTags();
 	}, [showEditModal, availableTags.length, tagsLoading]);
 
+	/* eslint-disable react-hooks/exhaustive-deps */
 	useEffect(() => {
 		if (!showEditModal || !isAdmin) return;
 		fetchStorageSettings();
 	}, [showEditModal, isAdmin]);
+	/* eslint-enable react-hooks/exhaustive-deps */
 
 	useEffect(() => {
 		const handleHashChange = () => {
@@ -2070,6 +2113,7 @@ export default function ArticleDetailPage({
 		return () => window.clearTimeout(timer);
 	}, [highlightedCommentId]);
 
+	/* eslint-disable react-hooks/exhaustive-deps */
 	useEffect(() => {
 		if (pollingRef.current) {
 			clearInterval(pollingRef.current);
@@ -2092,6 +2136,7 @@ export default function ArticleDetailPage({
 			}, POLLING_INTERVAL);
 		}
 	}, [article, id, needsPolling]);
+	/* eslint-enable react-hooks/exhaustive-deps */
 
 	useEffect(() => {
 		if (!article) return;
@@ -2114,7 +2159,7 @@ export default function ArticleDetailPage({
 		} else {
 			setAnnotations([]);
 		}
-	}, [article?.id]);
+	}, [article]);
 
 	useEffect(() => {
 		if (article?.id && article?.title && article?.slug) {
@@ -2259,30 +2304,49 @@ export default function ArticleDetailPage({
 		[isAdmin],
 	);
 
-	const fetchArticle = async () => {
-		setLoading(true);
-		try {
-			const data = await articleApi.getArticle(id as string);
-			setArticle(data);
-			void fetchArticleTasks(data.id);
-			if (data?.prev_article) {
-				setPrevArticle(data.prev_article as ArticleNeighbor);
-			} else {
-				setPrevArticle(null);
+		const fetchSimilarArticles = useCallback(async (detail: ArticleDetail) => {
+			if (!detail?.slug) return;
+			setSimilarLoading(true);
+			try {
+				const result = await articleApi.getSimilarArticles(
+					detail.slug,
+					SIMILAR_ARTICLE_LIMIT,
+				);
+				setSimilarStatus(result.status);
+				setSimilarArticles(result.items || []);
+			} catch (error) {
+				console.error("Failed to fetch similar articles:", error);
+				setSimilarStatus("ready");
+				setSimilarArticles([]);
+			} finally {
+				setSimilarLoading(false);
 			}
-			if (data?.next_article) {
-				setNextArticle(data.next_article as ArticleNeighbor);
-			} else {
-				setNextArticle(null);
+		}, []);
+
+		const fetchArticle = useCallback(async () => {
+			setLoading(true);
+			try {
+				const data = await articleApi.getArticle(id as string);
+				setArticle(data);
+				void fetchArticleTasks(data.id);
+				if (data?.prev_article) {
+					setPrevArticle(data.prev_article as ArticleNeighbor);
+				} else {
+					setPrevArticle(null);
+				}
+				if (data?.next_article) {
+					setNextArticle(data.next_article as ArticleNeighbor);
+				} else {
+					setNextArticle(null);
+				}
+				void fetchSimilarArticles(data);
+			} catch (error) {
+				console.error("Failed to fetch article:", error);
+				showToast(t("加载文章失败"), "error");
+			} finally {
+				setLoading(false);
 			}
-			fetchSimilarArticles(data);
-		} catch (error) {
-			console.error("Failed to fetch article:", error);
-			showToast(t("加载文章失败"), "error");
-		} finally {
-			setLoading(false);
-		}
-	};
+		}, [fetchArticleTasks, fetchSimilarArticles, id, showToast, t]);
 
 	const loadVersionHistory = useCallback(
 		async (contentType: AIContentType, force = false) => {
@@ -2363,25 +2427,6 @@ export default function ArticleDetailPage({
 		setVersionHistoryLoading({});
 	}, [article?.ai_analysis?.updated_at]);
 
-	const fetchSimilarArticles = async (detail: ArticleDetail) => {
-		if (!detail?.slug) return;
-		setSimilarLoading(true);
-		try {
-			const result = await articleApi.getSimilarArticles(
-				detail.slug,
-				SIMILAR_ARTICLE_LIMIT,
-			);
-			setSimilarStatus(result.status);
-			setSimilarArticles(result.items || []);
-		} catch (error) {
-			console.error("Failed to fetch similar articles:", error);
-			setSimilarStatus("ready");
-			setSimilarArticles([]);
-		} finally {
-			setSimilarLoading(false);
-		}
-	};
-
 	const handleRefreshEmbedding = async () => {
 		if (!article?.slug) return;
 		setEmbeddingRefreshing(true);
@@ -2430,9 +2475,9 @@ export default function ArticleDetailPage({
 		}
 	};
 
-	const fetchComments = async () => {
-		if (!id) return;
-		setCommentsLoading(true);
+		const fetchComments = useCallback(async () => {
+			if (!id) return;
+			setCommentsLoading(true);
 		try {
 			const data = await commentApi.getArticleComments(id as string);
 			setComments(data);
@@ -2443,14 +2488,14 @@ export default function ArticleDetailPage({
 			}
 		} catch (error) {
 			console.error("Failed to fetch comments:", error);
-		} finally {
-			setCommentsLoading(false);
-		}
-	};
+			} finally {
+				setCommentsLoading(false);
+			}
+		}, [focusCommentById, id]);
 
-	const fetchCommentSettings = async () => {
-		try {
-			const data = await commentSettingsApi.getPublicSettings();
+		const fetchCommentSettings = useCallback(async () => {
+			try {
+				const data = await commentSettingsApi.getPublicSettings();
 			setCommentsEnabled(Boolean(data.comments_enabled));
 			setCommentProviders({
 				github: Boolean(data.providers?.github),
@@ -2459,10 +2504,10 @@ export default function ArticleDetailPage({
 		} catch (error) {
 			console.error("Failed to fetch comment settings:", error);
 			setCommentsEnabled(true);
-		} finally {
-			setCommentSettingsLoaded(true);
-		}
-	};
+			} finally {
+				setCommentSettingsLoaded(true);
+			}
+		}, []);
 
 	const openMindMap = () => {
 		setMindMapOpen(true);
@@ -3843,19 +3888,19 @@ export default function ArticleDetailPage({
 		focusCommentInput();
 	};
 
-	const fetchStorageSettings = async () => {
-		if (!isAdmin) return;
-		setMediaStorageLoading(true);
+		const fetchStorageSettings = useCallback(async () => {
+			if (!isAdmin) return;
+			setMediaStorageLoading(true);
 		try {
 			const data = await storageSettingsApi.getSettings();
 			setMediaStorageEnabled(Boolean(data.media_storage_enabled));
 		} catch (error) {
 			console.error("Failed to fetch storage settings:", error);
 			showToast(t("存储配置加载失败"), "error");
-		} finally {
-			setMediaStorageLoading(false);
-		}
-	};
+			} finally {
+				setMediaStorageLoading(false);
+			}
+		}, [isAdmin, showToast, t]);
 
 	const handleEditPaste = async (
 		event: React.ClipboardEvent<HTMLTextAreaElement>,

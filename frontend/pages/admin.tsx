@@ -908,7 +908,10 @@ export default function AdminPage() {
 		);
 	}, [selectedTaskTimelineChain, selectedTaskTimelineUsageId]);
 
-	const taskTimelineNodes = selectedTaskTimelineChain?.nodes || [];
+		const taskTimelineNodes = useMemo(
+			() => selectedTaskTimelineChain?.nodes || [],
+			[selectedTaskTimelineChain],
+		);
 
 	const selectedTaskTimelineNode = useMemo(() => {
 		if (taskTimelineNodes.length === 0) {
@@ -1041,15 +1044,16 @@ export default function AdminPage() {
 			return;
 		}
 		void router.replace(nextPath, undefined, { shallow: true });
-	}, [
-		activeSection,
-		aiSubSection,
-		commentSubSection,
-		monitoringSubSection,
-		routeInitialized,
-		router.asPath,
-		router.isReady,
-		router.query.path,
+		}, [
+			activeSection,
+			aiSubSection,
+			commentSubSection,
+			monitoringSubSection,
+			routeInitialized,
+			router,
+			router.asPath,
+			router.isReady,
+			router.query.path,
 		router.replace,
 	]);
 
@@ -1102,11 +1106,11 @@ export default function AdminPage() {
 		showUsageCostModal,
 		showModelAPITestModal,
 		showPromptPreview,
-		showPromptModal,
-		showModelAPIModal,
-		showCategoryModal,
-		confirmState.isOpen,
-	]);
+			showPromptModal,
+			showModelAPIModal,
+			showCategoryModal,
+			confirmState,
+		]);
 
 	const sensors = useSensors(
 		useSensor(PointerSensor),
@@ -1714,6 +1718,10 @@ export default function AdminPage() {
 		setCommentListPage(1);
 	};
 
+		// The fetch helpers below intentionally stay out of deps to avoid
+		// request fan-out while this page coordinates section-driven loading.
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	/* eslint-disable react-hooks/exhaustive-deps */
 	useEffect(() => {
 		if (!routeInitialized) return;
 		if (activeSection === "categories") {
@@ -1766,6 +1774,7 @@ export default function AdminPage() {
 		monitoringSubSection,
 		routeInitialized,
 	]);
+	/* eslint-enable react-hooks/exhaustive-deps */
 
 	useEffect(() => {
 		if (!showPromptModal || modelLoading || modelAPIConfigs.length > 0) return;
@@ -1812,6 +1821,7 @@ export default function AdminPage() {
 		prevMonitoringSubSectionRef.current = monitoringSubSection;
 	}, [activeSection, monitoringSubSection]);
 
+	/* eslint-disable react-hooks/exhaustive-deps */
 	useEffect(() => {
 		if (!routeInitialized) return;
 		if (activeSection !== "monitoring" || monitoringSubSection !== "tasks")
@@ -1827,7 +1837,9 @@ export default function AdminPage() {
 		activeSection,
 		monitoringSubSection,
 	]);
+	/* eslint-enable react-hooks/exhaustive-deps */
 
+	/* eslint-disable react-hooks/exhaustive-deps */
 	useEffect(() => {
 		if (!routeInitialized) return;
 		if (activeSection !== "monitoring" || monitoringSubSection !== "ai-usage") {
@@ -1846,7 +1858,9 @@ export default function AdminPage() {
 		usagePage,
 		usagePageSize,
 	]);
+	/* eslint-enable react-hooks/exhaustive-deps */
 
+	/* eslint-disable react-hooks/exhaustive-deps */
 	useEffect(() => {
 		if (!routeInitialized) return;
 		if (activeSection !== "monitoring" || monitoringSubSection !== "comments") {
@@ -1866,6 +1880,7 @@ export default function AdminPage() {
 		commentVisibility,
 		commentReplyFilter,
 	]);
+	/* eslint-enable react-hooks/exhaustive-deps */
 
 	const handleCreateModelAPINew = () => {
 		const nextModelType = modelCategory === "vector" ? "vector" : "general";
@@ -2019,10 +2034,10 @@ export default function AdminPage() {
 		setShowModelAPITestModal(true);
 	};
 
-	const handleFetchModelOptions = async () => {
-		if (!modelAPIFormData.base_url || !modelAPIFormData.api_key) {
-			showToast(t("请先填写API地址与密钥"), "info");
-			return;
+		const handleFetchModelOptions = useCallback(async () => {
+			if (!modelAPIFormData.base_url || !modelAPIFormData.api_key) {
+				showToast(t("请先填写API地址与密钥"), "info");
+				return;
 		}
 		if (modelAPIFormData.provider === "jina") {
 			setModelOptions([]);
@@ -2047,15 +2062,21 @@ export default function AdminPage() {
 				setModelOptionsError(result.message || t("获取模型失败"));
 				showToast(t("获取模型失败"), "error");
 			}
-		} catch (error) {
-			console.error("Failed to fetch model list:", error);
-			setModelOptions([]);
-			setModelOptionsError(t("获取模型失败"));
-			showToast(t("获取模型失败"), "error");
-		} finally {
-			setModelOptionsLoading(false);
-		}
-	};
+			} catch (error) {
+				console.error("Failed to fetch model list:", error);
+				setModelOptions([]);
+				setModelOptionsError(t("获取模型失败"));
+				showToast(t("获取模型失败"), "error");
+			} finally {
+				setModelOptionsLoading(false);
+			}
+		}, [
+			modelAPIFormData.api_key,
+			modelAPIFormData.base_url,
+			modelAPIFormData.provider,
+			showToast,
+			t,
+		]);
 
 	useEffect(() => {
 		if (!showModelAPIModal) return;
@@ -2071,7 +2092,12 @@ export default function AdminPage() {
 				clearTimeout(modelOptionsFetchRef.current);
 			}
 		};
-	}, [showModelAPIModal, modelAPIFormData.base_url, modelAPIFormData.api_key]);
+		}, [
+			showModelAPIModal,
+			modelAPIFormData.base_url,
+			modelAPIFormData.api_key,
+			handleFetchModelOptions,
+		]);
 
 	const handleRunModelAPITest = async () => {
 		if (!modelAPITestConfig) return;
@@ -2397,10 +2423,10 @@ export default function AdminPage() {
 		});
 	};
 
-	const handleOpenTaskTimeline = async (
-		taskId: string,
-		preferredUsageId?: string | null,
-	) => {
+		const handleOpenTaskTimeline = useCallback(async (
+			taskId: string,
+			preferredUsageId?: string | null,
+		) => {
 		if (openingTaskTimelineId === taskId) return;
 		setOpeningTaskTimelineId(taskId);
 		setShowTaskTimelineModal(true);
@@ -2435,11 +2461,11 @@ export default function AdminPage() {
 			setTaskTimelineError(
 				error?.response?.data?.detail || t("任务详情加载失败"),
 			);
-		} finally {
-			setTaskTimelineLoading(false);
-			setOpeningTaskTimelineId(null);
-		}
-	};
+			} finally {
+				setTaskTimelineLoading(false);
+				setOpeningTaskTimelineId(null);
+			}
+		}, [openingTaskTimelineId, t]);
 
 	useEffect(() => {
 		if (!router.isReady || !routeInitialized) return;

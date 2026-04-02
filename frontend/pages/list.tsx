@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 
 import type { GetServerSideProps } from 'next';
 import { useRouter } from 'next/router';
@@ -17,6 +17,7 @@ import {
   Tag,
   resolveMediaUrl,
 } from '@/lib/api';
+import { buildArticleHref as buildNavigableArticleHref, buildAdminPreviewArticleHref } from '@/lib/articlePreview';
 import AppFooter from '@/components/AppFooter';
 import AppHeader from '@/components/AppHeader';
 import SeoHead from '@/components/SeoHead';
@@ -536,6 +537,8 @@ export default function Home({
   const suppressNextPageFetchRef = useRef(false);
   const skipInitialFilterFetchRef = useRef(initialDataLoaded);
   const skipInitialPageFetchRef = useRef(initialDataLoaded);
+  const authResolvedRef = useRef(false);
+  const lastAdminStateRef = useRef<boolean | null>(null);
   const authorsLoadingRef = useRef(false);
   const sourcesLoadingRef = useRef(false);
   const articleRequestIdRef = useRef(0);
@@ -666,12 +669,16 @@ export default function Home({
 
   const buildArticleHref = (slug: string) => {
     const from = `${currentListPath}#article-${slug}`;
-    return `/article/${slug}?from=${encodeURIComponent(from)}`;
+    const article = articles.find((item) => item.slug === slug);
+    return buildNavigableArticleHref(slug, {
+      from,
+      adminPreview: Boolean(isAdmin && article && article.is_visible === false),
+    });
   };
   const articleLinkTarget = isMobile ? undefined : '_blank';
   const articleLinkRel = isMobile ? undefined : 'noopener noreferrer';
 
-  const fetchArticles = async () => {
+  const fetchArticles = useCallback(async () => {
     const requestId = articleRequestIdRef.current + 1;
     articleRequestIdRef.current = requestId;
     const appendMode = isAppending;
@@ -720,7 +727,23 @@ export default function Home({
       setLoadingMore(false);
       setIsAppending(false);
     }
-  };
+  }, [
+    author,
+    createdEndDate,
+    createdStartDate,
+    isAdmin,
+    isAppending,
+    page,
+    pageSize,
+    publishedEndDate,
+    publishedStartDate,
+    searchTerm,
+    selectedCategory,
+    selectedTagIds,
+    sortBy,
+    sourceDomain,
+    visibilityFilter,
+  ]);
 
   const fetchCategories = async () => {
     try {
@@ -731,7 +754,7 @@ export default function Home({
     }
   };
 
-  const fetchCategoryStats = async () => {
+  const fetchCategoryStats = useCallback(async () => {
     const requestId = categoryStatsRequestIdRef.current + 1;
     categoryStatsRequestIdRef.current = requestId;
     try {
@@ -755,7 +778,16 @@ export default function Home({
       }
       console.error('Failed to fetch category stats:', error);
     }
-  };
+  }, [
+    author,
+    createdEndDate,
+    createdStartDate,
+    publishedEndDate,
+    publishedStartDate,
+    searchTerm,
+    selectedTagIds,
+    sourceDomain,
+  ]);
 
   const fetchAuthors = async () => {
     if (authorsLoadingRef.current) return;
@@ -865,6 +897,8 @@ export default function Home({
     createdStartDate,
     createdEndDate,
     sortBy,
+    fetchArticles,
+    fetchCategoryStats,
   ]);
 
   useEffect(() => {
@@ -901,7 +935,24 @@ export default function Home({
       return;
     }
     fetchArticles();
-  }, [initialized, authLoading, page, pageSize]);
+  }, [initialized, authLoading, page, pageSize, fetchArticles]);
+
+  useEffect(() => {
+    if (!initialized || authLoading) return;
+    const hasResolvedBefore = authResolvedRef.current;
+    const previousAdminState = lastAdminStateRef.current;
+    authResolvedRef.current = true;
+    lastAdminStateRef.current = isAdmin;
+
+    if (!hasResolvedBefore) {
+      if (!isAdmin) return;
+    } else if (previousAdminState === isAdmin) {
+      return;
+    }
+
+    fetchArticles();
+    fetchCategoryStats();
+  }, [initialized, authLoading, isAdmin, fetchArticles, fetchCategoryStats]);
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -1021,6 +1072,7 @@ export default function Home({
       { shallow: true, scroll: false },
     );
   }, [
+    router,
     router.isReady,
     router.pathname,
     initialized,
@@ -1234,10 +1286,10 @@ export default function Home({
     publishedEndDate,
     createdStartDate,
     createdEndDate,
-    quickDateFilter,
     sortBy,
     isAdmin,
     visibilityFilter,
+    t,
   ]);
 
   const advancedFiltersBody = (
@@ -1676,7 +1728,8 @@ export default function Home({
       fetchArticles();
 
       if (createdArticleSlug) {
-        router.push(buildArticleHref(createdArticleSlug));
+        const from = `${currentListPath}#article-${createdArticleSlug}`;
+        router.push(buildAdminPreviewArticleHref(createdArticleSlug, { from }));
       }
     } catch (error: unknown) {
       const errMsg = error instanceof Error ? error.message : String(error);

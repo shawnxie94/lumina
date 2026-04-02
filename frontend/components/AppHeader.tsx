@@ -188,7 +188,7 @@ export default function AppHeader() {
     } finally {
       setErrorLoading(false);
     }
-  }, [isAdmin, getTaskTypeLabel]);
+  }, [isAdmin, getTaskTypeLabel, t]);
 
   useEffect(() => {
     if (!isAdmin) {

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 
 import { useRouter } from 'next/router';
 import Link from 'next/link';
@@ -35,13 +35,7 @@ export default function ExtensionAuthPage() {
   const authorizedTitle = `${t('授权成功')} - ${basicSettings.site_name || 'Lumina'}`;
   const grantingTitle = `${t('扩展授权')} - ${basicSettings.site_name || 'Lumina'}`;
 
-  useEffect(() => {
-    if (!isLoading && isAdmin && extension_id) {
-      sendTokenToExtension();
-    }
-  }, [isLoading, isAdmin, extension_id]);
-
-  const sendTokenToExtension = async () => {
+  const sendTokenToExtension = useCallback(async () => {
     const token = getToken();
     if (!token || !extension_id) return;
 
@@ -63,7 +57,13 @@ export default function ExtensionAuthPage() {
       console.error('Failed to send token to extension:', err);
       setError(t('无法与扩展通信，请确保扩展已安装并启用'));
     }
-  };
+  }, [extension_id, t]);
+
+  useEffect(() => {
+    if (!isLoading && isAdmin && extension_id) {
+      void sendTokenToExtension();
+    }
+  }, [isLoading, isAdmin, extension_id, sendTokenToExtension]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

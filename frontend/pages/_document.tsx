@@ -6,7 +6,7 @@ export default function Document() {
 			<Head />
 			<body>
 				<Main />
-				<script src="/runtime-config.js" />
+				<script defer src="/runtime-config.js" />
 				<NextScript />
 			</body>
 		</Html>

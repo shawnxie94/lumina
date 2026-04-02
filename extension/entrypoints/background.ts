@@ -70,6 +70,11 @@ const extractLuminaArticleSlug = (
 	}
 };
 
+const buildAdminPreviewArticleUrl = (
+	frontendUrl: string,
+	slug: string,
+): string => `${frontendUrl}/article/${slug}?admin_preview=1`;
+
 export default defineBackground(() => {
 	const resetCollectContextMenu = async (language: string): Promise<void> => {
 		const t = (key: string) => translate(language, key);
@@ -177,7 +182,10 @@ export default defineBackground(() => {
 					apiClient.frontendUrl,
 				);
 				if (luminaSlug) {
-					const articleUrl = `${apiClient.frontendUrl}/article/${luminaSlug}`;
+					const articleUrl = buildAdminPreviewArticleUrl(
+						apiClient.frontendUrl,
+						luminaSlug,
+					);
 					await addToHistory({
 						articleId: luminaSlug,
 						slug: luminaSlug,
@@ -212,7 +220,10 @@ export default defineBackground(() => {
 				});
 
 				if (articleSlug) {
-					const articleUrl = `${apiClient.frontendUrl}/article/${articleSlug}`;
+					const articleUrl = buildAdminPreviewArticleUrl(
+						apiClient.frontendUrl,
+						String(articleSlug),
+					);
 					chrome.tabs.create({ url: articleUrl });
 				}
 				return;
@@ -299,7 +310,10 @@ export default defineBackground(() => {
 			});
 
 			if (articleSlug) {
-				const articleUrl = `${apiClient.frontendUrl}/article/${articleSlug}`;
+				const articleUrl = buildAdminPreviewArticleUrl(
+					apiClient.frontendUrl,
+					String(articleSlug),
+				);
 				chrome.tabs.create({ url: articleUrl });
 			}
 		} catch (error) {
