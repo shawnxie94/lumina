@@ -1,10 +1,10 @@
 import { useState, useEffect, useMemo } from 'react';
 
 import { useRouter } from 'next/router';
-import Head from 'next/head';
 import Link from 'next/link';
 
 import Button from '@/components/Button';
+import SeoHead from '@/components/SeoHead';
 import { IconCheck, IconLock, IconPlug } from '@/components/icons';
 import TextInput from '@/components/ui/TextInput';
 import { useAuth } from '@/contexts/AuthContext';
@@ -31,6 +31,9 @@ export default function ExtensionAuthPage() {
     }
     return `/login?redirect=${encodeURIComponent(currentPath)}`;
   }, [router.asPath]);
+  const pageTitle = `${t('扩展授权登录')} - ${basicSettings.site_name || 'Lumina'}`;
+  const authorizedTitle = `${t('授权成功')} - ${basicSettings.site_name || 'Lumina'}`;
+  const grantingTitle = `${t('扩展授权')} - ${basicSettings.site_name || 'Lumina'}`;
 
   useEffect(() => {
     if (!isLoading && isAdmin && extension_id) {
@@ -85,31 +88,35 @@ export default function ExtensionAuthPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-app">
-        <div className="text-text-3">{t('加载中')}</div>
-      </div>
+      <>
+        <SeoHead title={pageTitle} robots="noindex,nofollow" />
+        <div className="min-h-screen flex items-center justify-center bg-app">
+          <div className="text-text-3">{t('加载中')}</div>
+        </div>
+      </>
     );
   }
 
   if (!isInitialized) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-app">
-        <div className="text-center">
-          <div className="text-text-3 mb-4">{t('系统未初始化')}</div>
-          <Link href={loginHref} className="text-primary hover:underline">
-            {t('去设置管理员密码')}
-          </Link>
+      <>
+        <SeoHead title={pageTitle} robots="noindex,nofollow" />
+        <div className="min-h-screen flex items-center justify-center bg-app">
+          <div className="text-center">
+            <div className="text-text-3 mb-4">{t('系统未初始化')}</div>
+            <Link href={loginHref} className="text-primary hover:underline">
+              {t('去设置管理员密码')}
+            </Link>
+          </div>
         </div>
-      </div>
+      </>
     );
   }
 
   if (authorized) {
     return (
       <>
-        <Head>
-          <title>{t('授权成功')} - {basicSettings.site_name || 'Lumina'}</title>
-        </Head>
+        <SeoHead title={authorizedTitle} robots="noindex,nofollow" />
         <div className="min-h-screen flex items-center justify-center bg-app">
           <div className="text-center">
             <div className="text-6xl mb-4 inline-flex items-center justify-center text-primary">
@@ -127,9 +134,7 @@ export default function ExtensionAuthPage() {
   if (isAdmin) {
     return (
       <>
-        <Head>
-          <title>{t('扩展授权')} - {basicSettings.site_name || 'Lumina'}</title>
-        </Head>
+        <SeoHead title={grantingTitle} robots="noindex,nofollow" />
         <div className="min-h-screen flex items-center justify-center bg-app">
           <div className="text-center">
             <div className="text-4xl mb-4 inline-flex items-center justify-center text-primary">
@@ -146,9 +151,7 @@ export default function ExtensionAuthPage() {
 
   return (
     <>
-      <Head>
-        <title>{t('扩展授权登录')} - {basicSettings.site_name || 'Lumina'}</title>
-      </Head>
+      <SeoHead title={pageTitle} robots="noindex,nofollow" />
 
       <div className="min-h-screen flex items-center justify-center bg-app py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-md w-full space-y-8">

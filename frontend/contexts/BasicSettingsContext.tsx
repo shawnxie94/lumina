@@ -52,16 +52,18 @@ const resolveLanguage = (
 
 export function BasicSettingsProvider({
 	children,
+	initialBasicSettings = DEFAULT_BASIC_SETTINGS,
 }: {
 	children: React.ReactNode;
+	initialBasicSettings?: BasicSettings;
 }) {
 	const [basicSettings, setBasicSettings] =
-		useState<BasicSettings>(DEFAULT_BASIC_SETTINGS);
-	const basicSettingsRef = useRef<BasicSettings>(DEFAULT_BASIC_SETTINGS);
+		useState<BasicSettings>(initialBasicSettings);
+	const basicSettingsRef = useRef<BasicSettings>(initialBasicSettings);
 	const [languagePreference, setLanguagePreferenceState] =
 		useState<LanguagePreference>(null);
 	const [language, setLanguage] = useState<"zh-CN" | "en">(
-		DEFAULT_BASIC_SETTINGS.default_language,
+		initialBasicSettings.default_language,
 	);
 
 	const applyLanguage = useCallback(
@@ -107,6 +109,14 @@ export function BasicSettingsProvider({
 	useEffect(() => {
 		basicSettingsRef.current = basicSettings;
 	}, [basicSettings]);
+
+	useEffect(() => {
+		setBasicSettings(initialBasicSettings);
+		basicSettingsRef.current = initialBasicSettings;
+		if (!languagePreference) {
+			setLanguage(resolveLanguage(null, initialBasicSettings));
+		}
+	}, [initialBasicSettings, languagePreference]);
 
 	useEffect(() => {
 		if (languagePreference) return;

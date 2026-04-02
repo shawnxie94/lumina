@@ -1,10 +1,10 @@
 import { useState, useEffect, useMemo } from 'react';
 
 import { useRouter } from 'next/router';
-import Head from 'next/head';
 import Link from 'next/link';
 
 import Button from '@/components/Button';
+import SeoHead from '@/components/SeoHead';
 import TextInput from '@/components/ui/TextInput';
 import { useAuth } from '@/contexts/AuthContext';
 import { useBasicSettings } from '@/contexts/BasicSettingsContext';
@@ -22,6 +22,7 @@ export default function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
 
   const isSetupMode = !isInitialized;
+  const pageTitle = `${isSetupMode ? t('设置管理员密码') : t('管理员登录')} - ${basicSettings.site_name || 'Lumina'}`;
   const redirectTarget = useMemo(() => {
     const redirectQuery = Array.isArray(router.query.redirect)
       ? router.query.redirect[0]
@@ -78,24 +79,22 @@ export default function LoginPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-app">
-        <div className="text-text-3">{t('加载中')}</div>
-      </div>
+      <>
+        <SeoHead title={pageTitle} robots="noindex,nofollow" />
+        <div className="min-h-screen flex items-center justify-center bg-app">
+          <div className="text-text-3">{t('加载中')}</div>
+        </div>
+      </>
     );
   }
 
   if (isAdmin) {
-    return null;
+    return <SeoHead title={pageTitle} robots="noindex,nofollow" />;
   }
 
   return (
     <>
-      <Head>
-        <title>
-          {isSetupMode ? t('设置管理员密码') : t('管理员登录')} -{' '}
-          {basicSettings.site_name || 'Lumina'}
-        </title>
-      </Head>
+      <SeoHead title={pageTitle} robots="noindex,nofollow" />
 
       <div className="min-h-screen flex items-center justify-center bg-app py-8 sm:py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-md w-full space-y-6 sm:space-y-8">

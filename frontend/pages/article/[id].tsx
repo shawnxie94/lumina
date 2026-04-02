@@ -1,4 +1,4 @@
-import Head from "next/head";
+import type { GetServerSideProps } from "next";
 import {
 	useState,
 	useEffect,
@@ -34,6 +34,7 @@ import {
 	type AIContentVersion,
 	type DeletableAIContentType,
 	type ArticleDetail,
+	type BasicSettings,
 	type Category,
 	type ModelAPIConfig,
 	type PromptConfig,
@@ -43,6 +44,7 @@ import {
 } from "@/lib/api";
 import AppFooter from "@/components/AppFooter";
 import AppHeader from "@/components/AppHeader";
+import SeoHead from "@/components/SeoHead";
 import ArticleTagBar from "@/components/article/ArticleTagBar";
 import ArticleMetaRow from "@/components/article/ArticleMetaRow";
 import ArticleSplitEditorModal from "@/components/article/ArticleSplitEditorModal";
@@ -86,6 +88,16 @@ import { useBasicSettings } from "@/contexts/BasicSettingsContext";
 import { useReading } from "@/contexts/ReadingContext";
 import { useI18n } from "@/lib/i18n";
 import { shouldShowAiHistoryButton } from "@/lib/aiHistoryVisibility";
+import {
+	buildCanonicalUrl,
+	buildMetaDescription,
+	resolveSeoAssetUrl,
+} from "@/lib/seo";
+import {
+	fetchServerArticle,
+	fetchServerBasicSettings,
+	resolveRequestOrigin,
+} from "@/lib/serverApi";
 import { renderSafeMarkdown, sanitizeRichHtml } from "@/lib/safeHtml";
 import { signIn, signOut, useSession } from "next-auth/react";
 
@@ -1159,7 +1171,43 @@ const resolveCommentLocation = (
 	};
 };
 
-export default function ArticleDetailPage() {
+interface ArticleDetailPageProps {
+	initialBasicSettings: BasicSettings;
+	initialArticle: ArticleDetail;
+	siteOrigin: string;
+}
+
+export const getServerSideProps: GetServerSideProps<ArticleDetailPageProps> = async ({
+	req,
+	params,
+}) => {
+	const slug = typeof params?.id === "string" ? params.id : "";
+	const siteOrigin = resolveRequestOrigin(req);
+	if (!slug) {
+		return { notFound: true };
+	}
+
+	try {
+		const [initialBasicSettings, initialArticle] = await Promise.all([
+			fetchServerBasicSettings(req),
+			fetchServerArticle(req, slug),
+		]);
+		return {
+			props: {
+				initialBasicSettings,
+				initialArticle,
+				siteOrigin,
+			},
+		};
+	} catch {
+		return { notFound: true };
+	}
+};
+
+export default function ArticleDetailPage({
+	initialArticle,
+	siteOrigin,
+}: ArticleDetailPageProps) {
 	const router = useRouter();
 	const { showToast } = useToast();
 	const { isAdmin } = useAuth();
@@ -1183,9 +1231,9 @@ export default function ArticleDetailPage() {
 		[listReturnHref],
 	);
 
-	const [article, setArticle] = useState<ArticleDetail | null>(null);
+	const [article, setArticle] = useState<ArticleDetail | null>(initialArticle);
 	const [articleTasks, setArticleTasks] = useState<ArticleTaskListItem[]>([]);
-	const [loading, setLoading] = useState(true);
+	const [loading, setLoading] = useState(false);
 	const [showTranslation, setShowTranslation] = useState(true);
 	const [analysisCollapsed, setAnalysisCollapsed] = useState(false);
 	const [activeAiTab, setActiveAiTab] = useState<AITabKey>("key_points");
@@ -1344,8 +1392,12 @@ export default function ArticleDetailPage() {
 	const infographicUploadSignatureRef = useRef("");
 	const infographicUploadingRef = useRef(false);
 	const [mindMapOpen, setMindMapOpen] = useState(false);
-	const [prevArticle, setPrevArticle] = useState<ArticleNeighbor | null>(null);
-	const [nextArticle, setNextArticle] = useState<ArticleNeighbor | null>(null);
+	const [prevArticle, setPrevArticle] = useState<ArticleNeighbor | null>(
+		(initialArticle.prev_article as ArticleNeighbor | null) || null,
+	);
+	const [nextArticle, setNextArticle] = useState<ArticleNeighbor | null>(
+		(initialArticle.next_article as ArticleNeighbor | null) || null,
+	);
 	const [similarArticles, setSimilarArticles] = useState<SimilarArticleItem[]>(
 		[],
 	);
@@ -1861,7 +1913,7 @@ export default function ArticleDetailPage() {
 	}, [immersiveMode, renderedHtml, pdfHeightScale]);
 
 	useEffect(() => {
-		if (id) {
+		if (id && (!article || article.slug !== id)) {
 			fetchArticle();
 		}
 		return () => {
@@ -1872,7 +1924,7 @@ export default function ArticleDetailPage() {
 				clearInterval(similarPollingRef.current);
 			}
 		};
-	}, [id]);
+	}, [id, article?.slug]);
 
 	useEffect(() => {
 		if (!article?.slug) return;
@@ -4169,24 +4221,134 @@ export default function ArticleDetailPage() {
 	const taggingStatusMeta = getTaggingStatusMeta(t, article.ai_analysis);
 	const isTaggingBusy =
 		tagRegenerating || isPendingJobStatus(article.ai_analysis?.tagging_status);
+	const canonicalUrl = buildCanonicalUrl(siteOrigin, `/article/${article.slug}`);
+	const seoDescription = buildMetaDescription(
+		article.ai_analysis?.summary ||
+			article.summary ||
+			article.content_trans ||
+			article.content_md ||
+			article.content_html ||
+			"",
+	);
+	const seoImageUrl = resolveSeoAssetUrl(
+		siteOrigin,
+		article.top_image || basicSettings.site_logo_url || "/logo.png",
+	);
+	const breadcrumbStructuredData = {
+		"@context": "https://schema.org",
+		"@type": "BreadcrumbList",
+		itemListElement: [
+			{
+				"@type": "ListItem",
+				position: 1,
+				name: t("主页"),
+				item: buildCanonicalUrl(siteOrigin, "/"),
+			},
+			{
+				"@type": "ListItem",
+				position: 2,
+				name: t("全部文章"),
+				item: buildCanonicalUrl(siteOrigin, "/list"),
+			},
+			...(article.category
+				? [
+						{
+							"@type": "ListItem",
+							position: 3,
+							name: article.category.name,
+							item: buildCanonicalUrl(siteOrigin, "/list", {
+								category_id: article.category.id,
+							}),
+						},
+					]
+				: []),
+			{
+				"@type": "ListItem",
+				position: article.category ? 4 : 3,
+				name: displayTitle,
+				item: canonicalUrl,
+			},
+		],
+	};
+	const articleStructuredData = {
+		"@context": "https://schema.org",
+		"@type": "BlogPosting",
+		headline: displayTitle,
+		description: seoDescription,
+		mainEntityOfPage: canonicalUrl,
+		url: canonicalUrl,
+		image: seoImageUrl || undefined,
+		datePublished: article.published_at || article.created_at,
+		dateModified:
+			article.ai_analysis?.updated_at || article.published_at || article.created_at,
+		author: article.author
+			? {
+					"@type": "Person",
+					name: article.author,
+				}
+			: undefined,
+		publisher: {
+			"@type": "Organization",
+			name: basicSettings.site_name || "Lumina",
+			logo: seoImageUrl
+				? {
+						"@type": "ImageObject",
+						url: seoImageUrl,
+					}
+				: undefined,
+		},
+	};
 
 	return (
 		<div
 			className={`min-h-screen ${immersiveMode ? "bg-surface" : "bg-app"} flex flex-col`}
 		>
-			<Head>
-				<title>
-					{displayTitle
+			<SeoHead
+				title={
+					displayTitle
 						? `${displayTitle} - ${basicSettings.site_name || "Lumina"}`
-						: `${t("文章详情")} - ${basicSettings.site_name || "Lumina"}`}
-				</title>
-			</Head>
+						: `${t("文章详情")} - ${basicSettings.site_name || "Lumina"}`
+				}
+				description={seoDescription}
+				canonicalUrl={canonicalUrl}
+				imageUrl={seoImageUrl}
+				type="article"
+				siteName={basicSettings.site_name || "Lumina"}
+				publishedTime={article.published_at || article.created_at}
+				modifiedTime={
+					article.ai_analysis?.updated_at || article.published_at || article.created_at
+				}
+				structuredData={[breadcrumbStructuredData, articleStructuredData]}
+			/>
 			<ReadingProgress />
 			<AppHeader />
 			<section
 				className={`bg-surface ${immersiveMode ? "" : "border-b border-border"}`}
 			>
 				<div className="max-w-7xl mx-auto px-4 py-5 sm:py-6">
+					<nav
+						aria-label="Breadcrumb"
+						className="mb-3 flex flex-wrap items-center justify-center gap-2 text-sm text-text-3"
+					>
+						<Link href="/" className="hover:text-primary hover:underline">
+							{t("主页")}
+						</Link>
+						<span>/</span>
+						<Link href="/list" className="hover:text-primary hover:underline">
+							{t("全部文章")}
+						</Link>
+						{article.category ? (
+							<>
+								<span>/</span>
+								<Link
+									href={`/list?category_id=${article.category.id}`}
+									className="hover:text-primary hover:underline"
+								>
+									{article.category.name}
+								</Link>
+							</>
+						) : null}
+					</nav>
 					<div className="mb-3 flex justify-center">
 						<div className="inline-flex max-w-full flex-wrap items-center justify-center gap-x-2 gap-y-1">
 							<h1 className="text-2xl font-bold text-text-1 text-center">

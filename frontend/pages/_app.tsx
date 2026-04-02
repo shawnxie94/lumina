@@ -10,6 +10,7 @@ import { ReadingProvider } from '@/contexts/ReadingContext';
 import { BasicSettingsProvider } from '@/contexts/BasicSettingsContext';
 
 export default function App({ Component, pageProps }: AppProps) {
+  const initialBasicSettings = (pageProps as { initialBasicSettings?: any }).initialBasicSettings;
   return (
     <>
       <Head>
@@ -34,7 +35,7 @@ export default function App({ Component, pageProps }: AppProps) {
       </Head>
       <SessionProvider session={(pageProps as { session?: any }).session}>
         <AuthProvider>
-          <BasicSettingsProvider>
+          <BasicSettingsProvider initialBasicSettings={initialBasicSettings}>
             <ReadingProvider>
               <ToastProvider>
                 <Component {...pageProps} />

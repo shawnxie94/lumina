@@ -1,6 +1,6 @@
-import Head from "next/head";
 import Link from "next/link";
 
+import SeoHead from "@/components/SeoHead";
 import { useI18n } from "@/lib/i18n";
 
 export default function OfflinePage() {
@@ -9,9 +9,10 @@ export default function OfflinePage() {
 
 	return (
 		<>
-			<Head>
-				<title>{isEnglish ? "Offline | Lumina" : "离线状态 | Lumina"}</title>
-			</Head>
+			<SeoHead
+				title={isEnglish ? "Offline | Lumina" : "离线状态 | Lumina"}
+				robots="noindex,nofollow"
+			/>
 			<main className="min-h-screen bg-app px-4 py-10 flex items-center justify-center">
 				<section className="w-full max-w-xl rounded-2xl border border-border-strong bg-surface shadow-md p-8 text-center">
 					<h1 className="text-3xl font-semibold text-text-1">

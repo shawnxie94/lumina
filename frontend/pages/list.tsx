@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 
-import Head from 'next/head';
+import type { GetServerSideProps } from 'next';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
 import dayjs, { type Dayjs } from 'dayjs';
@@ -12,12 +12,14 @@ import {
   storageSettingsApi,
   tagApi,
   Article,
+  BasicSettings,
   Category,
   Tag,
   resolveMediaUrl,
 } from '@/lib/api';
 import AppFooter from '@/components/AppFooter';
 import AppHeader from '@/components/AppHeader';
+import SeoHead from '@/components/SeoHead';
 import ArticleLanguageTag from '@/components/article/ArticleLanguageTag';
 import ArticleMetaRow from '@/components/article/ArticleMetaRow';
 import ArticleSplitEditorModal from '@/components/article/ArticleSplitEditorModal';
@@ -40,6 +42,15 @@ import { IconEdit, IconEye, IconEyeOff, IconSearch, IconTag, IconTrash, IconPlus
 import { useAuth } from '@/contexts/AuthContext';
 import { useBasicSettings } from '@/contexts/BasicSettingsContext';
 import { useI18n } from '@/lib/i18n';
+import { buildCanonicalUrl, buildPathWithQuery, getListPageSeo, resolveSeoAssetUrl } from '@/lib/seo';
+import {
+  fetchServerArticles,
+  fetchServerBasicSettings,
+  fetchServerCategories,
+  fetchServerCategoryStats,
+  fetchServerTags,
+  resolveRequestOrigin,
+} from '@/lib/serverApi';
 import { renderSafeMarkdown } from '@/lib/safeHtml';
 
 const formatDate = (date: Date | null): string => {
@@ -262,35 +273,198 @@ const pickListQuery = (
   return picked;
 };
 
-export default function Home() {
+interface ListPageProps {
+  initialBasicSettings: BasicSettings;
+  initialArticles: Article[];
+  initialCategories: Category[];
+  initialTags: Tag[];
+  initialCategoryStats: { id: string; name: string; color: string | null; article_count: number }[];
+  initialPagination: {
+    page: number;
+    size: number;
+    total: number;
+    total_pages: number;
+  };
+  initialQuery: Record<string, string>;
+  initialDataLoaded: boolean;
+  siteOrigin: string;
+}
+
+export const getServerSideProps: GetServerSideProps<ListPageProps> = async ({ req, query }) => {
+  const initialQuery = pickListQuery(query as Record<string, string | string[] | undefined>);
+  const siteOrigin = resolveRequestOrigin(req);
+  const page = Number(initialQuery.page || '1');
+  const size = Number(initialQuery.size || '10');
+
+  try {
+    const [
+      initialBasicSettings,
+      articleResponse,
+      initialCategories,
+      initialTags,
+      initialCategoryStats,
+    ] = await Promise.all([
+      fetchServerBasicSettings(req),
+      fetchServerArticles(req, {
+        page: Number.isFinite(page) && page > 0 ? page : 1,
+        size: Number.isFinite(size) && [10, 20, 50, 100].includes(size) ? size : 10,
+        category_id: initialQuery.category_id,
+        tag_ids: initialQuery.tag_ids,
+        search: initialQuery.search,
+        source_domain: initialQuery.source_domain,
+        author: initialQuery.author,
+        published_at_start: initialQuery.published_at_start,
+        published_at_end: initialQuery.published_at_end,
+        created_at_start: initialQuery.created_at_start,
+        created_at_end: initialQuery.created_at_end,
+        sort_by: initialQuery.sort_by || 'published_at_desc',
+      }),
+      fetchServerCategories(req),
+      fetchServerTags(req),
+      fetchServerCategoryStats(req, {
+        search: initialQuery.search,
+        source_domain: initialQuery.source_domain,
+        author: initialQuery.author,
+        tag_ids: initialQuery.tag_ids,
+        published_at_start: initialQuery.published_at_start,
+        published_at_end: initialQuery.published_at_end,
+        created_at_start: initialQuery.created_at_start,
+        created_at_end: initialQuery.created_at_end,
+      }),
+    ]);
+
+    return {
+      props: {
+        initialBasicSettings,
+        initialArticles: articleResponse.data || [],
+        initialCategories,
+        initialTags,
+        initialCategoryStats,
+        initialPagination: articleResponse.pagination,
+        initialQuery,
+        initialDataLoaded: true,
+        siteOrigin,
+      },
+    };
+  } catch {
+    return {
+      props: {
+        initialBasicSettings: {
+          default_language: 'zh-CN',
+          site_name: 'Lumina',
+          site_description: '信息灯塔',
+          site_logo_url: '',
+          rss_enabled: false,
+          home_badge_text: '',
+          home_tagline_text: '',
+          home_primary_button_text: '',
+          home_primary_button_url: '',
+          home_secondary_button_text: '',
+          home_secondary_button_url: '',
+        },
+        initialArticles: [],
+        initialCategories: [],
+        initialTags: [],
+        initialCategoryStats: [],
+        initialPagination: {
+          page: 1,
+          size: 10,
+          total: 0,
+          total_pages: 1,
+        },
+        initialQuery,
+        initialDataLoaded: false,
+        siteOrigin,
+      },
+    };
+  }
+};
+
+export default function Home({
+  initialArticles,
+  initialCategories,
+  initialTags,
+  initialCategoryStats,
+  initialPagination,
+  initialQuery,
+  initialDataLoaded,
+  siteOrigin,
+}: ListPageProps) {
   const router = useRouter();
   const { showToast } = useToast();
   const { isAdmin, isLoading: authLoading } = useAuth();
   const { t } = useI18n();
   const { basicSettings } = useBasicSettings();
-  const [articles, setArticles] = useState<Article[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [availableTags, setAvailableTags] = useState<Tag[]>([]);
-  const [categoryStats, setCategoryStats] = useState<{ id: string; name: string; color: string | null; article_count: number }[]>([]);
+  const initialSelectedCategory = initialQuery.category_id || '';
+  const initialSelectedTagIds = parseTagIdsQuery(initialQuery.tag_ids || '');
+  const initialSearchTerm = initialQuery.search || '';
+  const initialSourceDomain = initialQuery.source_domain || '';
+  const initialAuthor = initialQuery.author || '';
+  const initialVisibilityFilter =
+    initialQuery.visibility === 'visible' || initialQuery.visibility === 'hidden'
+      ? initialQuery.visibility
+      : '';
+  const initialQuickDateFilter: QuickDateOption =
+    quickDateOptions.includes((initialQuery.quick_date || '') as QuickDateOption)
+      ? (initialQuery.quick_date as QuickDateOption)
+      : '';
+  const initialSortBy =
+    initialQuery.sort_by === 'created_at_desc' || initialQuery.sort_by === 'published_at_desc'
+      ? initialQuery.sort_by
+      : 'published_at_desc';
+  const initialPublishedStart = parseDateQuery(initialQuery.published_at_start || '');
+  const initialPublishedEnd = parseDateQuery(initialQuery.published_at_end || '');
+  const initialCreatedStart = parseDateQuery(initialQuery.created_at_start || '');
+  const initialCreatedEnd = parseDateQuery(initialQuery.created_at_end || '');
+  const initialPage = Number.isFinite(Number(initialQuery.page || ''))
+    ? Math.max(1, Math.floor(Number(initialQuery.page || '1')))
+    : initialPagination.page || 1;
+  const initialPageSize =
+    Number.isFinite(Number(initialQuery.size || '')) &&
+    [10, 20, 50, 100].includes(Number(initialQuery.size || ''))
+      ? Number(initialQuery.size)
+      : initialPagination.size || 10;
+  const [articles, setArticles] = useState<Article[]>(initialArticles);
+  const [categories, setCategories] = useState<Category[]>(initialCategories);
+  const [availableTags, setAvailableTags] = useState<Tag[]>(initialTags);
+  const [categoryStats, setCategoryStats] = useState<{ id: string; name: string; color: string | null; article_count: number }[]>(initialCategoryStats);
   const [authors, setAuthors] = useState<string[]>([]);
   const [sources, setSources] = useState<string[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState<string>('');
-  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
-  const [searchTerm, setSearchTerm] = useState<string>('');
-  const [sourceDomain, setSourceDomain] = useState<string>('');
-  const [author, setAuthor] = useState<string>('');
-  const [publishedDateRange, setPublishedDateRange] = useState<[Date | null, Date | null]>([null, null]);
-  const [createdDateRange, setCreatedDateRange] = useState<[Date | null, Date | null]>([null, null]);
-  const [quickDateFilter, setQuickDateFilter] = useState<QuickDateOption>('');
-  const [visibilityFilter, setVisibilityFilter] = useState<string>('');
-  const [sortBy, setSortBy] = useState<string>('published_at_desc');
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [initialized, setInitialized] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState<string>(initialSelectedCategory);
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>(initialSelectedTagIds);
+  const [searchTerm, setSearchTerm] = useState<string>(initialSearchTerm);
+  const [sourceDomain, setSourceDomain] = useState<string>(initialSourceDomain);
+  const [author, setAuthor] = useState<string>(initialAuthor);
+  const [publishedDateRange, setPublishedDateRange] = useState<[Date | null, Date | null]>([initialPublishedStart, initialPublishedEnd]);
+  const [createdDateRange, setCreatedDateRange] = useState<[Date | null, Date | null]>(
+    initialCreatedStart || initialCreatedEnd
+      ? [initialCreatedStart, initialCreatedEnd]
+      : initialQuickDateFilter
+        ? getDateRangeFromQuickOption(initialQuickDateFilter)
+        : [null, null],
+  );
+  const [quickDateFilter, setQuickDateFilter] = useState<QuickDateOption>(initialQuickDateFilter);
+  const [visibilityFilter, setVisibilityFilter] = useState<string>(initialVisibilityFilter);
+  const [sortBy, setSortBy] = useState<string>(initialSortBy);
+  const [page, setPage] = useState(initialPage);
+  const [pageSize, setPageSize] = useState(initialPageSize);
+  const [total, setTotal] = useState(initialPagination.total);
+  const [loading, setLoading] = useState(!initialDataLoaded);
+  const [initialized, setInitialized] = useState(initialDataLoaded);
   const [selectedArticleSlugs, setSelectedArticleSlugs] = useState<Set<string>>(new Set());
-  const [showFilters, setShowFilters] = useState(false);
+  const [showFilters, setShowFilters] = useState(
+    Boolean(
+      initialSearchTerm ||
+      initialSelectedTagIds.length > 0 ||
+      initialSourceDomain ||
+      initialAuthor ||
+      initialVisibilityFilter ||
+      initialPublishedStart ||
+      initialPublishedEnd ||
+      initialCreatedStart ||
+      initialCreatedEnd,
+    ),
+  );
   const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [jumpToPage, setJumpToPage] = useState('');
@@ -298,7 +472,7 @@ export default function Home() {
   const [batchAction, setBatchAction] = useState<'none' | 'export' | 'visibility' | 'category' | 'delete'>('none');
   const [isMobile, setIsMobile] = useState(false);
   const [isAppending, setIsAppending] = useState(false);
-  const [hasMore, setHasMore] = useState(true);
+  const [hasMore, setHasMore] = useState(initialArticles.length < initialPagination.total);
   const [loadingMore, setLoadingMore] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
@@ -353,12 +527,15 @@ export default function Home() {
   const showAdminDesktop = isAdmin && !isMobile;
   const listLoading = loading || authLoading;
   const shouldHoldListView = isBootstrapping || listLoading;
-  const [listContentReady, setListContentReady] = useState(false);
+  const [listContentReady, setListContentReady] = useState(initialDataLoaded);
   const batchActionPending = batchAction !== 'none';
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const hydratedQueryRef = useRef('');
+  const initialQuerySignature = useMemo(() => serializeQuery(initialQuery), [initialQuery]);
+  const hydratedQueryRef = useRef(initialDataLoaded ? initialQuerySignature : '');
   const syncedQueryRef = useRef('');
   const suppressNextPageFetchRef = useRef(false);
+  const skipInitialFilterFetchRef = useRef(initialDataLoaded);
+  const skipInitialPageFetchRef = useRef(initialDataLoaded);
   const authorsLoadingRef = useRef(false);
   const sourcesLoadingRef = useRef(false);
   const articleRequestIdRef = useRef(0);
@@ -380,6 +557,89 @@ export default function Home() {
     const asPath = router.asPath || '/list';
     return asPath.split('#')[0] || '/list';
   }, [router.asPath]);
+
+  const currentListQuery = useMemo(() => {
+    const nextQuery: Record<string, string> = {};
+    if (selectedCategory) nextQuery.category_id = selectedCategory;
+    if (selectedTagIds.length > 0) nextQuery.tag_ids = selectedTagIds.join(',');
+    if (searchTerm) nextQuery.search = searchTerm;
+    if (sourceDomain) nextQuery.source_domain = sourceDomain;
+    if (author) nextQuery.author = author;
+    if (visibilityFilter) nextQuery.visibility = visibilityFilter;
+    if (quickDateFilter) nextQuery.quick_date = quickDateFilter;
+    if (publishedStartDate) nextQuery.published_at_start = formatDate(publishedStartDate);
+    if (publishedEndDate) nextQuery.published_at_end = formatDate(publishedEndDate);
+    if (createdStartDate) nextQuery.created_at_start = formatDate(createdStartDate);
+    if (createdEndDate) nextQuery.created_at_end = formatDate(createdEndDate);
+    if (sortBy !== 'published_at_desc') nextQuery.sort_by = sortBy;
+    if (page > 1) nextQuery.page = String(page);
+    if (pageSize !== 10) nextQuery.size = String(pageSize);
+    return nextQuery;
+  }, [
+    selectedCategory,
+    selectedTagIds,
+    searchTerm,
+    sourceDomain,
+    author,
+    visibilityFilter,
+    quickDateFilter,
+    publishedStartDate,
+    publishedEndDate,
+    createdStartDate,
+    createdEndDate,
+    sortBy,
+    page,
+    pageSize,
+  ]);
+
+  const selectedCategoryMeta = useMemo(
+    () => categories.find((category) => category.id === selectedCategory) || null,
+    [categories, selectedCategory],
+  );
+  const selectedTagMeta = useMemo(
+    () => availableTags.filter((tag) => selectedTagIds.includes(tag.id)),
+    [availableTags, selectedTagIds],
+  );
+  const listSeo = useMemo(
+    () =>
+      getListPageSeo(currentListQuery, {
+        siteName: basicSettings.site_name || 'Lumina',
+        siteDescription: basicSettings.site_description || t('信息灯塔'),
+        categoryName: selectedCategoryMeta?.name || null,
+        tagNames: selectedTagMeta.map((tag) => tag.name),
+        authorName: author || null,
+      }),
+    [
+      currentListQuery,
+      basicSettings.site_name,
+      basicSettings.site_description,
+      selectedCategoryMeta?.name,
+      selectedTagMeta,
+      author,
+      t,
+    ],
+  );
+  const pageHeading = useMemo(() => {
+    if (selectedCategoryMeta?.name) return `${selectedCategoryMeta.name} ${t('全部文章')}`;
+    if (selectedTagMeta.length > 0) {
+      return `${selectedTagMeta.map((tag) => tag.name).join(' / ')} ${t('标签')}`;
+    }
+    if (author) return `${author} ${t('作者')}`;
+    return t('全部文章');
+  }, [selectedCategoryMeta?.name, selectedTagMeta, author, t]);
+  const listCanonicalUrl = useMemo(
+    () => buildCanonicalUrl(siteOrigin, '/list', listSeo.canonicalQuery),
+    [siteOrigin, listSeo.canonicalQuery],
+  );
+  const seoImageUrl = useMemo(
+    () => resolveSeoAssetUrl(siteOrigin, basicSettings.site_logo_url || '/logo.png'),
+    [siteOrigin, basicSettings.site_logo_url],
+  );
+  const buildPaginationHref = (targetPage: number) =>
+    buildPathWithQuery('/list', {
+      ...currentListQuery,
+      page: targetPage > 1 ? String(targetPage) : undefined,
+    });
 
   const buildArticleHref = (slug: string) => {
     const from = `${currentListPath}#article-${slug}`;
@@ -547,6 +807,10 @@ export default function Home() {
 
   useEffect(() => {
     if (!initialized || authLoading) return;
+    if (skipInitialFilterFetchRef.current) {
+      skipInitialFilterFetchRef.current = false;
+      return;
+    }
     suppressNextPageFetchRef.current = true;
     setHasMore(true);
     setIsAppending(false);
@@ -605,6 +869,10 @@ export default function Home() {
 
   useEffect(() => {
     if (!initialized || authLoading) return;
+    if (skipInitialPageFetchRef.current) {
+      skipInitialPageFetchRef.current = false;
+      return;
+    }
     if (suppressNextPageFetchRef.current) {
       suppressNextPageFetchRef.current = false;
       return;
@@ -1477,11 +1745,33 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-app flex flex-col">
-      <Head>
-        <title>
-          {basicSettings.site_name || 'Lumina'} - {basicSettings.site_description || t('信息灯塔')}
-        </title>
-      </Head>
+      <SeoHead
+        title={listSeo.title}
+        description={listSeo.description}
+        canonicalUrl={listCanonicalUrl}
+        robots={listSeo.robots}
+        imageUrl={seoImageUrl}
+        siteName={basicSettings.site_name || 'Lumina'}
+        structuredData={[
+          {
+            '@context': 'https://schema.org',
+            '@type': 'CollectionPage',
+            name: listSeo.title,
+            description: listSeo.description,
+            url: listCanonicalUrl,
+          },
+          {
+            '@context': 'https://schema.org',
+            '@type': 'ItemList',
+            itemListElement: articles.slice(0, 20).map((article, index) => ({
+              '@type': 'ListItem',
+              position: index + 1,
+              url: buildCanonicalUrl(siteOrigin, `/article/${article.slug}`),
+              name: article.title_trans?.trim() || article.title,
+            })),
+          },
+        ]}
+      />
       <AppHeader />
 
       <div className="lg:hidden border-b border-border bg-surface panel-subtle">
@@ -1567,6 +1857,10 @@ export default function Home() {
           </aside>
 
           <main className="flex-1" aria-busy={!listContentReady}>
+            <div className="mb-4 rounded-lg border border-border bg-surface px-4 py-4">
+              <h1 className="text-2xl font-semibold text-text-1">{pageHeading}</h1>
+              <p className="mt-2 text-sm text-text-2">{listSeo.description}</p>
+            </div>
             {!isMobile && (
               <div className="panel-raised rounded-sm border border-border p-4 sm:p-6 mb-6">
                 {!isMobile && (
@@ -1869,31 +2163,33 @@ export default function Home() {
                       <span>{t('条')}，{t('共')} {total} {t('条')}</span>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <Button
-                        onClick={() => {
-                          suppressNextPageFetchRef.current = false;
-                          setPage((p) => Math.max(1, p - 1));
-                        }}
-                        disabled={page === 1}
-                        variant="secondary"
-                        size="sm"
-                      >
-                        {t('上一页')}
-                      </Button>
+                      {page > 1 ? (
+                        <Link
+                          href={buildPaginationHref(Math.max(1, page - 1))}
+                          className="inline-flex items-center justify-center rounded-sm transition font-medium focus:outline-none px-3 py-1.5 text-sm border border-border bg-surface text-text-2 hover:bg-muted"
+                        >
+                          {t('上一页')}
+                        </Link>
+                      ) : (
+                        <span className="inline-flex items-center justify-center rounded-sm px-3 py-1.5 text-sm border border-border bg-muted text-text-3">
+                          {t('上一页')}
+                        </span>
+                      )}
                       <span className="px-4 py-2 text-sm bg-surface border border-border rounded-sm text-text-2">
                         {t('第')} {page} / {totalPages} {t('页')}
                       </span>
-                      <Button
-                        onClick={() => {
-                          suppressNextPageFetchRef.current = false;
-                          setPage((p) => p + 1);
-                        }}
-                        disabled={page >= totalPages}
-                        variant="secondary"
-                        size="sm"
-                      >
-                        {t('下一页')}
-                      </Button>
+                      {page < totalPages ? (
+                        <Link
+                          href={buildPaginationHref(page + 1)}
+                          className="inline-flex items-center justify-center rounded-sm transition font-medium focus:outline-none px-3 py-1.5 text-sm border border-border bg-surface text-text-2 hover:bg-muted"
+                        >
+                          {t('下一页')}
+                        </Link>
+                      ) : (
+                        <span className="inline-flex items-center justify-center rounded-sm px-3 py-1.5 text-sm border border-border bg-muted text-text-3">
+                          {t('下一页')}
+                        </span>
+                      )}
                       <div className="ml-2 flex flex-none items-center gap-1 whitespace-nowrap">
                         <TextInput
                           type="number"

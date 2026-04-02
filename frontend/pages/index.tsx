@@ -1,9 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 
-import Head from 'next/head';
+import type { GetServerSideProps } from 'next';
 import Link from 'next/link';
 
-import { articleApi, type Article, resolveMediaUrl } from '@/lib/api';
+import SeoHead from '@/components/SeoHead';
+import {
+  articleApi,
+  type Article,
+  type BasicSettings,
+  resolveMediaUrl,
+} from '@/lib/api';
 import AppFooter from '@/components/AppFooter';
 import AppHeader from '@/components/AppHeader';
 import { BackToTop } from '@/components/BackToTop';
@@ -12,6 +18,16 @@ import ArticleLanguageTag from '@/components/article/ArticleLanguageTag';
 import LinkButton from '@/components/ui/LinkButton';
 import { useBasicSettings } from '@/contexts/BasicSettingsContext';
 import { useI18n } from '@/lib/i18n';
+import {
+  buildCanonicalUrl,
+  buildMetaDescription,
+  resolveSeoAssetUrl,
+} from '@/lib/seo';
+import {
+  fetchServerArticles,
+  fetchServerBasicSettings,
+  resolveRequestOrigin,
+} from '@/lib/serverApi';
 
 const githubUrl = 'https://github.com/shawnxie94/lumina';
 const isExternalUrl = (url: string): boolean => /^(https?:\/\/)/.test(url);
@@ -33,13 +49,71 @@ const formatDateTime = (date: string | null, language: 'zh-CN' | 'en'): string =
   });
 };
 
-export default function HomePage() {
+interface HomePageProps {
+  initialBasicSettings: BasicSettings;
+  initialLatestArticles: Article[];
+  initialLatestLoaded: boolean;
+  siteOrigin: string;
+}
+
+export const getServerSideProps: GetServerSideProps<HomePageProps> = async ({ req }) => {
+  const siteOrigin = resolveRequestOrigin(req);
+  try {
+    const [initialBasicSettings, latestResponse] = await Promise.all([
+      fetchServerBasicSettings(req),
+      fetchServerArticles(req, {
+        page: 1,
+        size: 6,
+        sort_by: 'published_at_desc',
+      }),
+    ]);
+
+    return {
+      props: {
+        initialBasicSettings,
+        initialLatestArticles: latestResponse.data || [],
+        initialLatestLoaded: true,
+        siteOrigin,
+      },
+    };
+  } catch {
+    return {
+      props: {
+        initialBasicSettings: {
+          default_language: 'zh-CN',
+          site_name: 'Lumina',
+          site_description: '信息灯塔',
+          site_logo_url: '',
+          rss_enabled: false,
+          home_badge_text: '',
+          home_tagline_text: '',
+          home_primary_button_text: '',
+          home_primary_button_url: '',
+          home_secondary_button_text: '',
+          home_secondary_button_url: '',
+        },
+        initialLatestArticles: [],
+        initialLatestLoaded: false,
+        siteOrigin,
+      },
+    };
+  }
+};
+
+export default function HomePage({
+  initialLatestArticles,
+  initialLatestLoaded,
+  siteOrigin,
+}: HomePageProps) {
   const { basicSettings } = useBasicSettings();
   const { t, language } = useI18n();
-  const [latestArticles, setLatestArticles] = useState<Article[]>([]);
-  const [latestLoading, setLatestLoading] = useState(true);
+  const [latestArticles, setLatestArticles] = useState<Article[]>(initialLatestArticles);
+  const [latestLoading, setLatestLoading] = useState(!initialLatestLoaded);
 
   useEffect(() => {
+    if (initialLatestLoaded) {
+      return;
+    }
     let active = true;
 
     const fetchLatest = async () => {
@@ -68,7 +142,7 @@ export default function HomePage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [initialLatestLoaded]);
 
   const latestUpdatedAt = useMemo(() => {
     if (latestArticles.length === 0) return null;
@@ -89,13 +163,38 @@ export default function HomePage() {
   const primaryButtonUrl = basicSettings.home_primary_button_url || '/list';
   const secondaryButtonText = basicSettings.home_secondary_button_text || t('了解更多');
   const secondaryButtonUrl = basicSettings.home_secondary_button_url || githubUrl;
+  const seoDescription = buildMetaDescription(
+    [siteDescription, heroTaglineText].filter(Boolean).join(' '),
+  );
+  const canonicalUrl = buildCanonicalUrl(siteOrigin, '/');
+  const seoImageUrl = resolveSeoAssetUrl(siteOrigin, basicSettings.site_logo_url || '/logo.png');
+  const structuredData = [
+    {
+      '@context': 'https://schema.org',
+      '@type': 'WebSite',
+      name: siteName,
+      url: canonicalUrl,
+      description: seoDescription,
+    },
+    {
+      '@context': 'https://schema.org',
+      '@type': 'Organization',
+      name: siteName,
+      url: canonicalUrl,
+      logo: seoImageUrl || undefined,
+    },
+  ];
+
   return (
     <div className="min-h-screen bg-app flex flex-col">
-      <Head>
-        <title>
-          {siteName} - {siteDescription}
-        </title>
-      </Head>
+      <SeoHead
+        title={`${siteName} - ${siteDescription}`}
+        description={seoDescription}
+        canonicalUrl={canonicalUrl}
+        imageUrl={seoImageUrl}
+        siteName={siteName}
+        structuredData={structuredData}
+      />
       <AppHeader />
 
       <main className="flex-1">

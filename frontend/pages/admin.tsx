@@ -17,12 +17,12 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import type { Dayjs } from "dayjs";
 import dayjs from "dayjs";
-import Head from "next/head";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AppFooter from "@/components/AppFooter";
 import AppHeader from "@/components/AppHeader";
+import SeoHead from "@/components/SeoHead";
 import ConfirmModal from "@/components/ConfirmModal";
 import Button from "@/components/Button";
 import DateRangePicker from "@/components/DateRangePicker";
@@ -613,6 +613,7 @@ export default function AdminPage() {
 	const { t } = useI18n();
 	const { basicSettings, updateBasicSettings: updateBasicSettingsContext } =
 		useBasicSettings();
+	const pageTitle = `${t("管理台")} - ${basicSettings.site_name || "Lumina"}`;
 	const [primaryTab, setPrimaryTab] = useState<"monitoring" | "settings">(
 		"monitoring",
 	);
@@ -3500,44 +3501,49 @@ export default function AdminPage() {
 
 	if (authLoading) {
 		return (
-			<div className="min-h-screen bg-app flex flex-col">
-				<AppHeader />
-				<div className="flex-1 flex items-center justify-center">
-					<div className="text-text-3">{t("加载中")}</div>
+			<>
+				<SeoHead title={pageTitle} robots="noindex,nofollow" />
+				<div className="min-h-screen bg-app flex flex-col">
+					<AppHeader />
+					<div className="flex-1 flex items-center justify-center">
+						<div className="text-text-3">{t("加载中")}</div>
+					</div>
+					<AppFooter />
 				</div>
-				<AppFooter />
-			</div>
+			</>
 		);
 	}
 
 	if (!isAdmin) {
 		return (
-			<div className="min-h-screen bg-app flex flex-col">
-				<AppHeader />
-				<div className="flex-1 flex items-center justify-center">
-					<div className="text-center">
-						<div className="text-text-3 mb-4">{t("无权限访问此页面")}</div>
-						<Link
-							href={`/login?redirect=${encodeURIComponent(router.asPath || "/admin")}`}
-							className="text-primary hover:underline"
-						>
-							{t("去登录")}
-						</Link>
+			<>
+				<SeoHead title={pageTitle} robots="noindex,nofollow" />
+				<div className="min-h-screen bg-app flex flex-col">
+					<AppHeader />
+					<div className="flex-1 flex items-center justify-center">
+						<div className="text-center">
+							<div className="text-text-3 mb-4">{t("无权限访问此页面")}</div>
+							<Link
+								href={`/login?redirect=${encodeURIComponent(router.asPath || "/admin")}`}
+								className="text-primary hover:underline"
+							>
+								{t("去登录")}
+							</Link>
+						</div>
 					</div>
+					<AppFooter />
 				</div>
-				<AppFooter />
-			</div>
+			</>
 		);
 	}
 
-	return (
-		<div className="min-h-screen bg-app flex flex-col">
-			<Head>
-				<title>
-					{t("管理台")} - {basicSettings.site_name || "Lumina"}
-				</title>
-			</Head>
-			<AppHeader />
+		return (
+			<div className="min-h-screen bg-app flex flex-col">
+				<SeoHead
+					title={pageTitle}
+					robots="noindex,nofollow"
+				/>
+				<AppHeader />
 
 			<div className="flex-1">
 				<div className="max-w-7xl mx-auto px-4 pt-6">

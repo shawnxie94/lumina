@@ -26,6 +26,7 @@ export default function ArticleMetaRow({
 }: ArticleMetaRowProps) {
   const { t, language } = useI18n();
   const visibleItems = items.filter(Boolean);
+  const dateValue = publishedAt || createdAt || '';
   const dateText = formatArticleDisplayDate(publishedAt, createdAt, language);
 
   return (
@@ -39,7 +40,7 @@ export default function ArticleMetaRow({
         <span className={dateLabelClassName}>
           {t('发表时间')}：
         </span>
-        {dateText}
+        {dateValue ? <time dateTime={dateValue}>{dateText}</time> : dateText}
       </div>
     </div>
   );
