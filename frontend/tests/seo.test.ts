@@ -196,6 +196,16 @@ test("list page renders category filters as crawlable links", () => {
   assert.match(source, /className=\{`block w-full text-left px-3 py-2 rounded-sm transition/);
 });
 
+test("sitemap page excludes tag and author aggregation URLs", () => {
+  const source = readPageSource("pages/sitemap.xml.tsx");
+
+  assert.match(source, /buildCategoryEntries/);
+  assert.doesNotMatch(source, /buildTagEntries/);
+  assert.doesNotMatch(source, /buildAuthorEntries/);
+  assert.doesNotMatch(source, /fetchServerTags/);
+  assert.doesNotMatch(source, /fetchServerAuthors/);
+});
+
 test("fetchAllServerArticles paginates until every page is collected", async () => {
   const calls: string[] = [];
   const originalFetch = global.fetch;

@@ -1,12 +1,10 @@
 import type { GetServerSideProps } from "next";
 
-import type { Article, Category, Tag } from "@/lib/api";
+import type { Article, Category } from "@/lib/api";
 import { buildCanonicalUrl, buildSitemapXml } from "@/lib/seo";
 import {
 	fetchAllServerArticles,
-	fetchServerAuthors,
 	fetchServerCategories,
-	fetchServerTags,
 	resolveRequestOrigin,
 } from "@/lib/serverApi";
 
@@ -27,34 +25,16 @@ const buildCategoryEntries = (origin: string, categories: Category[]) =>
 		priority: 0.7,
 	}));
 
-const buildTagEntries = (origin: string, tags: Tag[]) =>
-	tags.map((tag) => ({
-		loc: buildCanonicalUrl(origin, "/list", { tag_ids: tag.id }),
-		changefreq: "weekly" as const,
-		priority: 0.6,
-	}));
-
-const buildAuthorEntries = (origin: string, authors: string[]) =>
-	authors
-		.filter(Boolean)
-		.map((author) => ({
-			loc: buildCanonicalUrl(origin, "/list", { author }),
-			changefreq: "weekly" as const,
-			priority: 0.6,
-		}));
-
 export const getServerSideProps: GetServerSideProps = async ({ req, res }) => {
 	const origin = resolveRequestOrigin(req);
 
 	try {
-		const [articles, categories, tags, authors] = await Promise.all([
+		const [articles, categories] = await Promise.all([
 			fetchAllServerArticles(req, {
 				size: 500,
 				sort_by: "published_at_desc",
 			}),
 			fetchServerCategories(req),
-			fetchServerTags(req),
-			fetchServerAuthors(req),
 		]);
 
 		const xml = buildSitemapXml([
@@ -70,8 +50,6 @@ export const getServerSideProps: GetServerSideProps = async ({ req, res }) => {
 				},
 				...buildArticleEntries(origin, articles),
 				...buildCategoryEntries(origin, categories),
-				...buildTagEntries(origin, tags),
-				...buildAuthorEntries(origin, authors),
 			]);
 
 		res.setHeader("Content-Type", "application/xml; charset=utf-8");
