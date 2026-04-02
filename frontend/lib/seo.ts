@@ -284,7 +284,7 @@ const normalizeSitemapLastmod = (value?: string | null): string | null => {
 	if (Number.isNaN(parsedTimestamp)) {
 		return null;
 	}
-	return new Date(parsedTimestamp).toISOString();
+	return new Date(parsedTimestamp).toISOString().replace(/\.\d{3}Z$/, "+00:00");
 };
 
 export const buildSitemapXml = (entries: SitemapEntry[]): string => {
