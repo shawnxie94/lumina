@@ -99,8 +99,12 @@ test("sitemap xml renders urlset entries with optional metadata", () => {
   assert.match(xml, /https:\/\/lumina\.example\/list\?page=2/);
 });
 
-test("sitemap xml normalizes lastmod values to valid date-only strings", () => {
+test("sitemap xml normalizes lastmod values to UTC ISO datetimes", () => {
   const xml = buildSitemapXml([
+    {
+      loc: "https://lumina.example/article/with-date-only",
+      lastmod: "2026-04-02",
+    },
     {
       loc: "https://lumina.example/article/with-timestamp",
       lastmod: "2026-04-02T10:41:21.738049+00:00",
@@ -115,8 +119,9 @@ test("sitemap xml normalizes lastmod values to valid date-only strings", () => {
     },
   ]);
 
-  assert.match(xml, /<loc>https:\/\/lumina\.example\/article\/with-timestamp<\/loc><lastmod>2026-04-02<\/lastmod>/);
-  assert.match(xml, /<loc>https:\/\/lumina\.example\/article\/with-http-date<\/loc><lastmod>2026-04-02<\/lastmod>/);
+  assert.match(xml, /<loc>https:\/\/lumina\.example\/article\/with-date-only<\/loc><lastmod>2026-04-02T00:00:00\.000Z<\/lastmod>/);
+  assert.match(xml, /<loc>https:\/\/lumina\.example\/article\/with-timestamp<\/loc><lastmod>2026-04-02T10:41:21\.738Z<\/lastmod>/);
+  assert.match(xml, /<loc>https:\/\/lumina\.example\/article\/with-http-date<\/loc><lastmod>2026-04-02T21:02:20\.000Z<\/lastmod>/);
   assert.match(xml, /<loc>https:\/\/lumina\.example\/article\/with-invalid-date<\/loc>/);
   assert.doesNotMatch(xml, /<loc>https:\/\/lumina\.example\/article\/with-invalid-date<\/loc><lastmod>/);
 });
