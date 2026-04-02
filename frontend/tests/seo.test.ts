@@ -10,6 +10,7 @@ import {
   buildSitemapXml,
   getListPageSeo,
 } from "@/lib/seo";
+import { fetchAllServerArticles } from "@/lib/serverApi";
 
 test("list SEO allows indexing for plain pagination", () => {
   const seo = getListPageSeo({
@@ -132,4 +133,88 @@ test("admin page keeps noindex head in loading and unauthorized branches", () =>
   assert.ok(unauthorizedBranch, "expected to find admin unauthorized branch");
   assert.match(loadingBranch[1], /<SeoHead[\s\S]*robots="noindex,nofollow"/);
   assert.match(unauthorizedBranch[1], /<SeoHead[\s\S]*robots="noindex,nofollow"/);
+});
+
+test("article page keeps breadcrumb structured data but hides visible breadcrumb nav", () => {
+  const source = readPageSource("pages/article/[id].tsx");
+
+  assert.match(source, /"@type": "BreadcrumbList"/);
+  assert.match(source, /aria-label="Breadcrumb"/);
+  assert.match(source, /className="sr-only"/);
+});
+
+test("list page keeps heading copy available for SEO but hidden from visual UI", () => {
+  const source = readPageSource("pages/list.tsx");
+
+  assert.match(source, /<div className="sr-only">/);
+  assert.match(source, /listSeo\.description/);
+});
+
+test("article structured data uses site logo for publisher metadata", () => {
+  const source = readPageSource("pages/article/[id].tsx");
+
+  assert.match(source, /const publisherLogoUrl = resolveSeoAssetUrl\(/);
+  assert.match(source, /site_logo_url \|\| "\/logo\.png"/);
+  assert.match(source, /logo: publisherLogoUrl/);
+});
+
+test("list page only emits collection structured data for indexable aggregations", () => {
+  const source = readPageSource("pages/list.tsx");
+
+  assert.match(source, /const listStructuredData = listSeo\.indexable \?/);
+  assert.match(source, /structuredData=\{listStructuredData\}/);
+});
+
+test("list page renders category filters as crawlable links", () => {
+  const source = readPageSource("pages/list.tsx");
+
+  assert.match(source, /const buildCategoryHref = \(categoryId\?: string\) =>/);
+  assert.match(source, /<Link\s+href=\{buildCategoryHref\(undefined\)\}/);
+  assert.match(source, /<Link\s+href=\{buildCategoryHref\(category\.id\)\}/);
+  assert.match(source, /className=\{`block w-full text-left px-3 py-2 rounded-sm transition/);
+});
+
+test("fetchAllServerArticles paginates until every page is collected", async () => {
+  const calls: string[] = [];
+  const originalFetch = global.fetch;
+
+  global.fetch = (async (input: string | URL | Request) => {
+    const url = String(input);
+    calls.push(url);
+    const page = Number(new URL(url).searchParams.get("page") || "1");
+    const payload =
+      page === 1
+        ? {
+            data: [{ slug: "first" }],
+            pagination: { page: 1, size: 2, total: 3, total_pages: 2 },
+          }
+        : {
+            data: [{ slug: "second" }, { slug: "third" }],
+            pagination: { page: 2, size: 2, total: 3, total_pages: 2 },
+          };
+
+    return new Response(JSON.stringify(payload), {
+      status: 200,
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+  }) as typeof fetch;
+
+  try {
+    const articles = await fetchAllServerArticles(undefined, {
+      size: 2,
+      sort_by: "published_at_desc",
+    });
+
+    assert.equal(calls.length, 2);
+    assert.match(calls[0], /page=1/);
+    assert.match(calls[1], /page=2/);
+    assert.deepEqual(
+      articles.map((article) => article.slug),
+      ["first", "second", "third"],
+    );
+  } finally {
+    global.fetch = originalFetch;
+  }
 });

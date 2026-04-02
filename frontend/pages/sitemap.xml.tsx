@@ -3,7 +3,7 @@ import type { GetServerSideProps } from "next";
 import type { Article, Category, Tag } from "@/lib/api";
 import { buildCanonicalUrl, buildSitemapXml } from "@/lib/seo";
 import {
-	fetchServerArticles,
+	fetchAllServerArticles,
 	fetchServerAuthors,
 	fetchServerCategories,
 	fetchServerTags,
@@ -47,9 +47,8 @@ export const getServerSideProps: GetServerSideProps = async ({ req, res }) => {
 	const origin = resolveRequestOrigin(req);
 
 	try {
-		const [articleResponse, categories, tags, authors] = await Promise.all([
-			fetchServerArticles(req, {
-				page: 1,
+		const [articles, categories, tags, authors] = await Promise.all([
+			fetchAllServerArticles(req, {
 				size: 500,
 				sort_by: "published_at_desc",
 			}),
@@ -64,16 +63,16 @@ export const getServerSideProps: GetServerSideProps = async ({ req, res }) => {
 				changefreq: "daily",
 				priority: 1,
 			},
-			{
-				loc: buildCanonicalUrl(origin, "/list"),
-				changefreq: "daily",
-				priority: 0.9,
-			},
-			...buildArticleEntries(origin, articleResponse.data || []),
-			...buildCategoryEntries(origin, categories),
-			...buildTagEntries(origin, tags),
-			...buildAuthorEntries(origin, authors),
-		]);
+				{
+					loc: buildCanonicalUrl(origin, "/list"),
+					changefreq: "daily",
+					priority: 0.9,
+				},
+				...buildArticleEntries(origin, articles),
+				...buildCategoryEntries(origin, categories),
+				...buildTagEntries(origin, tags),
+				...buildAuthorEntries(origin, authors),
+			]);
 
 		res.setHeader("Content-Type", "application/xml; charset=utf-8");
 		res.write(xml);

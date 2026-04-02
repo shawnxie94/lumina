@@ -4234,6 +4234,10 @@ export default function ArticleDetailPage({
 		siteOrigin,
 		article.top_image || basicSettings.site_logo_url || "/logo.png",
 	);
+	const publisherLogoUrl = resolveSeoAssetUrl(
+		siteOrigin,
+		basicSettings.site_logo_url || "/logo.png",
+	);
 	const breadcrumbStructuredData = {
 		"@context": "https://schema.org",
 		"@type": "BreadcrumbList",
@@ -4290,10 +4294,10 @@ export default function ArticleDetailPage({
 		publisher: {
 			"@type": "Organization",
 			name: basicSettings.site_name || "Lumina",
-			logo: seoImageUrl
+			logo: publisherLogoUrl
 				? {
 						"@type": "ImageObject",
-						url: seoImageUrl,
+						url: publisherLogoUrl,
 					}
 				: undefined,
 		},
@@ -4328,7 +4332,7 @@ export default function ArticleDetailPage({
 				<div className="max-w-7xl mx-auto px-4 py-5 sm:py-6">
 					<nav
 						aria-label="Breadcrumb"
-						className="mb-3 flex flex-wrap items-center justify-center gap-2 text-sm text-text-3"
+						className="sr-only"
 					>
 						<Link href="/" className="hover:text-primary hover:underline">
 							{t("主页")}

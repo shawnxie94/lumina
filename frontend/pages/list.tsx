@@ -635,6 +635,29 @@ export default function Home({
     () => resolveSeoAssetUrl(siteOrigin, basicSettings.site_logo_url || '/logo.png'),
     [siteOrigin, basicSettings.site_logo_url],
   );
+  const listStructuredData = listSeo.indexable ? [
+    {
+      '@context': 'https://schema.org',
+      '@type': 'CollectionPage',
+      name: listSeo.title,
+      description: listSeo.description,
+      url: listCanonicalUrl,
+    },
+    {
+      '@context': 'https://schema.org',
+      '@type': 'ItemList',
+      itemListElement: articles.slice(0, 20).map((article, index) => ({
+        '@type': 'ListItem',
+        position: index + 1,
+        url: buildCanonicalUrl(siteOrigin, `/article/${article.slug}`),
+        name: article.title_trans?.trim() || article.title,
+      })),
+    },
+  ] : [];
+  const buildCategoryHref = (categoryId?: string) =>
+    buildPathWithQuery('/list', {
+      category_id: categoryId || undefined,
+    });
   const buildPaginationHref = (targetPage: number) =>
     buildPathWithQuery('/list', {
       ...currentListQuery,
@@ -1752,49 +1775,33 @@ export default function Home({
         robots={listSeo.robots}
         imageUrl={seoImageUrl}
         siteName={basicSettings.site_name || 'Lumina'}
-        structuredData={[
-          {
-            '@context': 'https://schema.org',
-            '@type': 'CollectionPage',
-            name: listSeo.title,
-            description: listSeo.description,
-            url: listCanonicalUrl,
-          },
-          {
-            '@context': 'https://schema.org',
-            '@type': 'ItemList',
-            itemListElement: articles.slice(0, 20).map((article, index) => ({
-              '@type': 'ListItem',
-              position: index + 1,
-              url: buildCanonicalUrl(siteOrigin, `/article/${article.slug}`),
-              name: article.title_trans?.trim() || article.title,
-            })),
-          },
-        ]}
+        structuredData={listStructuredData}
       />
       <AppHeader />
 
       <div className="lg:hidden border-b border-border bg-surface panel-subtle">
         <div className="max-w-7xl mx-auto px-4 py-3">
           <div className="flex items-center gap-2 overflow-x-auto">
-            <button type="button"
-              onClick={() => { setSelectedCategory(''); setPage(1); }}
+            <Link
+              href={buildCategoryHref(undefined)}
+              aria-current={selectedCategory === '' ? 'page' : undefined}
               className={`whitespace-nowrap px-3 py-1.5 text-sm rounded-full transition ${
                 selectedCategory === '' ? 'bg-primary-soft text-primary-ink' : 'bg-muted text-text-2'
               }`}
             >
               {t('全部文章')} ({categoryStats.reduce((sum, c) => sum + c.article_count, 0)})
-            </button>
+            </Link>
             {categoryStats.map((category) => (
-              <button type="button"
+              <Link
+                href={buildCategoryHref(category.id)}
                 key={category.id}
-                onClick={() => { setSelectedCategory(category.id); setPage(1); }}
+                aria-current={selectedCategory === category.id ? 'page' : undefined}
                 className={`whitespace-nowrap px-3 py-1.5 text-sm rounded-full transition ${
                   selectedCategory === category.id ? 'bg-primary-soft text-primary-ink' : 'bg-muted text-text-2'
                 }`}
               >
                 {category.name} ({category.article_count})
-              </button>
+              </Link>
             ))}
           </div>
           <div className="pt-3">
@@ -1832,24 +1839,26 @@ export default function Home({
               </div>
               {!sidebarCollapsed && (
                 <div className="space-y-2">
-                  <button type="button"
-                    onClick={() => { setSelectedCategory(''); setPage(1); }}
-                    className={`w-full text-left px-3 py-2 rounded-sm transition ${
+                  <Link
+                    href={buildCategoryHref(undefined)}
+                    aria-current={selectedCategory === '' ? 'page' : undefined}
+                    className={`block w-full text-left px-3 py-2 rounded-sm transition ${
                       selectedCategory === '' ? 'bg-primary-soft text-primary-ink' : 'hover:bg-muted'
                     }`}
                   >
                     {t('全部文章')} ({categoryStats.reduce((sum, c) => sum + c.article_count, 0)})
-                  </button>
+                  </Link>
                   {categoryStats.map((category) => (
-                    <button type="button"
+                    <Link
+                      href={buildCategoryHref(category.id)}
                       key={category.id}
-                      onClick={() => { setSelectedCategory(category.id); setPage(1); }}
-                      className={`w-full text-left px-3 py-2 rounded-sm transition ${
+                      aria-current={selectedCategory === category.id ? 'page' : undefined}
+                      className={`block w-full text-left px-3 py-2 rounded-sm transition ${
                         selectedCategory === category.id ? 'bg-primary-soft text-primary-ink' : 'hover:bg-muted'
                       }`}
                     >
                       {category.name} ({category.article_count})
-                    </button>
+                    </Link>
                   ))}
                 </div>
               )}
@@ -1857,7 +1866,7 @@ export default function Home({
           </aside>
 
           <main className="flex-1" aria-busy={!listContentReady}>
-            <div className="mb-4 rounded-lg border border-border bg-surface px-4 py-4">
+            <div className="sr-only">
               <h1 className="text-2xl font-semibold text-text-1">{pageHeading}</h1>
               <p className="mt-2 text-sm text-text-2">{listSeo.description}</p>
             </div>

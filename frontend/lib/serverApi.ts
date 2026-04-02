@@ -97,6 +97,28 @@ export const fetchServerArticles = (
 	return fetchServerJson<ArticleListResponse>(req, `/api/articles${suffix}`);
 };
 
+export const fetchAllServerArticles = async (
+	req: IncomingMessage | undefined,
+	params: Record<string, string | number | undefined>,
+): Promise<Article[]> => {
+	const firstPage = await fetchServerArticles(req, {
+		...params,
+		page: 1,
+	});
+	const articles = [...(firstPage.data || [])];
+	const totalPages = Math.max(1, firstPage.pagination.total_pages || 1);
+
+	for (let page = 2; page <= totalPages; page += 1) {
+		const response = await fetchServerArticles(req, {
+			...params,
+			page,
+		});
+		articles.push(...(response.data || []));
+	}
+
+	return articles;
+};
+
 export const fetchServerArticle = (req: IncomingMessage | undefined, slug: string) =>
 	fetchServerJson<ArticleDetail>(req, `/api/articles/${encodeURIComponent(slug)}`);
 
