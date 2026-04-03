@@ -690,6 +690,57 @@ html[data-theme="dark"] .note-panel {
   line-height: 28px;
 }
 
+.select-modern-antd-singleline-multiple.ant-select-multiple {
+  height: 36px !important;
+}
+
+.select-modern-antd-singleline-multiple.ant-select-multiple .ant-select-selector {
+  min-height: 36px !important;
+  height: 36px !important;
+  padding: 3px 8px !important;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-sm);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+  align-items: center;
+}
+
+.select-modern-antd-singleline-multiple.ant-select-multiple .ant-select-selection-overflow {
+  flex-wrap: nowrap;
+  overflow: hidden;
+  gap: 4px;
+}
+
+.select-modern-antd-singleline-multiple.ant-select-multiple .ant-select-selection-item {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  margin-inline-end: 0 !important;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  padding-inline: 10px 6px !important;
+  line-height: 1.2 !important;
+  color: var(--text-2);
+  background: var(--bg-muted);
+  border: 0;
+  border-radius: 6px;
+}
+
+.select-modern-antd-singleline-multiple.ant-select-multiple .ant-select-selection-item-content {
+  line-height: 1.2;
+}
+
+.select-modern-antd-singleline-multiple.ant-select-multiple .ant-select-selection-search {
+  margin-inline-start: 0 !important;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+.select-modern-antd-singleline-multiple.ant-select-multiple .ant-select-selection-placeholder {
+  line-height: 28px;
+}
+
 .select-modern-antd .ant-select-selection-placeholder {
   color: var(--text-3);
 }

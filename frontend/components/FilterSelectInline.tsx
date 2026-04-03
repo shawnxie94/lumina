@@ -13,6 +13,7 @@ interface FilterSelectInlineProps {
 	placeholder?: string;
 	id?: string;
 	className?: string;
+	showSearch?: boolean;
 }
 
 export default function FilterSelectInline({
@@ -23,6 +24,7 @@ export default function FilterSelectInline({
 	placeholder,
 	id,
 	className = "",
+	showSearch,
 }: FilterSelectInlineProps) {
 	const selectId = id || `filter-select-inline-${label}`;
 
@@ -37,6 +39,7 @@ export default function FilterSelectInline({
 				onChange={onChange}
 				options={options}
 				placeholder={placeholder}
+				showSearch={showSearch}
 				className="w-28"
 			/>
 		</div>

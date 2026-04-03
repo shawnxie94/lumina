@@ -43,6 +43,7 @@ import { IconEdit, IconEye, IconEyeOff, IconSearch, IconTag, IconTrash, IconPlus
 import { useAuth } from '@/contexts/AuthContext';
 import { useBasicSettings } from '@/contexts/BasicSettingsContext';
 import { useI18n } from '@/lib/i18n';
+import { parseQuickDateOption, quickDateOptions, type QuickDateOption } from '@/lib/listFilters';
 import { buildCanonicalUrl, buildPathWithQuery, getListPageSeo, resolveSeoAssetUrl } from '@/lib/seo';
 import {
   fetchServerAuthState,
@@ -63,9 +64,6 @@ const formatDate = (date: Date | null): string => {
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 };
-
-// Quick date filter options
-type QuickDateOption = '' | '1d' | '3d' | '1w' | '1m' | '3m' | '6m' | '1y';
 
 const toDayjsRange = (range: [Date | null, Date | null]): [Dayjs | null, Dayjs | null] => [
   range[0] ? dayjs(range[0]) : null,
@@ -216,7 +214,6 @@ const getDateRangeFromQuickOption = (option: QuickDateOption): [Date | null, Dat
   return [startDate, now];
 };
 
-const quickDateOptions: QuickDateOption[] = ['', '1d', '3d', '1w', '1m', '3m', '6m', '1y'];
 const FILTER_FETCH_DEBOUNCE_MS = 500;
 const TITLE_SEARCH_FETCH_DEBOUNCE_MS = 900;
 
@@ -413,10 +410,7 @@ export default function Home({
     initialQuery.visibility === 'visible' || initialQuery.visibility === 'hidden'
       ? initialQuery.visibility
       : '';
-  const initialQuickDateFilter: QuickDateOption =
-    quickDateOptions.includes((initialQuery.quick_date || '') as QuickDateOption)
-      ? (initialQuery.quick_date as QuickDateOption)
-      : '';
+  const initialQuickDateFilter = parseQuickDateOption(initialQuery.quick_date);
   const initialSortBy =
     initialQuery.sort_by === 'created_at_desc' || initialQuery.sort_by === 'published_at_desc'
       ? initialQuery.sort_by
@@ -984,9 +978,7 @@ export default function Home({
     const createdStart = parseDateQuery(routerQueryState.created_at_start || '');
     const createdEnd = parseDateQuery(routerQueryState.created_at_end || '');
 
-    const quickDateParam: QuickDateOption = quickDateOptions.includes(quickDateRaw as QuickDateOption)
-      ? (quickDateRaw as QuickDateOption)
-      : '';
+    const quickDateParam = parseQuickDateOption(quickDateRaw);
     const sortByParam = sortByRaw === 'published_at_desc' || sortByRaw === 'created_at_desc'
       ? sortByRaw
       : 'published_at_desc';
@@ -1333,6 +1325,7 @@ export default function Home({
             label={t('创建时间')}
             value={quickDateFilter}
             onChange={(value) => handleQuickDateChange(value as QuickDateOption)}
+            showSearch={false}
             options={[
               { value: '', label: t('全部') },
               { value: '1d', label: t('1天内') },
@@ -1349,6 +1342,7 @@ export default function Home({
               label={t('可见性')}
               value={visibilityFilter}
               onChange={(value) => { setVisibilityFilter(value); setPage(1); }}
+              showSearch={false}
               options={[
                 { value: '', label: t('全部') },
                 { value: 'visible', label: t('可见') },
@@ -1360,6 +1354,7 @@ export default function Home({
             label={t('排序')}
             value={sortBy}
             onChange={(value) => { setSortBy(value); setPage(1); }}
+            showSearch={false}
             options={[
               { value: 'published_at_desc', label: t('发表时间倒序') },
               { value: 'created_at_desc', label: t('创建时间倒序') },
@@ -1969,6 +1964,7 @@ export default function Home({
                           label={`${t('创建时间')}：`}
                           value={quickDateFilter}
                           onChange={(value) => handleQuickDateChange(value as QuickDateOption)}
+                          showSearch={false}
                           options={[
                             { value: '', label: t('全部') },
                             { value: '1d', label: t('1天内') },
@@ -1985,6 +1981,7 @@ export default function Home({
                             label={`${t('可见性')}：`}
                             value={visibilityFilter}
                             onChange={(value) => { setVisibilityFilter(value); setPage(1); }}
+                            showSearch={false}
                             options={[
                               { value: '', label: t('全部') },
                               { value: 'visible', label: t('可见') },
@@ -1996,6 +1993,7 @@ export default function Home({
                           label={`${t('排序')}：`}
                           value={sortBy}
                           onChange={(value) => { setSortBy(value); setPage(1); }}
+                          showSearch={false}
                           options={[
                             { value: 'published_at_desc', label: t('发表时间倒序') },
                             { value: 'created_at_desc', label: t('创建时间倒序') },

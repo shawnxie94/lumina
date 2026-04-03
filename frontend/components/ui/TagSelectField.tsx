@@ -10,6 +10,7 @@ interface TagSelectFieldProps
 	value: string[];
 	onChange: (value: string[]) => void;
 	mode?: "multiple" | "tags";
+	multiline?: boolean;
 }
 
 export default function TagSelectField({
@@ -17,6 +18,7 @@ export default function TagSelectField({
 	value,
 	onChange,
 	mode = "multiple",
+	multiline = true,
 	className = "",
 	...props
 }: TagSelectFieldProps) {
@@ -24,7 +26,7 @@ export default function TagSelectField({
 		<SelectField
 			{...props}
 			mode={mode}
-			multiline
+			multiline={multiline}
 			value={value}
 			onChange={(nextValue) => onChange((nextValue as string[]) || [])}
 			className={className}

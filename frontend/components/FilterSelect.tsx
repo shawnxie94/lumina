@@ -13,6 +13,7 @@ interface FilterSelectProps {
 	options: FilterSelectOption[];
 	placeholder?: string;
 	id?: string;
+	showSearch?: boolean;
 }
 
 export default function FilterSelect({
@@ -22,6 +23,7 @@ export default function FilterSelect({
 	options,
 	placeholder,
 	id,
+	showSearch,
 }: FilterSelectProps) {
 	const selectId = id || `filter-select-${label}`;
 
@@ -33,6 +35,7 @@ export default function FilterSelect({
 				onChange={onChange}
 				options={options}
 				placeholder={placeholder}
+				showSearch={showSearch}
 				className="w-full"
 			/>
 		</FormField>

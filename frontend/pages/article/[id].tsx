@@ -5831,6 +5831,7 @@ export default function ArticleDetailPage({
 								<TagSelectField
 									tags={availableTags}
 									mode="tags"
+									multiline={false}
 									value={editTagNames}
 									onChange={(value) => setEditTagNames(value.map((item) => item.trim()))}
 									className="w-full"
