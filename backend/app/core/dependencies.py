@@ -49,7 +49,7 @@ def get_admin_or_internal(
 ) -> bool:
     if is_internal_request(request):
         return True
-    return get_current_admin(credentials=credentials, db=db)
+    return get_current_admin(request=request, credentials=credentials, db=db)
 
 
 def check_is_admin_or_internal(
@@ -59,7 +59,7 @@ def check_is_admin_or_internal(
 ) -> bool:
     if is_internal_request(request):
         return True
-    return check_is_admin(credentials=credentials, db=db)
+    return check_is_admin(request=request, credentials=credentials, db=db)
 
 
 def build_basic_settings(admin: Optional[AdminSettings]) -> dict:

@@ -17,7 +17,7 @@ import {
   Tag,
   resolveMediaUrl,
 } from '@/lib/api';
-import { buildArticleHref as buildNavigableArticleHref, buildAdminPreviewArticleHref } from '@/lib/articlePreview';
+import { buildArticleHref as buildNavigableArticleHref } from '@/lib/articlePreview';
 import AppFooter from '@/components/AppFooter';
 import AppHeader from '@/components/AppHeader';
 import SeoHead from '@/components/SeoHead';
@@ -45,6 +45,7 @@ import { useBasicSettings } from '@/contexts/BasicSettingsContext';
 import { useI18n } from '@/lib/i18n';
 import { buildCanonicalUrl, buildPathWithQuery, getListPageSeo, resolveSeoAssetUrl } from '@/lib/seo';
 import {
+  fetchServerAuthState,
   fetchServerArticles,
   fetchServerBasicSettings,
   fetchServerCategories,
@@ -52,6 +53,7 @@ import {
   fetchServerTags,
   resolveRequestOrigin,
 } from '@/lib/serverApi';
+import { shouldRefreshListAfterAuthResolution } from '@/lib/listAuthSync';
 import { renderSafeMarkdown } from '@/lib/safeHtml';
 
 const formatDate = (date: Date | null): string => {
@@ -287,6 +289,7 @@ interface ListPageProps {
     total_pages: number;
   };
   initialQuery: Record<string, string>;
+  initialIsAdmin: boolean;
   initialDataLoaded: boolean;
   siteOrigin: string;
 }
@@ -299,12 +302,14 @@ export const getServerSideProps: GetServerSideProps<ListPageProps> = async ({ re
 
   try {
     const [
+      initialIsAdmin,
       initialBasicSettings,
       articleResponse,
       initialCategories,
       initialTags,
       initialCategoryStats,
     ] = await Promise.all([
+      fetchServerAuthState(req),
       fetchServerBasicSettings(req),
       fetchServerArticles(req, {
         page: Number.isFinite(page) && page > 0 ? page : 1,
@@ -343,6 +348,7 @@ export const getServerSideProps: GetServerSideProps<ListPageProps> = async ({ re
         initialCategoryStats,
         initialPagination: articleResponse.pagination,
         initialQuery,
+        initialIsAdmin,
         initialDataLoaded: true,
         siteOrigin,
       },
@@ -374,6 +380,7 @@ export const getServerSideProps: GetServerSideProps<ListPageProps> = async ({ re
           total_pages: 1,
         },
         initialQuery,
+        initialIsAdmin: false,
         initialDataLoaded: false,
         siteOrigin,
       },
@@ -388,6 +395,7 @@ export default function Home({
   initialCategoryStats,
   initialPagination,
   initialQuery,
+  initialIsAdmin,
   initialDataLoaded,
   siteOrigin,
 }: ListPageProps) {
@@ -669,10 +677,8 @@ export default function Home({
 
   const buildArticleHref = (slug: string) => {
     const from = `${currentListPath}#article-${slug}`;
-    const article = articles.find((item) => item.slug === slug);
     return buildNavigableArticleHref(slug, {
       from,
-      adminPreview: Boolean(isAdmin && article && article.is_visible === false),
     });
   };
   const articleLinkTarget = isMobile ? undefined : '_blank';
@@ -944,15 +950,19 @@ export default function Home({
     authResolvedRef.current = true;
     lastAdminStateRef.current = isAdmin;
 
-    if (!hasResolvedBefore) {
-      if (!isAdmin) return;
-    } else if (previousAdminState === isAdmin) {
+    if (!shouldRefreshListAfterAuthResolution({
+      hasResolvedBefore,
+      previousAdminState,
+      isAdmin,
+      initialDataLoaded,
+      initialIsAdmin,
+    })) {
       return;
     }
 
     fetchArticles();
     fetchCategoryStats();
-  }, [initialized, authLoading, isAdmin, fetchArticles, fetchCategoryStats]);
+  }, [initialized, authLoading, isAdmin, fetchArticles, fetchCategoryStats, initialDataLoaded, initialIsAdmin]);
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -1729,7 +1739,7 @@ export default function Home({
 
       if (createdArticleSlug) {
         const from = `${currentListPath}#article-${createdArticleSlug}`;
-        router.push(buildAdminPreviewArticleHref(createdArticleSlug, { from }));
+        router.push(buildNavigableArticleHref(createdArticleSlug, { from, preserveFrom: true }));
       }
     } catch (error: unknown) {
       const errMsg = error instanceof Error ? error.message : String(error);

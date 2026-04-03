@@ -28,6 +28,11 @@ interface CategoryStatSummary {
 	article_count: number;
 }
 
+interface AuthVerifyResponse {
+	valid: boolean;
+	role: string;
+}
+
 const normalizeBaseUrl = (value?: string | null): string =>
 	(value || "").trim().replace(/\/+$/, "");
 
@@ -69,9 +74,11 @@ export const fetchServerJson = async <T>(
 	path: string,
 ): Promise<T> => {
 	const baseUrl = resolveBackendBaseUrl(req);
+	const cookie = req?.headers?.cookie;
 	const response = await fetch(`${baseUrl}${path}`, {
 		headers: {
 			Accept: "application/json",
+			...(cookie ? { cookie } : {}),
 		},
 	});
 	if (!response.ok) {
@@ -82,6 +89,16 @@ export const fetchServerJson = async <T>(
 
 export const fetchServerBasicSettings = (req?: IncomingMessage) =>
 	fetchServerJson<BasicSettings>(req, "/api/settings/basic/public");
+
+export const fetchServerAuthState = async (
+	req?: IncomingMessage,
+): Promise<boolean> => {
+	const response = await fetchServerJson<AuthVerifyResponse>(
+		req,
+		"/api/auth/verify",
+	);
+	return response.valid && response.role === "admin";
+};
 
 export const fetchServerArticles = (
 	req: IncomingMessage | undefined,

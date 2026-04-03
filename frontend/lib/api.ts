@@ -212,31 +212,20 @@ const API_URL = getApiBaseUrl();
 
 const api = axios.create({
 	baseURL: API_URL,
+	withCredentials: true,
 	headers: {
 		"Content-Type": "application/json",
 	},
 });
 
-// ============ Token 管理 ============
+const LEGACY_WEB_ADMIN_TOKEN_KEY = "admin_token";
 
-const TOKEN_KEY = "admin_token";
-
-export const getToken = (): string | null => {
-	if (typeof window === "undefined") return null;
-	return localStorage.getItem(TOKEN_KEY);
-};
-
-export const setToken = (token: string): void => {
+export const clearLegacyWebAdminToken = (): void => {
 	if (typeof window === "undefined") return;
-	localStorage.setItem(TOKEN_KEY, token);
+	localStorage.removeItem(LEGACY_WEB_ADMIN_TOKEN_KEY);
 };
 
-export const removeToken = (): void => {
-	if (typeof window === "undefined") return;
-	localStorage.removeItem(TOKEN_KEY);
-};
-
-// ============ 请求拦截器：自动添加 token ============
+// ============ 请求拦截器 ============
 
 api.interceptors.request.use(
 	(config) => {
@@ -248,10 +237,6 @@ api.interceptors.request.use(
 				delete (config.headers as Record<string, unknown>)["Content-Type"];
 				delete (config.headers as Record<string, unknown>)["content-type"];
 			}
-		}
-		const token = getToken();
-		if (token) {
-			config.headers.Authorization = `Bearer ${token}`;
 		}
 		return config;
 	},
@@ -340,6 +325,11 @@ export const authApi = {
 		return response.data;
 	},
 
+	getExtensionToken: async (): Promise<LoginResponse> => {
+		const response = await api.post("/api/auth/extension-token");
+		return response.data;
+	},
+
 	/** 修改管理员密码 */
 	changePassword: async (
 		oldPassword: string,
@@ -349,6 +339,12 @@ export const authApi = {
 			old_password: oldPassword,
 			new_password: newPassword,
 		});
+		return response.data;
+	},
+
+	/** 管理员登出 */
+	logout: async (): Promise<{ message: string }> => {
+		const response = await api.post("/api/auth/logout");
 		return response.data;
 	},
 };
@@ -1359,20 +1355,10 @@ export const tagApi = {
 
 export const commentApi = {
 	getArticleComments: async (articleId: string): Promise<ArticleComment[]> => {
-		const token = getToken();
-		if (token) {
-			const response = await api.get(`/api/articles/${articleId}/comments`, {
-				params: { include_hidden: true },
-			});
-			return response.data as ArticleComment[];
-		}
-		const response = await fetch(`/api/comments/${articleId}`, {
-			credentials: "same-origin",
+		const response = await api.get(`/api/articles/${articleId}/comments`, {
+			params: { include_hidden: true },
 		});
-		if (!response.ok) {
-			throw new Error(localize("获取评论失败", "Failed to fetch comments"));
-		}
-		return response.json();
+		return response.data as ArticleComment[];
 	},
 	createArticleComment: async (
 		articleId: string,

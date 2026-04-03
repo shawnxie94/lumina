@@ -112,7 +112,7 @@ def test_check_is_admin_or_internal_falls_back_to_admin_check(monkeypatch):
     monkeypatch.setattr(
         dependencies,
         "check_is_admin",
-        lambda credentials, db: credentials == "token",
+        lambda request, credentials, db: credentials == "token",
     )
 
     assert (

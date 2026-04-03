@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 import jwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, Response, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -19,6 +19,8 @@ from models import get_db, AdminSettings, now_str
 # JWT 配置
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRATION_HOURS = 24 * 7  # 7 天有效期
+ADMIN_AUTH_COOKIE_NAME = "lumina_admin_token"
+ADMIN_AUTH_COOKIE_MAX_AGE = JWT_EXPIRATION_HOURS * 60 * 60
 
 # HTTP Bearer 认证
 security = HTTPBearer(auto_error=False)
@@ -106,6 +108,72 @@ def verify_token(token: str, jwt_secret: str) -> bool:
         return False
 
 
+def _request_scheme(request: Request) -> str:
+    forwarded_proto = (request.headers.get("x-forwarded-proto") or "").split(",")[0].strip()
+    if forwarded_proto:
+        return forwarded_proto
+    return request.url.scheme
+
+
+def should_use_secure_cookie(request: Request) -> bool:
+    return _request_scheme(request) == "https"
+
+
+def set_admin_auth_cookie(response: Response, token: str, request: Request) -> None:
+    response.set_cookie(
+        key=ADMIN_AUTH_COOKIE_NAME,
+        value=token,
+        max_age=ADMIN_AUTH_COOKIE_MAX_AGE,
+        httponly=True,
+        secure=should_use_secure_cookie(request),
+        samesite="lax",
+        path="/",
+    )
+
+
+def clear_admin_auth_cookie(response: Response, request: Request) -> None:
+    response.delete_cookie(
+        key=ADMIN_AUTH_COOKIE_NAME,
+        httponly=True,
+        secure=should_use_secure_cookie(request),
+        samesite="lax",
+        path="/",
+    )
+
+
+def extract_admin_token(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials],
+) -> Optional[str]:
+    if credentials is not None and credentials.credentials:
+        return credentials.credentials
+    cookie_token = request.cookies.get(ADMIN_AUTH_COOKIE_NAME)
+    if cookie_token:
+        return cookie_token
+    return None
+
+
+def sync_admin_auth_cookie_if_needed(
+    response: Response,
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials],
+    db: Session,
+) -> bool:
+    if request.cookies.get(ADMIN_AUTH_COOKIE_NAME):
+        return False
+    if credentials is None or not credentials.credentials:
+        return False
+
+    admin = get_admin_settings(db)
+    if admin is None:
+        return False
+    if not verify_token(credentials.credentials, admin.jwt_secret):
+        return False
+
+    set_admin_auth_cookie(response, credentials.credentials, request)
+    return True
+
+
 # ============ 数据库操作 ============
 
 
@@ -160,6 +228,7 @@ def update_admin_password(db: Session, admin: AdminSettings, new_password: str) 
 
 
 def get_current_admin(
+    request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
     db: Session = Depends(get_db),
 ) -> bool:
@@ -167,7 +236,8 @@ def get_current_admin(
     验证当前请求是否来自已登录的管理员
     用于保护需要管理员权限的路由
     """
-    if credentials is None:
+    token = extract_admin_token(request, credentials)
+    if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="未登录，请先登录",
@@ -181,7 +251,7 @@ def get_current_admin(
             detail="系统未初始化，请先设置管理员密码",
         )
 
-    if not verify_token(credentials.credentials, admin.jwt_secret):
+    if not verify_token(token, admin.jwt_secret):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="登录已过期，请重新登录",
@@ -192,6 +262,7 @@ def get_current_admin(
 
 
 def check_is_admin(
+    request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
     db: Session = Depends(get_db),
 ) -> bool:
@@ -199,11 +270,12 @@ def check_is_admin(
     检查当前请求是否来自已登录的管理员（不抛出异常）
     用于前端判断是否显示管理功能
     """
-    if credentials is None:
+    token = extract_admin_token(request, credentials)
+    if not token:
         return False
 
     admin = get_admin_settings(db)
     if admin is None:
         return False
 
-    return verify_token(credentials.credentials, admin.jwt_secret)
+    return verify_token(token, admin.jwt_secret)

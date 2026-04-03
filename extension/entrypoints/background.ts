@@ -73,7 +73,7 @@ const extractLuminaArticleSlug = (
 const buildAdminPreviewArticleUrl = (
 	frontendUrl: string,
 	slug: string,
-): string => `${frontendUrl}/article/${slug}?admin_preview=1`;
+): string => `${frontendUrl}/article/${slug}`;
 
 export default defineBackground(() => {
 	const resetCollectContextMenu = async (language: string): Promise<void> => {

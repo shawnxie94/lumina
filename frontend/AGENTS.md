@@ -32,7 +32,7 @@ frontend/
 | Page-specific guidance | `frontend/pages/AGENTS.md` | Large pages + UI flows |
 
 ## CONVENTIONS
-- API auth token stored in `localStorage` key `admin_token`; axios adds `Authorization: Bearer`.
+- Web admin auth uses the `lumina_admin_token` HttpOnly cookie; extension auth remains Bearer-token based.
 - UI language preference is persisted in `localStorage` key `ui_language`.
 - Prefer `useI18n().t(...)` for user-facing strings instead of hardcoded literal text.
 - Markdown is rendered through `renderSafeMarkdown`; keep KaTeX and sanitize allowlists in sync when adding tags.

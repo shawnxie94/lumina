@@ -1,6 +1,6 @@
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
@@ -14,7 +14,7 @@ from app.core.dependencies import (
 )
 from app.schemas import CommentCreate, CommentUpdate, CommentVisibilityUpdate
 from app.domain.article_query_service import ArticleQueryService
-from auth import get_current_admin, security
+from auth import check_is_admin, get_current_admin, security
 from models import Article, ArticleComment, get_db, now_str
 
 router = APIRouter()
@@ -25,6 +25,7 @@ article_query_service = ArticleQueryService()
 async def get_article_comments(
     article_slug: str,
     include_hidden: bool = False,
+    request: Request = None,
     db: Session = Depends(get_db),
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
 ):
@@ -35,11 +36,8 @@ async def get_article_comments(
         raise HTTPException(status_code=404, detail="文章不存在")
 
     is_admin = False
-    if include_hidden and credentials is not None:
-        try:
-            is_admin = bool(get_current_admin(credentials=credentials, db=db))
-        except HTTPException:
-            is_admin = False
+    if include_hidden and request is not None:
+        is_admin = bool(check_is_admin(request=request, credentials=credentials, db=db))
 
     query = db.query(ArticleComment).filter(ArticleComment.article_id == article.id)
     if not is_admin:

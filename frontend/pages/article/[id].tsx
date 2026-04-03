@@ -43,9 +43,7 @@ import {
 	type VersionedAIContentType,
 } from "@/lib/api";
 import {
-	ADMIN_PREVIEW_QUERY_KEY,
 	buildArticleHref as buildNavigableArticleHref,
-	isAdminPreviewEnabled,
 } from "@/lib/articlePreview";
 import AppFooter from "@/components/AppFooter";
 import AppHeader from "@/components/AppHeader";
@@ -1180,48 +1178,28 @@ interface ArticleDetailPageProps {
 	initialBasicSettings: BasicSettings;
 	initialArticle: ArticleDetail | null;
 	siteOrigin: string;
-	adminPreviewFallback: boolean;
 }
 
 export const getServerSideProps: GetServerSideProps<ArticleDetailPageProps> = async ({
 	req,
 	params,
-	query,
 }) => {
 	const slug = typeof params?.id === "string" ? params.id : "";
 	const siteOrigin = resolveRequestOrigin(req);
-	const adminPreviewFallback = isAdminPreviewEnabled(
-		query?.[ADMIN_PREVIEW_QUERY_KEY],
-	);
 	if (!slug) {
 		return { notFound: true };
 	}
 
 	try {
 		const initialBasicSettings = await fetchServerBasicSettings(req);
-		try {
-			const initialArticle = await fetchServerArticle(req, slug);
-			return {
-				props: {
-					initialBasicSettings,
-					initialArticle,
-					siteOrigin,
-					adminPreviewFallback: false,
-				},
-			};
-		} catch {
-			if (!adminPreviewFallback) {
-				return { notFound: true };
-			}
-			return {
-				props: {
-					initialBasicSettings,
-					initialArticle: null,
-					siteOrigin,
-					adminPreviewFallback: true,
-				},
-			};
-		}
+		const initialArticle = await fetchServerArticle(req, slug);
+		return {
+			props: {
+				initialBasicSettings,
+				initialArticle,
+				siteOrigin,
+			},
+		};
 	} catch {
 		return { notFound: true };
 	}
@@ -1230,7 +1208,6 @@ export const getServerSideProps: GetServerSideProps<ArticleDetailPageProps> = as
 export default function ArticleDetailPage({
 	initialArticle,
 	siteOrigin,
-	adminPreviewFallback,
 }: ArticleDetailPageProps) {
 	const router = useRouter();
 	const { showToast } = useToast();
@@ -1248,25 +1225,19 @@ export default function ArticleDetailPage({
 		}
 		return decodedFrom;
 	}, [router.query.from]);
-	const adminPreviewEnabled = isAdminPreviewEnabled(
-		router.query[ADMIN_PREVIEW_QUERY_KEY],
-	);
 
 	const buildArticleHref = useCallback(
 		(slug: string) =>
 			buildNavigableArticleHref(slug, {
 				from: listReturnHref,
-				adminPreview: adminPreviewEnabled,
 				preserveFrom: true,
 			}),
-		[adminPreviewEnabled, listReturnHref],
+		[listReturnHref],
 	);
 
 	const [article, setArticle] = useState<ArticleDetail | null>(initialArticle);
 	const [articleTasks, setArticleTasks] = useState<ArticleTaskListItem[]>([]);
-	const [loading, setLoading] = useState(
-		() => adminPreviewFallback && initialArticle === null,
-	);
+	const [loading, setLoading] = useState(false);
 	const [showTranslation, setShowTranslation] = useState(true);
 	const [analysisCollapsed, setAnalysisCollapsed] = useState(false);
 	const [activeAiTab, setActiveAiTab] = useState<AITabKey>("key_points");

@@ -9,7 +9,7 @@ import { IconCheck, IconLock, IconPlug } from '@/components/icons';
 import TextInput from '@/components/ui/TextInput';
 import { useAuth } from '@/contexts/AuthContext';
 import { useBasicSettings } from '@/contexts/BasicSettingsContext';
-import { getToken } from '@/lib/api';
+import { authApi } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 
 export default function ExtensionAuthPage() {
@@ -36,8 +36,7 @@ export default function ExtensionAuthPage() {
   const grantingTitle = `${t('扩展授权')} - ${basicSettings.site_name || 'Lumina'}`;
 
   const sendTokenToExtension = useCallback(async () => {
-    const token = getToken();
-    if (!token || !extension_id) return;
+    if (!extension_id) return;
 
     if (typeof window === 'undefined') return;
 
@@ -48,6 +47,7 @@ export default function ExtensionAuthPage() {
     }
 
     try {
+      const { token } = await authApi.getExtensionToken();
       await chromeApi.runtime.sendMessage(extension_id as string, {
         type: 'AUTH_TOKEN',
         token,

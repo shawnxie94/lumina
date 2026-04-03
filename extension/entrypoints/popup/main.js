@@ -36,7 +36,7 @@ class PopupController {
 	}
 
 	buildAdminPreviewArticleUrl(slug) {
-		return `${this.#apiClient.frontendUrl}/article/${slug}?admin_preview=1`;
+		return `${this.#apiClient.frontendUrl}/article/${slug}`;
 	}
 
 	async init() {

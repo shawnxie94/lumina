@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 
-import { authApi, getToken, setToken, removeToken } from '@/lib/api';
+import { authApi, clearLegacyWebAdminToken } from '@/lib/api';
 
 interface AuthContextType {
   isAdmin: boolean;
@@ -26,8 +26,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const status = await authApi.getStatus();
       setIsInitialized(status.initialized);
 
-      const token = getToken();
-      if (token) {
+      if (status.initialized) {
         const verify = await authApi.verify();
         setIsAdmin(verify.valid && verify.role === 'admin');
       } else {
@@ -41,30 +40,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    clearLegacyWebAdminToken();
     checkAuth();
   }, [checkAuth]);
 
   const login = async (password: string) => {
-    const response = await authApi.login(password);
-    setToken(response.token);
+    await authApi.login(password);
+    clearLegacyWebAdminToken();
     setIsAdmin(true);
   };
 
-  const logout = () => {
-    removeToken();
-    setIsAdmin(false);
-  };
+  const logout = useCallback(() => {
+    void authApi.logout().catch(() => undefined).finally(() => {
+      clearLegacyWebAdminToken();
+      setIsAdmin(false);
+    });
+  }, []);
 
   const setup = async (password: string) => {
-    const response = await authApi.setup(password);
-    setToken(response.token);
+    await authApi.setup(password);
+    clearLegacyWebAdminToken();
     setIsAdmin(true);
     setIsInitialized(true);
   };
 
   const changePassword = async (oldPassword: string, newPassword: string) => {
-    const response = await authApi.changePassword(oldPassword, newPassword);
-    setToken(response.token);
+    await authApi.changePassword(oldPassword, newPassword);
+    clearLegacyWebAdminToken();
   };
 
   return (
