@@ -183,5 +183,27 @@ export const fetchServerReviews = (
 	return fetchServerJson<ReviewIssueListResponse>(req, `/api/reviews${suffix}`);
 };
 
+export const fetchAllServerReviews = async (
+	req: IncomingMessage | undefined,
+	params: Record<string, string | number | undefined>,
+): Promise<ReviewIssue[]> => {
+	const firstPage = await fetchServerReviews(req, {
+		...params,
+		page: 1,
+	});
+	const reviews = [...(firstPage.data || [])];
+	const totalPages = Math.max(1, firstPage.pagination.total_pages || 1);
+
+	for (let page = 2; page <= totalPages; page += 1) {
+		const response = await fetchServerReviews(req, {
+			...params,
+			page,
+		});
+		reviews.push(...(response.data || []));
+	}
+
+	return reviews;
+};
+
 export const fetchServerReview = (req: IncomingMessage | undefined, slug: string) =>
 	fetchServerJson<ReviewIssue>(req, `/api/reviews/${encodeURIComponent(slug)}`);

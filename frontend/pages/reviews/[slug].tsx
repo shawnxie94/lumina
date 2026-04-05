@@ -821,6 +821,10 @@ export default function ReviewDetailPage({
 		siteOrigin,
 		review.top_image || siteSettings.site_logo_url || "/logo.png",
 	);
+	const publisherLogoUrl = resolveSeoAssetUrl(
+		siteOrigin,
+		siteSettings.site_logo_url || "/logo.png",
+	);
 	const templateCategoryText = useMemo(() => {
 		const categoryNames = review.template?.category_names || [];
 		return categoryNames.length > 0 ? categoryNames.join("、") : t("全部分类");
@@ -830,6 +834,57 @@ export default function ReviewDetailPage({
 		() => (review.template?.description || "").trim(),
 		[review.template?.description],
 	);
+	const breadcrumbStructuredData = {
+		"@context": "https://schema.org",
+		"@type": "BreadcrumbList",
+		itemListElement: [
+			{
+				"@type": "ListItem",
+				position: 1,
+				name: t("主页"),
+				item: buildCanonicalUrl(siteOrigin, "/"),
+			},
+			{
+				"@type": "ListItem",
+				position: 2,
+				name: t("回顾"),
+				item: buildCanonicalUrl(siteOrigin, "/reviews"),
+			},
+			{
+				"@type": "ListItem",
+				position: 3,
+				name: review.title,
+				item: canonicalUrl,
+			},
+		],
+	};
+	const reviewStructuredData = {
+		"@context": "https://schema.org",
+		"@type": "BlogPosting",
+		headline: review.title,
+		description: seoDescription,
+		mainEntityOfPage: canonicalUrl,
+		url: canonicalUrl,
+		image: seoImageUrl || undefined,
+		datePublished: review.published_at || review.created_at,
+		dateModified: review.updated_at,
+		articleSection: review.template?.name || undefined,
+		about: review.category_names.length > 0 ? review.category_names : undefined,
+		publisher: {
+			"@type": "Organization",
+			name: siteName,
+			logo: publisherLogoUrl
+				? {
+						"@type": "ImageObject",
+						url: publisherLogoUrl,
+					}
+				: undefined,
+		},
+		author: {
+			"@type": "Organization",
+			name: siteName,
+		},
+	};
 
 	const sortedTopComments = useMemo(
 		() =>
@@ -1380,6 +1435,7 @@ export default function ReviewDetailPage({
 					(isEditing ? publishedAt : review.published_at) || review.created_at
 				}
 				modifiedTime={review.updated_at}
+				structuredData={[breadcrumbStructuredData, reviewStructuredData]}
 			/>
 			<ReadingProgress />
 			<AppHeader />

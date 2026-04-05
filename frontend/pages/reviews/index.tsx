@@ -39,7 +39,14 @@ import {
 	reviewApi,
 } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
-import { buildCanonicalUrl, buildMetaDescription, buildPathWithQuery, resolveSeoAssetUrl } from "@/lib/seo";
+import {
+	buildCanonicalUrl,
+	buildMetaDescription,
+	buildPathWithQuery,
+	getReviewListPageSeo,
+	resolveReviewListTemplateName,
+	resolveSeoAssetUrl,
+} from "@/lib/seo";
 import {
 	fetchServerAuthState,
 	fetchServerBasicSettings,
@@ -53,6 +60,7 @@ interface ReviewListPageProps {
 	initialBasicSettings: BasicSettings;
 	initialReviews: ReviewIssue[];
 	initialTemplateFilters: ReviewTemplateFilterItem[];
+	initialSelectedTemplateName: string | null;
 	initialPagination: ReviewIssueListResponse["pagination"];
 	initialQuery: ReviewListQuery;
 	initialIsAdmin: boolean;
@@ -153,12 +161,37 @@ export const getServerSideProps: GetServerSideProps<ReviewListPageProps> = async
 				visibility: initialQuery.visibility,
 			}),
 		]);
+		let initialSelectedTemplateName: string | null = null;
+		if (initialQuery.template_id) {
+			initialSelectedTemplateName =
+				reviewsResponse.filters?.templates?.find(
+					(template) => template.id === initialQuery.template_id,
+				)?.name || null;
+			if (!initialSelectedTemplateName) {
+				try {
+					const fallbackResponse = await fetchServerReviews(req, {
+						page: 1,
+						size: 1,
+						template_id: initialQuery.template_id,
+					});
+					initialSelectedTemplateName =
+						fallbackResponse.filters?.templates?.find(
+							(template) => template.id === initialQuery.template_id,
+						)?.name ||
+						fallbackResponse.data?.[0]?.template?.name ||
+						null;
+				} catch {
+					initialSelectedTemplateName = null;
+				}
+			}
+		}
 
 		return {
 			props: {
 				initialBasicSettings,
 				initialReviews: reviewsResponse.data || [],
 				initialTemplateFilters: reviewsResponse.filters?.templates || [],
+				initialSelectedTemplateName,
 				initialPagination: reviewsResponse.pagination,
 				initialQuery,
 				initialIsAdmin,
@@ -184,6 +217,7 @@ export const getServerSideProps: GetServerSideProps<ReviewListPageProps> = async
 				},
 				initialReviews: [],
 				initialTemplateFilters: [],
+				initialSelectedTemplateName: null,
 				initialPagination: {
 					page: 1,
 					size: 10,
@@ -202,6 +236,7 @@ export const getServerSideProps: GetServerSideProps<ReviewListPageProps> = async
 export default function ReviewListPage({
 	initialReviews,
 	initialTemplateFilters,
+	initialSelectedTemplateName,
 	initialPagination,
 	initialQuery,
 	initialIsAdmin,
@@ -250,12 +285,62 @@ export default function ReviewListPage({
 	const siteDescription = buildMetaDescription(
 		`${siteName} ${t("回顾")} ${t("复盘内容重点，沉淀周期总结")}`,
 	);
-	const canonicalUrl = buildCanonicalUrl(siteOrigin, "/reviews");
 	const seoImageUrl = resolveSeoAssetUrl(siteOrigin, basicSettings.site_logo_url || "/logo.png");
 	const defaultTopImageUrl = useMemo(
 		() => resolveMediaUrl(basicSettings.site_logo_url || "/logo.png"),
 		[basicSettings.site_logo_url],
 	);
+	const selectedTemplateName = useMemo(
+		() =>
+			resolveReviewListTemplateName({
+				selectedTemplateId,
+				templateFilters,
+				fallbackTemplateName: initialSelectedTemplateName,
+			}),
+		[initialSelectedTemplateName, selectedTemplateId, templateFilters],
+	);
+	const reviewListSeo = useMemo(
+		() =>
+			getReviewListPageSeo(initialQuery, {
+				siteName,
+				siteDescription,
+				templateName: selectedTemplateName,
+			}),
+		[initialQuery, selectedTemplateName, siteDescription, siteName],
+	);
+	const canonicalUrl = useMemo(
+		() => buildCanonicalUrl(siteOrigin, "/reviews", reviewListSeo.canonicalQuery),
+		[siteOrigin, reviewListSeo.canonicalQuery],
+	);
+	const reviewListHeading = useMemo(() => {
+		const pageLabel = currentPage > 1 ? ` - ${t("第")} ${currentPage} ${t("页")}` : "";
+		if (selectedTemplateName) {
+			return `${selectedTemplateName}${t("回顾")}${pageLabel}`;
+		}
+		return `${t("回顾")}${pageLabel}`;
+	}, [currentPage, selectedTemplateName, t]);
+	const reviewListStructuredData = reviewListSeo.indexable ? [
+		{
+			"@context": "https://schema.org",
+			"@type": "CollectionPage",
+			name: reviewListSeo.title,
+			description: reviewListSeo.description,
+			url: canonicalUrl,
+		},
+		{
+			"@context": "https://schema.org",
+			"@type": "ItemList",
+			name: reviewListHeading,
+			itemListOrder: "https://schema.org/ItemListOrderDescending",
+			numberOfItems: reviews.length,
+			itemListElement: reviews.map((review, index) => ({
+				"@type": "ListItem",
+				position: index + 1,
+				url: buildCanonicalUrl(siteOrigin, `/reviews/${review.slug}`),
+				name: review.title,
+			})),
+		},
+	] : [];
 
 	const buildNextQuery = useCallback((
 		overrides?: Partial<Record<keyof ReviewListQuery, string | undefined>>,
@@ -487,11 +572,13 @@ export default function ReviewListPage({
 	return (
 		<div className="min-h-screen bg-app flex flex-col">
 			<SeoHead
-				title={`${siteName} - ${t("回顾")}`}
-				description={siteDescription}
+				title={reviewListSeo.title}
+				description={reviewListSeo.description}
 				canonicalUrl={canonicalUrl}
+				robots={reviewListSeo.robots}
 				imageUrl={seoImageUrl}
 				siteName={siteName}
+				structuredData={reviewListStructuredData}
 			/>
 			<AppHeader />
 			<div className="lg:hidden border-b border-border bg-surface panel-subtle">
@@ -516,6 +603,10 @@ export default function ReviewListPage({
 			</div>
 			<main className="flex-1">
 				<div className="max-w-7xl mx-auto px-4 py-6 sm:py-8">
+					<div className="sr-only">
+						<h1 className="text-2xl font-semibold text-text-1">{reviewListHeading}</h1>
+						<p className="mt-2 text-sm text-text-2">{reviewListSeo.description}</p>
+					</div>
 					<div className="flex flex-col lg:flex-row gap-6">
 						<aside
 							className={`hidden lg:block flex-shrink-0 w-full transition-all duration-300 ${
@@ -599,7 +690,6 @@ export default function ReviewListPage({
 												onChange={(event) => setSearchTerm(event.target.value)}
 												placeholder={t("模糊匹配标题")}
 												className="flex-1 min-w-0"
-												compact
 											/>
 										</div>
 										<div className="flex flex-1 min-w-0 items-center gap-2">

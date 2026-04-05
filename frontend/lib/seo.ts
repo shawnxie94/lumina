@@ -43,6 +43,28 @@ export interface ListSeoOptions {
 	authorName?: string | null;
 }
 
+export interface ReviewListSeoQuery {
+	template_id?: string;
+	search?: string;
+	published_at_start?: string;
+	published_at_end?: string;
+	visibility?: string;
+	page?: string;
+	size?: string;
+}
+
+export interface ReviewListSeoOptions {
+	siteName?: string;
+	siteDescription?: string;
+	templateName?: string | null;
+}
+
+export interface ReviewListTemplateNameOptions {
+	selectedTemplateId?: string | null;
+	templateFilters?: Array<{ id: string; name: string }> | null;
+	fallbackTemplateName?: string | null;
+}
+
 export interface ListSeoResult {
 	indexable: boolean;
 	robots: string;
@@ -127,6 +149,15 @@ const hasAnyLowValueFilter = (query: ListSeoQuery): boolean =>
 			query.size,
 	);
 
+const hasAnyLowValueReviewFilter = (query: ReviewListSeoQuery): boolean =>
+	Boolean(
+		query.search ||
+			query.published_at_start ||
+			query.published_at_end ||
+			query.visibility ||
+			query.size,
+	);
+
 const countPrimaryFacets = (query: ListSeoQuery): number => {
 	let count = 0;
 	if (query.category_id) count += 1;
@@ -152,6 +183,33 @@ export const buildCanonicalListQuery = (query: ListSeoQuery): Record<string, str
 		nextQuery.page = query.page;
 	}
 	return nextQuery;
+};
+
+export const buildCanonicalReviewListQuery = (
+	query: ReviewListSeoQuery,
+): Record<string, string> => {
+	const nextQuery: Record<string, string> = {};
+	const isIndexable = !hasAnyLowValueReviewFilter(query);
+	if (query.template_id) {
+		nextQuery.template_id = query.template_id;
+	}
+	if (isIndexable && query.page && query.page !== "1") {
+		nextQuery.page = query.page;
+	}
+	return nextQuery;
+};
+
+export const resolveReviewListTemplateName = ({
+	selectedTemplateId,
+	templateFilters,
+	fallbackTemplateName,
+}: ReviewListTemplateNameOptions): string | null => {
+	const normalizedSelectedTemplateId = (selectedTemplateId || "").trim();
+	if (!normalizedSelectedTemplateId) return null;
+	const matchedTemplateName =
+		templateFilters?.find((template) => template.id === normalizedSelectedTemplateId)?.name ||
+		"";
+	return matchedTemplateName || (fallbackTemplateName || "").trim() || null;
 };
 
 const buildListTitle = (
@@ -226,6 +284,53 @@ export const getListPageSeo = (
 		title: buildListTitle(query, options),
 		description: buildListDescription(query, options),
 		canonicalQuery: buildCanonicalListQuery(query),
+	};
+};
+
+const buildReviewListTitle = (
+	query: ReviewListSeoQuery,
+	options: ReviewListSeoOptions,
+): string => {
+	const siteName = options.siteName || DEFAULT_SITE_NAME;
+	const page = Number.parseInt(query.page || "1", 10);
+	const pageLabel = Number.isFinite(page) && page > 1 ? ` - 第 ${page} 页` : "";
+	if (options.templateName || query.template_id) {
+		return `${options.templateName || query.template_id} - 回顾列表${pageLabel} - ${siteName}`;
+	}
+	return `回顾列表${pageLabel} - ${siteName}`;
+};
+
+const buildReviewListDescription = (
+	query: ReviewListSeoQuery,
+	options: ReviewListSeoOptions,
+): string => {
+	const siteDescription = options.siteDescription || DEFAULT_SITE_DESCRIPTION;
+	if (options.templateName || query.template_id) {
+		return `浏览 ${(options.templateName || query.template_id) as string} 模板下的公开回顾、总结与周期复盘。${siteDescription}`;
+	}
+	return `浏览最新公开回顾、总结与周期复盘。${siteDescription}`;
+};
+
+export const getReviewListPageSeo = (
+	rawQuery: Record<string, string | string[] | undefined>,
+	options: ReviewListSeoOptions = {},
+): ListSeoResult => {
+	const query: ReviewListSeoQuery = {
+		template_id: pickFirst(rawQuery.template_id),
+		search: pickFirst(rawQuery.search),
+		published_at_start: pickFirst(rawQuery.published_at_start),
+		published_at_end: pickFirst(rawQuery.published_at_end),
+		visibility: pickFirst(rawQuery.visibility),
+		page: pickFirst(rawQuery.page),
+		size: pickFirst(rawQuery.size),
+	};
+	const indexable = !hasAnyLowValueReviewFilter(query);
+	return {
+		indexable,
+		robots: buildRobotsDirectives({ index: indexable, follow: true }),
+		title: buildReviewListTitle(query, options),
+		description: buildReviewListDescription(query, options),
+		canonicalQuery: buildCanonicalReviewListQuery(query),
 	};
 };
 

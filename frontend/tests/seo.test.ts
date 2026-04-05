@@ -5,12 +5,15 @@ import path from "node:path";
 
 import {
   buildCanonicalListQuery,
+  buildCanonicalReviewListQuery,
   buildMetaDescription,
   buildRobotsDirectives,
   buildSitemapXml,
   getListPageSeo,
+  getReviewListPageSeo,
+  resolveReviewListTemplateName,
 } from "@/lib/seo";
-import { fetchAllServerArticles } from "@/lib/serverApi";
+import { fetchAllServerArticles, fetchAllServerReviews } from "@/lib/serverApi";
 
 test("list SEO allows indexing for plain pagination", () => {
   const seo = getListPageSeo({
@@ -60,6 +63,75 @@ test("list SEO marks date filters and mixed facets as noindex", () => {
 
   assert.equal(seo.indexable, false);
   assert.equal(seo.robots, "noindex,follow");
+});
+
+test("review list SEO allows indexing for plain pagination and template filters", () => {
+  const plainSeo = getReviewListPageSeo({
+    page: "2",
+  });
+  const templateSeo = getReviewListPageSeo(
+    {
+      template_id: "weekly-review",
+      page: "3",
+    },
+    {
+      templateName: "Weekly Review",
+    },
+  );
+
+  assert.equal(plainSeo.indexable, true);
+  assert.equal(plainSeo.robots, "index,follow");
+  assert.deepEqual(buildCanonicalReviewListQuery({ page: "2" }), { page: "2" });
+  assert.equal(templateSeo.indexable, true);
+  assert.equal(templateSeo.robots, "index,follow");
+  assert.match(templateSeo.title, /Weekly Review/i);
+  assert.deepEqual(
+    buildCanonicalReviewListQuery({ template_id: "weekly-review", page: "3" }),
+    {
+      template_id: "weekly-review",
+      page: "3",
+    },
+  );
+});
+
+test("review list SEO marks search, visibility, and date filters as noindex", () => {
+  const searchSeo = getReviewListPageSeo({
+    template_id: "weekly-review",
+    search: "AI",
+    page: "2",
+  });
+  const visibilitySeo = getReviewListPageSeo({
+    visibility: "draft",
+  });
+  const dateSeo = getReviewListPageSeo({
+    published_at_start: "2026-04-01",
+    published_at_end: "2026-04-05",
+  });
+
+  assert.equal(searchSeo.indexable, false);
+  assert.equal(searchSeo.robots, "noindex,follow");
+  assert.deepEqual(
+    buildCanonicalReviewListQuery({
+      template_id: "weekly-review",
+      search: "AI",
+      page: "2",
+    }),
+    {
+      template_id: "weekly-review",
+    },
+  );
+  assert.equal(visibilitySeo.indexable, false);
+  assert.equal(dateSeo.indexable, false);
+});
+
+test("review list template name falls back when filtered template list no longer includes the selected template", () => {
+  const resolved = resolveReviewListTemplateName({
+    selectedTemplateId: "weekly-review",
+    templateFilters: [{ id: "", name: "全部回顾", slug: "", count: 0 }],
+    fallbackTemplateName: "Weekly Review",
+  });
+
+  assert.equal(resolved, "Weekly Review");
 });
 
 test("robots directives support noindex and nofollow combinations", () => {
@@ -192,6 +264,29 @@ test("list page only emits collection structured data for indexable aggregations
   assert.match(source, /structuredData=\{listStructuredData\}/);
 });
 
+test("review list page keeps heading copy available for SEO and scopes indexing to template filters", () => {
+  const source = readPageSource("pages/reviews/index.tsx");
+
+  assert.match(source, /initialSelectedTemplateName: string \| null;/);
+  assert.match(source, /const reviewListSeo = useMemo\(/);
+  assert.match(source, /resolveReviewListTemplateName\(/);
+  assert.match(source, /fallbackTemplateName: initialSelectedTemplateName/);
+  assert.match(source, /const reviewListStructuredData = reviewListSeo\.indexable \?/);
+  assert.match(source, /<div className="sr-only">/);
+  assert.match(source, /reviewListSeo\.description/);
+  assert.match(source, /robots=\{reviewListSeo\.robots\}/);
+});
+
+test("review detail page emits breadcrumb and article structured data", () => {
+  const source = readPageSource("pages/reviews/[slug].tsx");
+
+  assert.match(source, /"@type": "BreadcrumbList"/);
+  assert.match(source, /"@type": "BlogPosting"/);
+  assert.match(source, /structuredData=\{\[breadcrumbStructuredData, reviewStructuredData\]\}/);
+  assert.match(source, /aria-label="Breadcrumb"/);
+  assert.match(source, /className="sr-only"/);
+});
+
 test("list page renders category filters as crawlable links", () => {
   const source = readPageSource("pages/list.tsx");
 
@@ -205,6 +300,9 @@ test("sitemap page excludes tag and author aggregation URLs", () => {
   const source = readPageSource("pages/sitemap.xml.tsx");
 
   assert.match(source, /buildCategoryEntries/);
+  assert.match(source, /buildReviewEntries/);
+  assert.match(source, /fetchAllServerReviews/);
+  assert.match(source, /buildCanonicalUrl\(origin, "\/reviews"\)/);
   assert.doesNotMatch(source, /buildTagEntries/);
   assert.doesNotMatch(source, /buildAuthorEntries/);
   assert.doesNotMatch(source, /fetchServerTags/);
@@ -250,6 +348,52 @@ test("fetchAllServerArticles paginates until every page is collected", async () 
     assert.deepEqual(
       articles.map((article) => article.slug),
       ["first", "second", "third"],
+    );
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("fetchAllServerReviews paginates until every page is collected", async () => {
+  const calls: string[] = [];
+  const originalFetch = global.fetch;
+
+  global.fetch = (async (input: string | URL | Request) => {
+    const url = String(input);
+    calls.push(url);
+    const page = Number(new URL(url).searchParams.get("page") || "1");
+    const payload =
+      page === 1
+        ? {
+            data: [{ slug: "review-first" }],
+            filters: { templates: [] },
+            pagination: { page: 1, size: 2, total: 3, total_pages: 2 },
+          }
+        : {
+            data: [{ slug: "review-second" }, { slug: "review-third" }],
+            filters: { templates: [] },
+            pagination: { page: 2, size: 2, total: 3, total_pages: 2 },
+          };
+
+    return new Response(JSON.stringify(payload), {
+      status: 200,
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+  }) as typeof fetch;
+
+  try {
+    const reviews = await fetchAllServerReviews(undefined, {
+      size: 2,
+    });
+
+    assert.equal(calls.length, 2);
+    assert.match(calls[0], /page=1/);
+    assert.match(calls[1], /page=2/);
+    assert.deepEqual(
+      reviews.map((review) => review.slug),
+      ["review-first", "review-second", "review-third"],
     );
   } finally {
     global.fetch = originalFetch;
