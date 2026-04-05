@@ -30,11 +30,14 @@ from models import (
 )
 
 REVIEW_ARTICLE_SECTIONS_PLACEHOLDER = "{{review_article_sections}}"
-SINGLE_BRACE_REVIEW_ARTICLE_SECTIONS_PLACEHOLDER = "{review_article_sections}"
 SINGLE_BRACE_REVIEW_ARTICLE_SECTIONS_PATTERN = re.compile(
     r"(?<!\{)\{review_article_sections\}(?!\})"
 )
 ARTICLE_PLACEHOLDER_PATTERN = re.compile(r"\{\{([a-z0-9][a-z0-9-]*)\}\}")
+SINGLE_BRACE_TEMPLATE_TOKEN_PATTERN = re.compile(
+    r"(?<!\{)\{([a-zA-Z_][a-zA-Z0-9_]*)\}(?!\})"
+)
+MARKDOWN_HEADING_PATTERN = re.compile(r"^(#{1,6})\s+.+$")
 ISSUE_SLUG_VERSION_SUFFIX_PATTERN = re.compile(r"-v\d+$")
 DEFAULT_REVIEW_SYSTEM_PROMPT = (
     "你是一名技术内容主编，擅长把一组文章整理成结构清晰、判断克制、可直接发布前再润色的中文回顾草稿。"
@@ -405,12 +408,19 @@ class ReviewService:
             published_at_end=published_at_end,
             visibility=visibility,
         )
-        ordered_items = base_query.order_by(*self._issue_list_order_by()).all()
-        groups = self._group_issue_versions(ordered_items)
-        total = len(groups)
-        offset = (page - 1) * size
-        paged_groups = groups[offset : offset + size]
-        return [self.serialize_issue_group_card(db, group) for group in paged_groups], total
+        primary_group_query, primary_group_subquery = self._build_primary_issue_group_query(
+            base_query
+        )
+        total = primary_group_query.count()
+        primary_rows = (
+            primary_group_query
+            .order_by(*self._primary_issue_group_order_by(primary_group_subquery))
+            .offset(max(0, (page - 1) * size))
+            .limit(size)
+            .all()
+        )
+        groups = self._load_issue_groups_for_primary_rows(db, base_query, primary_rows)
+        return self.serialize_issue_group_cards(db, groups), total
 
     def get_issue_template_filters(
         self,
@@ -431,23 +441,35 @@ class ReviewService:
             published_at_end=published_at_end,
             visibility=visibility,
         )
-        ordered_items = base_query.order_by(*self._issue_list_order_by()).all()
-        groups = self._group_issue_versions(ordered_items)
+        primary_group_query, primary_group_subquery = self._build_primary_issue_group_query(
+            base_query
+        )
         counts_by_template: dict[str, int] = {}
         template_meta: dict[str, dict[str, str]] = {}
-        ordered_template_ids: list[str] = []
-        for group in groups:
-            primary = group[0]
-            if not primary.template:
-                continue
-            template_id_value = primary.template.id
-            if template_id_value not in template_meta:
-                ordered_template_ids.append(template_id_value)
-            counts_by_template[template_id_value] = counts_by_template.get(template_id_value, 0) + 1
-            template_meta[template_id_value] = {
-                "name": primary.template.name,
-                "slug": primary.template.slug,
+        template_rows = self._load_issue_template_filter_rows(
+            db,
+            base_query,
+            primary_group_subquery,
+        )
+        template_ids = {row.template_id for row in template_rows if row.template_id}
+        if template_ids:
+            template_meta_rows = (
+                db.query(ReviewTemplate.id, ReviewTemplate.name, ReviewTemplate.slug)
+                .filter(ReviewTemplate.id.in_(template_ids))
+                .all()
+            )
+            template_meta = {
+                row.id: {
+                    "name": row.name,
+                    "slug": row.slug,
+                }
+                for row in template_meta_rows
             }
+        for row in template_rows:
+            template_id_value = row.template_id
+            if not template_id_value or template_id_value not in template_meta:
+                continue
+            counts_by_template[template_id_value] = int(row.count or 0)
         total_count = sum(counts_by_template.values())
         items = [
             {
@@ -464,7 +486,11 @@ class ReviewService:
                 "slug": template_meta[template_id_value]["slug"],
                 "count": counts_by_template[template_id_value],
             }
-            for template_id_value in ordered_template_ids
+            for template_id_value in [
+                row.template_id
+                for row in template_rows
+                if row.template_id in template_meta
+            ]
         )
         return items
 
@@ -775,12 +801,15 @@ class ReviewService:
         template: ReviewTemplate,
         article_outline_markdown: str,
     ) -> str:
-        return prompt_template.format(
-            content="{content}",
-            period_label=self._period_label_for_issue(issue),
-            template_name=template.name,
-            article_sections_placeholder=REVIEW_ARTICLE_SECTIONS_PLACEHOLDER,
-            article_outline_markdown=article_outline_markdown,
+        return self._render_template_tokens(
+            prompt_template,
+            {
+                "content": "{content}",
+                "period_label": self._period_label_for_issue(issue),
+                "template_name": template.name,
+                "article_sections_placeholder": REVIEW_ARTICLE_SECTIONS_PLACEHOLDER,
+                "article_outline_markdown": article_outline_markdown,
+            },
         )
 
     def _resolve_review_ai_config(
@@ -831,8 +860,30 @@ class ReviewService:
         )
 
     def serialize_issue_card(self, db: Session, issue: ReviewIssue) -> dict[str, Any]:
-        categories = self._resolve_issue_category_names(db, issue)
-        top_image = self._resolve_issue_top_image_for_output(db, issue)
+        (
+            category_names_map,
+            comment_count_map,
+            top_image_map,
+        ) = self._load_issue_card_resolution_maps(
+            db,
+            [issue],
+            include_hidden=False,
+        )
+        return self._serialize_issue_card_from_resolved(
+            issue,
+            categories=category_names_map.get(issue.id, []),
+            top_image=top_image_map.get(issue.id, ""),
+            comment_count=comment_count_map.get(issue.id, 0),
+        )
+
+    def _serialize_issue_card_from_resolved(
+        self,
+        issue: ReviewIssue,
+        *,
+        categories: list[str],
+        top_image: str,
+        comment_count: int,
+    ) -> dict[str, Any]:
         return {
             "id": issue.id,
             "slug": issue.slug,
@@ -849,24 +900,42 @@ class ReviewService:
             "category_names": categories,
             "summary": self._build_issue_excerpt(issue.markdown_content),
             "view_count": int(issue.view_count or 0),
-            "comment_count": self.get_issue_comment_count(
-                db,
-                issue.id,
-                include_hidden=False,
-            ),
+            "comment_count": int(comment_count or 0),
         }
 
-    def serialize_issue_group_card(
+    def serialize_issue_group_cards(
         self,
         db: Session,
-        issues: list[ReviewIssue],
-    ) -> dict[str, Any]:
-        primary_issue = issues[0]
-        return {
-            **self.serialize_issue_card(db, primary_issue),
-            "version_count": len(issues),
-            "versions": [self._serialize_issue_version(issue) for issue in issues],
-        }
+        groups: list[list[ReviewIssue]],
+    ) -> list[dict[str, Any]]:
+        primary_issues = [group[0] for group in groups if group]
+        (
+            category_names_map,
+            comment_count_map,
+            top_image_map,
+        ) = self._load_issue_card_resolution_maps(
+            db,
+            primary_issues,
+            include_hidden=False,
+        )
+        payload: list[dict[str, Any]] = []
+        for group in groups:
+            if not group:
+                continue
+            primary_issue = group[0]
+            payload.append(
+                {
+                    **self._serialize_issue_card_from_resolved(
+                        primary_issue,
+                        categories=category_names_map.get(primary_issue.id, []),
+                        top_image=top_image_map.get(primary_issue.id, ""),
+                        comment_count=comment_count_map.get(primary_issue.id, 0),
+                    ),
+                    "version_count": len(group),
+                    "versions": [self._serialize_issue_version(issue) for issue in group],
+                }
+            )
+        return payload
 
     def serialize_issue_detail(self, db: Session, issue: ReviewIssue, *, is_admin: bool) -> dict[str, Any]:
         prev_review, next_review = self.get_issue_neighbors(db, issue)
@@ -1246,14 +1315,8 @@ class ReviewService:
                 next_line = next_line.replace(token, "")
             if not should_drop_line:
                 rendered_lines.append(next_line.rstrip())
-        return "\n".join(rendered_lines).strip()
-
-    def _group_issue_versions(self, issues: list[ReviewIssue]) -> list[list[ReviewIssue]]:
-        groups: dict[tuple[str, str, str], list[ReviewIssue]] = {}
-        for issue in issues:
-            key = (issue.template_id, issue.window_start, issue.window_end)
-            groups.setdefault(key, []).append(issue)
-        return list(groups.values())
+        rendered = "\n".join(rendered_lines).strip()
+        return self._prune_empty_markdown_headings(rendered)
 
     def _issue_list_order_by(self) -> tuple[Any, ...]:
         return (
@@ -1261,6 +1324,115 @@ class ReviewService:
             ReviewIssue.published_at.desc(),
             ReviewIssue.created_at.desc(),
             ReviewIssue.id.desc(),
+        )
+
+    def _primary_issue_group_order_by(self, primary_issue_group_subquery) -> tuple[Any, ...]:
+        return (
+            primary_issue_group_subquery.c.draft_sort.asc(),
+            primary_issue_group_subquery.c.published_at.desc(),
+            primary_issue_group_subquery.c.created_at.desc(),
+            primary_issue_group_subquery.c.issue_id.desc(),
+        )
+
+    def _build_primary_issue_group_query(self, base_query):
+        draft_sort = case((ReviewIssue.published_at.is_(None), 0), else_=1)
+        primary_issue_group_subquery = (
+            base_query.with_entities(
+                ReviewIssue.id.label("issue_id"),
+                ReviewIssue.template_id.label("template_id"),
+                ReviewIssue.window_start.label("window_start"),
+                ReviewIssue.window_end.label("window_end"),
+                draft_sort.label("draft_sort"),
+                ReviewIssue.published_at.label("published_at"),
+                ReviewIssue.created_at.label("created_at"),
+                func.row_number()
+                .over(
+                    partition_by=(
+                        ReviewIssue.template_id,
+                        ReviewIssue.window_start,
+                        ReviewIssue.window_end,
+                    ),
+                    order_by=self._issue_list_order_by(),
+                )
+                .label("group_rank"),
+            )
+            .subquery()
+        )
+        return (
+            base_query.session.query(primary_issue_group_subquery)
+            .filter(primary_issue_group_subquery.c.group_rank == 1),
+            primary_issue_group_subquery,
+        )
+
+    def _load_issue_groups_for_primary_rows(
+        self,
+        db: Session,
+        base_query,
+        primary_rows: list[Any],
+    ) -> list[list[ReviewIssue]]:
+        if not primary_rows:
+            return []
+        ordered_keys: list[tuple[str, str, str]] = []
+        grouped_issues: dict[tuple[str, str, str], list[ReviewIssue]] = {}
+        filters = []
+        for row in primary_rows:
+            key = (row.template_id, row.window_start, row.window_end)
+            ordered_keys.append(key)
+            grouped_issues[key] = []
+            filters.append(
+                and_(
+                    ReviewIssue.template_id == row.template_id,
+                    ReviewIssue.window_start == row.window_start,
+                    ReviewIssue.window_end == row.window_end,
+                )
+            )
+        filtered_issue_ids = base_query.with_entities(ReviewIssue.id).subquery()
+        issues = (
+            db.query(ReviewIssue)
+            .options(joinedload(ReviewIssue.template))
+            .filter(ReviewIssue.id.in_(db.query(filtered_issue_ids.c.id)))
+            .filter(or_(*filters))
+            .order_by(*self._issue_list_order_by())
+            .all()
+        )
+        for issue in issues:
+            key = (issue.template_id, issue.window_start, issue.window_end)
+            if key in grouped_issues:
+                grouped_issues[key].append(issue)
+        return [grouped_issues[key] for key in ordered_keys if grouped_issues.get(key)]
+
+    def _load_issue_template_filter_rows(
+        self,
+        db: Session,
+        base_query,
+        primary_group_subquery,
+    ) -> list[Any]:
+        primary_groups_subquery = (
+            base_query.session.query(
+                primary_group_subquery.c.template_id.label("template_id"),
+                primary_group_subquery.c.draft_sort.label("draft_sort"),
+                primary_group_subquery.c.published_at.label("published_at"),
+                primary_group_subquery.c.created_at.label("created_at"),
+                primary_group_subquery.c.issue_id.label("issue_id"),
+                func.count()
+                .over(partition_by=primary_group_subquery.c.template_id)
+                .label("count"),
+                func.row_number()
+                .over(
+                    partition_by=primary_group_subquery.c.template_id,
+                    order_by=self._primary_issue_group_order_by(primary_group_subquery),
+                )
+                .label("template_rank"),
+            )
+            .filter(primary_group_subquery.c.group_rank == 1)
+            .filter(primary_group_subquery.c.template_id.isnot(None))
+            .subquery()
+        )
+        return (
+            db.query(primary_groups_subquery)
+            .filter(primary_groups_subquery.c.template_rank == 1)
+            .order_by(*self._primary_issue_group_order_by(primary_groups_subquery))
+            .all()
         )
 
     def _materialize_issue_task(
@@ -1325,7 +1497,7 @@ class ReviewService:
         published_at_end: str | None,
         visibility: str | None,
     ):
-        query = db.query(ReviewIssue).options(joinedload(ReviewIssue.template))
+        query = db.query(ReviewIssue)
         if is_admin:
             if visibility in {"draft", "published"}:
                 query = query.filter(ReviewIssue.status == visibility)
@@ -1351,15 +1523,72 @@ class ReviewService:
         end_label = (end_dt.date() - timedelta(days=1)).isoformat()
         return f"{start} ~ {end_label}"
 
-    def _resolve_issue_category_names(self, db: Session, issue: ReviewIssue) -> list[str]:
+    def _load_issue_category_names_map(
+        self,
+        db: Session,
+        issue_ids: list[str],
+    ) -> dict[str, list[str]]:
+        if not issue_ids:
+            return {}
         rows = (
-            db.query(Category.name)
-            .join(ReviewIssueArticle, ReviewIssueArticle.category_id == Category.id)
-            .filter(ReviewIssueArticle.issue_id == issue.id)
-            .distinct()
+            db.query(ReviewIssueArticle.issue_id, Category.name)
+            .join(Category, ReviewIssueArticle.category_id == Category.id)
+            .filter(ReviewIssueArticle.issue_id.in_(issue_ids))
+            .order_by(
+                ReviewIssueArticle.issue_id.asc(),
+                ReviewIssueArticle.category_sort_order.asc(),
+                Category.name.asc(),
+            )
             .all()
         )
-        return [row[0] for row in rows]
+        category_names_map: dict[str, list[str]] = {issue_id: [] for issue_id in issue_ids}
+        seen_names_map: dict[str, set[str]] = {issue_id: set() for issue_id in issue_ids}
+        for issue_id, category_name in rows:
+            if not issue_id or not category_name or category_name in seen_names_map[issue_id]:
+                continue
+            category_names_map[issue_id].append(category_name)
+            seen_names_map[issue_id].add(category_name)
+        return category_names_map
+
+    def _load_issue_comment_count_map(
+        self,
+        db: Session,
+        issue_ids: list[str],
+        *,
+        include_hidden: bool,
+    ) -> dict[str, int]:
+        if not issue_ids:
+            return {}
+        query = (
+            db.query(ReviewComment.issue_id, func.count(ReviewComment.id))
+            .filter(ReviewComment.issue_id.in_(issue_ids))
+        )
+        if not include_hidden:
+            query = query.filter(
+                (ReviewComment.is_hidden == False) | (ReviewComment.is_hidden.is_(None))
+            )
+        rows = query.group_by(ReviewComment.issue_id).all()
+        count_map = {issue_id: 0 for issue_id in issue_ids}
+        count_map.update({issue_id: int(count or 0) for issue_id, count in rows if issue_id})
+        return count_map
+
+    def _load_issue_card_resolution_maps(
+        self,
+        db: Session,
+        issues: list[ReviewIssue],
+        *,
+        include_hidden: bool,
+    ) -> tuple[dict[str, list[str]], dict[str, int], dict[str, str]]:
+        issue_ids = [issue.id for issue in issues]
+        return (
+            self._load_issue_category_names_map(db, issue_ids),
+            self._load_issue_comment_count_map(
+                db,
+                issue_ids,
+                include_hidden=include_hidden,
+            ),
+            self._load_issue_top_images_for_output(db, issues),
+        )
 
     def _build_issue_excerpt(self, markdown_content: str | None) -> str:
         raw = (markdown_content or "").replace(REVIEW_ARTICLE_SECTIONS_PLACEHOLDER, "").strip()
@@ -1549,16 +1778,6 @@ class ReviewService:
         lines.extend(["</channel>", "</rss>"])
         return "\n".join(lines)
 
-    def _get_next_issue_number(self, db: Session, template_id: str) -> int:
-        published_count = (
-            db.query(func.count(ReviewIssue.id))
-            .filter(ReviewIssue.template_id == template_id)
-            .filter(ReviewIssue.status == "published")
-            .scalar()
-            or 0
-        )
-        return int(published_count) + 1
-
     def _get_issue_number_for_window(
         self,
         db: Session,
@@ -1611,11 +1830,29 @@ class ReviewService:
         issue_number: int,
     ) -> str:
         template = (title_template or DEFAULT_REVIEW_TITLE_TEMPLATE).strip() or DEFAULT_REVIEW_TITLE_TEMPLATE
-        return template.format(
-            period_label=period_label,
-            template_name=template_name,
-            issue_number=issue_number,
+        return self._render_template_tokens(
+            template,
+            {
+                "period_label": period_label,
+                "template_name": template_name,
+                "issue_number": issue_number,
+            },
         )
+
+    def _render_template_tokens(
+        self,
+        template: str,
+        replacements: dict[str, Any],
+    ) -> str:
+        normalized_template = template or ""
+
+        def replace_token(match: re.Match[str]) -> str:
+            token_name = (match.group(1) or "").strip()
+            if token_name not in replacements:
+                return match.group(0)
+            return str(replacements[token_name])
+
+        return SINGLE_BRACE_TEMPLATE_TOKEN_PATTERN.sub(replace_token, normalized_template)
 
     def _resolve_issue_top_image(self, articles: list[Article]) -> str | None:
         for article in articles:
@@ -1624,31 +1861,55 @@ class ReviewService:
                 return top_image
         return None
 
-    def _resolve_issue_top_image_for_output(
+    def _load_issue_top_images_for_output(
         self,
         db: Session,
-        issue: ReviewIssue,
-    ) -> str:
-        current_top_image = (issue.top_image or "").strip()
-        if self._is_public_asset_url_available(current_top_image):
-            return current_top_image
+        issues: list[ReviewIssue],
+    ) -> dict[str, str]:
+        if not issues:
+            return {}
+        availability_cache: dict[str, bool] = {}
 
-        fallback_rows = (
-            db.query(Article.top_image)
-            .join(ReviewIssueArticle, ReviewIssueArticle.article_id == Article.id)
-            .filter(ReviewIssueArticle.issue_id == issue.id)
-            .order_by(
-                ReviewIssueArticle.category_sort_order.asc(),
-                ReviewIssueArticle.article_sort_order.asc(),
-                ReviewIssueArticle.id.asc(),
+        def is_available(url: str | None) -> bool:
+            normalized_url = (url or "").strip()
+            if normalized_url not in availability_cache:
+                availability_cache[normalized_url] = self._is_public_asset_url_available(
+                    normalized_url
+                )
+            return availability_cache[normalized_url]
+
+        top_image_map: dict[str, str] = {}
+        unresolved_ids: list[str] = []
+        for issue in issues:
+            current_top_image = (issue.top_image or "").strip()
+            if is_available(current_top_image):
+                top_image_map[issue.id] = current_top_image
+                continue
+            unresolved_ids.append(issue.id)
+
+        if unresolved_ids:
+            rows = (
+                db.query(ReviewIssueArticle.issue_id, Article.top_image)
+                .join(Article, ReviewIssueArticle.article_id == Article.id)
+                .filter(ReviewIssueArticle.issue_id.in_(unresolved_ids))
+                .order_by(
+                    ReviewIssueArticle.issue_id.asc(),
+                    ReviewIssueArticle.category_sort_order.asc(),
+                    ReviewIssueArticle.article_sort_order.asc(),
+                    ReviewIssueArticle.id.asc(),
+                )
+                .all()
             )
-            .all()
-        )
-        for (candidate_top_image,) in fallback_rows:
-            normalized_candidate = (candidate_top_image or "").strip()
-            if self._is_public_asset_url_available(normalized_candidate):
-                return normalized_candidate
-        return ""
+            for issue_id, candidate_top_image in rows:
+                if issue_id in top_image_map:
+                    continue
+                normalized_candidate = (candidate_top_image or "").strip()
+                if is_available(normalized_candidate):
+                    top_image_map[issue_id] = normalized_candidate
+
+        for issue in issues:
+            top_image_map.setdefault(issue.id, "")
+        return top_image_map
 
     def _is_public_asset_url_available(self, url: str | None) -> bool:
         normalized_url = (url or "").strip()
@@ -1661,6 +1922,43 @@ class ReviewService:
         if not rel_path:
             return True
         return (MEDIA_ROOT / rel_path).exists()
+
+    def _prune_empty_markdown_headings(self, markdown_content: str) -> str:
+        lines = (markdown_content or "").splitlines()
+        if not lines:
+            return ""
+        changed = True
+        while changed:
+            changed = False
+            next_lines: list[str] = []
+            index = 0
+            while index < len(lines):
+                line = lines[index]
+                heading_match = MARKDOWN_HEADING_PATTERN.match(line.strip())
+                if not heading_match or len(heading_match.group(1)) == 1:
+                    next_lines.append(line)
+                    index += 1
+                    continue
+
+                heading_level = len(heading_match.group(1))
+                probe_index = index + 1
+                while probe_index < len(lines) and not lines[probe_index].strip():
+                    probe_index += 1
+                if probe_index >= len(lines):
+                    changed = True
+                    index = probe_index
+                    continue
+                next_heading_match = MARKDOWN_HEADING_PATTERN.match(
+                    lines[probe_index].strip()
+                )
+                if next_heading_match and len(next_heading_match.group(1)) <= heading_level:
+                    changed = True
+                    index = probe_index
+                    continue
+                next_lines.append(line)
+                index += 1
+            lines = next_lines
+        return "\n".join(lines).strip()
 
     def _extract_internal_media_rel_path(self, url: str) -> str | None:
         normalized_url = (url or "").strip()

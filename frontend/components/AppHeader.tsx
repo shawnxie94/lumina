@@ -148,6 +148,7 @@ export default function AppHeader() {
       if (task.task_type === 'process_article_classification') return t('分类');
       if (task.task_type === 'process_article_translation') return t('翻译');
       if (task.task_type === 'process_article_embedding') return t('向量化');
+      if (task.task_type === 'generate_review_issue') return t('周期回顾');
       if (task.task_type === 'process_ai_content') {
         if (task.content_type === 'summary') return t('摘要');
         if (task.content_type === 'key_points') return t('总结');

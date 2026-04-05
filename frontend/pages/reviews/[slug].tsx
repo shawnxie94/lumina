@@ -125,21 +125,6 @@ function toDateInputValue(value?: string | null): string {
 	return `${year}-${month}-${day}`;
 }
 
-function toInclusiveDateInputValue(value?: string | null): string {
-	const raw = (value || "").trim();
-	if (!raw) return "";
-	const dateValue = toDateInputValue(raw);
-	if (!dateValue) return "";
-	const [year, month, day] = dateValue.split("-").map((item) => Number(item));
-	if (!year || !month || !day) return "";
-	const parsed = new Date(year, month - 1, day);
-	parsed.setDate(parsed.getDate() - 1);
-	const nextYear = parsed.getFullYear();
-	const nextMonth = String(parsed.getMonth() + 1).padStart(2, "0");
-	const nextDay = String(parsed.getDate()).padStart(2, "0");
-	return `${nextYear}-${nextMonth}-${nextDay}`;
-}
-
 function cleanupPastedUrl(url: string): string {
 	return (url || "")
 		.trim()

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from types import SimpleNamespace
 
 import pytest
 
@@ -485,6 +486,44 @@ def test_render_issue_markdown_hides_non_public_articles_for_public_view(db_sess
     assert "已隐藏" in admin_rendered
 
 
+def test_render_issue_markdown_removes_empty_category_blocks_for_public_view(db_session):
+    service = ReviewService()
+    category = make_category(db_session, "AI", 1)
+    template = make_template(db_session, schedule_type="weekly")
+    issue = make_issue(
+        db_session,
+        template.id,
+        markdown_content="# 回顾\n\n## AI\n\n### {{hidden-article}}\n",
+    )
+    hidden_article = make_article(
+        db_session,
+        title="Hidden",
+        created_at="2026-04-02T08:00:00+08:00",
+        category_id=category.id,
+        summary="不会公开渲染",
+        is_visible=False,
+    )
+    hidden_article.slug = "hidden-article"
+    db_session.add(
+        ReviewIssueArticle(
+            id=str(uuid.uuid4()),
+            issue_id=issue.id,
+            article_id=hidden_article.id,
+            category_id=category.id,
+            category_sort_order=1,
+            article_sort_order=1,
+            created_at=now_str(),
+            updated_at=now_str(),
+        )
+    )
+    db_session.commit()
+
+    public_rendered = service.render_issue_markdown(db_session, issue, is_admin=False)
+
+    assert "## AI" not in public_rendered
+    assert "{{hidden-article}}" not in public_rendered
+
+
 def test_serialize_issue_card_falls_back_when_issue_top_image_file_is_missing(db_session):
     service = ReviewService()
     category = make_category(db_session, "AI", 1)
@@ -611,6 +650,96 @@ def test_serialize_issue_card_includes_view_count_and_public_comment_count(db_se
 
     assert payload["view_count"] == 12
     assert payload["comment_count"] == 1
+
+
+def test_serialize_issue_card_reuses_batch_resolution_maps(db_session, monkeypatch):
+    service = ReviewService()
+    category = make_category(db_session, "AI", 1)
+    template = make_template(db_session, schedule_type="weekly")
+    issue = make_issue(db_session, template.id, status="published")
+
+    def fail_legacy_helper(*args, **kwargs):
+        raise AssertionError("legacy single-item resolver should not be used")
+
+    monkeypatch.setattr(
+        service,
+        "_resolve_issue_category_names",
+        fail_legacy_helper,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        service,
+        "_resolve_issue_top_image_for_output",
+        fail_legacy_helper,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        service,
+        "_load_issue_category_names_map",
+        lambda db, issue_ids: {issue.id: [category.name]},
+    )
+    monkeypatch.setattr(
+        service,
+        "_load_issue_comment_count_map",
+        lambda db, issue_ids, include_hidden=False: {issue.id: 3},
+    )
+    monkeypatch.setattr(
+        service,
+        "_load_issue_top_images_for_output",
+        lambda db, issues: {issue.id: "/backend/media/issue.png"},
+    )
+
+    payload = service.serialize_issue_card(db_session, issue)
+
+    assert payload["category_names"] == ["AI"]
+    assert payload["comment_count"] == 3
+    assert payload["top_image"] == "/backend/media/issue.png"
+
+
+def test_get_issue_template_filters_uses_aggregated_template_rows(db_session, monkeypatch):
+    service = ReviewService()
+    template = make_template(
+        db_session,
+        schedule_type="weekly",
+        name="肖恩周刊",
+    )
+
+    class ExplodingPrimaryGroupQuery:
+        def order_by(self, *args, **kwargs):
+            return self
+
+        def all(self):
+            raise AssertionError("primary groups should not be fully materialized")
+
+    monkeypatch.setattr(
+        service,
+        "_build_primary_issue_group_query",
+        lambda base_query: (ExplodingPrimaryGroupQuery(), object()),
+    )
+    monkeypatch.setattr(service, "_primary_issue_group_order_by", lambda subquery: ())
+    monkeypatch.setattr(
+        service,
+        "_load_issue_template_filter_rows",
+        lambda db, base_query, primary_group_subquery: [
+            SimpleNamespace(template_id=template.id, count=2)
+        ],
+        raising=False,
+    )
+
+    items = service.get_issue_template_filters(
+        db_session,
+        is_admin=True,
+    )
+
+    assert items == [
+        {"id": "", "name": "全部", "slug": "", "count": 2},
+        {
+            "id": template.id,
+            "name": template.name,
+            "slug": template.slug,
+            "count": 2,
+        },
+    ]
 
 
 def test_publish_issue_promotes_canonical_slug_from_versioned_draft(db_session):
@@ -1014,6 +1143,98 @@ def test_generate_issue_markdown_default_prompt_keeps_article_outline_programmat
     assert "这里是 AI 生成的总结。" in markdown
     assert "## AI" in markdown
     assert "### {{openai-news}}" in markdown
+
+
+def test_generate_issue_markdown_supports_literal_braces_in_prompt_template(
+    db_session,
+    monkeypatch,
+):
+    service = ReviewService()
+    category = make_category(db_session, "AI", 1)
+    template = make_template(
+        db_session,
+        schedule_type="weekly",
+        prompt_template=(
+            "请输出 JSON 示例：{\"section\": true}\n"
+            "模板：{template_name}\n"
+            "周期：{period_label}\n"
+            "{content}"
+        ),
+    )
+    issue = make_issue(db_session, template.id)
+    article = make_article(
+        db_session,
+        title="OpenAI News",
+        created_at="2026-04-02T08:00:00+08:00",
+        category_id=category.id,
+        summary="最新摘要",
+    )
+
+    monkeypatch.setattr(
+        service.pipeline_service,
+        "get_ai_config",
+        lambda db, prompt_type="summary": {
+            "model_api_config_id": "model-review-1",
+            "parameters": {"max_tokens": 1200, "temperature": 0.4},
+        },
+    )
+
+    class FakeClient:
+        async def generate_summary(self, content, **kwargs):
+            prompt = kwargs.get("prompt") or ""
+            assert '{"section": true}' in prompt
+            assert "{template_name}" not in prompt
+            assert "{period_label}" not in prompt
+            return {
+                "content": "# 回顾\n\n本期亮点梳理。\n\n{{review_article_sections}}",
+                "usage": None,
+                "latency_ms": 8,
+                "request_payload": {},
+                "response_payload": {},
+            }
+
+    monkeypatch.setattr(
+        service.pipeline_service,
+        "create_ai_client",
+        lambda config: FakeClient(),
+    )
+
+    markdown = asyncio.run(
+        service.generate_issue_markdown(
+            db_session,
+            template=template,
+            issue=issue,
+            articles=[article],
+        )
+    )
+
+    assert markdown.startswith("# 回顾")
+
+
+def test_enqueue_due_review_tasks_preserves_literal_braces_in_title_template(db_session):
+    service = ReviewService()
+    template = make_template(
+        db_session,
+        schedule_type="weekly",
+        name="肖恩技术周刊",
+        title_template="{template_name} 第 {issue_number} 期 {literal_braces}",
+    )
+
+    created = service.enqueue_due_review_tasks(
+        db_session,
+        now_iso="2026-04-07T09:00:00+08:00",
+    )
+
+    issue = (
+        db_session.query(ReviewIssue)
+        .filter(ReviewIssue.template_id == template.id)
+        .order_by(ReviewIssue.created_at.desc())
+        .first()
+    )
+
+    assert created == 1
+    assert issue is not None
+    assert issue.title == "肖恩技术周刊 第 1 期 {literal_braces}"
 
 
 def test_generate_issue_markdown_passes_article_payload_only_once_to_ai_client(

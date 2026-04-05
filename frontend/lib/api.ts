@@ -1756,11 +1756,6 @@ export const reviewApi = {
 		return response.data;
 	},
 
-	regenerateIssue: async (id: string) => {
-		const response = await api.post(`/api/review-issues/${id}/regenerate`);
-		return response.data as { success: boolean; status: ReviewIssueStatus };
-	},
-
 	publishIssue: async (id: string) => {
 		const response = await api.post(`/api/review-issues/${id}/publish`);
 		return response.data as { success: boolean; status: ReviewIssueStatus };
