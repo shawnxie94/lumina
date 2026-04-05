@@ -88,6 +88,24 @@ article_tags = Table(
     Column("created_at", String, default=now_str, nullable=False),
 )
 
+review_template_categories = Table(
+    "review_template_categories",
+    Base.metadata,
+    Column(
+        "template_id",
+        String,
+        ForeignKey("review_templates.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column(
+        "category_id",
+        String,
+        ForeignKey("categories.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column("created_at", String, default=now_str, nullable=False),
+)
+
 
 class Category(Base):
     __tablename__ = "categories"
@@ -101,6 +119,11 @@ class Category(Base):
 
     articles = relationship("Article", back_populates="category")
     prompt_configs = relationship("PromptConfig", back_populates="category")
+    review_templates = relationship(
+        "ReviewTemplate",
+        secondary=review_template_categories,
+        back_populates="categories",
+    )
 
 
 class Tag(Base):
@@ -192,7 +215,10 @@ class MediaAsset(Base):
 
     id = Column(String, primary_key=True, default=generate_uuid)
     article_id = Column(
-        String, ForeignKey("articles.id", ondelete="CASCADE"), nullable=False
+        String, ForeignKey("articles.id", ondelete="CASCADE"), nullable=True
+    )
+    review_issue_id = Column(
+        String, ForeignKey("review_issues.id", ondelete="CASCADE"), nullable=True
     )
     original_url = Column(Text, nullable=True)
     storage_path = Column(Text, nullable=False)
@@ -201,6 +227,7 @@ class MediaAsset(Base):
     created_at = Column(String, default=now_str)
 
     article = relationship("Article", back_populates="media_assets")
+    review_issue = relationship("ReviewIssue", back_populates="media_assets")
 
 
 class AIAnalysis(Base):
@@ -428,6 +455,146 @@ class PromptConfig(Base):
 
     category = relationship("Category", back_populates="prompt_configs")
     model_api_config = relationship("ModelAPIConfig", backref="prompt_configs")
+
+
+class ReviewTemplate(Base):
+    __tablename__ = "review_templates"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    name = Column(String, nullable=False)
+    slug = Column(String, nullable=False, unique=True, index=True)
+    description = Column(Text, nullable=True)
+    is_enabled = Column(Boolean, nullable=False, default=True)
+    schedule_type = Column(String, nullable=False)
+    custom_interval_days = Column(Integer, nullable=True)
+    anchor_date = Column(String, nullable=False)
+    timezone = Column(String, nullable=False, default="Asia/Shanghai")
+    trigger_time = Column(String, nullable=False, default="09:00")
+    include_all_categories = Column(Boolean, nullable=False, default=True)
+    model_api_config_id = Column(
+        String,
+        ForeignKey("model_api_configs.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    review_input_mode = Column(String, nullable=False, default="abstract")
+    system_prompt = Column(Text, nullable=True)
+    prompt_template = Column(Text, nullable=False)
+    temperature = Column(Float, nullable=True)
+    max_tokens = Column(Integer, nullable=True)
+    top_p = Column(Float, nullable=True)
+    title_template = Column(Text, nullable=False)
+    next_run_at = Column(String, nullable=True)
+    last_run_at = Column(String, nullable=True)
+    created_at = Column(String, default=now_str)
+    updated_at = Column(String, default=now_str)
+
+    categories = relationship(
+        "Category",
+        secondary=review_template_categories,
+        back_populates="review_templates",
+    )
+    model_api_config = relationship("ModelAPIConfig")
+    issues = relationship(
+        "ReviewIssue",
+        back_populates="template",
+        cascade="all, delete-orphan",
+    )
+
+
+class ReviewIssue(Base):
+    __tablename__ = "review_issues"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    template_id = Column(
+        String,
+        ForeignKey("review_templates.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    slug = Column(String, nullable=False, unique=True, index=True)
+    title = Column(String, nullable=False)
+    status = Column(String, nullable=False, default="draft")
+    window_start = Column(String, nullable=False, index=True)
+    window_end = Column(String, nullable=False, index=True)
+    top_image = Column(String, nullable=True)
+    markdown_content = Column(Text, nullable=False)
+    view_count = Column(Integer, nullable=False, default=0)
+    generated_at = Column(String, nullable=True)
+    published_at = Column(String, nullable=True)
+    created_at = Column(String, default=now_str)
+    updated_at = Column(String, default=now_str)
+
+    template = relationship("ReviewTemplate", back_populates="issues")
+    articles = relationship(
+        "ReviewIssueArticle",
+        back_populates="issue",
+        cascade="all, delete-orphan",
+    )
+    comments = relationship(
+        "ReviewComment",
+        back_populates="issue",
+        cascade="all, delete-orphan",
+    )
+    media_assets = relationship(
+        "MediaAsset",
+        back_populates="review_issue",
+        cascade="all, delete-orphan",
+    )
+
+
+class ReviewIssueArticle(Base):
+    __tablename__ = "review_issue_articles"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    issue_id = Column(
+        String,
+        ForeignKey("review_issues.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    article_id = Column(
+        String,
+        ForeignKey("articles.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    category_id = Column(
+        String,
+        ForeignKey("categories.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    category_sort_order = Column(Integer, nullable=False, default=999999)
+    article_sort_order = Column(Integer, nullable=False, default=0)
+    created_at = Column(String, default=now_str)
+    updated_at = Column(String, default=now_str)
+
+    issue = relationship("ReviewIssue", back_populates="articles")
+    article = relationship("Article")
+    category = relationship("Category")
+
+
+class ReviewComment(Base):
+    __tablename__ = "review_comments"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    issue_id = Column(
+        String,
+        ForeignKey("review_issues.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    user_id = Column(String, nullable=False)
+    user_name = Column(String, nullable=False)
+    user_avatar = Column(String, nullable=True)
+    provider = Column(String, nullable=True)
+    content = Column(Text, nullable=False)
+    reply_to_id = Column(String, nullable=True)
+    is_hidden = Column(Boolean, default=False)
+    created_at = Column(String, default=now_str)
+    updated_at = Column(String, default=now_str)
+
+    issue = relationship("ReviewIssue", back_populates="comments")
 
 
 class AdminSettings(Base):

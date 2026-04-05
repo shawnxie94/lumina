@@ -12,6 +12,7 @@ from app.api.routers.health_router import router as health_router
 from app.api.routers.media_router import router as media_router
 from app.api.routers.model_api_router import router as model_api_router
 from app.api.routers.prompt_config_router import router as prompt_config_router
+from app.api.routers.review_router import router as review_router
 from app.api.routers.settings_router import router as settings_router
 from app.api.routers.tag_router import router as tag_router
 
@@ -33,5 +34,6 @@ def register_routers(app: FastAPI) -> None:
     app.include_router(export_router, prefix=prefix)
     app.include_router(model_api_router, prefix=prefix)
     app.include_router(prompt_config_router, prefix=prefix)
+    app.include_router(review_router, prefix=prefix)
 
     app.include_router(health_router, prefix=prefix)

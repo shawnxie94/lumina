@@ -7,6 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from app.core.settings import get_settings
 from app.domain.article_ai_pipeline_service import ArticleAIPipelineService
 from app.domain.article_embedding_service import ArticleEmbeddingService
+from app.domain.review_service import ReviewService
 from models import AITask, now_str
 from task_errors import TaskDataError
 from task_state import append_task_event, ensure_task_status_transition
@@ -29,6 +30,7 @@ class AITaskService:
     def __init__(self, worker_id: str = WORKER_ID):
         self.worker_id = worker_id
         self.embedding_service = ArticleEmbeddingService()
+        self.review_service = ReviewService()
 
     def enqueue_task(
         self,
@@ -105,6 +107,7 @@ class AITaskService:
         return task.id
 
     def claim_task(self, db) -> AITask | None:
+        self.review_service.enqueue_due_review_tasks(db, now_iso=get_now_iso())
         now_iso = get_now_iso()
         stale_lock_iso = get_stale_lock_iso()
         task = (
@@ -322,6 +325,30 @@ class AITaskService:
     async def _handle_process_article_embedding(self, article_id: str):
         await self.embedding_service.process_article_embedding(article_id)
 
+    async def _handle_generate_review_issue(
+        self,
+        task_id: str,
+        template_id: str,
+        issue_id: str,
+        *,
+        article_ids: list[str] | None = None,
+        model_api_config_id: str | None = None,
+    ):
+        from models import SessionLocal
+
+        db = SessionLocal()
+        try:
+            await self.review_service.generate_issue(
+                db,
+                template_id,
+                issue_id,
+                task_id=task_id,
+                article_ids=article_ids,
+                model_api_config_id=model_api_config_id,
+            )
+        finally:
+            db.close()
+
     async def run_task_async(self, task: AITask) -> None:
         payload = json.loads(task.payload or "{}")
         article_id = task.article_id
@@ -370,6 +397,13 @@ class AITaskService:
             ),
             "process_article_embedding": lambda: self._handle_process_article_embedding(
                 self._require_article_id(article_id)
+            ),
+            "generate_review_issue": lambda: self._handle_generate_review_issue(
+                task.id,
+                payload.get("template_id"),
+                payload.get("issue_id"),
+                article_ids=payload.get("article_ids"),
+                model_api_config_id=payload.get("model_api_config_id"),
             ),
         }
 

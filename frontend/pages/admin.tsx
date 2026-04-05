@@ -25,6 +25,7 @@ import AppHeader from "@/components/AppHeader";
 import SeoHead from "@/components/SeoHead";
 import ConfirmModal from "@/components/ConfirmModal";
 import Button from "@/components/Button";
+import ReviewTemplateSettings from "@/components/ReviewTemplateSettings";
 import DateRangePicker from "@/components/DateRangePicker";
 import FilterInput from "@/components/FilterInput";
 import FilterSelect from "@/components/FilterSelect";
@@ -98,7 +99,11 @@ type SettingSection =
 	| "monitoring"
 	| "comments"
 	| "storage";
-type AISubSection = "model-api" | "prompt" | "recommendations";
+type AISubSection =
+	| "model-api"
+	| "prompt"
+	| "review-templates"
+	| "recommendations";
 type MonitoringSubSection = "tasks" | "ai-usage" | "comments";
 type CommentSubSection = "keys" | "filters";
 
@@ -112,6 +117,7 @@ type AdminRouteState = {
 const AI_SUB_SECTIONS: AISubSection[] = [
 	"model-api",
 	"prompt",
+	"review-templates",
 	"recommendations",
 ];
 const MONITORING_SUB_SECTIONS: MonitoringSubSection[] = [
@@ -342,6 +348,7 @@ interface AITaskItem {
 	article_id: string | null;
 	article_title?: string | null;
 	article_slug?: string | null;
+	article_kind?: string | null;
 	task_type: string;
 	content_type: string | null;
 	status: string;
@@ -1738,6 +1745,8 @@ export default function AdminPage() {
 			} else if (aiSubSection === "prompt") {
 				fetchModelAPIConfigs();
 				fetchPromptConfigs();
+			} else if (aiSubSection === "review-templates") {
+				return;
 			} else {
 				fetchRecommendationSettings();
 				fetchModelAPIConfigs();
@@ -2650,6 +2659,7 @@ export default function AdminPage() {
 		if (taskType === "process_article_tagging") return t("标签");
 		if (taskType === "process_article_translation") return t("翻译");
 		if (taskType === "process_article_embedding") return t("向量化");
+		if (taskType === "generate_review_issue") return t("周期回顾");
 		if (taskType === "process_ai_content") {
 			if (contentType === "summary") return t("摘要");
 			if (contentType === "key_points") return t("总结");
@@ -2660,6 +2670,39 @@ export default function AdminPage() {
 		}
 		return t("其他");
 	};
+
+	const getTaskTargetHref = (
+		task: {
+			article_id: string | null;
+			article_slug?: string | null;
+			article_kind?: string | null;
+		},
+	) => {
+		if (task.article_kind === "review" && task.article_slug) {
+			return `/reviews/${task.article_slug}`;
+		}
+		if (
+			(task.article_kind === "article" || !task.article_kind) &&
+			(task.article_slug || task.article_id)
+		) {
+			return `/article/${task.article_slug || task.article_id}`;
+		}
+		return null;
+	};
+
+	const getTaskTargetLabel = (articleKind?: string | null) =>
+		articleKind === "review" ? t("查看回顾") : t("查看");
+
+	const getTaskTargetTitle = (
+		task: {
+			article_id: string | null;
+			article_title?: string | null;
+			article_kind?: string | null;
+		},
+	) =>
+		task.article_title ||
+		task.article_id ||
+		(task.article_kind === "review" ? t("未知回顾") : t("未知文章"));
 
 	const getTaskStatusLabel = (status: string) => {
 		if (status === "completed") return t("已完成");
@@ -3727,6 +3770,22 @@ export default function AdminPage() {
 														<span className="inline-flex items-center gap-2">
 															<IconNote className="h-4 w-4" />
 															<span>{t("提示词")}</span>
+														</span>
+													</SelectableButton>
+													<SelectableButton
+														onClick={() => {
+															setActiveSection("ai");
+															setAISubSection("review-templates");
+														}}
+														active={
+															activeSection === "ai" &&
+															aiSubSection === "review-templates"
+														}
+														variant="submenu"
+													>
+														<span className="inline-flex items-center gap-2">
+															<IconList className="h-4 w-4" />
+															<span>{t("回顾模板")}</span>
 														</span>
 													</SelectableButton>
 													<SelectableButton
@@ -5560,8 +5619,12 @@ export default function AdminPage() {
 														value: "process_ai_content:infographic",
 														label: t("信息图"),
 													},
-													]}
-												/>
+													{
+														value: "generate_review_issue",
+														label: t("回顾生成"),
+													},
+												]}
+											/>
 											<ArticleSearchSelect
 												label={t("文章名称")}
 												value={taskArticleTitleFilter}
@@ -5667,24 +5730,22 @@ export default function AdminPage() {
 																<td className="px-4 py-3 text-text-2">
 																	{task.attempts}/{task.max_attempts}
 																</td>
-																<td className="px-4 py-3 text-text-2">
-																	{task.article_id ? (
-																		<Link
-																			href={`/article/${task.article_slug || task.article_id}`}
-																			className="text-primary hover:underline"
-																			title={
-																				task.article_title ||
-																				task.article_id ||
-																				t("未知文章")
-																			}
-																			target="_blank"
-																			rel="noopener noreferrer"
-																		>
-																			{t("查看")}
-																		</Link>
-																	) : (
-																		"-"
-																	)}
+															<td className="px-4 py-3 text-text-2">
+																	{(() => {
+																		const href = getTaskTargetHref(task);
+																		if (!href) return "-";
+																		return (
+																			<Link
+																				href={href}
+																				className="text-primary hover:underline"
+																				title={getTaskTargetTitle(task)}
+																				target="_blank"
+																				rel="noopener noreferrer"
+																			>
+																				{getTaskTargetLabel(task.article_kind)}
+																			</Link>
+																		);
+																	})()}
 																</td>
 																<td className="px-4 py-3 text-text-3">
 																	<div>
@@ -5789,8 +5850,12 @@ export default function AdminPage() {
 												</Button>
 											</div>
 										</div>
-									</div>
-								)}
+								</div>
+							)}
+
+							{activeSection === "ai" && aiSubSection === "review-templates" && (
+								<ReviewTemplateSettings />
+							)}
 
 							{activeSection === "ai" && aiSubSection === "recommendations" && (
 								<div className="bg-surface rounded-sm shadow-sm border border-border p-6 w-full min-w-0">
@@ -6746,11 +6811,14 @@ export default function AdminPage() {
 										{t("尝试")}: {selectedTaskTimeline.task.attempts}/
 										{selectedTaskTimeline.task.max_attempts}
 									</div>
-									{selectedTaskTimeline.task.article_slug && (
+									{getTaskTargetHref(selectedTaskTimeline.task) && (
 										<div>
-											{t("文章")}:
+											{selectedTaskTimeline.task.article_kind === "review"
+												? t("回顾")
+												: t("文章")}
+											:
 											<Link
-												href={`/article/${selectedTaskTimeline.task.article_slug}`}
+												href={getTaskTargetHref(selectedTaskTimeline.task) || "#"}
 												className="text-primary hover:underline"
 												target="_blank"
 												rel="noopener noreferrer"

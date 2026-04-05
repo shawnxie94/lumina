@@ -247,3 +247,26 @@ def test_run_task_async_routes_embedding_task_to_handler(monkeypatch):
     asyncio.run(service.run_task_async(task))
 
     handler.assert_awaited_once_with("article-1")
+
+
+def test_run_task_async_routes_review_generation_task_to_handler(monkeypatch):
+    service = AITaskService(worker_id="worker-test")
+    monkeypatch.setattr(ai_task_module, "ArticleAIPipelineService", DummyPipeline)
+    handler = AsyncMock(return_value=None)
+    monkeypatch.setattr(service, "_handle_generate_review_issue", handler)
+    task = AITask(
+        id="task-review-1",
+        task_type="generate_review_issue",
+        article_id=None,
+        payload='{"template_id":"template-1","issue_id":"issue-1","article_ids":["article-1"],"model_api_config_id":"model-1"}',
+    )
+
+    asyncio.run(service.run_task_async(task))
+
+    handler.assert_awaited_once_with(
+        "task-review-1",
+        "template-1",
+        "issue-1",
+        article_ids=["article-1"],
+        model_api_config_id="model-1",
+    )

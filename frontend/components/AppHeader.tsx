@@ -7,6 +7,7 @@ import { useBasicSettings } from '@/contexts/BasicSettingsContext';
 import {
   articleApi,
   buildPublicRssUrl,
+  buildPublicReviewRssUrl,
   getErrorTaskPollIntervalMs,
   normalizePublicRssTagIds,
 } from '@/lib/api';
@@ -276,6 +277,18 @@ export default function AppHeader() {
       tagIds,
     };
   }, [router.pathname, router.query.category_id, router.query.tag_ids]);
+  const reviewRssFilters = useMemo(() => {
+    if (router.pathname !== '/reviews' && router.pathname !== '/reviews/[slug]') {
+      return {};
+    }
+    const templateId =
+      router.pathname === '/reviews'
+        ? getQueryValue(router.query.template_id).trim()
+        : '';
+    return {
+      templateId: templateId || undefined,
+    };
+  }, [router.pathname, router.query.template_id]);
   const loginHref = useMemo(() => {
     const currentPath = router.asPath || '/';
     if (currentPath.startsWith('/login')) {
@@ -285,10 +298,14 @@ export default function AppHeader() {
   }, [router.asPath]);
   const isHomeRoute = router.pathname === '/';
   const isFeedRoute = router.pathname === '/list';
+  const isReviewRoute = router.pathname === '/reviews' || router.pathname === '/reviews/[slug]';
   const handleOpenRss = useCallback(() => {
     if (typeof window === 'undefined') return;
-    window.open(buildPublicRssUrl(rssFilters), '_blank', 'noopener,noreferrer');
-  }, [rssFilters]);
+    const targetUrl = isReviewRoute
+      ? buildPublicReviewRssUrl(reviewRssFilters)
+      : buildPublicRssUrl(rssFilters);
+    window.open(targetUrl, '_blank', 'noopener,noreferrer');
+  }, [isReviewRoute, reviewRssFilters, rssFilters]);
 
   return (
     <header className="bg-surface border-b border-border shadow-sm">
@@ -322,6 +339,14 @@ export default function AppHeader() {
                 }`}
               >
                 {t('信息流')}
+              </Link>
+              <Link
+                href="/reviews"
+                className={`px-3 py-1 rounded-sm transition ${
+                  isReviewRoute ? 'bg-muted text-text-1' : 'text-text-2 hover:bg-muted hover:text-text-1'
+                }`}
+              >
+                {t('回顾')}
               </Link>
             </div>
           </div>
@@ -510,6 +535,14 @@ export default function AppHeader() {
               }`}
             >
               {t('信息流')}
+            </Link>
+            <Link
+              href="/reviews"
+              className={`inline-flex lg:hidden h-8 items-center px-3 rounded-sm text-sm font-medium transition ${
+                isReviewRoute ? 'bg-muted text-text-1' : 'text-text-2 hover:bg-muted hover:text-text-1'
+              }`}
+            >
+              {t('回顾')}
             </Link>
             {resolvedAdmin && (
               <Link

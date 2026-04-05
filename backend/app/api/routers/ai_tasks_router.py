@@ -14,6 +14,7 @@ from models import (
     Article,
     ModelAPIConfig,
     PromptConfig,
+    ReviewIssue,
     get_db,
     now_str,
 )
@@ -30,6 +31,64 @@ def _get_preferred_article_title(article) -> str | None:
         return translated_title
     title = getattr(article, "title", None)
     return title or None
+
+
+def _parse_task_payload(task: AITask) -> dict:
+    if not task.payload:
+        return {}
+    try:
+        payload = json.loads(task.payload)
+    except Exception:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _resolve_task_target(
+    db: Session,
+    task: AITask,
+    *,
+    article_cache: dict[str, dict[str, str | None]] | None = None,
+) -> dict[str, str | None]:
+    if task.article_id:
+        if article_cache and task.article_id in article_cache:
+            cached = article_cache[task.article_id]
+            return {
+                "title": cached.get("title"),
+                "slug": cached.get("slug"),
+                "kind": "article",
+            }
+        article = (
+            db.query(Article.id, Article.title, Article.title_trans, Article.slug)
+            .filter(Article.id == task.article_id)
+            .first()
+        )
+        return {
+            "title": _get_preferred_article_title(article),
+            "slug": article.slug if article else None,
+            "kind": "article",
+        }
+
+    if task.task_type == "generate_review_issue":
+        payload = _parse_task_payload(task)
+        issue_id = str(payload.get("issue_id") or "").strip()
+        if issue_id:
+            issue = (
+                db.query(ReviewIssue.id, ReviewIssue.title, ReviewIssue.slug)
+                .filter(ReviewIssue.id == issue_id)
+                .first()
+            )
+            if issue:
+                return {
+                    "title": issue.title,
+                    "slug": issue.slug,
+                    "kind": "review",
+                }
+
+    return {
+        "title": None,
+        "slug": None,
+        "kind": None,
+    }
 
 
 @router.get("/api/ai-tasks")
@@ -122,12 +181,9 @@ async def list_ai_tasks(
             {
                 "id": task.id,
                 "article_id": task.article_id,
-                "article_title": article_map.get(task.article_id, {}).get("title")
-                if task.article_id
-                else None,
-                "article_slug": article_map.get(task.article_id, {}).get("slug")
-                if task.article_id
-                else None,
+                "article_title": target["title"],
+                "article_slug": target["slug"],
+                "article_kind": target["kind"],
                 "task_type": task.task_type,
                 "content_type": task.content_type,
                 "status": task.status,
@@ -143,6 +199,7 @@ async def list_ai_tasks(
                 "finished_at": task.finished_at,
             }
             for task in tasks
+            for target in [_resolve_task_target(db, task, article_cache=article_map)]
         ],
         "pagination": {
             "page": page,
@@ -163,20 +220,14 @@ async def get_ai_task(
     if not task:
         raise HTTPException(status_code=404, detail="任务不存在")
 
-    article_title = None
-    if task.article_id:
-        article = (
-            db.query(Article.id, Article.title, Article.title_trans)
-            .filter(Article.id == task.article_id)
-            .first()
-        )
-        if article:
-            article_title = _get_preferred_article_title(article)
+    target = _resolve_task_target(db, task)
 
     return {
         "id": task.id,
         "article_id": task.article_id,
-        "article_title": article_title,
+        "article_title": target["title"],
+        "article_slug": target["slug"],
+        "article_kind": target["kind"],
         "task_type": task.task_type,
         "content_type": task.content_type,
         "status": task.status,
@@ -204,13 +255,7 @@ async def get_ai_task_timeline(
     if not task:
         raise HTTPException(status_code=404, detail="任务不存在")
 
-    article = None
-    if task.article_id:
-        article = (
-            db.query(Article.id, Article.title, Article.title_trans, Article.slug)
-            .filter(Article.id == task.article_id)
-            .first()
-        )
+    target = _resolve_task_target(db, task)
 
     events = (
         db.query(AITaskEvent)
@@ -295,8 +340,9 @@ async def get_ai_task_timeline(
         "task": {
             "id": task.id,
             "article_id": task.article_id,
-            "article_title": _get_preferred_article_title(article),
-            "article_slug": article.slug if article else None,
+            "article_title": target["title"],
+            "article_slug": target["slug"],
+            "article_kind": target["kind"],
             "task_type": task.task_type,
             "content_type": task.content_type,
             "status": task.status,

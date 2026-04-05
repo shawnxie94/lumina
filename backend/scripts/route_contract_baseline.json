@@ -438,6 +438,150 @@
     ]
   },
   {
+    "path": "/api/review-comments/{comment_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/review-comments/{comment_id}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/review-comments/{comment_id}",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/review-comments/{comment_id}/visibility",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/review-issues/{issue_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/review-issues/{issue_id}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/review-issues/{issue_id}",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/review-issues/{issue_id}/publish",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/review-issues/{issue_id}/regenerate",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/review-issues/{issue_id}/unpublish",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/review-templates",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/review-templates",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/review-templates/{template_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/review-templates/{template_id}",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/review-templates/{template_id}/generation-preview",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/review-templates/{template_id}/issues",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/review-templates/{template_id}/run-manual",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/review-templates/{template_id}/run-now",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/reviews",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/reviews/rss.xml",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/reviews/{review_slug}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/reviews/{review_slug}/comments",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/reviews/{review_slug}/comments",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/reviews/{review_slug}/view",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/settings/basic",
     "methods": [
       "GET"

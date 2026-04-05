@@ -1,6 +1,7 @@
 import '@/styles/globals.css';
 import type { AppProps } from 'next/app';
 import Head from 'next/head';
+import { useEffect } from 'react';
 import { SessionProvider } from 'next-auth/react';
 
 import { ToastProvider } from '@/components/Toast';
@@ -8,12 +9,30 @@ import { ContinueReadingBanner } from '@/components/ContinueReadingBanner';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { ReadingProvider } from '@/contexts/ReadingContext';
 import { BasicSettingsProvider } from '@/contexts/BasicSettingsContext';
+import { buildLocalPwaCleanupScript, syncPwaRegistration } from '@/lib/pwa';
 
 export default function App({ Component, pageProps }: AppProps) {
   const initialBasicSettings = (pageProps as { initialBasicSettings?: any }).initialBasicSettings;
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
+      return;
+    }
+
+    void syncPwaRegistration({
+      location: window.location,
+      serviceWorker: navigator.serviceWorker,
+      cacheStorage: 'caches' in window ? window.caches : undefined,
+    });
+  }, []);
+
   return (
     <>
       <Head>
+        <script
+          id="lumina-local-pwa-cleanup"
+          dangerouslySetInnerHTML={{ __html: buildLocalPwaCleanupScript() }}
+        />
         <link rel="icon" href="/favicon.png" />
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
         <link rel="manifest" href="/manifest.webmanifest" />
