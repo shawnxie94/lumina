@@ -42,6 +42,7 @@ import {
 	type Tag,
 	type VersionedAIContentType,
 } from "@/lib/api";
+import { shouldFetchSimilarArticlesForSlug } from "@/lib/articleDetail";
 import {
 	buildArticleHref as buildNavigableArticleHref,
 } from "@/lib/articlePreview";
@@ -1413,6 +1414,7 @@ export default function ArticleDetailPage({
 	const contentRef = useRef<HTMLDivElement>(null);
 	const pollingRef = useRef<NodeJS.Timeout | null>(null);
 	const similarPollingRef = useRef<NodeJS.Timeout | null>(null);
+	const lastSimilarFetchSlugRef = useRef<string | null>(null);
 	const lightboxImage = lightboxImages[lightboxIndex] || null;
 	const hasLightboxMultiple = lightboxImages.length > 1;
 
@@ -2310,14 +2312,28 @@ export default function ArticleDetailPage({
 				} else {
 					setNextArticle(null);
 				}
-				void fetchSimilarArticles(data);
 			} catch (error) {
 				console.error("Failed to fetch article:", error);
 				showToast(t("加载文章失败"), "error");
 			} finally {
 				setLoading(false);
 			}
-		}, [fetchArticleTasks, fetchSimilarArticles, id, showToast, t]);
+		}, [fetchArticleTasks, id, showToast, t]);
+
+	useEffect(() => {
+		const articleSlug = article?.slug || null;
+		if (
+			!article ||
+			!shouldFetchSimilarArticlesForSlug(
+				articleSlug,
+				lastSimilarFetchSlugRef.current,
+			)
+		) {
+			return;
+		}
+		lastSimilarFetchSlugRef.current = articleSlug;
+		void fetchSimilarArticles(article);
+	}, [article, fetchSimilarArticles]);
 
 	const loadVersionHistory = useCallback(
 		async (contentType: AIContentType, force = false) => {
