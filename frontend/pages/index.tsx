@@ -221,9 +221,9 @@ export default function HomePage({
   const fallbackTopImageUrl = resolveMediaUrl(logoUrl);
   const heroBadgeText = basicSettings.home_badge_text || t('信息灯塔');
   const heroTaglineText = basicSettings.home_tagline_text || t('汇流万象，智能提纯，沉淀真知。');
-  const primaryButtonText = basicSettings.home_primary_button_text || t('浏览内容');
+  const primaryButtonText = basicSettings.home_primary_button_text || t('信息流');
   const primaryButtonUrl = basicSettings.home_primary_button_url || '/list';
-  const secondaryButtonText = basicSettings.home_secondary_button_text || t('了解更多');
+  const secondaryButtonText = basicSettings.home_secondary_button_text || t('更多');
   const secondaryButtonUrl = basicSettings.home_secondary_button_url || githubUrl;
   const seoDescription = buildMetaDescription(
     [siteDescription, heroTaglineText].filter(Boolean).join(' '),
@@ -334,25 +334,20 @@ export default function HomePage({
                 {heroTaglineText}
               </p>
               <div className="mt-6 flex flex-wrap gap-3 justify-center">
-                {isExternalUrl(primaryButtonUrl) ? (
-                  <LinkButton
-                    href={primaryButtonUrl}
-                    variant="primary"
-                    className="rounded-full px-5 py-2.5"
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    {primaryButtonText}
-                  </LinkButton>
-                ) : (
-                  <LinkButton
-                    href={primaryButtonUrl}
-                    variant="primary"
-                    className="rounded-full px-5 py-2.5"
-                  >
-                    {primaryButtonText}
-                  </LinkButton>
-                )}
+                <LinkButton
+                  href={primaryButtonUrl}
+                  variant="primary"
+                  className="rounded-full px-5 py-2.5"
+                >
+                  {primaryButtonText}
+                </LinkButton>
+                <LinkButton
+                  href="/reviews"
+                  variant="secondary"
+                  className="rounded-full px-5 py-2.5"
+                >
+                  {t('回顾')}
+                </LinkButton>
                 {isExternalUrl(secondaryButtonUrl) ? (
                   <LinkButton
                     href={secondaryButtonUrl}

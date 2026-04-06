@@ -969,7 +969,7 @@ export default function ReviewDetailPage({
 
 	const handleOpenRegenerateModal = () => {
 		if (!review.template?.id) {
-			showToast(t("当前回顾未关联模板，无法重新生成"), "error");
+			showToast(t("当前回顾未关联模板无法重新生成"), "error");
 			return;
 		}
 		setShowRegenerateModal(true);
@@ -2355,7 +2355,7 @@ export default function ReviewDetailPage({
 			<ConfirmModal
 				isOpen={showDeleteCommentModal}
 				title={t("删除评论")}
-				message={t("删除后无法恢复，确认继续吗？")}
+				message={t("删除后无法恢复确认继续吗")}
 				confirmText={t("删除")}
 				cancelText={t("取消")}
 				onConfirm={handleDeleteComment}

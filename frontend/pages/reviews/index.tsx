@@ -283,7 +283,7 @@ export default function ReviewListPage({
 
 	const siteName = basicSettings.site_name || "Lumina";
 	const siteDescription = buildMetaDescription(
-		`${siteName} ${t("回顾")} ${t("复盘内容重点，沉淀周期总结")}`,
+		`${siteName} ${t("回顾")} ${t("复盘内容重点沉淀周期总结")}`,
 	);
 	const seoImageUrl = resolveSeoAssetUrl(siteOrigin, basicSettings.site_logo_url || "/logo.png");
 	const defaultTopImageUrl = useMemo(
