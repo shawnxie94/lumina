@@ -1756,7 +1756,7 @@ export default function ReviewDetailPage({
 									<img
 										src={currentTopImageUrl}
 										alt={review.title}
-										className="aspect-[21/9] w-full object-cover"
+										className="aspect-video w-full object-cover"
 									/>
 								</div>
 							) : null}

@@ -1,4 +1,5 @@
 import dayjs, { type Dayjs } from "dayjs";
+import { useRouter } from "next/router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import Button from "@/components/Button";
@@ -61,6 +62,7 @@ export default function ReviewManualGenerateModal({
 }: ReviewManualGenerateModalProps) {
 	const { t } = useI18n();
 	const { showToast } = useToast();
+	const router = useRouter();
 	const [templates, setTemplates] = useState<ReviewTemplate[]>([]);
 	const [modelConfigs, setModelConfigs] = useState<ModelAPIConfig[]>([]);
 	const [selectedTemplateId, setSelectedTemplateId] = useState("");
@@ -226,6 +228,14 @@ export default function ReviewManualGenerateModal({
 		setSelectedArticleIds([]);
 	};
 
+	const handleArticleClick = (e: React.MouseEvent, articleId: string) => {
+		toggleArticle(articleId);
+	};
+
+	const handleArticleTitleClick = (articleSlug: string) => {
+		window.open(`/article/${articleSlug}`, "_blank", "noopener,noreferrer");
+	};
+
 	const handleSubmit = async () => {
 		if (!selectedTemplateId) {
 			showToast(t("请先选择模板"), "error");
@@ -372,25 +382,30 @@ export default function ReviewManualGenerateModal({
 							{articles.map((article) => {
 								const checked = selectedArticleIds.includes(article.id);
 								return (
-									<label
+									<div
 										key={article.id}
-										className={`flex cursor-pointer gap-4 border-b border-border px-4 py-4 transition last:border-b-0 ${
+										className={`flex gap-4 border-b border-border px-4 py-4 transition last:border-b-0 ${
 											checked ? "bg-primary-soft/30" : "hover:bg-muted/70"
 										}`}
 									>
-										<CheckboxInput
-											checked={checked}
-											onChange={() => toggleArticle(article.id)}
-											className="mt-1 shrink-0"
-										/>
-										<div className="relative h-20 w-28 shrink-0 overflow-hidden rounded-sm bg-muted">
+										<div className="mt-1 shrink-0">
+											<CheckboxInput
+												checked={checked}
+												onChange={() => toggleArticle(article.id)}
+											/>
+										</div>
+										<button
+											type="button"
+											onClick={() => handleArticleTitleClick(article.slug)}
+											className="relative h-20 w-28 shrink-0 overflow-hidden rounded-sm bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+										>
 											<img
 												src={resolveMediaUrl(article.top_image || "") || "/logo.png"}
 												alt={article.title}
 												className="h-full w-full object-cover"
 												loading="lazy"
 											/>
-										</div>
+										</button>
 										<div className="min-w-0 flex-1">
 											<div className="flex flex-wrap items-center gap-2 text-xs text-text-3">
 												{article.category ? (
@@ -402,9 +417,13 @@ export default function ReviewManualGenerateModal({
 													{t("创建时间")}：{dayjs(article.created_at).format("YYYY-MM-DD")}
 												</span>
 											</div>
-											<div className="mt-1 text-sm font-medium text-text-1">
+											<button
+												type="button"
+												onClick={() => handleArticleTitleClick(article.slug)}
+												className="mt-1 text-left text-sm font-medium text-text-1 hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
+											>
 												{article.title}
-											</div>
+											</button>
 											{article.summary ? (
 												<p className="mt-1 line-clamp-2 text-sm text-text-2">
 													{article.summary}
@@ -413,7 +432,7 @@ export default function ReviewManualGenerateModal({
 												<p className="mt-1 text-sm text-text-3">{t("暂无摘要")}</p>
 											)}
 										</div>
-									</label>
+									</div>
 								);
 							})}
 						</div>

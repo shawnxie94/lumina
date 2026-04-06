@@ -2690,8 +2690,7 @@ export default function AdminPage() {
 		return null;
 	};
 
-	const getTaskTargetLabel = (articleKind?: string | null) =>
-		articleKind === "review" ? t("查看回顾") : t("查看");
+	const getTaskTargetLabel = () => t("查看");
 
 	const getTaskTargetTitle = (
 		task: {
@@ -5742,7 +5741,7 @@ export default function AdminPage() {
 																				target="_blank"
 																				rel="noopener noreferrer"
 																			>
-																				{getTaskTargetLabel(task.article_kind)}
+																				{getTaskTargetLabel()}
 																			</Link>
 																		);
 																	})()}
