@@ -2540,13 +2540,6 @@ class ArticleAIPipelineService:
                 )
                 return
 
-            if not validation_config:
-                article.status = "failed"
-                ai_analysis.error_message = "未配置AI服务，请先在配置页面设置AI参数"
-                ai_analysis.updated_at = now_str()
-                db.commit()
-                raise TaskConfigError("未配置AI服务，请先在配置页面设置AI参数")
-
             prompt = (prompt_config.prompt if prompt_config and hasattr(prompt_config, 'prompt')
                       else validation_config.get("prompt_template"))
 
