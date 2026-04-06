@@ -1,7 +1,7 @@
 import type { GetServerSideProps } from "next";
 import Link from "next/link";
 import { useRouter } from "next/router";
-import { useEffect, useMemo, useRef, useState, type ClipboardEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent } from "react";
 
 import { signIn, signOut, useSession } from "next-auth/react";
 
@@ -512,6 +512,8 @@ export default function ReviewDetailPage({
 	const [tocItems, setTocItems] = useState<TocItem[]>([]);
 	const [activeTocId, setActiveTocId] = useState("");
 	const [tocCollapsed, setTocCollapsed] = useState(false);
+	const [lightboxImages, setLightboxImages] = useState<string[]>([]);
+	const [lightboxIndex, setLightboxIndex] = useState(0);
 
 	const commentPageSize = 5;
 	const commentInputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -520,6 +522,63 @@ export default function ReviewDetailPage({
 	const editContentRef = useRef<HTMLTextAreaElement | null>(null);
 	const previewRef = useRef<HTMLDivElement | null>(null);
 	const activeHeadingMapRef = useRef<Map<string, number>>(new Map());
+
+	const lightboxImage = lightboxImages[lightboxIndex] || null;
+	const hasLightboxMultiple = lightboxImages.length > 1;
+
+	const closeLightbox = useCallback(() => {
+		setLightboxImages([]);
+		setLightboxIndex(0);
+	}, []);
+
+	const shiftLightbox = useCallback((direction: -1 | 1) => {
+		if (lightboxImages.length <= 1) return;
+		setLightboxIndex((prev) => {
+			const next = prev + direction;
+			if (next < 0) return lightboxImages.length - 1;
+			if (next >= lightboxImages.length) return 0;
+			return next;
+		});
+	}, [lightboxImages.length]);
+
+	const handleContentClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+		const target = event.target as HTMLElement | null;
+		if (!target) return;
+		if (target.tagName === "IMG") {
+			const img = target as HTMLImageElement;
+			const clickedSrc = img.currentSrc || img.src || "";
+			if (clickedSrc) {
+				const imageList = contentRef.current
+					? Array.from(contentRef.current.querySelectorAll("img"))
+							.map((node) => {
+								const imageNode = node as HTMLImageElement;
+								return imageNode.currentSrc || imageNode.src || "";
+							})
+							.filter(Boolean)
+					: [];
+				const uniqueImages = Array.from(new Set(imageList));
+				const images = uniqueImages.length > 0 ? uniqueImages : [clickedSrc];
+				const index = Math.max(0, images.findIndex((src) => src === clickedSrc));
+				setLightboxImages(images);
+				setLightboxIndex(index);
+			}
+		}
+	}, [contentRef]);
+
+	useEffect(() => {
+		if (!lightboxImage) return;
+		const handleKeyDown = (e: KeyboardEvent) => {
+			if (e.key === "Escape") {
+				closeLightbox();
+			} else if (e.key === "ArrowLeft") {
+				shiftLightbox(-1);
+			} else if (e.key === "ArrowRight") {
+				shiftLightbox(1);
+			}
+		};
+		document.addEventListener("keydown", handleKeyDown);
+		return () => document.removeEventListener("keydown", handleKeyDown);
+	}, [lightboxImage, shiftLightbox, closeLightbox]);
 
 	useEffect(() => {
 		setReview(initialReview);
@@ -1763,7 +1822,8 @@ export default function ReviewDetailPage({
 
 							<div
 								ref={contentRef}
-								className={`article-prose prose prose-sm max-w-none break-words overflow-x-auto prose-img:rounded-lg prose-img:border prose-img:border-border prose-img:bg-surface prose-img:shadow-sm ${
+								onClick={handleContentClick}
+								className={`article-prose prose prose-sm max-w-none break-words overflow-x-auto prose-img:rounded-lg prose-img:border prose-img:border-border prose-img:bg-surface prose-img:shadow-sm cursor-zoom-in ${
 									immersiveMode
 										? "immersive-content"
 										: "prose-img:max-w-full lg:prose-img:max-w-[420px]"
@@ -2399,6 +2459,60 @@ export default function ReviewDetailPage({
 				lockTemplateSelection
 				title={t("重新生成回顾")}
 			/>
+
+			{lightboxImage && (
+				<div
+					className="fixed inset-0 z-[70] bg-black/75 backdrop-blur-[1px]"
+					onClick={closeLightbox}
+					role="dialog"
+					aria-modal="true"
+					aria-label={t("预览")}
+				>
+					<div
+						className="relative flex h-full w-full items-center justify-center p-4 sm:p-6"
+						onClick={(event) => event.stopPropagation()}
+					>
+						<button
+							type="button"
+							onClick={closeLightbox}
+							className="absolute right-4 top-4 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-black/35 text-white transition hover:bg-black/55"
+							aria-label={t("关闭")}
+						>
+							×
+						</button>
+						<div className="absolute left-4 top-4 z-10 rounded-full bg-black/35 px-3 py-1 text-xs text-white">
+							{lightboxIndex + 1} / {lightboxImages.length}
+						</div>
+						{hasLightboxMultiple && (
+							<button
+								type="button"
+								onClick={() => shiftLightbox(-1)}
+								className="absolute left-3 sm:left-4 top-1/2 z-10 -translate-y-1/2 flex h-11 w-11 items-center justify-center rounded-full bg-black/35 text-white transition hover:bg-black/55"
+								aria-label={t("上一篇")}
+							>
+								<IconChevronRight className="h-6 w-6 rotate-180" />
+							</button>
+						)}
+						<img
+							src={lightboxImage}
+							alt={t("预览")}
+							className="max-h-[92vh] w-auto max-w-[96vw] object-contain"
+							decoding="async"
+						/>
+						{hasLightboxMultiple && (
+							<button
+								type="button"
+								onClick={() => shiftLightbox(1)}
+								className="absolute right-3 sm:right-4 top-1/2 z-10 -translate-y-1/2 flex h-11 w-11 items-center justify-center rounded-full bg-black/35 text-white transition hover:bg-black/55"
+								aria-label={t("下一篇")}
+							>
+								<IconChevronRight className="h-6 w-6" />
+							</button>
+						)}
+					</div>
+				</div>
+			)}
+
 			<AppFooter />
 		</>
 	);
