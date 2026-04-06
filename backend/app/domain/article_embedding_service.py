@@ -8,6 +8,7 @@ from ai_client import ConfigurableAIClient
 from models import (
     AdminSettings,
     AIAnalysis,
+    AIUsageLog,
     Article,
     ArticleEmbedding,
     ModelAPIConfig,
@@ -106,7 +107,10 @@ class ArticleEmbeddingService:
         self,
         db: Session,
         article: Article,
+        task_id: str | None = None,
     ) -> ArticleEmbedding | None:
+        import time
+
         config = self.get_embedding_config(db)
         if not config:
             raise TaskConfigError(REMOTE_EMBEDDING_REQUIRED_MESSAGE)
@@ -120,6 +124,16 @@ class ArticleEmbeddingService:
         model_name = config["model_name"]
         model_label = model_name
         source_hash = hashlib.sha256(source_text.encode("utf-8")).hexdigest()
+
+        # 获取模型配置信息用于日志记录
+        model_config = (
+            db.query(ModelAPIConfig)
+            .filter(
+                ModelAPIConfig.id == config.get("model_api_config_id"),
+                ModelAPIConfig.is_enabled == True,
+            )
+            .first()
+        )
 
         existing = (
             db.query(ArticleEmbedding)
@@ -135,35 +149,82 @@ class ArticleEmbeddingService:
             return existing
 
         provider = (config.get("provider") or "openai").lower()
-        if provider == "jina":
-            import httpx
+        start_time = time.time()
+        status = "completed"
+        error_message = None
+        request_payload = None
+        response_payload = None
 
-            jina_base = config["base_url"].rstrip("/")
-            if not jina_base.endswith("/v1"):
-                jina_base = f"{jina_base}/v1"
+        try:
+            if provider == "jina":
+                import httpx
 
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    f"{jina_base}/embeddings",
-                    headers={
-                        "Authorization": f"Bearer {config['api_key']}",
-                        "Content-Type": "application/json",
-                        "Accept": "application/json",
-                    },
-                    json={"model": model_name, "input": [source_text]},
-                    timeout=None,
+                jina_base = config["base_url"].rstrip("/")
+                if not jina_base.endswith("/v1"):
+                    jina_base = f"{jina_base}/v1"
+
+                request_payload = json.dumps(
+                    {"model": model_name, "input": [source_text]}, ensure_ascii=False
                 )
-                response.raise_for_status()
-                data = response.json()
-                embedding_data = (data.get("data") or [{}])[0].get("embedding") or []
-        else:
-            client = ConfigurableAIClient(
-                base_url=config["base_url"],
-                api_key=config["api_key"],
-                model_name=model_name,
+
+                async with httpx.AsyncClient() as client:
+                    response = await client.post(
+                        f"{jina_base}/embeddings",
+                        headers={
+                            "Authorization": f"Bearer {config['api_key']}",
+                            "Content-Type": "application/json",
+                            "Accept": "application/json",
+                        },
+                        json={"model": model_name, "input": [source_text]},
+                        timeout=None,
+                    )
+                    response.raise_for_status()
+                    data = response.json()
+                    embedding_data = (data.get("data") or [{}])[0].get("embedding") or []
+                    response_payload = json.dumps(data, ensure_ascii=False)
+            else:
+                client = ConfigurableAIClient(
+                    base_url=config["base_url"],
+                    api_key=config["api_key"],
+                    model_name=model_name,
+                )
+                request_payload = json.dumps(
+                    {"model": model_name, "input": source_text}, ensure_ascii=False
+                )
+                result = await client.generate_embedding(source_text, model_name=model_name)
+                embedding_data = result.get("embedding") or []
+                response_payload = json.dumps(result.get("response_payload", {}), ensure_ascii=False)
+        except Exception as exc:
+            status = "failed"
+            error_message = str(exc)
+            embedding_data = []
+
+        latency_ms = int((time.time() - start_time) * 1000)
+
+        # 记录 AI usage 日志
+        if model_config:
+            db.add(
+                AIUsageLog(
+                    model_api_config_id=model_config.id,
+                    task_id=task_id,
+                    article_id=article.id,
+                    task_type="process_article_embedding",
+                    content_type="embedding",
+                    status=status,
+                    prompt_tokens=len(source_text) // 4,  # 估算 token 数
+                    completion_tokens=len(embedding_data) // 4 if embedding_data else 0,
+                    total_tokens=None,
+                    cost_input=None,
+                    cost_output=None,
+                    cost_total=None,
+                    currency=None,
+                    latency_ms=latency_ms,
+                    error_message=error_message,
+                    request_payload=request_payload,
+                    response_payload=response_payload,
+                )
             )
-            result = await client.generate_embedding(source_text, model_name=model_name)
-            embedding_data = result.get("embedding") or []
+            db.commit()
 
         embedding_json = json.dumps(embedding_data, ensure_ascii=False)
         now_iso = now_str()
@@ -189,13 +250,15 @@ class ArticleEmbeddingService:
         db.refresh(record)
         return record
 
-    async def process_article_embedding(self, article_id: str) -> None:
+    async def process_article_embedding(
+        self, article_id: str, task_id: str | None = None
+    ) -> None:
         db = SessionLocal()
         try:
             article = db.query(Article).filter(Article.id == article_id).first()
             if not article:
                 return
-            await self.ensure_article_embedding(db, article)
+            await self.ensure_article_embedding(db, article, task_id=task_id)
         finally:
             db.close()
 

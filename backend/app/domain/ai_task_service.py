@@ -255,16 +255,27 @@ class AITaskService:
         category_id,
         payload: dict,
     ):
-        cleaned_md = payload.get("cleaned_md")
-        await pipeline.process_article_validation(article_id, category_id, cleaned_md)
+        await pipeline.process_article_validation(
+            article_id,
+            category_id,
+            cleaned_md=payload.get("cleaned_md"),
+            model_config_id=payload.get("model_config_id"),
+            prompt_config_id=payload.get("prompt_config_id"),
+        )
 
     async def _handle_process_article_classification(
         self,
         pipeline,
         article_id: str,
         category_id,
+        payload: dict,
     ):
-        await pipeline.process_article_classification(article_id, category_id)
+        await pipeline.process_article_classification(
+            article_id,
+            category_id,
+            model_config_id=payload.get("model_config_id"),
+            prompt_config_id=payload.get("prompt_config_id"),
+        )
 
     async def _handle_process_article_tagging(
         self,
@@ -277,6 +288,8 @@ class AITaskService:
             article_id,
             category_id,
             force=bool(payload.get("force")),
+            model_config_id=payload.get("model_config_id"),
+            prompt_config_id=payload.get("prompt_config_id"),
         )
 
     async def _handle_process_article_translation(
@@ -322,8 +335,8 @@ class AITaskService:
             prompt_config_id=payload.get("prompt_config_id"),
         )
 
-    async def _handle_process_article_embedding(self, article_id: str):
-        await self.embedding_service.process_article_embedding(article_id)
+    async def _handle_process_article_embedding(self, task_id: str, article_id: str):
+        await self.embedding_service.process_article_embedding(article_id, task_id=task_id)
 
     async def _handle_generate_review_issue(
         self,
@@ -375,6 +388,7 @@ class AITaskService:
                 pipeline,
                 self._require_article_id(article_id),
                 category_id,
+                payload,
             ),
             "process_article_tagging": lambda: self._handle_process_article_tagging(
                 pipeline,
@@ -396,7 +410,8 @@ class AITaskService:
                 payload,
             ),
             "process_article_embedding": lambda: self._handle_process_article_embedding(
-                self._require_article_id(article_id)
+                task.id,
+                self._require_article_id(article_id),
             ),
             "generate_review_issue": lambda: self._handle_generate_review_issue(
                 task.id,
