@@ -190,6 +190,7 @@ def test_process_article_translation_also_updates_translated_title(
             "price_input_per_1k": None,
             "price_output_per_1k": None,
             "currency": None,
+            "prompt_template": "翻译为中文：{content}",
             "parameters": None,
         },
     )
@@ -271,7 +272,8 @@ def test_process_ai_content_infographic_persists_html_and_status(
             "price_input_per_1k": None,
             "price_output_per_1k": None,
             "currency": None,
-            "parameters": None,
+            "prompt_template": None,
+            "parameters": {},
         },
     )
     monkeypatch.setattr(service, "create_ai_client", lambda config: FakeClient())

@@ -1,5 +1,7 @@
 import json
 import logging
+import re
+from datetime import datetime, timezone
 
 from ai_client import is_english_content
 from media_service import maybe_ingest_top_image
@@ -24,6 +26,26 @@ DELETABLE_AI_CONTENT_FIELDS: dict[str, tuple[str, ...]] = {
         "infographic_status",
     ),
 }
+
+
+def _complete_published_at_time(published_at: str | None) -> str | None:
+    """
+    如果 published_at 只有日期部分（YYYY-MM-DD），自动补全当前时分秒。
+    如果已有时间部分或为空，则原样返回。
+    """
+    if not published_at:
+        return None
+    raw = published_at.strip()
+    # 只补全纯日期格式（YYYY-MM-DD 或 YYYY/MM/DD）
+    if re.match(r"^\d{4}[-/]\d{2}[-/]\d{2}$", raw):
+        current_time = datetime.now(timezone.utc).isoformat()
+        # current_time 格式: 2026-04-06T09:30:45.123456+00:00
+        # 提取时分秒部分
+        time_part = current_time[11:19]  # 取 "09:30:45"
+        # 将 YYYY-MM-DD 转换为标准格式并拼接时间
+        normalized_date = raw.replace("/", "-")
+        return f"{normalized_date}T{time_part}"
+    return raw
 
 
 class ArticleCommandService:
@@ -71,7 +93,7 @@ class ArticleCommandService:
             source_url=source_url,
             top_image=top_image,
             author=article_data.get("author"),
-            published_at=article_data.get("published_at"),
+            published_at=_complete_published_at_time(article_data.get("published_at")),
             source_domain=article_data.get("source_domain"),
             category_id=article_data.get("category_id"),
             status="completed" if skip_ai_processing else "pending",

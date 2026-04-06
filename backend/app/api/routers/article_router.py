@@ -20,7 +20,10 @@ from app.schemas import (
     ArticleVisibilityUpdate,
 )
 from app.domain.ai_task_service import AITaskService
-from app.domain.article_command_service import ArticleCommandService
+from app.domain.article_command_service import (
+    ArticleCommandService,
+    _complete_published_at_time,
+)
 from app.domain.article_ai_version_service import ArticleAIVersionService
 from app.domain.article_embedding_service import (
     REMOTE_EMBEDDING_REQUIRED_MESSAGE,
@@ -716,7 +719,7 @@ async def update_article(
         if article_data.author is not None:
             article.author = article_data.author
         if "published_at" in article_data.__fields_set__:
-            article.published_at = article_data.published_at
+            article.published_at = _complete_published_at_time(article_data.published_at)
         if article_data.top_image is not None:
             article.top_image = article_data.top_image
         if article_data.content_md is not None:

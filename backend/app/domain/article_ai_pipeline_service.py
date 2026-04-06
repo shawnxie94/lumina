@@ -2808,6 +2808,10 @@ class ArticleAIPipelineService:
                 db.commit()
                 raise TaskConfigError("未配置AI服务，请先在配置页面设置AI参数")
 
+            # 如果 prompt 还没有设置，尝试从 classification_config 获取
+            if not prompt and classification_config:
+                prompt = classification_config.get("prompt_template")
+
             # 如果没有提示词配置，跳过 AI 调用但继续后续流程
             skip_ai_call = not prompt
             if skip_ai_call:
@@ -3064,6 +3068,10 @@ class ArticleAIPipelineService:
                 analysis.updated_at = now_str()
                 db.commit()
                 raise TaskConfigError("未配置AI服务，请先在配置页面设置AI参数")
+
+            # 如果 prompt 还没有设置，尝试从 tagging_config 获取
+            if not prompt and tagging_config:
+                prompt = tagging_config.get("prompt_template")
 
             # 如果没有提示词配置，跳过 AI 调用
             if not prompt:
@@ -3646,16 +3654,6 @@ class ArticleAIPipelineService:
                 db.commit()
                 raise TaskConfigError("未配置AI服务，请先在配置页面设置AI参数")
 
-            # 如果没有提示词配置，跳过 AI 调用
-            if not prompt:
-                setattr(article.ai_analysis, f"{content_type}_status", "failed")
-                article.ai_analysis.error_message = (
-                    f"未配置{content_type}提示词，请先在配置页面设置"
-                )
-                article.ai_analysis.updated_at = now_str()
-                db.commit()
-                return
-
             ai_client = self.create_ai_client(ai_config)
             parameters = ai_config.get("parameters") or {}
             if prompt_parameters:
@@ -3668,6 +3666,15 @@ class ArticleAIPipelineService:
                     parameters.get("system_prompt"),
                 )
                 parameters = self._build_infographic_generation_parameters(parameters)
+            # 如果没有提示词配置且不是 infographic 类型，跳过 AI 调用
+            if not prompt and content_type != "infographic":
+                setattr(article.ai_analysis, f"{content_type}_status", "failed")
+                article.ai_analysis.error_message = (
+                    f"未配置{content_type}提示词，请先在配置页面设置"
+                )
+                article.ai_analysis.updated_at = now_str()
+                db.commit()
+                return
             parameters = self._merge_protocol_parameters(content_type, parameters)
             pricing = {
                 "model_api_config_id": ai_config.get("model_api_config_id"),

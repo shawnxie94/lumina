@@ -242,11 +242,16 @@ def test_run_task_async_routes_embedding_task_to_handler(monkeypatch):
     monkeypatch.setattr(ai_task_module, "ArticleAIPipelineService", DummyPipeline)
     handler = AsyncMock(return_value=None)
     monkeypatch.setattr(service, "_handle_process_article_embedding", handler)
-    task = AITask(task_type="process_article_embedding", article_id="article-1", payload="{}")
+    task = AITask(
+        id="task-embedding-1",
+        task_type="process_article_embedding",
+        article_id="article-1",
+        payload="{}",
+    )
 
     asyncio.run(service.run_task_async(task))
 
-    handler.assert_awaited_once_with("article-1")
+    handler.assert_awaited_once_with("task-embedding-1", "article-1")
 
 
 def test_run_task_async_routes_review_generation_task_to_handler(monkeypatch):
