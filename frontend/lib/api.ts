@@ -1057,6 +1057,22 @@ export const articleApi = {
 		};
 	},
 
+	updateAIContent: async (
+		articleSlug: string,
+		contentType: "summary" | "key_points" | "outline" | "quotes",
+		content: string,
+	): Promise<{
+		id: string;
+		content_type: string;
+		status: "updated";
+	}> => {
+		const response = await api.put(
+			`/api/articles/${articleSlug}/ai-content/${contentType}`,
+			{ content },
+		);
+		return response.data;
+	},
+
 	getAIContentVersions: async (
 		id: string,
 		contentType: VersionedAIContentType,

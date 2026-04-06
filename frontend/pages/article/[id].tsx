@@ -188,6 +188,8 @@ interface AIContentSectionProps {
 	onCopy: () => void;
 	copyTitle?: string;
 	canEdit?: boolean;
+	canUpdate?: boolean;
+	onUpdate?: (content: string) => void;
 	renderMarkdown?: boolean;
 	renderMindMap?: boolean;
 	onMindMapOpen?: () => void;
@@ -734,6 +736,8 @@ function AIContentSection({
 	onCopy,
 	copyTitle,
 	canEdit = false,
+	canUpdate = false,
+	onUpdate,
 	renderMarkdown = false,
 	renderMindMap = false,
 	onMindMapOpen,
@@ -824,6 +828,17 @@ function AIContentSection({
 								type="button"
 							>
 								<IconCopy className="h-4 w-4" />
+							</button>
+						)}
+						{content && canUpdate && onUpdate && (
+							<button
+								onClick={() => onUpdate(content)}
+								className="text-text-3 hover:text-primary transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
+								title={t("编辑内容")}
+								aria-label={t("编辑内容")}
+								type="button"
+							>
+								<IconEdit className="h-4 w-4" />
 							</button>
 						)}
 					</div>
@@ -1357,6 +1372,11 @@ export default function ArticleDetailPage({
 		useState<AIContentType | null>(null);
 	const [showDeleteAiContentModal, setShowDeleteAiContentModal] =
 		useState(false);
+	const [showEditAIContentModal, setShowEditAIContentModal] = useState(false);
+	const [editAIContentType, setEditAIContentType] = useState<
+		"summary" | "key_points" | "outline" | "quotes" | null
+	>(null);
+	const [editAIContentDraft, setEditAIContentDraft] = useState("");
 	const [showVersionHistoryModal, setShowVersionHistoryModal] = useState(false);
 	const [pendingRollbackVersion, setPendingRollbackVersion] = useState<{
 		contentType: AIContentType;
@@ -1709,6 +1729,11 @@ export default function ArticleDetailPage({
 				setPendingDeleteAiContentType(null);
 				return;
 			}
+			if (showEditAIContentModal) {
+				setShowEditAIContentModal(false);
+				setEditAIContentType(null);
+				return;
+			}
 			if (showRollbackVersionModal) {
 				setShowRollbackVersionModal(false);
 				setPendingRollbackVersion(null);
@@ -1742,6 +1767,7 @@ export default function ArticleDetailPage({
 		showDeleteCommentModal,
 		showDeleteAnnotationModal,
 		showDeleteAiContentModal,
+		showEditAIContentModal,
 		showRollbackVersionModal,
 		showVersionHistoryModal,
 		showDeleteModal,
@@ -2967,7 +2993,7 @@ export default function ArticleDetailPage({
 	);
 
 	const aiPanelContent = (
-		<div className="bg-surface rounded-lg shadow-sm border border-border p-4">
+		<div className="bg-surface rounded-sm shadow-sm border border-border p-4">
 			<div className="flex items-center justify-between mb-4">
 				{tocItems.length > 0 && (
 					<>
@@ -3029,6 +3055,12 @@ export default function ArticleDetailPage({
 						onGenerate={() => handleGenerateContent("summary")}
 						onCopy={() => handleCopyContent(article?.ai_analysis?.summary)}
 						canEdit={isAdmin}
+						canUpdate={isAdmin && Boolean(article?.ai_analysis?.summary)}
+						onUpdate={(content) => {
+							setEditAIContentType("summary");
+							setEditAIContentDraft(content);
+							setShowEditAIContentModal(true);
+						}}
 						showStatus={isAdmin}
 						statusLink={summaryStatusLink}
 						extraActions={
@@ -3540,6 +3572,30 @@ export default function ArticleDetailPage({
 		} catch (error) {
 			console.error("Failed to copy:", error);
 			showToast(t("复制失败"), "error");
+		}
+	};
+
+	const handleUpdateAIContent = async (
+		contentType: "summary" | "key_points" | "outline" | "quotes",
+		content: string,
+	) => {
+		if (!id || !article) return;
+		try {
+			await articleApi.updateAIContent(article.slug, contentType, content);
+			setArticle((prev) =>
+				prev
+					? {
+							...prev,
+							ai_analysis: prev.ai_analysis
+								? { ...prev.ai_analysis, [contentType]: content }
+								: prev.ai_analysis,
+						}
+					: prev,
+			);
+			showToast(t("已保存"));
+		} catch (error) {
+			console.error("Failed to update AI content:", error);
+			showToast(t("保存失败"), "error");
 		}
 	};
 
@@ -6226,6 +6282,49 @@ export default function ArticleDetailPage({
 					setPendingDeleteAiContentType(null);
 				}}
 			/>
+
+			<ModalShell
+				isOpen={showEditAIContentModal}
+				onClose={() => {
+					setShowEditAIContentModal(false);
+					setEditAIContentType(null);
+				}}
+				title={t("编辑内容")}
+				widthClassName="max-w-2xl"
+			>
+				<div className="space-y-4">
+					<TextArea
+						value={editAIContentDraft}
+						onChange={(e) => setEditAIContentDraft(e.target.value)}
+						placeholder={t("请输入内容")}
+						rows={10}
+						className="w-full"
+					/>
+					<div className="flex justify-end gap-2">
+						<Button
+							variant="secondary"
+							onClick={() => {
+								setShowEditAIContentModal(false);
+								setEditAIContentType(null);
+							}}
+						>
+							{t("取消")}
+						</Button>
+						<Button
+							variant="primary"
+							onClick={async () => {
+								if (editAIContentType && editAIContentDraft.trim()) {
+									await handleUpdateAIContent(editAIContentType, editAIContentDraft.trim());
+									setShowEditAIContentModal(false);
+									setEditAIContentType(null);
+								}
+							}}
+						>
+							{t("保存")}
+						</Button>
+					</div>
+				</div>
+			</ModalShell>
 
 			<ConfirmModal
 				isOpen={showRollbackVersionModal}

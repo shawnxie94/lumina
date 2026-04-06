@@ -620,7 +620,7 @@ export default function AdminPage() {
 	const { t } = useI18n();
 	const { basicSettings, updateBasicSettings: updateBasicSettingsContext } =
 		useBasicSettings();
-	const pageTitle = `${t("管理台")} - ${basicSettings.site_name || "Lumina"}`;
+	const pageTitle = `${t("管理台")} - Lumina`;
 	const [primaryTab, setPrimaryTab] = useState<"monitoring" | "settings">(
 		"monitoring",
 	);

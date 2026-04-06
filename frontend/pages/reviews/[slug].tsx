@@ -1729,10 +1729,10 @@ export default function ReviewDetailPage({
 												</IconButton>
 												<IconButton
 													onClick={() => setShowDeleteIssueModal(true)}
-													variant="ghost"
+													variant="danger"
 													size="md"
 													title={t("删除回顾")}
-													className="rounded-sm text-text-2 hover:text-danger-ink hover:bg-danger-soft"
+													className="rounded-sm"
 												>
 													<IconTrash className="h-4 w-4" />
 												</IconButton>
@@ -2257,9 +2257,18 @@ export default function ReviewDetailPage({
 										<div className="mt-4 space-y-2 text-sm leading-6 text-text-2">
 											<div>
 												<span className="font-medium text-text-1">{t("名称")}：</span>
-												<span className="break-words">
-													{review.template?.name || t("未命名模板")}
-												</span>
+												{review.template?.id ? (
+													<Link
+														href={`/reviews?template_id=${review.template.id}`}
+														className="break-words text-primary hover:underline"
+													>
+														{review.template?.name || t("未命名模板")}
+													</Link>
+												) : (
+													<span className="break-words">
+														{review.template?.name || t("未命名模板")}
+													</span>
+												)}
 											</div>
 											<div>
 												<span className="font-medium text-text-1">{t("分类")}：</span>

@@ -281,3 +281,27 @@ class ArticleCommandService:
 
         self.article_ai_version_service.clear_current_content(db, article_id, content_type)
         db.commit()
+
+    def update_ai_content(self, db: Session, article_id: str, content_type: str, content: str) -> None:
+        article = db.query(Article).filter(Article.id == article_id).first()
+        if not article:
+            raise ValueError("文章不存在")
+        if content_type not in ("summary", "key_points", "outline", "quotes"):
+            raise ValueError("不支持更新该类型的 AI 解读")
+        if not article.ai_analysis:
+            raise ValueError("AI解读不存在")
+        active_task = (
+            db.query(AITask.id)
+            .filter(
+                AITask.article_id == article_id,
+                AITask.task_type == "process_ai_content",
+                AITask.content_type == content_type,
+                AITask.status.in_(["pending", "processing"]),
+            )
+            .first()
+        )
+        if active_task:
+            raise ValueError("当前类型的 AI 解读正在生成中，请稍后再试")
+
+        setattr(article.ai_analysis, content_type, content)
+        db.commit()

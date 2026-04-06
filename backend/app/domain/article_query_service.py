@@ -486,6 +486,15 @@ class ArticleQueryService:
             self.attach_public_comment_counts(db, articles)
             return articles, total
 
+        if sort_by == "published_at_desc":
+            query = query.order_by(
+                func.coalesce(Article.published_at, datetime.min).desc(),
+                Article.created_at.desc(),
+            )
+            articles = query.offset((page - 1) * size).limit(size).all()
+            self.attach_public_comment_counts(db, articles)
+            return articles, total
+
         articles = query.all()
         articles.sort(key=_article_published_desc_sort_key, reverse=True)
         offset = max(0, (page - 1) * size)
