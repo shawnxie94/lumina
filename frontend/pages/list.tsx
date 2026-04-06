@@ -661,7 +661,9 @@ export default function Home({
   ] : [];
   const buildCategoryHref = (categoryId?: string) =>
     buildPathWithQuery('/list', {
+      ...currentListQuery,
       category_id: categoryId || undefined,
+      page: undefined,
     });
   const buildPaginationHref = (targetPage: number) =>
     buildPathWithQuery('/list', {
