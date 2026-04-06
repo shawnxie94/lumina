@@ -47,7 +47,7 @@ type ErrorTaskItem = {
   finished_at: string | null;
 };
 
-export default function AppHeader() {
+export default function AppHeader({ hideRss }: { hideRss?: boolean }) {
   const router = useRouter();
   const { isAdmin, isLoading: authLoading, logout } = useAuth();
   const { t, language } = useI18n();
@@ -518,7 +518,7 @@ export default function AppHeader() {
                 </div>
               )}
             </div>
-            {basicSettings.rss_enabled && (
+            {basicSettings.rss_enabled && !hideRss && (
               <button
                 type="button"
                 onClick={handleOpenRss}

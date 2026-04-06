@@ -9,6 +9,8 @@ import {
   type Article,
   type BasicSettings,
   resolveMediaUrl,
+  reviewApi,
+  type ReviewIssue,
 } from '@/lib/api';
 import AppFooter from '@/components/AppFooter';
 import AppHeader from '@/components/AppHeader';
@@ -26,6 +28,7 @@ import {
 import {
   fetchServerArticles,
   fetchServerBasicSettings,
+  fetchServerReviews,
   resolveRequestOrigin,
 } from '@/lib/serverApi';
 
@@ -35,6 +38,16 @@ const isExternalUrl = (url: string): boolean => /^(https?:\/\/)/.test(url);
 const formatDate = (date: string | null, language: 'zh-CN' | 'en'): string => {
   if (!date) return '';
   return new Date(date).toLocaleDateString(language === 'en' ? 'en-US' : 'zh-CN');
+};
+
+const getReviewCategoryChips = (
+  review: ReviewIssue,
+  t: (key: string) => string,
+): string[] => {
+  if ((review as any).template?.include_all_categories) {
+    return [t('全部分类')];
+  }
+  return review.category_names.length > 0 ? review.category_names : [];
 };
 
 const formatDateTime = (date: string | null, language: 'zh-CN' | 'en'): string => {
@@ -53,18 +66,24 @@ interface HomePageProps {
   initialBasicSettings: BasicSettings;
   initialLatestArticles: Article[];
   initialLatestLoaded: boolean;
+  initialLatestReviews: ReviewIssue[];
+  initialLatestReviewsLoaded: boolean;
   siteOrigin: string;
 }
 
 export const getServerSideProps: GetServerSideProps<HomePageProps> = async ({ req }) => {
   const siteOrigin = resolveRequestOrigin(req);
   try {
-    const [initialBasicSettings, latestResponse] = await Promise.all([
+    const [initialBasicSettings, latestResponse, reviewsResponse] = await Promise.all([
       fetchServerBasicSettings(req),
       fetchServerArticles(req, {
         page: 1,
         size: 6,
         sort_by: 'published_at_desc',
+      }),
+      fetchServerReviews(req, {
+        page: 1,
+        size: 3,
       }),
     ]);
 
@@ -73,6 +92,8 @@ export const getServerSideProps: GetServerSideProps<HomePageProps> = async ({ re
         initialBasicSettings,
         initialLatestArticles: latestResponse.data || [],
         initialLatestLoaded: true,
+        initialLatestReviews: reviewsResponse.data || [],
+        initialLatestReviewsLoaded: true,
         siteOrigin,
       },
     };
@@ -94,6 +115,8 @@ export const getServerSideProps: GetServerSideProps<HomePageProps> = async ({ re
         },
         initialLatestArticles: [],
         initialLatestLoaded: false,
+        initialLatestReviews: [],
+        initialLatestReviewsLoaded: false,
         siteOrigin,
       },
     };
@@ -103,12 +126,16 @@ export const getServerSideProps: GetServerSideProps<HomePageProps> = async ({ re
 export default function HomePage({
   initialLatestArticles,
   initialLatestLoaded,
+  initialLatestReviews,
+  initialLatestReviewsLoaded,
   siteOrigin,
 }: HomePageProps) {
   const { basicSettings } = useBasicSettings();
   const { t, language } = useI18n();
   const [latestArticles, setLatestArticles] = useState<Article[]>(initialLatestArticles);
   const [latestLoading, setLatestLoading] = useState(!initialLatestLoaded);
+  const [latestReviews, setLatestReviews] = useState<ReviewIssue[]>(initialLatestReviews);
+  const [reviewsLoading, setReviewsLoading] = useState(!initialLatestReviewsLoaded);
 
   useEffect(() => {
     if (initialLatestLoaded) {
@@ -144,13 +171,48 @@ export default function HomePage({
     };
   }, [initialLatestLoaded]);
 
+  useEffect(() => {
+    if (initialLatestReviewsLoaded) {
+      return;
+    }
+    let active = true;
+
+    const fetchLatestReviews = async () => {
+      setReviewsLoading(true);
+      try {
+        const response = await reviewApi.getPublicReviews({
+          page: 1,
+          size: 3,
+        });
+        if (!active) return;
+        setLatestReviews((response.data as ReviewIssue[]) || []);
+      } catch (error) {
+        console.error('Failed to fetch latest reviews:', error);
+        if (!active) return;
+        setLatestReviews([]);
+      } finally {
+        if (active) {
+          setReviewsLoading(false);
+        }
+      }
+    };
+
+    fetchLatestReviews();
+
+    return () => {
+      active = false;
+    };
+  }, [initialLatestReviewsLoaded]);
+
   const latestUpdatedAt = useMemo(() => {
     if (latestArticles.length === 0) return null;
-    return latestArticles
-      .map((article) => article.created_at)
-      .filter(Boolean)
-      .sort()
-      .slice(-1)[0] || null;
+    return (
+      latestArticles
+        .map((a) => a.published_at)
+        .filter(Boolean)
+        .sort()
+        .slice(-1)[0] || null
+    );
   }, [latestArticles]);
 
   const siteName = basicSettings.site_name || 'Lumina';
@@ -185,6 +247,56 @@ export default function HomePage({
     },
   ];
 
+  const renderReviewCard = (review: ReviewIssue) => {
+    const template = (review as any).template;
+    const href = `/reviews/${review.slug}`;
+    const displayTitle = review.title;
+    const topImage = resolveMediaUrl(review.top_image || logoUrl) || fallbackTopImageUrl;
+
+    const categoryChips = getReviewCategoryChips(review, t);
+
+    return (
+      <Link
+        key={review.slug}
+        href={href}
+        className="group overflow-hidden rounded-2xl border border-border-strong bg-surface/80 shadow-md transition hover:border-primary/40 hover:shadow-lg hover:shadow-primary/10"
+      >
+        <div className="relative aspect-video overflow-hidden bg-muted">
+          <img
+            src={topImage}
+            alt={displayTitle}
+            className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
+          />
+          {template && (
+            <span className="language-tag absolute left-2 top-2 px-2 py-0.5 text-xs">
+              {template.name}
+            </span>
+          )}
+        </div>
+        <div className="p-4">
+          <h3 className="text-base font-semibold text-text-1 truncate group-hover:text-primary transition" title={displayTitle}>
+            {displayTitle}
+          </h3>
+          {review.summary && (
+            <p className="mt-2 text-sm text-text-3 line-clamp-2">
+              {review.summary}
+            </p>
+          )}
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-text-3">
+            {categoryChips.map((chip) => (
+              <span key={chip} className="category-chip rounded-sm px-2 py-0.5 bg-muted text-text-2">
+                {chip}
+              </span>
+            ))}
+            <span>
+              {formatDate(review.published_at || review.created_at, language)}
+            </span>
+          </div>
+        </div>
+      </Link>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-app flex flex-col">
       <SeoHead
@@ -195,7 +307,7 @@ export default function HomePage({
         siteName={siteName}
         structuredData={structuredData}
       />
-      <AppHeader />
+      <AppHeader hideRss />
 
       <main className="flex-1">
         <div className="relative overflow-hidden bg-surface/80">
@@ -263,8 +375,24 @@ export default function HomePage({
               </div>
             </div>
           </section>
+        </div>
 
-          <div className="relative max-w-7xl mx-auto px-4 pb-4 sm:pb-6 text-center">
+        {!reviewsLoading && latestReviews.length > 0 && (
+          <section className="max-w-7xl mx-auto px-4 pb-12">
+            <div className="text-center">
+              <h2 className="text-2xl sm:text-3xl font-semibold text-text-1">
+                {t('最新回顾')}
+              </h2>
+              <div className="mx-auto mt-4 w-full max-w-3xl border-b border-border-strong" />
+            </div>
+            <div className="mt-4 grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+              {latestReviews.map(renderReviewCard)}
+            </div>
+          </section>
+        )}
+
+        <section className="max-w-7xl mx-auto px-4 pb-12">
+          <div className="text-center">
             <h2 className="text-2xl sm:text-3xl font-semibold text-text-1">
               {t('最新内容')}
             </h2>
@@ -273,9 +401,6 @@ export default function HomePage({
             </div>
             <div className="mx-auto mt-4 w-full max-w-3xl border-b border-border-strong" />
           </div>
-        </div>
-
-        <section className="max-w-7xl mx-auto px-4 pb-12">
           {latestLoading ? (
             <ArticleGridSkeleton />
           ) : latestArticles.length === 0 ? (

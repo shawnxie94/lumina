@@ -426,7 +426,7 @@ export default function ReviewTemplateSettings() {
 									<div className="flex flex-wrap items-center gap-2 mb-2">
 										<h3 className="font-semibold text-text-1">{template.name}</h3>
 										<StatusTag tone={template.is_enabled ? "success" : "neutral"}>
-											{template.is_enabled ? t("启用") : t("禁用")}
+											{template.is_enabled ? t("自动") : t("手动")}
 										</StatusTag>
 										<StatusTag tone="info">{getScheduleLabel(template, t)}</StatusTag>
 									</div>
@@ -668,7 +668,7 @@ export default function ReviewTemplateSettings() {
 												</div>
 												<div>
 													<code className="rounded bg-muted px-1 py-0.5">{"{issue_number}"}</code>
-													<span className="ml-2">{t("按当前模板已发布期数 + 1 计算")}</span>
+													<span className="ml-2">{t("基于已发布期数最大值 + 1，同一时间段共享相同期数")}</span>
 												</div>
 											</div>
 											<div className="mt-3 border-t border-border pt-2 text-xs text-text-3">
@@ -868,7 +868,7 @@ export default function ReviewTemplateSettings() {
 					<>
 						<div className="flex flex-wrap gap-2">
 							<StatusTag tone={previewTemplate.is_enabled ? "success" : "neutral"}>
-								{previewTemplate.is_enabled ? t("启用") : t("禁用")}
+								{previewTemplate.is_enabled ? t("自动") : t("手动")}
 							</StatusTag>
 							<StatusTag tone="info">{getScheduleLabel(previewTemplate, t)}</StatusTag>
 							<StatusTag tone="neutral">

@@ -1785,23 +1785,50 @@ class ReviewService:
         window_start: str,
         window_end: str,
     ) -> int:
-        published_prior_window_count = (
-            db.query(func.count(ReviewIssue.id))
+        # First, check if there's already a published issue in the same window
+        # that has an issue_number embedded in its title
+        same_window_issues = (
+            db.query(ReviewIssue)
             .filter(ReviewIssue.template_id == template_id)
             .filter(ReviewIssue.status == "published")
-            .filter(
-                or_(
-                    ReviewIssue.window_start < window_start,
-                    and_(
-                        ReviewIssue.window_start == window_start,
-                        ReviewIssue.window_end < window_end,
-                    ),
-                )
-            )
-            .scalar()
-            or 0
+            .filter(ReviewIssue.window_start == window_start)
+            .filter(ReviewIssue.window_end == window_end)
+            .all()
         )
-        return int(published_prior_window_count) + 1
+        
+        # Try to extract issue_number from existing issues in the same window
+        for issue in same_window_issues:
+            extracted_number = self._extract_issue_number_from_title(issue.title)
+            if extracted_number is not None:
+                return extracted_number
+        
+        # If no existing issue number found, find the max issue_number across all published issues
+        published_issues = (
+            db.query(ReviewIssue)
+            .filter(ReviewIssue.template_id == template_id)
+            .filter(ReviewIssue.status == "published")
+            .all()
+        )
+        
+        max_issue_number = 0
+        for issue in published_issues:
+            extracted_number = self._extract_issue_number_from_title(issue.title)
+            if extracted_number is not None and extracted_number > max_issue_number:
+                max_issue_number = extracted_number
+        
+        return max_issue_number + 1
+
+    def _extract_issue_number_from_title(self, title: str | None) -> int | None:
+        """Extract issue number from title by finding the first integer."""
+        if not title:
+            return None
+        # Find all integers in the title and return the largest one
+        # This handles patterns like "第 3 期", "Issue 12", "第3期", etc.
+        numbers = re.findall(r'\b\d+\b', title)
+        if not numbers:
+            return None
+        # Return the first number found (most likely the issue number)
+        return int(numbers[0])
 
     def _build_fallback_issue_title(
         self,
