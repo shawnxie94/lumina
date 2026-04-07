@@ -1823,7 +1823,7 @@ export default function ReviewDetailPage({
 							<div
 								ref={contentRef}
 								onClick={handleContentClick}
-								className={`article-prose prose prose-sm max-w-none break-words overflow-x-auto prose-img:rounded-lg prose-img:border prose-img:border-border prose-img:bg-surface prose-img:shadow-sm cursor-zoom-in ${
+								className={`article-prose prose prose-sm max-w-none break-words overflow-x-auto prose-img:cursor-zoom-in prose-img:rounded-lg prose-img:border prose-img:border-border prose-img:bg-surface prose-img:shadow-sm ${
 									immersiveMode
 										? "immersive-content"
 										: "prose-img:max-w-full lg:prose-img:max-w-[420px]"
