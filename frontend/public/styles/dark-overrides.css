@@ -1,0 +1,359 @@
+/* Dark mode component overrides.
+   Applied either by @media (prefers-color-scheme: dark) in globals.css
+   or dynamically injected by AppHeader when theme="dark". */
+
+.annotation-highlight {
+  background: rgba(250, 204, 21, 0.22);
+  border-bottom-color: rgba(253, 224, 71, 0.9);
+  color: #f8fafc;
+}
+
+.panel-subtle {
+  background: linear-gradient(180deg, #171b24 0%, #111720 100%);
+}
+
+.filter-chip {
+  border-color: rgba(147, 197, 253, 0.32);
+}
+
+.language-tag {
+  background: rgba(30, 41, 59, 0.64);
+  border-color: rgba(148, 163, 184, 0.36);
+}
+
+.skeleton-shimmer::after {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(148, 163, 184, 0.3) 50%,
+    transparent 100%
+  );
+}
+
+.prose .hljs {
+  color: #dbe4f0;
+}
+
+.prose .hljs-comment,
+.prose .hljs-quote {
+  color: #94a3b8;
+}
+
+.prose .hljs-keyword,
+.prose .hljs-selector-tag,
+.prose .hljs-subst {
+  color: #c084fc;
+}
+
+.prose .hljs-title,
+.prose .hljs-title.class_,
+.prose .hljs-title.function_,
+.prose .hljs-function .hljs-title,
+.prose .hljs-section {
+  color: #5eead4;
+}
+
+.prose .hljs-string,
+.prose .hljs-regexp,
+.prose .hljs-addition,
+.prose .hljs-attribute,
+.prose .hljs-meta .hljs-string {
+  color: #86efac;
+}
+
+.prose .hljs-number,
+.prose .hljs-literal,
+.prose .hljs-symbol,
+.prose .hljs-bullet,
+.prose .hljs-variable,
+.prose .hljs-template-variable {
+  color: #fdba74;
+}
+
+.prose .hljs-built_in,
+.prose .hljs-type,
+.prose .hljs-class .hljs-title,
+.prose .hljs-doctag {
+  color: #93c5fd;
+}
+
+.prose .hljs-meta,
+.prose .hljs-meta .hljs-keyword,
+.prose .hljs-operator,
+.prose .hljs-punctuation {
+  color: #94a3b8;
+}
+
+.prose .hljs-deletion {
+  color: #fca5a5;
+}
+
+.prose pre {
+  color: #e2e8f0;
+  background: linear-gradient(180deg, rgba(96, 165, 250, 0.08) 0%, #0f172a 100%);
+  border-color: #334155;
+}
+
+.prose pre.code-block::before {
+  background: rgba(148, 163, 184, 0.12);
+  border-color: rgba(148, 163, 184, 0.24);
+  color: #cbd5e1;
+}
+
+.prose :where(code):not(:where(pre code)) {
+  color: #e2e8f0;
+  background: #1b2433;
+  border-color: #334155;
+}
+
+.prose blockquote {
+  color: #e2e8f0;
+}
+
+.annotation-tooltip {
+  background: rgba(113, 63, 18, 0.4);
+  border: 1px solid rgba(234, 179, 8, 0.45);
+  color: #fde68a;
+  box-shadow: 0 8px 16px rgba(69, 26, 3, 0.28);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.note-panel {
+  background: linear-gradient(135deg, rgba(113, 63, 18, 0.6), rgba(113, 63, 18, 0.2));
+  border: 1px solid rgba(234, 179, 8, 0.35);
+  box-shadow: 0 6px 16px rgba(69, 26, 3, 0.35);
+}
+
+.select-modern {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+}
+
+.logo-mark {
+  filter: invert(1) brightness(1.1);
+}
+
+.ai-tab-fade {
+  background: linear-gradient(
+    to left,
+    #151922,
+    rgba(21, 25, 34, 0.8),
+    transparent
+  );
+}
+
+input,
+textarea,
+select {
+  background-color: var(--bg-surface);
+  color: var(--text-1);
+  border-color: var(--border-strong);
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  background-color: var(--bg-muted);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-3);
+}
+
+.bg-white {
+  background-color: var(--bg-surface);
+}
+
+.bg-white\/80 {
+  background-color: rgba(21, 25, 34, 0.8);
+}
+
+.bg-gray-50 {
+  background-color: #131825;
+}
+
+.bg-gray-100 {
+  background-color: #1b2230;
+}
+
+.bg-gray-200 {
+  background-color: #273041;
+}
+
+.text-gray-900 {
+  color: var(--text-1);
+}
+
+.text-gray-800 {
+  color: #e2e8f0;
+}
+
+.text-gray-700 {
+  color: var(--text-2);
+}
+
+.text-gray-600 {
+  color: var(--text-3);
+}
+
+.text-gray-500 {
+  color: #94a3b8;
+}
+
+.text-gray-400 {
+  color: #7b8aa0;
+}
+
+.border-gray-100 {
+  border-color: #1e2533;
+}
+
+.border-gray-200 {
+  border-color: #2b3343;
+}
+
+.border-gray-300 {
+  border-color: #3a4254;
+}
+
+.hover\:bg-gray-50:hover {
+  background-color: #1b2230;
+}
+
+.hover\:bg-gray-100:hover {
+  background-color: #273041;
+}
+
+.hover\:bg-red-50:hover {
+  background-color: var(--danger-soft);
+}
+
+.hover\:bg-blue-50:hover {
+  background-color: rgba(59, 130, 246, 0.12);
+}
+
+.select-modern-dropdown .ant-select-item-option {
+  color: var(--text-2);
+}
+
+.select-modern-dropdown .ant-select-item-option:hover {
+  color: var(--text-1);
+}
+
+.ant-select:not(.ant-select-customize-input) .ant-select-selector {
+  background: var(--bg-surface);
+  border-color: var(--border-strong);
+  color: var(--text-1);
+}
+
+.ant-select:not(.ant-select-customize-input) .ant-select-selector:hover {
+  background: var(--bg-muted);
+  border-color: var(--border-strong);
+}
+
+.select-modern-antd .ant-select-selector {
+  background: var(--bg-surface);
+  border-color: var(--border-strong);
+}
+
+.select-modern-antd .ant-select-selection-item,
+.select-modern-antd .ant-select-selection-placeholder {
+  color: var(--text-2);
+}
+
+.ant-picker,
+.ant-picker-input > input {
+  background-color: var(--bg-surface);
+  color: var(--text-2);
+}
+
+.ant-picker {
+  border-color: var(--border-strong);
+}
+
+.ant-picker:hover {
+  border-color: var(--border-strong);
+}
+
+.ant-picker-focused {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.2);
+}
+
+.ant-picker-input > input::placeholder {
+  color: var(--text-3);
+}
+
+.ant-picker-suffix,
+.ant-picker-clear {
+  color: var(--text-2);
+}
+
+.ant-picker-panel,
+.ant-picker-dropdown .ant-picker-panel-container {
+  background: var(--bg-surface);
+  border-color: var(--border);
+  box-shadow: var(--shadow-md);
+}
+
+.ant-picker-header,
+.ant-picker-panel .ant-picker-content,
+.ant-picker-panel .ant-picker-footer {
+  color: var(--text-2);
+  border-color: var(--border);
+}
+
+.ant-picker-content th {
+  color: var(--text-2);
+}
+
+.ant-picker-header button,
+.ant-picker-header button:hover {
+  color: var(--text-2);
+}
+
+.ant-picker-header button:hover {
+  color: var(--text-1);
+}
+
+.ant-picker-range-separator,
+.ant-picker-separator {
+  color: var(--text-2);
+}
+
+.ant-picker-cell-inner {
+  color: var(--text-2);
+}
+
+.ant-picker-cell-in-view .ant-picker-cell-inner {
+  color: var(--text-1);
+}
+
+.ant-picker-cell-disabled .ant-picker-cell-inner {
+  color: var(--text-3);
+}
+
+.ant-picker-cell-in-view.ant-picker-cell-today .ant-picker-cell-inner::before {
+  border-color: var(--accent);
+}
+
+.ant-picker-cell-in-view.ant-picker-cell-selected .ant-picker-cell-inner,
+.ant-picker-cell-in-view.ant-picker-cell-range-start .ant-picker-cell-inner,
+.ant-picker-cell-in-view.ant-picker-cell-range-end .ant-picker-cell-inner {
+  background: var(--accent);
+  color: #0b1120;
+}
+
+.ant-picker-cell-in-view.ant-picker-cell-in-range::before {
+  background: var(--accent-soft);
+}
+
+.ant-picker-time-panel,
+.ant-picker-time-panel-column > li.ant-picker-time-panel-cell .ant-picker-time-panel-cell-inner {
+  color: var(--text-2);
+}
+
+.ant-picker-time-panel-column > li.ant-picker-time-panel-cell-selected .ant-picker-time-panel-cell-inner {
+  color: var(--text-1);
+}

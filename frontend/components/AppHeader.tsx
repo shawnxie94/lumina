@@ -27,6 +27,9 @@ import {
   IconGlobe,
 } from '@/components/icons';
 
+const DARK_OVERRIDES_HREF = '/styles/dark-overrides.css';
+const LINK_ID = 'dark-overrides-link';
+
 const ERROR_PAGE_SIZE = 50;
 
 const getQueryValue = (value: string | string[] | undefined): string => {
@@ -45,6 +48,22 @@ type ErrorTaskItem = {
   updated_at: string;
   created_at: string;
   finished_at: string | null;
+};
+
+const injectDarkOverrides = () => {
+  if (typeof document === 'undefined') return;
+  if (document.getElementById(LINK_ID)) return;
+  const link = document.createElement('link');
+  link.id = LINK_ID;
+  link.rel = 'stylesheet';
+  link.href = DARK_OVERRIDES_HREF;
+  document.head.appendChild(link);
+};
+
+const removeDarkOverrides = () => {
+  if (typeof document === 'undefined') return;
+  const link = document.getElementById(LINK_ID);
+  if (link) link.remove();
 };
 
 export default function AppHeader({ hideRss }: { hideRss?: boolean }) {
@@ -73,6 +92,9 @@ export default function AppHeader({ hideRss }: { hideRss?: boolean }) {
     setTheme(initial);
     if (initial === 'system') {
       document.documentElement.removeAttribute('data-theme');
+    } else if (initial === 'dark') {
+      document.documentElement.setAttribute('data-theme', initial);
+      injectDarkOverrides();
     } else {
       document.documentElement.setAttribute('data-theme', initial);
     }
@@ -208,8 +230,13 @@ export default function AppHeader({ hideRss }: { hideRss?: boolean }) {
       localStorage.setItem('theme', nextTheme);
       if (nextTheme === 'system') {
         document.documentElement.removeAttribute('data-theme');
+        removeDarkOverrides();
+      } else if (nextTheme === 'dark') {
+        document.documentElement.setAttribute('data-theme', nextTheme);
+        injectDarkOverrides();
       } else {
         document.documentElement.setAttribute('data-theme', nextTheme);
+        removeDarkOverrides();
       }
     }
   };
