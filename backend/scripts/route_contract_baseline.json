@@ -120,6 +120,12 @@
     ]
   },
   {
+    "path": "/api/articles/{article_slug}/ai-content/{content_type}",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
     "path": "/api/articles/{article_slug}/ai-versions/{content_type}",
     "methods": [
       "GET"
@@ -307,6 +313,18 @@
   },
   {
     "path": "/api/comments",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/comments/admin/notifications",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/comments/notifications",
     "methods": [
       "GET"
     ]

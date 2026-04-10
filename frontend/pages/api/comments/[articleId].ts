@@ -79,6 +79,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           reply_to_id: replyToId || null,
           user_id: session.user.id,
           user_name: session.user.name || '访客',
+          github_username: session.user.github_username || '',
           user_avatar: session.user.image || '',
           provider: session.user.provider || '',
         }),

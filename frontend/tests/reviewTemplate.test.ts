@@ -267,11 +267,11 @@ test("review detail editor helper copy uses updated article placeholder wording"
 	);
 });
 
-test("app header maps review generation task failures to 周期回顾 label", () => {
+test("app header maps review generation task failures to 回顾 label", () => {
 	const source = readFileSync(
 		join(process.cwd(), "components/AppHeader.tsx"),
 		"utf8",
 	);
 
-	assert.match(source, /if \(task\.task_type === 'generate_review_issue'\) return t\('周期回顾'\);/);
+	assert.match(source, /if \(task\.task_type === 'generate_review_issue'\) return t\('回顾'\);/);
 });

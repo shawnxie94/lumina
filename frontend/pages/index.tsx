@@ -259,7 +259,7 @@ export default function HomePage({
       <Link
         key={review.slug}
         href={href}
-        className="group overflow-hidden rounded-2xl border border-border-strong bg-surface/80 shadow-md transition hover:border-primary/40 hover:shadow-lg hover:shadow-primary/10"
+        className="group w-full sm:w-[calc(50%-0.5rem)] lg:w-[calc(33.333%-0.667rem)] max-w-sm overflow-hidden rounded-2xl border border-border-strong bg-surface/80 shadow-md transition hover:border-primary/40 hover:shadow-lg hover:shadow-primary/10"
       >
         <div className="relative aspect-video overflow-hidden bg-muted">
           <img
@@ -380,7 +380,7 @@ export default function HomePage({
               </h2>
               <div className="mx-auto mt-4 w-full max-w-3xl border-b border-border-strong" />
             </div>
-            <div className="mt-4 grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="mt-4 flex flex-wrap justify-center gap-4">
               {latestReviews.map(renderReviewCard)}
             </div>
           </section>
@@ -401,7 +401,7 @@ export default function HomePage({
           ) : latestArticles.length === 0 ? (
             <div className="py-12 text-center text-text-3">{t('暂无文章')}</div>
           ) : (
-            <div className="mt-4 grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="mt-4 flex flex-wrap justify-center gap-4">
               {latestArticles.map((article) => {
                 const displayTitle = article.title_trans?.trim() || article.title;
 
@@ -409,7 +409,7 @@ export default function HomePage({
                   <Link
                     key={article.slug}
                     href={`/article/${article.slug}`}
-                    className="group overflow-hidden rounded-2xl border border-border-strong bg-surface/80 shadow-md transition hover:border-primary/40 hover:shadow-lg hover:shadow-primary/10"
+                    className="group w-full sm:w-[calc(50%-0.5rem)] lg:w-[calc(33.333%-0.667rem)] max-w-sm overflow-hidden rounded-2xl border border-border-strong bg-surface/80 shadow-md transition hover:border-primary/40 hover:shadow-lg hover:shadow-primary/10"
                   >
                     <div className="relative aspect-video overflow-hidden bg-muted">
                       <img

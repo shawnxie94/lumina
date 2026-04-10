@@ -10,8 +10,7 @@ from sqlalchemy import (
     create_engine,
     event,
 )
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship, sessionmaker
+from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 from datetime import date, datetime, timezone
 import uuid
 from app.core.db_migrations import run_db_migrations
@@ -199,6 +198,7 @@ class ArticleComment(Base):
     )
     user_id = Column(String, nullable=False)
     user_name = Column(String, nullable=False)
+    github_username = Column(String, nullable=True)
     user_avatar = Column(String, nullable=True)
     provider = Column(String, nullable=True)
     content = Column(Text, nullable=False)
@@ -586,6 +586,7 @@ class ReviewComment(Base):
     )
     user_id = Column(String, nullable=False)
     user_name = Column(String, nullable=False)
+    github_username = Column(String, nullable=True)
     user_avatar = Column(String, nullable=True)
     provider = Column(String, nullable=True)
     content = Column(Text, nullable=False)

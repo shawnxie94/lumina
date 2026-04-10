@@ -63,6 +63,13 @@ import {
 import { useToast } from "@/components/Toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBasicSettings } from "@/contexts/BasicSettingsContext";
+import {
+	getAIUsageFilterOptions,
+	getAITaskFilterOptions,
+	getAITaskLabel,
+	getRetryPromptTypeForTask,
+	parseAITaskFilterValue,
+} from "@/lib/aiTaskMeta";
 import { useI18n } from "@/lib/i18n";
 import {
 	type AIUsageListResponse,
@@ -71,7 +78,7 @@ import {
 	type AITaskTimelineEvent,
 	type AITaskTimelineResponse,
 	type AITaskTimelineUsage,
-	type ArticleComment,
+	type AdminCommentItem,
 	aiUsageApi,
 	articleApi,
 	backupApi,
@@ -83,6 +90,7 @@ import {
 	commentSettingsApi,
 	mediaApi,
 	recommendationSettingsApi,
+	reviewCommentApi,
 	storageSettingsApi,
 	type RecommendationSettings,
 	type CommentListResponse,
@@ -869,14 +877,14 @@ export default function AdminPage() {
 	const [commentEnd, setCommentEnd] = useState("");
 	const [commentVisibility, setCommentVisibility] = useState("");
 	const [commentReplyFilter, setCommentReplyFilter] = useState("");
-	const [hoverComment, setHoverComment] = useState<ArticleComment | null>(null);
+	const [hoverComment, setHoverComment] = useState<AdminCommentItem | null>(null);
 	const [hoverTooltipPos, setHoverTooltipPos] = useState<{
 		x: number;
 		y: number;
 	} | null>(null);
 	const [showCommentContentModal, setShowCommentContentModal] = useState(false);
 	const [activeCommentContent, setActiveCommentContent] =
-		useState<ArticleComment | null>(null);
+		useState<AdminCommentItem | null>(null);
 	const hasCommentFilters = Boolean(
 		commentQuery ||
 			commentArticleTitle ||
@@ -1309,7 +1317,8 @@ export default function AdminPage() {
 	const fetchTasks = async () => {
 		setTaskLoading(true);
 		try {
-			const [taskTypeValue, contentTypeValue] = taskTypeFilter.split(":");
+			const { taskType: taskTypeValue, contentType: contentTypeValue } =
+				parseAITaskFilterValue(taskTypeFilter);
 			const response = await articleApi.getAITasks({
 				page: taskPage,
 				size: taskPageSize,
@@ -1332,10 +1341,12 @@ export default function AdminPage() {
 	const fetchUsageLogs = async () => {
 		setUsageLoading(true);
 		try {
+			const { taskType, contentType } = parseAITaskFilterValue(usageContentType);
 			const response = await aiUsageApi.list({
 				model_api_config_id: usageModelId || undefined,
 				status: usageStatus || undefined,
-				content_type: usageContentType || undefined,
+				task_type: taskType,
+				content_type: contentType,
 				start: usageStart || undefined,
 				end: usageEnd || undefined,
 				page: usagePage,
@@ -1353,10 +1364,12 @@ export default function AdminPage() {
 
 	const fetchUsageSummary = async () => {
 		try {
+			const { taskType, contentType } = parseAITaskFilterValue(usageContentType);
 			const response = await aiUsageApi.summary({
 				model_api_config_id: usageModelId || undefined,
 				status: usageStatus || undefined,
-				content_type: usageContentType || undefined,
+				task_type: taskType,
+				content_type: contentType,
 				start: usageStart || undefined,
 				end: usageEnd || undefined,
 			});
@@ -1655,24 +1668,28 @@ export default function AdminPage() {
 	};
 
 	const handleToggleCommentVisibility = async (
-		commentId: string,
+		comment: AdminCommentItem,
 		nextHidden: boolean,
 	) => {
-		if (pendingCommentActionIds.has(commentId)) return;
-		setCommentActionPending(commentId, true);
+		if (pendingCommentActionIds.has(comment.id)) return;
+		setCommentActionPending(comment.id, true);
 		try {
-			await commentApi.toggleHidden(commentId, nextHidden);
+			if (comment.resource_type === "review") {
+				await reviewCommentApi.toggleHidden(comment.id, nextHidden);
+			} else {
+				await commentApi.toggleHidden(comment.id, nextHidden);
+			}
 			showToast(nextHidden ? t("评论已隐藏") : t("评论已显示"));
 			await fetchCommentList();
 		} catch (error) {
 			console.error("Failed to toggle comment visibility:", error);
 			showToast(t("更新失败"), "error");
 		} finally {
-			setCommentActionPending(commentId, false);
+			setCommentActionPending(comment.id, false);
 		}
 	};
 
-	const handleDeleteCommentAdmin = async (commentId: string) => {
+	const handleDeleteCommentAdmin = async (comment: AdminCommentItem) => {
 		setConfirmState({
 			isOpen: true,
 			title: t("删除评论"),
@@ -1680,17 +1697,17 @@ export default function AdminPage() {
 			confirmText: t("删除"),
 			cancelText: t("取消"),
 			onConfirm: async () => {
-				if (pendingCommentActionIds.has(commentId)) return;
-				setCommentActionPending(commentId, true);
+				if (pendingCommentActionIds.has(comment.id)) return;
+				setCommentActionPending(comment.id, true);
 				try {
-					await commentAdminApi.delete(commentId);
+					await commentAdminApi.delete(comment.id, comment.resource_type);
 					showToast(t("删除成功"));
 					await fetchCommentList();
 				} catch (error) {
 					console.error("Failed to delete comment:", error);
 					showToast(t("删除失败"), "error");
 				} finally {
-					setCommentActionPending(commentId, false);
+					setCommentActionPending(comment.id, false);
 				}
 			},
 			onCancel: () => {},
@@ -2311,30 +2328,6 @@ export default function AdminPage() {
 		}
 	};
 
-	const getRetryPromptTypeForTask = (task: AITaskItem): PromptType | null => {
-		if (task.task_type === "process_article_cleaning") return "content_cleaning";
-		if (task.task_type === "process_article_validation")
-			return "content_validation";
-		if (task.task_type === "process_article_classification")
-			return "classification";
-		if (task.task_type === "process_article_tagging") return "tagging";
-		if (task.task_type === "process_article_translation") return "translation";
-		if (
-			task.task_type === "process_ai_content" &&
-			task.content_type &&
-			([
-				"summary",
-				"key_points",
-				"outline",
-				"quotes",
-				"infographic",
-			] as string[]).includes(task.content_type)
-		) {
-			return task.content_type as PromptType;
-		}
-		return null;
-	};
-
 	const closeTaskRetryModal = () => {
 		setShowTaskRetryModal(false);
 		setRetryTargetTask(null);
@@ -2349,7 +2342,10 @@ export default function AdminPage() {
 
 	const handleOpenTaskRetryModal = async (task: AITaskItem) => {
 		if (pendingTaskActionIds.has(task.id)) return;
-		const promptType = getRetryPromptTypeForTask(task);
+		const promptType = getRetryPromptTypeForTask(
+			task.task_type,
+			task.content_type,
+		) as PromptType | null;
 		setRetryTargetTask(task);
 		setRetryTaskPromptType(promptType);
 		setRetryTaskModelConfigId("");
@@ -2652,25 +2648,6 @@ export default function AdminPage() {
 		closeInfographicRepairModal();
 	};
 
-	const getTaskTypeLabel = (taskType: string, contentType?: string | null) => {
-		if (taskType === "process_article_cleaning") return t("清洗");
-		if (taskType === "process_article_validation") return t("校验");
-		if (taskType === "process_article_classification") return t("分类");
-		if (taskType === "process_article_tagging") return t("标签");
-		if (taskType === "process_article_translation") return t("翻译");
-		if (taskType === "process_article_embedding") return t("向量化");
-		if (taskType === "generate_review_issue") return t("周期回顾");
-		if (taskType === "process_ai_content") {
-			if (contentType === "summary") return t("摘要");
-			if (contentType === "key_points") return t("总结");
-			if (contentType === "outline") return t("大纲");
-			if (contentType === "quotes") return t("金句");
-			if (contentType === "infographic") return t("信息图");
-			return t("AI内容");
-		}
-		return t("其他");
-	};
-
 	const getTaskTargetHref = (
 		task: {
 			article_id: string | null;
@@ -2689,6 +2666,25 @@ export default function AdminPage() {
 		}
 		return null;
 	};
+
+	const getCommentTargetHref = (comment: AdminCommentItem) => {
+		if (comment.resource_type === "review") {
+			const reviewTarget = comment.review_slug || comment.review_id;
+			return reviewTarget ? `/reviews/${reviewTarget}#comment-${comment.id}` : null;
+		}
+		const articleTarget = comment.article_slug || comment.article_id;
+		return articleTarget ? `/article/${articleTarget}#comment-${comment.id}` : null;
+	};
+
+	const getCommentTargetTitle = (comment: AdminCommentItem) =>
+		comment.resource_title ||
+		comment.article_title ||
+		comment.review_title ||
+		comment.article_slug ||
+		comment.review_slug ||
+		comment.article_id ||
+		comment.review_id ||
+		t("未知资源");
 
 	const getTaskTargetLabel = () => t("查看");
 
@@ -3019,21 +3015,6 @@ export default function AdminPage() {
 		if (status === "processing") return t("处理中");
 		if (status === "cancelled") return t("已取消");
 		return t("待处理");
-	};
-
-	const getUsageContentTypeLabel = (contentType: string | null) => {
-		if (!contentType) return "-";
-		if (contentType === "summary") return t("摘要");
-		if (contentType === "key_points") return t("总结");
-		if (contentType === "outline") return t("大纲");
-		if (contentType === "quotes") return t("金句");
-		if (contentType === "infographic") return t("信息图");
-		if (contentType === "translation") return t("翻译");
-		if (contentType === "content_cleaning") return t("清洗");
-		if (contentType === "content_validation") return t("校验");
-		if (contentType === "classification") return t("分类");
-		if (contentType === "tagging") return t("标签");
-		return contentType;
 	};
 
 	const formatJsonPayload = (payload: string | null) => {
@@ -3999,27 +3980,18 @@ export default function AdminPage() {
 														{ value: "pending", label: t("待处理") },
 													]}
 												/>
-												<FilterSelect
-													label={t("类型")}
-													value={usageContentType}
-													onChange={(value) => {
-														setUsageContentType(value);
-														setUsagePage(1);
-													}}
-													options={[
-														{ value: "", label: t("全部") },
-														{ value: "summary", label: t("摘要") },
-														{ value: "key_points", label: t("总结") },
-														{ value: "outline", label: t("大纲") },
-														{ value: "quotes", label: t("金句") },
-														{ value: "infographic", label: t("信息图") },
-														{ value: "translation", label: t("翻译") },
-														{ value: "content_cleaning", label: t("清洗") },
-														{ value: "content_validation", label: t("校验") },
-														{ value: "classification", label: t("分类") },
-														{ value: "tagging", label: t("标签") },
-													]}
-												/>
+											<FilterSelect
+												label={t("类型")}
+												value={usageContentType}
+												onChange={(value) => {
+													setUsageContentType(value);
+													setUsagePage(1);
+												}}
+												options={[
+													{ value: "", label: t("全部") },
+													...getAIUsageFilterOptions(t),
+												]}
+											/>
 												<div className="md:col-span-2">
 													<label
 														htmlFor="usage-date-range"
@@ -4175,8 +4147,10 @@ export default function AdminPage() {
 																			)}
 																		</td>
 																		<td className="px-3 py-2 text-text-2">
-																			{getUsageContentTypeLabel(
+																			{getAITaskLabel(
+																				log.task_type,
 																				log.content_type,
+																				t,
 																			)}
 																		</td>
 																		<td className="px-3 py-2 text-text-2">
@@ -5574,54 +5548,7 @@ export default function AdminPage() {
 												}}
 												options={[
 													{ value: "", label: t("全部") },
-													{
-														value: "process_article_cleaning",
-														label: t("清洗"),
-													},
-													{
-														value: "process_article_validation",
-														label: t("校验"),
-													},
-													{
-														value: "process_article_classification",
-														label: t("分类"),
-													},
-													{
-														value: "process_article_tagging",
-														label: t("标签"),
-													},
-													{
-														value: "process_article_translation",
-														label: t("翻译"),
-													},
-													{
-														value: "process_article_embedding",
-														label: t("向量化"),
-													},
-													{
-														value: "process_ai_content:summary",
-														label: t("摘要"),
-													},
-													{
-														value: "process_ai_content:outline",
-														label: t("大纲"),
-													},
-													{
-														value: "process_ai_content:quotes",
-														label: t("金句"),
-													},
-													{
-														value: "process_ai_content:key_points",
-														label: t("总结"),
-													},
-													{
-														value: "process_ai_content:infographic",
-														label: t("信息图"),
-													},
-													{
-														value: "generate_review_issue",
-														label: t("回顾生成"),
-													},
+													...getAITaskFilterOptions(t),
 												]}
 											/>
 											<ArticleSearchSelect
@@ -5685,11 +5612,11 @@ export default function AdminPage() {
 																		}
 																	>
 																		<div className="font-medium text-text-1 truncate">
-																			{getTaskTypeLabel(
+																			{getAITaskLabel(
 																				task.task_type,
 																				task.content_type,
+																				t,
 																			)}
-																			{t("生成")}
 																		</div>
 																		<div className="text-xs text-text-3">
 																			#{task.id.slice(0, 8)}
@@ -6020,14 +5947,14 @@ export default function AdminPage() {
 												}}
 												placeholder={t("搜索评论内容")}
 											/>
-											<ArticleSearchSelect
-												label={t("文章名称")}
+											<FilterInput
+												label={t("标题")}
 												value={commentArticleTitle}
 												onChange={(value) => {
 													setCommentArticleTitle(value);
 													setCommentListPage(1);
 												}}
-												placeholder={t("输入文章名称搜索...")}
+												placeholder={t("输入文章或回顾标题搜索...")}
 											/>
 											<FilterInput
 												label={t("评论人")}
@@ -6170,16 +6097,22 @@ export default function AdminPage() {
 																			{comment.provider || "-"}
 																		</div>
 																	</td>
-																	<td className="px-4 py-3">
-																		<Link
-																			href={`/article/${comment.article_slug || comment.article_id}#comment-${comment.id}`}
-																			className="text-primary hover:text-primary-ink"
-																			target="_blank"
-																			rel="noopener noreferrer"
-																		>
-																			{t("查看")}
-																		</Link>
-																	</td>
+													<td className="px-4 py-3">
+														{getCommentTargetHref(comment) ? (
+															<Link
+																href={getCommentTargetHref(comment) || "#"}
+																className="text-primary hover:text-primary-ink"
+																title={getCommentTargetTitle(comment)}
+																target="_blank"
+																rel="noopener noreferrer"
+															>
+																{t("查看")}
+															</Link>
+														) : (
+															<span className="text-text-3">-</span>
+														)}
+													</td>
+
 																	<td className="px-4 py-3">
 																		<StatusTag tone="neutral">
 																			{comment.reply_to_id
@@ -6203,7 +6136,7 @@ export default function AdminPage() {
 																			<IconButton
 																				onClick={() =>
 																					handleToggleCommentVisibility(
-																						comment.id,
+																						comment,
 																						!comment.is_hidden,
 																					)
 																				}
@@ -6224,9 +6157,10 @@ export default function AdminPage() {
 																				<IconEye className="h-4 w-4" />
 																			</IconButton>
 																			<IconButton
-																				onClick={() =>
-																					handleDeleteCommentAdmin(comment.id)
-																				}
+																		onClick={() =>
+																		handleDeleteCommentAdmin(comment)
+																	}
+
 																				variant="danger"
 																				size="sm"
 																				title={t("删除")}
@@ -6709,9 +6643,10 @@ export default function AdminPage() {
 							{retryTargetTask && (
 								<div className="rounded-sm border border-border bg-muted px-3 py-2 text-xs text-text-2">
 									<div className="font-medium text-text-1">
-										{getTaskTypeLabel(
+										{getAITaskLabel(
 											retryTargetTask.task_type,
 											retryTargetTask.content_type,
+											t,
 										)}
 									</div>
 									<div className="mt-1 text-text-3">#{retryTargetTask.id.slice(0, 8)}</div>
@@ -6794,9 +6729,10 @@ export default function AdminPage() {
 							<div className="space-y-4">
 								<div className="rounded-lg border border-border bg-muted p-4 text-sm text-text-2">
 									<div className="font-medium text-text-1 mb-2">
-										{getTaskTypeLabel(
+										{getAITaskLabel(
 											selectedTaskTimeline.task.task_type,
 											selectedTaskTimeline.task.content_type,
+											t,
 										)}
 									</div>
 									<div>

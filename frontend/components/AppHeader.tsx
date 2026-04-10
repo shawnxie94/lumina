@@ -6,6 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useBasicSettings } from '@/contexts/BasicSettingsContext';
 import {
   articleApi,
+  commentApi,
   buildPublicRssUrl,
   buildPublicReviewRssUrl,
   getErrorTaskPollIntervalMs,
@@ -13,6 +14,7 @@ import {
 } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { notificationStore, type NotificationItem } from '@/lib/notifications';
+import { extractCommentBody } from '@/components/comment/CommentSection';
 import {
   IconBell,
   IconGithub,
@@ -66,7 +68,7 @@ const removeDarkOverrides = () => {
   if (link) link.remove();
 };
 
-export default function AppHeader({ hideRss }: { hideRss?: boolean }) {
+export default function AppHeader({ hideRss, activeNav }: { hideRss?: boolean; activeNav?: 'home' | 'feed' | 'review' }) {
   const router = useRouter();
   const { isAdmin, isLoading: authLoading, logout } = useAuth();
   const { t, language } = useI18n();
@@ -81,6 +83,15 @@ export default function AppHeader({ hideRss }: { hideRss?: boolean }) {
   const errorMenuRef = useRef<HTMLDivElement | null>(null);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [errorLoading, setErrorLoading] = useState(false);
+
+  const getCommentNotificationLink = useCallback((comment: Awaited<ReturnType<typeof commentApi.getNotifications>>[number]) => {
+    if (comment.resource_type === 'review') {
+      const reviewTarget = comment.review_slug || comment.review_id;
+      return reviewTarget ? `/reviews/${reviewTarget}#comment-${comment.id}` : undefined;
+    }
+    const articleTarget = comment.article_slug || comment.article_id;
+    return articleTarget ? `/article/${articleTarget}#comment-${comment.id}` : undefined;
+  }, []);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -170,7 +181,7 @@ export default function AppHeader({ hideRss }: { hideRss?: boolean }) {
       if (task.task_type === 'process_article_classification') return t('分类');
       if (task.task_type === 'process_article_translation') return t('翻译');
       if (task.task_type === 'process_article_embedding') return t('向量化');
-      if (task.task_type === 'generate_review_issue') return t('周期回顾');
+      if (task.task_type === 'generate_review_issue') return t('回顾');
       if (task.task_type === 'process_ai_content') {
         if (task.content_type === 'summary') return t('摘要');
         if (task.content_type === 'key_points') return t('总结');
@@ -223,6 +234,40 @@ export default function AppHeader({ hideRss }: { hideRss?: boolean }) {
     const timer = setInterval(fetchErrorTasks, getErrorTaskPollIntervalMs());
     return () => clearInterval(timer);
   }, [fetchErrorTasks, isAdmin]);
+
+  // Fetch comment notifications for admin
+  const fetchCommentNotifications = useCallback(async () => {
+    if (!isAdmin) return;
+    try {
+      const comments = await commentApi.getNotifications();
+      const items: NotificationItem[] = comments.map((comment) => {
+        const bodyContent = extractCommentBody(comment.content);
+        return {
+          id: `comment:${comment.id}`,
+          title: t('新评论'),
+          message: `${comment.user_name}: ${bodyContent.slice(0, 100)}${bodyContent.length > 100 ? '...' : ''}`,
+          level: 'info',
+          source: 'custom',
+          category: comment.resource_title || comment.article_title || comment.review_title || t('评论'),
+          createdAt: comment.created_at,
+          link: getCommentNotificationLink(comment),
+        };
+      });
+      notificationStore.replaceSource('custom', items);
+    } catch (error) {
+      console.error('Failed to fetch comment notifications:', error);
+    }
+  }, [getCommentNotificationLink, isAdmin, t]);
+
+  useEffect(() => {
+    if (!isAdmin) {
+      notificationStore.replaceSource('custom', []);
+      return;
+    }
+    fetchCommentNotifications();
+    const timer = setInterval(fetchCommentNotifications, getErrorTaskPollIntervalMs());
+    return () => clearInterval(timer);
+  }, [fetchCommentNotifications, isAdmin]);
 
   const applyTheme = (nextTheme: 'light' | 'dark' | 'system') => {
     setTheme(nextTheme);
@@ -324,9 +369,9 @@ export default function AppHeader({ hideRss }: { hideRss?: boolean }) {
     }
     return `/login?redirect=${encodeURIComponent(currentPath)}`;
   }, [router.asPath]);
-  const isHomeRoute = router.pathname === '/';
-  const isFeedRoute = router.pathname === '/list';
-  const isReviewRoute = router.pathname === '/reviews' || router.pathname === '/reviews/[slug]';
+  const isHomeRoute = activeNav === 'home' || (!activeNav && router.pathname === '/');
+  const isFeedRoute = activeNav === 'feed' || (!activeNav && router.pathname === '/list');
+  const isReviewRoute = activeNav === 'review' || (!activeNav && (router.pathname === '/reviews' || router.pathname === '/reviews/[slug]'));
   const handleOpenRss = useCallback(() => {
     if (typeof window === 'undefined') return;
     const targetUrl = isReviewRoute
@@ -432,7 +477,17 @@ export default function AppHeader({ hideRss }: { hideRss?: boolean }) {
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2">
                                 <div className="text-sm font-medium text-text-1 truncate">
-                                  {item.title}
+                                  {item.link ? (
+                                    <Link
+                                      href={item.link}
+                                      className="hover:text-primary transition"
+                                      onClick={() => setErrorMenuOpen(false)}
+                                    >
+                                      {item.title}
+                                    </Link>
+                                  ) : (
+                                    item.title
+                                  )}
                                 </div>
                                 <div
                                   className={`text-xs ${getLevelClass(item.level)}`}
@@ -446,7 +501,17 @@ export default function AppHeader({ hideRss }: { hideRss?: boolean }) {
                                 )}
                               </div>
                               <div className="text-xs text-text-2 mt-1">
-                                {item.message}
+                                {item.link ? (
+                                  <Link
+                                    href={item.link}
+                                    className="hover:text-text-1 transition"
+                                    onClick={() => setErrorMenuOpen(false)}
+                                  >
+                                    {item.message}
+                                  </Link>
+                                ) : (
+                                  item.message
+                                )}
                               </div>
                               <div className="text-[11px] text-text-3 mt-1">
                                 {new Date(item.createdAt).toLocaleString(

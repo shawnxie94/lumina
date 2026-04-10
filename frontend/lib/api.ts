@@ -525,9 +525,11 @@ export interface ArticleComment {
 	id: string;
 	article_id: string;
 	article_slug?: string;
+	article_title?: string;
 	user_id: string;
 	user_name: string;
 	user_avatar: string | null;
+	user_github_url?: string | null;
 	provider: string | null;
 	content: string;
 	reply_to_id?: string | null;
@@ -543,6 +545,31 @@ export interface ReviewComment {
 	user_id: string;
 	user_name: string;
 	user_avatar: string | null;
+	user_github_url?: string | null;
+	provider: string | null;
+	content: string;
+	reply_to_id?: string | null;
+	is_hidden?: boolean;
+	created_at: string;
+	updated_at: string;
+}
+
+export type CommentResourceType = "article" | "review";
+
+export interface AdminCommentItem {
+	id: string;
+	resource_type: CommentResourceType;
+	resource_title?: string | null;
+	article_id?: string | null;
+	article_slug?: string | null;
+	article_title?: string | null;
+	review_id?: string | null;
+	review_slug?: string | null;
+	review_title?: string | null;
+	user_id: string;
+	user_name: string;
+	user_avatar: string | null;
+	user_github_url?: string | null;
 	provider: string | null;
 	content: string;
 	reply_to_id?: string | null;
@@ -753,7 +780,7 @@ export interface BackupImportResult {
 }
 
 export interface CommentListResponse {
-	items: ArticleComment[];
+	items: AdminCommentItem[];
 	pagination: {
 		page: number;
 		size: number;
@@ -1648,6 +1675,11 @@ export const commentApi = {
 		});
 		return response.data as { id: string; is_hidden: boolean; updated_at: string };
 	},
+	getNotifications: async (after?: string) => {
+		const params = after ? { after } : undefined;
+		const response = await api.get("/api/comments/admin/notifications", { params });
+		return response.data as AdminCommentItem[];
+	},
 };
 
 export const basicSettingsApi = {
@@ -1968,8 +2000,15 @@ export const commentAdminApi = {
 		const response = await api.get("/api/comments", { params });
 		return response.data;
 	},
-	delete: async (commentId: string) => {
-		const response = await api.delete(`/api/comments/${commentId}`);
+	delete: async (
+		commentId: string,
+		resourceType: CommentResourceType = "article",
+	) => {
+		const endpoint =
+			resourceType === "review"
+				? `/api/review-comments/${commentId}`
+				: `/api/comments/${commentId}`;
+		const response = await api.delete(endpoint);
 		return response.data as { success: boolean };
 	},
 };

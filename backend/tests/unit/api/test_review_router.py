@@ -7,6 +7,7 @@ import pytest
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.testclient import TestClient
 
+import auth
 from app.api.routers import review_router
 from app.domain.review_service import REVIEW_ARTICLE_SECTIONS_PLACEHOLDER
 from models import (
@@ -827,6 +828,74 @@ async def test_create_update_toggle_and_delete_review_comment(db_session):
     )
     assert deleted["success"] is True
     assert db_session.query(ReviewComment).filter(ReviewComment.id == created["id"]).first() is None
+
+
+@pytest.mark.anyio
+async def test_delete_review_comment_removes_nested_descendants_for_reply_comment(db_session):
+    template = make_template(db_session)
+    issue = make_issue(db_session, template.id, slug="published-issue", status="published")
+
+    root = make_review_comment(db_session, issue.id, content="root comment")
+    reply = make_review_comment(
+        db_session,
+        issue.id,
+        user_id="user-2",
+        user_name="Reply User",
+        content="reply comment",
+        reply_to_id=root.id,
+    )
+    nested_reply = make_review_comment(
+        db_session,
+        issue.id,
+        user_id="user-3",
+        user_name="Nested User",
+        content="nested reply",
+        reply_to_id=reply.id,
+    )
+    sibling = make_review_comment(
+        db_session,
+        issue.id,
+        user_id="user-4",
+        user_name="Sibling User",
+        content="sibling reply",
+        reply_to_id=root.id,
+    )
+    nested_reply_id = nested_reply.id
+    sibling_id = sibling.id
+
+    deleted = await review_router.delete_review_comment(
+        comment_id=reply.id,
+        db=db_session,
+        _=True,
+    )
+
+    assert deleted["success"] is True
+    assert deleted["deleted"] == 2
+    assert db_session.query(ReviewComment).filter(ReviewComment.id == reply.id).first() is None
+    assert db_session.query(ReviewComment).filter(ReviewComment.id == nested_reply_id).first() is None
+    assert db_session.query(ReviewComment).filter(ReviewComment.id == sibling_id).first() is not None
+
+
+def test_admin_cookie_can_delete_review_comment_via_http_route(db_session):
+    template = make_template(db_session)
+    issue = make_issue(db_session, template.id, slug="published-issue", status="published")
+    comment = make_review_comment(db_session, issue.id, content="delete me")
+
+    admin = auth.create_admin_settings(db_session, "secret123")
+    token = auth.create_token(admin.jwt_secret)
+
+    app = FastAPI()
+    app.include_router(review_router.router)
+    app.dependency_overrides[review_router.get_db] = lambda: db_session
+    client = TestClient(app)
+
+    response = client.delete(
+        f"/api/review-comments/{comment.id}",
+        cookies={"lumina_admin_token": token},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["success"] is True
 
 
 @pytest.mark.anyio

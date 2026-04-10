@@ -13,6 +13,7 @@ from app.core.dependencies import (
     check_is_admin_or_internal,
     comments_enabled,
     contains_sensitive_word,
+    get_admin_or_internal,
     get_sensitive_words,
     normalize_date_bound,
     require_internal_token,
@@ -43,6 +44,27 @@ from slug_utils import generate_slug
 router = APIRouter()
 review_service = ReviewService()
 article_rss_service = ArticleRssService()
+
+
+def _collect_review_comment_descendant_ids(db: Session, root_comment_id: str) -> list[str]:
+    pending_parent_ids = [root_comment_id]
+    descendant_ids: list[str] = []
+    seen_ids: set[str] = set()
+
+    while pending_parent_ids:
+        child_rows = (
+            db.query(ReviewComment.id)
+            .filter(ReviewComment.reply_to_id.in_(pending_parent_ids))
+            .all()
+        )
+        child_ids = [row[0] for row in child_rows if row[0] not in seen_ids]
+        if not child_ids:
+            break
+        descendant_ids.extend(child_ids)
+        seen_ids.update(child_ids)
+        pending_parent_ids = child_ids
+
+    return descendant_ids
 
 
 def _sync_template_categories(db: Session, template: ReviewTemplate, category_ids: list[str]) -> None:
@@ -271,6 +293,7 @@ async def create_review_comment(
         issue_id=issue.id,
         user_id=payload.user_id,
         user_name=payload.user_name,
+        github_username=payload.github_username,
         user_avatar=payload.user_avatar,
         provider=payload.provider,
         content=content,
@@ -343,7 +366,7 @@ async def update_review_comment(
 async def delete_review_comment(
     comment_id: str,
     db: Session = Depends(get_db),
-    _: bool = Depends(require_internal_token),
+    _: bool = Depends(get_admin_or_internal),
 ):
     if not comments_enabled(db):
         raise HTTPException(status_code=403, detail="评论已关闭")
@@ -352,27 +375,13 @@ async def delete_review_comment(
         raise HTTPException(status_code=404, detail="评论不存在")
 
     deleted = 1
-    if comment.reply_to_id is None:
-        pending_parent_ids = [comment.id]
-        descendant_ids: list[str] = []
-        while pending_parent_ids:
-            child_rows = (
-                db.query(ReviewComment.id)
-                .filter(ReviewComment.reply_to_id.in_(pending_parent_ids))
-                .all()
-            )
-            child_ids = [row[0] for row in child_rows]
-            if not child_ids:
-                break
-            descendant_ids.extend(child_ids)
-            pending_parent_ids = child_ids
-
-        if descendant_ids:
-            deleted += (
-                db.query(ReviewComment)
-                .filter(ReviewComment.id.in_(descendant_ids))
-                .delete(synchronize_session=False)
-            )
+    descendant_ids = _collect_review_comment_descendant_ids(db, comment.id)
+    if descendant_ids:
+        deleted += (
+            db.query(ReviewComment)
+            .filter(ReviewComment.id.in_(descendant_ids))
+            .delete(synchronize_session=False)
+        )
 
     db.delete(comment)
     db.commit()

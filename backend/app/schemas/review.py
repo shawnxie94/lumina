@@ -2,10 +2,14 @@ from __future__ import annotations
 
 from typing import Optional
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator
 
 
-class ReviewTemplateBase(BaseModel):
+class ReviewSchemaModel(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
+
+class ReviewTemplateBase(ReviewSchemaModel):
     name: str
     slug: Optional[str] = None
     description: Optional[str] = None
@@ -71,7 +75,7 @@ class ReviewTemplateBase(BaseModel):
         return value
 
 
-class ReviewTemplateUpdate(BaseModel):
+class ReviewTemplateUpdate(ReviewSchemaModel):
     name: Optional[str] = None
     slug: Optional[str] = None
     description: Optional[str] = None
@@ -141,14 +145,14 @@ class ReviewTemplateUpdate(BaseModel):
         return value
 
 
-class ReviewIssueUpdateRequest(BaseModel):
+class ReviewIssueUpdateRequest(ReviewSchemaModel):
     title: Optional[str] = None
     published_at: Optional[str] = None
     top_image: Optional[str] = None
     markdown_content: str
 
 
-class ReviewTemplateManualRunRequest(BaseModel):
+class ReviewTemplateManualRunRequest(ReviewSchemaModel):
     date_start: Optional[str] = None
     date_end: Optional[str] = None
     article_ids: list[str]

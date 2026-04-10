@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session, joinedload
 from ai_client import ConfigurableAIClient
 from app.core.settings import get_settings
 from app.domain.article_ai_pipeline_service import ArticleAIPipelineService
+from app.domain.comment_utils import build_user_github_url
 from models import (
     AIAnalysis,
     Article,
@@ -1035,6 +1036,12 @@ class ReviewService:
             "user_id": comment.user_id,
             "user_name": comment.user_name,
             "user_avatar": comment.user_avatar,
+            "user_github_url": build_user_github_url(
+                comment.provider,
+                comment.user_id,
+                comment.github_username,
+                comment.user_name,
+            ),
             "provider": comment.provider,
             "content": comment.content,
             "reply_to_id": comment.reply_to_id,

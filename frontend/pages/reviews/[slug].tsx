@@ -14,6 +14,9 @@ import ReviewManualGenerateModal from "@/components/ReviewManualGenerateModal";
 import SeoHead from "@/components/SeoHead";
 import { BackToTop } from "@/components/BackToTop";
 import ArticleMetaRow from "@/components/article/ArticleMetaRow";
+import CommentSection, {
+	collectCommentDescendantIds,
+} from "@/components/comment/CommentSection";
 import { useToast } from "@/components/Toast";
 import {
 	IconBook,
@@ -40,6 +43,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useBasicSettings } from "@/contexts/BasicSettingsContext";
 import { useReading } from "@/contexts/ReadingContext";
 import {
+	commentAdminApi,
 	commentSettingsApi,
 	getApiBaseUrl,
 	mediaApi,
@@ -482,42 +486,14 @@ export default function ReviewDetailPage({
 		github: false,
 		google: false,
 	});
-	const [commentDraft, setCommentDraft] = useState("");
-	const [commentSubmitting, setCommentSubmitting] = useState(false);
-	const [replyToId, setReplyToId] = useState<string | null>(null);
-	const [replyToUser, setReplyToUser] = useState("");
-	const [replyTargetId, setReplyTargetId] = useState<string | null>(null);
-	const [replyPrefix, setReplyPrefix] = useState("");
-	const [expandedReplies, setExpandedReplies] = useState<Record<string, boolean>>({});
-	const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
-	const [editingCommentDraft, setEditingCommentDraft] = useState("");
-	const [editingCommentPrefix, setEditingCommentPrefix] = useState("");
-	const [commentUpdatingIds, setCommentUpdatingIds] = useState<Set<string>>(
-		new Set(),
-	);
-	const [commentDeletingIds, setCommentDeletingIds] = useState<Set<string>>(
-		new Set(),
-	);
-	const [commentTogglingIds, setCommentTogglingIds] = useState<Set<string>>(
-		new Set(),
-	);
-	const [commentPage, setCommentPage] = useState(1);
-	const [showDeleteCommentModal, setShowDeleteCommentModal] = useState(false);
-	const [pendingDeleteCommentId, setPendingDeleteCommentId] = useState<
-		string | null
-	>(null);
 	const [showDeleteIssueModal, setShowDeleteIssueModal] = useState(false);
 	const [showRegenerateModal, setShowRegenerateModal] = useState(false);
-	const [showUserMenu, setShowUserMenu] = useState(false);
 	const [tocItems, setTocItems] = useState<TocItem[]>([]);
 	const [activeTocId, setActiveTocId] = useState("");
 	const [tocCollapsed, setTocCollapsed] = useState(false);
 	const [lightboxImages, setLightboxImages] = useState<string[]>([]);
 	const [lightboxIndex, setLightboxIndex] = useState(0);
 
-	const commentPageSize = 5;
-	const commentInputRef = useRef<HTMLTextAreaElement | null>(null);
-	const userMenuRef = useRef<HTMLDivElement | null>(null);
 	const contentRef = useRef<HTMLDivElement | null>(null);
 	const editContentRef = useRef<HTMLTextAreaElement | null>(null);
 	const previewRef = useRef<HTMLDivElement | null>(null);
@@ -650,19 +626,6 @@ export default function ReviewDetailPage({
 	}, [isAdmin, showToast, t]);
 
 	useEffect(() => {
-		const handleClickOutside = (event: MouseEvent) => {
-			if (
-				userMenuRef.current &&
-				!userMenuRef.current.contains(event.target as Node)
-			) {
-				setShowUserMenu(false);
-			}
-		};
-		document.addEventListener("mousedown", handleClickOutside);
-		return () => document.removeEventListener("mousedown", handleClickOutside);
-	}, []);
-
-	useEffect(() => {
 		if (typeof window === "undefined") return;
 		const media = window.matchMedia("(max-width: 1023px)");
 		const handleChange = (event?: MediaQueryListEvent) => {
@@ -765,10 +728,6 @@ export default function ReviewDetailPage({
 			disposed = true;
 		};
 	}, [commentSettingsLoaded, commentsEnabled, review.slug, review.status, showToast, t]);
-
-	useEffect(() => {
-		setCommentPage(1);
-	}, [review.id]);
 
 	useEffect(() => {
 		if (!contentRef.current) return;
@@ -945,59 +904,12 @@ export default function ReviewDetailPage({
 		},
 	};
 
-	const sortedTopComments = useMemo(
-		() =>
-			[...comments]
-				.filter((comment) => !comment.reply_to_id)
-				.sort((left, right) =>
-					left.created_at.localeCompare(right.created_at),
-				),
-		[comments],
-	);
-
-	const repliesByParent = useMemo(() => {
-		const grouped: Record<string, ReviewComment[]> = {};
-		comments.forEach((comment) => {
-			if (!comment.reply_to_id) return;
-			if (!grouped[comment.reply_to_id]) {
-				grouped[comment.reply_to_id] = [];
-			}
-			grouped[comment.reply_to_id].push(comment);
-		});
-		Object.values(grouped).forEach((items) =>
-			items.sort((left, right) => left.created_at.localeCompare(right.created_at)),
-		);
-		return grouped;
-	}, [comments]);
-
-	const totalCommentPages = Math.max(
-		1,
-		Math.ceil(sortedTopComments.length / commentPageSize),
-	);
-	const pagedTopComments = useMemo(() => {
-		const start = (commentPage - 1) * commentPageSize;
-		return sortedTopComments.slice(start, start + commentPageSize);
-	}, [commentPage, sortedTopComments]);
-
-	useEffect(() => {
-		if (commentPage > totalCommentPages) {
-			setCommentPage(totalCommentPages);
-		}
-	}, [commentPage, totalCommentPages]);
-
 	const displayCommentCount =
 		commentSettingsLoaded && commentsEnabled && review.status === "published"
 			? comments.length
 			: (review.comment_count ?? 0);
 	const showTitleViewStat = (review.view_count ?? 0) > 0;
 	const showTitleCommentStat = displayCommentCount > 0;
-
-	const resetReplyState = () => {
-		setReplyToId(null);
-		setReplyToUser("");
-		setReplyTargetId(null);
-		setReplyPrefix("");
-	};
 
 	const refreshAdminReview = async (issueId: string) => {
 		const next = await reviewApi.getIssue(issueId);
@@ -1284,197 +1196,59 @@ export default function ReviewDetailPage({
 		}
 	};
 
-	const handleSubmitComment = async () => {
-		if (commentSubmitting || !session || review.status !== "published") return;
-		const finalContent = replyPrefix
-			? `${replyPrefix}\n${commentDraft}`
-			: commentDraft;
-		if (!finalContent.trim()) {
-			showToast(t("评论内容不能为空"), "error");
-			return;
-		}
-
-		setCommentSubmitting(true);
-		try {
-			const data = await reviewCommentApi.createReviewComment(
-				review.slug,
-				finalContent,
-				replyToId,
-			);
-			setComments((prev) =>
-				[...prev, data].sort((left, right) =>
-					left.created_at.localeCompare(right.created_at),
-				),
-			);
-			setCommentDraft("");
-			resetReplyState();
-			showToast(t("评论发布成功"), "success");
-		} catch (error) {
-			console.error("Failed to submit review comment:", error);
-			showToast(
-				error instanceof Error ? error.message : t("发布评论失败"),
-				"error",
-			);
-		} finally {
-			setCommentSubmitting(false);
-		}
+	// Comment handlers for CommentSection
+	const handleSubmitComment = async (content: string, replyToId?: string | null) => {
+		if (!session || review.status !== "published") return;
+		const data = await reviewCommentApi.createReviewComment(
+			review.slug,
+			content,
+			replyToId,
+		);
+		setComments((prev) =>
+			[...prev, data].sort((left, right) =>
+				left.created_at.localeCompare(right.created_at),
+			),
+		);
+		showToast(t("评论发布成功"), "success");
+		return data;
 	};
 
-	const handleReplyTo = (comment: ReviewComment, rootId?: string) => {
-		if (!session) {
-			showToast(t("请先登录后再回复"), "info");
-			return;
-		}
-		const origin =
-			typeof window !== "undefined"
-				? `${window.location.origin}${window.location.pathname}#comment-${comment.id}`
-				: `#comment-${comment.id}`;
-		setReplyToId(rootId || comment.id);
-		setReplyToUser(comment.user_name);
-		setReplyTargetId(comment.id);
-		setReplyPrefix(`> ${t("回复")} @${comment.user_name}\n> [${t("原评论")}](${origin})\n`);
-		setCommentDraft("");
-		setTimeout(() => commentInputRef.current?.focus(), 0);
+	const handleUpdateComment = async (commentId: string, content: string) => {
+		const data = await reviewCommentApi.updateComment(commentId, content);
+		setComments((prev) =>
+			prev.map((item) => (item.id === data.id ? data : item)),
+		);
+		showToast(t("评论已更新"), "success");
 	};
 
-	const handleStartEditComment = (comment: ReviewComment) => {
-		const parsed = extractReplyPrefix(comment.content);
-		setEditingCommentId(comment.id);
-		setEditingCommentPrefix(parsed.prefix);
-		setEditingCommentDraft(parsed.body);
+	const handleDeleteComment = async (commentId: string) => {
+		if (isAdmin) {
+			await commentAdminApi.delete(commentId, "review");
+		} else {
+			await reviewCommentApi.deleteComment(commentId);
+		}
+		setComments((prev) => {
+			const idsToRemove = new Set([
+				commentId,
+				...collectCommentDescendantIds(commentId, prev),
+			]);
+			return prev.filter((item) => !idsToRemove.has(item.id));
+		});
+		showToast(t("评论已删除"), "success");
 	};
 
-	const handleSaveEditComment = async () => {
-		if (!editingCommentId || commentUpdatingIds.has(editingCommentId)) return;
-		const nextContent = editingCommentPrefix
-			? `${editingCommentPrefix}\n\n${editingCommentDraft}`.trim()
-			: editingCommentDraft.trim();
-		if (!nextContent) {
-			showToast(t("评论内容不能为空"), "error");
-			return;
-		}
-		setCommentUpdatingIds((prev) => new Set(prev).add(editingCommentId));
-		try {
-			const data = await reviewCommentApi.updateComment(editingCommentId, nextContent);
-			setComments((prev) =>
-				prev.map((item) => (item.id === data.id ? data : item)),
-			);
-			setEditingCommentId(null);
-			setEditingCommentDraft("");
-			setEditingCommentPrefix("");
-			showToast(t("评论已更新"), "success");
-		} catch (error) {
-			console.error("Failed to update review comment:", error);
-			showToast(
-				error instanceof Error ? error.message : t("更新评论失败"),
-				"error",
-			);
-		} finally {
-			setCommentUpdatingIds((prev) => {
-				const next = new Set(prev);
-				next.delete(editingCommentId);
-				return next;
-			});
-		}
-	};
-
-	const openDeleteCommentModal = (commentId: string) => {
-		setPendingDeleteCommentId(commentId);
-		setShowDeleteCommentModal(true);
-	};
-
-	const handleDeleteComment = async () => {
-		if (!pendingDeleteCommentId || commentDeletingIds.has(pendingDeleteCommentId)) {
-			return;
-		}
-		const targetId = pendingDeleteCommentId;
-		setCommentDeletingIds((prev) => new Set(prev).add(targetId));
-		try {
-			await reviewCommentApi.deleteComment(targetId);
-			setComments((prev) =>
-				prev.filter(
-					(item) => item.id !== targetId && item.reply_to_id !== targetId,
-				),
-			);
-			showToast(t("评论已删除"), "success");
-			setShowDeleteCommentModal(false);
-			setPendingDeleteCommentId(null);
-		} catch (error) {
-			console.error("Failed to delete review comment:", error);
-			showToast(
-				error instanceof Error ? error.message : t("删除评论失败"),
-				"error",
-			);
-		} finally {
-			setCommentDeletingIds((prev) => {
-				const next = new Set(prev);
-				next.delete(targetId);
-				return next;
-			});
-		}
-	};
-
-	const handleToggleCommentHidden = async (comment: ReviewComment) => {
-		if (commentTogglingIds.has(comment.id)) return;
-		setCommentTogglingIds((prev) => new Set(prev).add(comment.id));
-		try {
-			const data = await reviewCommentApi.toggleHidden(
-				comment.id,
-				!comment.is_hidden,
-			);
-			setComments((prev) =>
-				prev.map((item) =>
-					item.id === comment.id
-						? { ...item, is_hidden: data.is_hidden, updated_at: data.updated_at }
-						: item,
-				),
-			);
-			showToast(
-				data.is_hidden ? t("评论已隐藏") : t("评论已显示"),
-				"success",
-			);
-		} catch (error) {
-			console.error("Failed to toggle review comment visibility:", error);
-			showToast(t("评论可见性更新失败"), "error");
-		} finally {
-			setCommentTogglingIds((prev) => {
-				const next = new Set(prev);
-				next.delete(comment.id);
-				return next;
-			});
-		}
-	};
-
-	const renderCommentBody = (comment: ReviewComment) => {
-		const meta = getReplyMeta(comment.content);
-		const body = extractReplyPrefix(comment.content).body;
-		return (
-			<div>
-				{meta && (
-					<div className="mb-2 text-xs text-text-3">
-						<span>
-							{t("回复")} @{meta.user}
-						</span>
-						{meta.link && (
-							<a
-								href={meta.link}
-								className="ml-2 text-text-3 underline transition hover:text-text-1"
-							>
-								{t("原评论")}
-							</a>
-						)}
-					</div>
-				)}
-				<div
-					className="prose prose-sm max-w-none text-text-2"
-					style={{
-						wordBreak: "break-word",
-						overflowWrap: "anywhere",
-						whiteSpace: "normal",
-					}}
-					dangerouslySetInnerHTML={{ __html: renderSafeMarkdown(body) }}
-				/>
-			</div>
+	const handleToggleCommentHidden = async (commentId: string, isHidden: boolean) => {
+		const data = await reviewCommentApi.toggleHidden(commentId, isHidden);
+		setComments((prev) =>
+			prev.map((item) =>
+				item.id === commentId
+					? { ...item, is_hidden: data.is_hidden, updated_at: data.updated_at }
+					: item,
+			),
+		);
+		showToast(
+			data.is_hidden ? t("评论已隐藏") : t("评论已显示"),
+			"success",
 		);
 	};
 
@@ -1886,423 +1660,27 @@ export default function ReviewDetailPage({
 							review.status === "published" &&
 							commentsEnabled ? (
 								<section className="mt-10">
-									<div className="rounded-sm border border-border bg-surface p-5">
-										<div className="mb-4 flex items-center justify-between">
-											<div className="flex items-center gap-2">
-												<h3 className="text-base font-semibold text-text-1">{t("评论")}</h3>
-												<span className="text-xs text-text-3">({displayCommentCount})</span>
-											</div>
-											{session ? (
-												<div className="flex items-center gap-2 text-xs text-text-3">
-													<span>{session?.user?.name || t("访客")}</span>
-													<div className="relative" ref={userMenuRef}>
-														{session?.user?.image ? (
-															<button
-																type="button"
-																onClick={() => setShowUserMenu((prev) => !prev)}
-																className="focus:outline-none"
-															>
-																<img
-																	src={session.user.image || ""}
-																	alt={session.user.name || t("访客")}
-																	className="h-6 w-6 rounded-full object-cover"
-																	width={24}
-																	height={24}
-																	loading="lazy"
-																	decoding="async"
-																/>
-															</button>
-														) : null}
-														{showUserMenu ? (
-															<div className="absolute right-0 mt-2 min-w-[120px] rounded-sm border border-border bg-surface text-xs text-text-2 shadow-sm z-10">
-																<button
-																	type="button"
-																	onClick={() => {
-																		signOut();
-																		setShowUserMenu(false);
-																	}}
-																	className="w-full px-3 py-2 text-left transition hover:bg-muted hover:text-text-1"
-																>
-																	{t("退出登录")}
-																</button>
-															</div>
-														) : null}
-													</div>
-												</div>
-											) : (
-												<div className="flex items-center gap-2">
-													{commentProviders.github ? (
-														<button
-															type="button"
-															onClick={() => signIn("github")}
-															className="rounded-full border border-border px-3 py-1 text-xs text-text-2 transition hover:bg-muted hover:text-text-1"
-														>
-															{t("GitHub 登录")}
-														</button>
-													) : null}
-													{commentProviders.google ? (
-														<button
-															type="button"
-															onClick={() => signIn("google")}
-															className="rounded-full border border-border px-3 py-1 text-xs text-text-2 transition hover:bg-muted hover:text-text-1"
-														>
-															{t("Google 登录")}
-														</button>
-													) : null}
-													{!commentProviders.github && !commentProviders.google ? (
-														<span className="text-xs text-text-3">{t("未配置登录方式")}</span>
-													) : null}
-												</div>
-											)}
-										</div>
-
-										{session ? (
-											<div className="mb-5">
-												{replyToId ? (
-													<div className="mb-2 flex items-center justify-between rounded-sm border border-border bg-muted px-3 py-2 text-xs text-text-2">
-														<span>
-															{t("回复")} {replyToUser ? `@${replyToUser}` : ""}
-														</span>
-														<button
-															type="button"
-															onClick={resetReplyState}
-															disabled={commentSubmitting}
-															className="text-text-3 transition hover:text-text-1 disabled:cursor-not-allowed disabled:opacity-50"
-														>
-															{t("取消回复")}
-														</button>
-													</div>
-												) : null}
-												<TextArea
-													ref={commentInputRef}
-													value={commentDraft}
-													onChange={(event) => setCommentDraft(event.target.value)}
-													rows={4}
-													className="rounded-lg"
-													placeholder={t("写下你的评论，支持 Markdown")}
-													disabled={commentSubmitting}
-												/>
-												<div className="mt-2 flex justify-end">
-													<Button
-														type="button"
-														onClick={handleSubmitComment}
-														variant="primary"
-														size="sm"
-														loading={commentSubmitting}
-														disabled={commentSubmitting}
-													>
-														{t("发布评论")}
-													</Button>
-												</div>
-											</div>
-										) : null}
-
-										{commentsLoading ? (
-											<div className="inline-flex items-center gap-2 text-sm text-text-3" aria-live="polite">
-												<IconRefresh className="h-3.5 w-3.5 animate-spin" />
-												<span>{t("评论加载中...")}</span>
-											</div>
-										) : sortedTopComments.length === 0 ? (
-											<div className="text-sm text-text-3">{t("暂无评论")}</div>
-										) : (
-											<div className="space-y-4">
-												{pagedTopComments.map((comment) => {
-													const isOwner = session?.user?.id === comment.user_id;
-													const isEditing = editingCommentId === comment.id;
-													const replies = repliesByParent[comment.id] || [];
-													const isExpanded = expandedReplies[comment.id] ?? false;
-													const isUpdatingComment = commentUpdatingIds.has(comment.id);
-													const isDeletingComment = commentDeletingIds.has(comment.id);
-													const isTogglingComment = commentTogglingIds.has(comment.id);
-													const replyToggleLabel = `${isExpanded ? t("收起回复") : t("查看回复")} (${replies.length})`;
-
-													return (
-														<div
-															key={comment.id}
-															id={`comment-${comment.id}`}
-															className="rounded-lg border border-border bg-surface p-4 scroll-mt-24"
-														>
-															<div className="mb-2 flex items-start justify-between gap-2">
-																<div className="flex items-center gap-2">
-																	{comment.user_avatar ? (
-																		<img
-																			src={comment.user_avatar}
-																			alt={comment.user_name}
-																			className="h-6 w-6 rounded-full object-cover"
-																			width={24}
-																			height={24}
-																			loading="lazy"
-																			decoding="async"
-																		/>
-																	) : null}
-																	<div className="text-sm text-text-1">{comment.user_name}</div>
-																	<a
-																		href={`#comment-${comment.id}`}
-																		className="text-xs text-text-3 transition hover:text-text-1"
-																	>
-																		{formatDateTime(comment.created_at, language)}
-																	</a>
-																	{comment.is_hidden ? (
-																		<span className="rounded-sm bg-warning-soft px-2 py-0.5 text-[11px] text-warning-ink">
-																			{t("已隐藏")}
-																		</span>
-																	) : null}
-																</div>
-																<div className="flex items-center gap-1.5">
-																	<button
-																		type="button"
-																		onClick={() => handleReplyTo(comment)}
-																		className="text-xs text-text-3 transition hover:text-text-1"
-																	>
-																		{t("回复")}
-																	</button>
-																	{isOwner ? (
-																		<button
-																			type="button"
-																			onClick={() => handleStartEditComment(comment)}
-																			className="text-xs text-text-3 transition hover:text-text-1"
-																		>
-																			{t("编辑")}
-																		</button>
-																	) : null}
-																	{isAdmin ? (
-																		<button
-																			type="button"
-																			onClick={() => handleToggleCommentHidden(comment)}
-																			disabled={isTogglingComment}
-																			className="text-xs text-text-3 transition hover:text-text-1 disabled:cursor-not-allowed disabled:opacity-50"
-																		>
-																			{comment.is_hidden ? t("显示") : t("隐藏")}
-																		</button>
-																	) : null}
-																	{isOwner || isAdmin ? (
-																		<button
-																			type="button"
-																			onClick={() => openDeleteCommentModal(comment.id)}
-																			disabled={isDeletingComment}
-																			className="text-xs text-text-3 transition hover:text-danger-ink disabled:cursor-not-allowed disabled:opacity-50"
-																		>
-																			{t("删除")}
-																		</button>
-																	) : null}
-																</div>
-															</div>
-															{isEditing ? (
-																<div>
-																	<TextArea
-																		value={editingCommentDraft}
-																		onChange={(event) => setEditingCommentDraft(event.target.value)}
-																		rows={4}
-																		className="rounded-lg"
-																		disabled={isUpdatingComment}
-																	/>
-																	<div className="mt-2 flex justify-end gap-2">
-																		<Button
-																			type="button"
-																			variant="secondary"
-																			size="sm"
-																			onClick={() => {
-																				setEditingCommentId(null);
-																				setEditingCommentDraft("");
-																				setEditingCommentPrefix("");
-																			}}
-																			disabled={isUpdatingComment}
-																		>
-																			{t("取消")}
-																		</Button>
-																		<Button
-																			type="button"
-																			variant="primary"
-																			size="sm"
-																			onClick={handleSaveEditComment}
-																			loading={isUpdatingComment}
-																			disabled={isUpdatingComment}
-																		>
-																			{t("保存")}
-																		</Button>
-																	</div>
-																</div>
-															) : (
-																renderCommentBody(comment)
-															)}
-															{replies.length > 0 ? (
-																<div className="mt-4 border-t border-border pt-3">
-																	<button
-																		type="button"
-																		onClick={() =>
-																			setExpandedReplies((prev) => ({
-																				...prev,
-																				[comment.id]: !isExpanded,
-																			}))
-																		}
-																		className="inline-flex items-center gap-1 text-xs text-text-3 transition hover:text-text-1"
-																	>
-																		{isExpanded ? (
-																			<IconChevronUp className="h-3.5 w-3.5" />
-																		) : (
-																			<IconChevronDown className="h-3.5 w-3.5" />
-																		)}
-																		<span>{replyToggleLabel}</span>
-																	</button>
-																	{isExpanded ? (
-																		<div className="mt-3 space-y-3">
-																			{replies.map((reply) => {
-																				const isReplyOwner = session?.user?.id === reply.user_id;
-																				const isReplyEditing = editingCommentId === reply.id;
-																				const isUpdatingReply = commentUpdatingIds.has(reply.id);
-																				const isDeletingReply = commentDeletingIds.has(reply.id);
-																				const isTogglingReply = commentTogglingIds.has(reply.id);
-
-																				return (
-																					<div
-																						key={reply.id}
-																						id={`comment-${reply.id}`}
-																						className="rounded-lg border border-border bg-muted/40 p-3"
-																					>
-																						<div className="mb-2 flex items-start justify-between gap-2">
-																							<div className="flex items-center gap-2">
-																								{reply.user_avatar ? (
-																									<img
-																										src={reply.user_avatar}
-																										alt={reply.user_name}
-																										className="h-5 w-5 rounded-full object-cover"
-																										width={20}
-																										height={20}
-																										loading="lazy"
-																										decoding="async"
-																									/>
-																								) : null}
-																								<div className="text-sm text-text-1">{reply.user_name}</div>
-																								<a
-																									href={`#comment-${reply.id}`}
-																									className="text-xs text-text-3 transition hover:text-text-1"
-																								>
-																									{formatDateTime(reply.created_at, language)}
-																								</a>
-																								{reply.is_hidden ? (
-																									<span className="rounded-sm bg-warning-soft px-2 py-0.5 text-[11px] text-warning-ink">
-																										{t("已隐藏")}
-																									</span>
-																								) : null}
-																							</div>
-																							<div className="flex items-center gap-1.5">
-																								<button
-																									type="button"
-																									onClick={() => handleReplyTo(reply, comment.id)}
-																									className="text-xs text-text-3 transition hover:text-text-1"
-																								>
-																									{t("回复")}
-																								</button>
-																								{isReplyOwner ? (
-																									<button
-																										type="button"
-																										onClick={() => handleStartEditComment(reply)}
-																										className="text-xs text-text-3 transition hover:text-text-1"
-																									>
-																										{t("编辑")}
-																									</button>
-																								) : null}
-																								{isAdmin ? (
-																									<button
-																										type="button"
-																										onClick={() => handleToggleCommentHidden(reply)}
-																										disabled={isTogglingReply}
-																										className="text-xs text-text-3 transition hover:text-text-1 disabled:cursor-not-allowed disabled:opacity-50"
-																									>
-																										{reply.is_hidden ? t("显示") : t("隐藏")}
-																									</button>
-																								) : null}
-																								{isReplyOwner || isAdmin ? (
-																									<button
-																										type="button"
-																										onClick={() => openDeleteCommentModal(reply.id)}
-																										disabled={isDeletingReply}
-																										className="text-xs text-text-3 transition hover:text-danger-ink disabled:cursor-not-allowed disabled:opacity-50"
-																									>
-																										{t("删除")}
-																									</button>
-																								) : null}
-																							</div>
-																						</div>
-																						{isReplyEditing ? (
-																							<div>
-																								<TextArea
-																									value={editingCommentDraft}
-																									onChange={(event) => setEditingCommentDraft(event.target.value)}
-																									rows={3}
-																									className="rounded-lg"
-																									disabled={isUpdatingReply}
-																								/>
-																								<div className="mt-2 flex justify-end gap-2">
-																									<Button
-																										type="button"
-																										variant="secondary"
-																										size="sm"
-																										onClick={() => {
-																											setEditingCommentId(null);
-																											setEditingCommentDraft("");
-																											setEditingCommentPrefix("");
-																										}}
-																										disabled={isUpdatingReply}
-																									>
-																										{t("取消")}
-																									</Button>
-																									<Button
-																										type="button"
-																										variant="primary"
-																										size="sm"
-																										onClick={handleSaveEditComment}
-																										loading={isUpdatingReply}
-																										disabled={isUpdatingReply}
-																									>
-																										{t("保存")}
-																									</Button>
-																								</div>
-																							</div>
-																						) : (
-																							renderCommentBody(reply)
-																						)}
-																					</div>
-																				);
-																			})}
-																		</div>
-																	) : null}
-																</div>
-															) : null}
-														</div>
-													);
-												})}
-												{totalCommentPages > 1 ? (
-													<div className="flex items-center justify-end gap-2 pt-2 text-xs text-text-3">
-														<button
-															type="button"
-															onClick={() => setCommentPage((prev) => Math.max(1, prev - 1))}
-															disabled={commentPage <= 1}
-															className="rounded-sm border border-border px-2 py-1 transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
-														>
-															{t("上一页")}
-														</button>
-														<span>
-															{commentPage} / {totalCommentPages}
-														</span>
-														<button
-															type="button"
-															onClick={() =>
-																setCommentPage((prev) =>
-																	Math.min(totalCommentPages, prev + 1),
-																)
-															}
-															disabled={commentPage >= totalCommentPages}
-															className="rounded-sm border border-border px-2 py-1 transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
-														>
-															{t("下一页")}
-														</button>
-													</div>
-												) : null}
-											</div>
-										)}
-									</div>
-								</section>
+								<div className="bg-surface border border-border rounded-sm p-5">
+									<CommentSection
+										comments={comments}
+										session={session}
+										isAdmin={isAdmin}
+										onSubmitComment={handleSubmitComment}
+										onUpdateComment={handleUpdateComment}
+										onDeleteComment={handleDeleteComment}
+										onToggleHidden={isAdmin ? handleToggleCommentHidden : undefined}
+										loading={commentsLoading}
+										displayCommentCount={displayCommentCount}
+										commentProviders={commentProviders}
+										onSignIn={(provider) => {
+											void signIn(provider);
+										}}
+										onSignOut={() => {
+											void signOut();
+										}}
+									/>
+								</div>
+							</section>
 							) : null}
 						</article>
 
@@ -2421,18 +1799,6 @@ export default function ReviewDetailPage({
 				<BackToTop />
 			</div>
 		</div>
-			<ConfirmModal
-				isOpen={showDeleteCommentModal}
-				title={t("删除评论")}
-				message={t("删除后无法恢复确认继续吗")}
-				confirmText={t("删除")}
-				cancelText={t("取消")}
-				onConfirm={handleDeleteComment}
-				onCancel={() => {
-					setShowDeleteCommentModal(false);
-					setPendingDeleteCommentId(null);
-				}}
-			/>
 			<ConfirmModal
 				isOpen={showDeleteIssueModal}
 				title={t("删除回顾")}
