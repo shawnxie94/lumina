@@ -310,6 +310,11 @@ def _to_rfc2822_datetime(value: str | None) -> str:
     return format_datetime(parsed.replace(tzinfo=timezone.utc), usegmt=True)
 
 
+def _wrap_cdata(value: str | None) -> str:
+    normalized = (value or "").replace("]]>", "]]]]><![CDATA[>")
+    return f"<![CDATA[{normalized}]]>"
+
+
 def _get_preferred_article_title(article: Article) -> str:
     translated_title = (article.title_trans or "").strip()
     if translated_title:
@@ -602,9 +607,12 @@ class ArticleQueryService:
                 Article.slug,
                 Article.title,
                 Article.top_image,
+                Article.author,
                 Article.published_at,
                 Article.created_at,
             ),
+            joinedload(Article.category).load_only(Category.name),
+            joinedload(Article.tags).load_only(Tag.name),
             joinedload(Article.ai_analysis).load_only(
                 AIAnalysis.summary,
                 AIAnalysis.quotes,
@@ -644,7 +652,7 @@ class ArticleQueryService:
 
         lines = [
             '<?xml version="1.0" encoding="UTF-8"?>',
-            '<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/">',
+            '<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:media="http://search.yahoo.com/mrss/">',
             "<channel>",
             f"<title>{safe_site_name}</title>",
             f"<description>{safe_site_description}</description>",
@@ -658,8 +666,19 @@ class ArticleQueryService:
 
         for article in articles:
             article_link = _build_public_feed_url(base_url, f"/article/{article.slug}")
-            pub_date = _to_rfc2822_datetime(article.created_at)
+            pub_date = _to_rfc2822_datetime(article.published_at or article.created_at)
             display_title = _get_preferred_article_title(article)
+            author = (article.author or "").strip()
+            category_name = (
+                (article.category.name or "").strip()
+                if article.category
+                else ""
+            )
+            tag_names = [
+                (tag.name or "").strip()
+                for tag in (article.tags or [])
+                if (tag.name or "").strip()
+            ]
             summary = article.ai_analysis.summary if article.ai_analysis else ""
             quotes = article.ai_analysis.quotes if article.ai_analysis else ""
             infographic_image_url = (
@@ -709,6 +728,12 @@ class ArticleQueryService:
                 )
             if pub_date:
                 lines.append(f"<pubDate>{escape(pub_date)}</pubDate>")
+            if author:
+                lines.append(f"<dc:creator>{_wrap_cdata(author)}</dc:creator>")
+            if category_name:
+                lines.append(f"<category>{_wrap_cdata(category_name)}</category>")
+            for tag_name in tag_names:
+                lines.append(f"<category>{_wrap_cdata(tag_name)}</category>")
             lines.append("</item>")
 
         lines.extend(["</channel>", "</rss>"])
