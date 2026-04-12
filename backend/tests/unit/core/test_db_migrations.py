@@ -57,6 +57,17 @@ def test_infographic_related_migrations_are_ordered_and_explicit():
     ]
 
 
+def test_ai_continuation_migration_is_ordered_and_explicit():
+    versions_dir = Path(__file__).resolve().parents[3] / "alembic" / "versions"
+    ai_continuation_migrations = sorted(
+        versions_dir.glob("*ai_call_sessions_and_api_type*.py")
+    )
+
+    assert [path.name for path in ai_continuation_migrations] == [
+        "20260412_0019_ai_call_sessions_and_api_type.py",
+    ]
+
+
 def test_prompt_protocol_text_migration_updates_existing_builtin_prompts(tmp_path):
     db_path = tmp_path / "migration-prompts.db"
     engine = create_engine(
@@ -309,5 +320,39 @@ def test_ai_analysis_version_migration_backfills_existing_content(tmp_path):
 
     assert rows == [("summary", 1, "升级前已有摘要")]
     assert current_version_id
+
+    engine.dispose()
+
+
+def test_ai_call_sessions_table_and_api_type_column_exist_after_upgrade(tmp_path):
+    db_path = tmp_path / "migration-ai-call-sessions.db"
+    backend_dir = Path(__file__).resolve().parents[3]
+    config = Config(str(backend_dir / "alembic.ini"))
+    config.set_main_option("sqlalchemy.url", f"sqlite:///{db_path}")
+    config.attributes["database_url_override"] = f"sqlite:///{db_path}"
+
+    command.upgrade(config, "head")
+
+    engine = create_engine(
+        f"sqlite:///{db_path}",
+        connect_args={"check_same_thread": False},
+    )
+    with engine.begin() as conn:
+        model_columns = {
+            row[1]
+            for row in conn.execute(text("PRAGMA table_info(model_api_configs)")).fetchall()
+        }
+        session_columns = {
+            row[1]
+            for row in conn.execute(text("PRAGMA table_info(ai_call_sessions)")).fetchall()
+        }
+
+    assert "api_type" in model_columns
+    assert {
+        "usage_log_id",
+        "api_type",
+        "input_snapshot",
+        "output_snapshot",
+    } <= session_columns
 
     engine.dispose()
