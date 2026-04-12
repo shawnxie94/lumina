@@ -1,14 +1,17 @@
 from typing import Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import normalize_date_bound
+from app.schemas import AIUsageContinuationRequest
+from app.domain.article_command_service import ArticleCommandService
 from auth import get_current_admin
 from models import AIUsageLog, Article, ModelAPIConfig, get_db
 
 router = APIRouter()
+article_command_service = ArticleCommandService()
 
 
 @router.get("/api/ai-usage")
@@ -95,6 +98,30 @@ async def get_ai_usage_logs(
         )
 
     return {"items": items, "total": total, "page": page, "size": size}
+
+
+@router.post("/api/ai-usage/{usage_id}/continue")
+async def continue_ai_usage(
+    usage_id: str,
+    payload: AIUsageContinuationRequest,
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
+    usage = db.query(AIUsageLog).filter(AIUsageLog.id == usage_id).first()
+    if not usage or usage.task_type != "process_ai_content":
+        raise HTTPException(status_code=400, detail="当前 AI 调用不支持继续生成")
+
+    try:
+        task_id = article_command_service.enqueue_ai_continuation(
+            db=db,
+            usage_id=usage.id,
+            feedback=payload.feedback,
+            model_config_id=payload.model_config_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    return {"usage_id": usage.id, "task_id": task_id, "status": "pending"}
 
 
 @router.get("/api/ai-usage/summary")

@@ -17,6 +17,8 @@ from app.core.public_cache import (
     invalidate_public_rss_cache,
 )
 from app.domain.article_embedding_service import ArticleEmbeddingService
+from app.domain.ai_call_session_service import AICallSessionService
+from app.domain.ai_invocation_service import AIInvocationService
 from app.domain.infographic_pipeline_support import (
     DEFAULT_INFOGRAPHIC_LAYOUT_BRIEF,
     LEGACY_INFOGRAPHIC_PROMPT_PREFIX,
@@ -210,6 +212,8 @@ class ArticleAIPipelineService:
         self.current_task_id = current_task_id
         self.enqueue_task_func = enqueue_task_func
         self.article_ai_version_service = ArticleAIVersionService()
+        self.ai_invocation_service = AIInvocationService()
+        self.ai_call_session_service = AICallSessionService()
         self.infographic_support = InfographicPipelineSupport(
             get_prompt_config=lambda *args, **kwargs: self._get_prompt_config(
                 *args, **kwargs
@@ -316,6 +320,7 @@ class ArticleAIPipelineService:
             "api_key": model_config.api_key,
             "model_name": model_config.model_name,
             "model_api_config_id": model_config.id,
+            "api_type": model_config.api_type or "chat_completions",
             "price_input_per_1k": model_config.price_input_per_1k,
             "price_output_per_1k": model_config.price_output_per_1k,
             "currency": model_config.currency,
@@ -333,6 +338,7 @@ class ArticleAIPipelineService:
             base_url=config["base_url"],
             api_key=config["api_key"],
             model_name=config["model_name"],
+            api_type=config.get("api_type") or "chat_completions",
         )
 
     def create_infographic_render_service(self) -> InfographicRenderService:
@@ -626,7 +632,7 @@ class ArticleAIPipelineService:
         chunk_index: int | None = None,
         continue_round: int | None = None,
         estimated_input_tokens: int | None = None,
-    ) -> None:
+    ) -> AIUsageLog:
         def normalize_payload(payload: dict | str | None) -> str | None:
             if payload is None:
                 return None
@@ -649,33 +655,34 @@ class ArticleAIPipelineService:
             cost_output = ((completion_tokens or 0) / 1000) * output_price
             cost_total = cost_input + cost_output
 
-        db.add(
-            AIUsageLog(
-                model_api_config_id=model_config_id,
-                task_id=task_id or self.current_task_id,
-                article_id=article_id,
-                task_type=task_type,
-                content_type=content_type,
-                status=status,
-                prompt_tokens=prompt_tokens,
-                completion_tokens=completion_tokens,
-                total_tokens=total_tokens,
-                cost_input=cost_input,
-                cost_output=cost_output,
-                cost_total=cost_total,
-                currency=currency,
-                latency_ms=latency_ms,
-                finish_reason=finish_reason,
-                truncated=truncated,
-                chunk_index=chunk_index,
-                continue_round=continue_round,
-                estimated_input_tokens=estimated_input_tokens,
-                error_message=error_message,
-                request_payload=normalize_payload(request_payload),
-                response_payload=normalize_payload(response_payload),
-                created_at=now_str(),
-            )
+        usage_log = AIUsageLog(
+            model_api_config_id=model_config_id,
+            task_id=task_id or self.current_task_id,
+            article_id=article_id,
+            task_type=task_type,
+            content_type=content_type,
+            status=status,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=total_tokens,
+            cost_input=cost_input,
+            cost_output=cost_output,
+            cost_total=cost_total,
+            currency=currency,
+            latency_ms=latency_ms,
+            finish_reason=finish_reason,
+            truncated=truncated,
+            chunk_index=chunk_index,
+            continue_round=continue_round,
+            estimated_input_tokens=estimated_input_tokens,
+            error_message=error_message,
+            request_payload=normalize_payload(request_payload),
+            response_payload=normalize_payload(response_payload),
+            created_at=now_str(),
         )
+        db.add(usage_log)
+        db.flush()
+        return usage_log
 
     def _append_media_ingest_event(self, db, stats: dict, stage: str) -> None:
         if not self.current_task_id:
@@ -3251,6 +3258,7 @@ class ArticleAIPipelineService:
                     "api_key": model_config.api_key,
                     "model_name": model_config.model_name,
                     "model_api_config_id": model_config.id,
+                    "api_type": model_config.api_type or "chat_completions",
                     "price_input_per_1k": model_config.price_input_per_1k,
                     "price_output_per_1k": model_config.price_output_per_1k,
                     "currency": model_config.currency,
@@ -3563,12 +3571,33 @@ class ArticleAIPipelineService:
         content_type: str,
         model_config_id: str | None = None,
         prompt_config_id: str | None = None,
+        continuation_source_usage_id: str | None = None,
+        continuation_feedback: str | None = None,
     ):
         db = SessionLocal()
         try:
             article = db.query(Article).filter(Article.id == article_id).first()
             if not article or not article.ai_analysis:
                 return
+
+            source_usage = None
+            normalized_continuation_feedback = (continuation_feedback or "").strip()
+            if continuation_source_usage_id:
+                source_usage = (
+                    db.query(AIUsageLog)
+                    .filter(AIUsageLog.id == continuation_source_usage_id)
+                    .first()
+                )
+                if not source_usage:
+                    raise TaskDataError("原始 AI 调用记录不存在")
+                if source_usage.task_type != "process_ai_content":
+                    raise TaskDataError("当前 AI 调用不支持继续生成")
+                if source_usage.content_type != content_type:
+                    raise TaskDataError("续写目标类型与原始调用类型不一致")
+                if not normalized_continuation_feedback:
+                    raise TaskDataError("请填写修改意见")
+                if not model_config_id and source_usage.model_api_config_id:
+                    model_config_id = source_usage.model_api_config_id
 
             setattr(article.ai_analysis, f"{content_type}_status", "processing")
             article.ai_analysis.updated_at = now_str()
@@ -3634,6 +3663,7 @@ class ArticleAIPipelineService:
                         "api_key": model_config.api_key,
                         "model_name": model_config.model_name,
                         "model_api_config_id": model_config.id,
+                        "api_type": model_config.api_type or "chat_completions",
                         "price_input_per_1k": model_config.price_input_per_1k,
                         "price_output_per_1k": model_config.price_output_per_1k,
                         "currency": model_config.currency,
@@ -3687,14 +3717,51 @@ class ArticleAIPipelineService:
                 default_max_tokens = self.DEFAULT_AI_CONTENT_MAX_TOKENS.get(
                     content_type, 500
                 )
-                result = await ai_client.generate_summary(
-                    article.content_md,
-                    prompt=prompt,
-                    parameters=parameters,
-                    max_tokens=default_max_tokens,
-                )
+                if source_usage and normalized_continuation_feedback:
+                    session_info = self.ai_call_session_service.resolve_session_info(
+                        db,
+                        source_usage,
+                    )
+                    if not session_info:
+                        raise TaskDataError("原始 AI 调用缺少可继续生成的上下文")
+                    session_info["source_usage_log_id"] = source_usage.id
+                    result = await self.ai_invocation_service.invoke_continuation(
+                        db=db,
+                        session_info=session_info,
+                        feedback=normalized_continuation_feedback,
+                        model_config={
+                            "base_url": ai_config["base_url"],
+                            "api_key": ai_config["api_key"],
+                            "model_name": ai_config["model_name"],
+                        },
+                    )
+                else:
+                    result = await self.ai_invocation_service.invoke_generation(
+                        db=db,
+                        api_type=ai_config.get("api_type") or "chat_completions",
+                        model_name=ai_config["model_name"],
+                        base_url=ai_config["base_url"],
+                        api_key=ai_config["api_key"],
+                        system_prompt=parameters.get("system_prompt"),
+                        user_prompt=prompt.replace("{content}", article.content_md)
+                        if "{content}" in (prompt or "")
+                        else f"{prompt}\n\n{article.content_md}",
+                        article_id=article_id,
+                        task_type="process_ai_content",
+                        content_type=content_type,
+                        task_id=self.current_task_id,
+                        client=ai_client,
+                        content=article.content_md,
+                        prompt=prompt,
+                        parameters=parameters,
+                        max_tokens=default_max_tokens,
+                        request_context={
+                            "parameters": parameters,
+                            "max_tokens": default_max_tokens,
+                        },
+                    )
                 if isinstance(result, dict):
-                    self._log_ai_usage(
+                    usage_log = self._log_ai_usage(
                         db,
                         model_config_id=pricing.get("model_api_config_id"),
                         article_id=article_id,
@@ -3709,6 +3776,15 @@ class ArticleAIPipelineService:
                         currency=pricing.get("currency"),
                         request_payload=result.get("request_payload"),
                         response_payload=result.get("response_payload"),
+                    )
+                    self.ai_call_session_service.create_session(
+                        db,
+                        usage_log_id=usage_log.id,
+                        task_id=self.current_task_id,
+                        article_id=article_id,
+                        task_type="process_ai_content",
+                        content_type=content_type,
+                        session_info=result.get("session_info") or {},
                     )
                     result = result.get("content")
 

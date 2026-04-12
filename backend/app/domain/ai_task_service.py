@@ -319,20 +319,14 @@ class AITaskService:
         content_type = task.content_type or payload.get("content_type")
         if not content_type:
             raise TaskDataError("缺少内容类型")
-        if content_type == "infographic" and payload.get("repair_only"):
-            await pipeline.repair_infographic_html(
-                article_id,
-                category_id,
-                validation_error=payload.get("manual_repair_error") or "",
-                model_config_id=payload.get("model_config_id"),
-            )
-            return
         await pipeline.process_ai_content(
             article_id,
             category_id,
             content_type,
             model_config_id=payload.get("model_config_id"),
             prompt_config_id=payload.get("prompt_config_id"),
+            continuation_source_usage_id=payload.get("continuation_source_usage_id"),
+            continuation_feedback=payload.get("continuation_feedback"),
         )
 
     async def _handle_process_article_embedding(self, task_id: str, article_id: str):

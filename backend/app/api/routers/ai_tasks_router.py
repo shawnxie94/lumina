@@ -6,8 +6,10 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session, load_only
 
 from app.schemas import AITaskCancelRequest, AITaskRetryRequest
+from app.domain.ai_call_session_service import AICallSessionService
 from auth import get_current_admin
 from models import (
+    AICallSession,
     AIUsageLog,
     AITask,
     AITaskEvent,
@@ -21,6 +23,7 @@ from models import (
 from task_state import append_task_event, ensure_task_status_transition
 
 router = APIRouter()
+ai_call_session_service = AICallSessionService()
 
 
 def _get_preferred_article_title(article) -> str | None:
@@ -286,6 +289,17 @@ async def get_ai_task_timeline(
         )
 
     usage_rows = usage_query.order_by(AIUsageLog.created_at.asc()).all()
+    usage_ids = [log.id for log, _ in usage_rows]
+    session_map: dict[str, AICallSession] = {}
+    if usage_ids:
+        sessions = (
+            db.query(AICallSession)
+            .filter(AICallSession.usage_log_id.in_(usage_ids))
+            .order_by(AICallSession.created_at.asc(), AICallSession.id.asc())
+            .all()
+        )
+        for session in sessions:
+            session_map[session.usage_log_id] = session
 
     event_items = []
     for event in events:
@@ -332,6 +346,9 @@ async def get_ai_task_timeline(
                 "error_message": log.error_message,
                 "request_payload": log.request_payload,
                 "response_payload": log.response_payload,
+                "session_info": ai_call_session_service.serialize_session(
+                    session_map.get(log.id)
+                ),
                 "created_at": log.created_at,
             }
         )

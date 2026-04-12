@@ -178,20 +178,35 @@ async def test_model_api_config(
                         timeout=10.0,
                     )
             else:
-                response = await client.post(
-                    f"{config.base_url}/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {config.api_key}",
-                        "Content-Type": "application/json",
-                    },
-                    json={
-                        "model": config.model_name,
-                        "messages": [{"role": "user", "content": prompt}],
-                        "max_tokens": max_tokens,
-                        "temperature": 0.2,
-                    },
-                    timeout=10.0,
-                )
+                api_type = (config.api_type or "chat_completions").strip()
+                headers = {
+                    "Authorization": f"Bearer {config.api_key}",
+                    "Content-Type": "application/json",
+                }
+                if api_type == "responses":
+                    response = await client.post(
+                        f"{config.base_url}/responses",
+                        headers=headers,
+                        json={
+                            "model": config.model_name,
+                            "input": prompt,
+                            "max_output_tokens": max_tokens,
+                            "temperature": 0.2,
+                        },
+                        timeout=10.0,
+                    )
+                else:
+                    response = await client.post(
+                        f"{config.base_url}/chat/completions",
+                        headers=headers,
+                        json={
+                            "model": config.model_name,
+                            "messages": [{"role": "user", "content": prompt}],
+                            "max_tokens": max_tokens,
+                            "temperature": 0.2,
+                        },
+                        timeout=10.0,
+                    )
 
             if response.status_code in [200, 201]:
                 content = ""
@@ -200,6 +215,8 @@ async def test_model_api_config(
                     if (config.model_type or "general") == "vector":
                         embedding = (data.get("data") or [{}])[0].get("embedding") or []
                         content = f"embedding维度: {len(embedding)}"
+                    elif (config.api_type or "chat_completions") == "responses":
+                        content = data.get("output_text", "")
                     else:
                         content = (
                             data.get("choices", [{}])[0]

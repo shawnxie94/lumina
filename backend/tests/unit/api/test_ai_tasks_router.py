@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from app.api.routers import ai_tasks_router
-from models import AITask, Article, ReviewIssue, ReviewTemplate
+from models import AICallSession, AIUsageLog, AITask, Article, ReviewIssue, ReviewTemplate
 
 
 @pytest.fixture
@@ -366,3 +366,79 @@ async def test_get_ai_task_timeline_returns_review_issue_target_for_review_gener
     assert response["task"]["article_title"] == issue.title
     assert response["task"]["article_slug"] == issue.slug
     assert response["task"]["article_kind"] == "review"
+
+
+@pytest.mark.anyio
+async def test_get_ai_task_timeline_exposes_session_info_for_usage(db_session):
+    article = Article(
+        title="Timeline Article",
+        title_trans="时间线文章",
+        slug="timeline-usage-article",
+        content_md="content",
+        content_trans="",
+        top_image="",
+        author="Tester",
+        published_at="2026-04-12T10:00:00",
+        source_domain="example.com",
+        status="completed",
+        is_visible=True,
+        created_at="2026-04-12T10:00:00",
+        updated_at="2026-04-12T10:00:00",
+    )
+    db_session.add(article)
+    db_session.commit()
+
+    task = AITask(
+        article_id=article.id,
+        task_type="process_ai_content",
+        content_type="summary",
+        status="completed",
+        payload="{}",
+        attempts=1,
+        max_attempts=1,
+        run_at="2026-04-12T10:00:00",
+        created_at="2026-04-12T10:00:00",
+        updated_at="2026-04-12T10:00:00",
+        finished_at="2026-04-12T10:01:00",
+    )
+    db_session.add(task)
+    db_session.flush()
+
+    usage = AIUsageLog(
+        task_id=task.id,
+        article_id=article.id,
+        task_type="process_ai_content",
+        content_type="summary",
+        status="completed",
+        request_payload="{}",
+        response_payload='{"content":"时间线输出"}',
+        created_at="2026-04-12T10:00:30",
+    )
+    db_session.add(usage)
+    db_session.flush()
+
+    db_session.add(
+        AICallSession(
+            usage_log_id=usage.id,
+            task_id=task.id,
+            article_id=article.id,
+            task_type="process_ai_content",
+            content_type="summary",
+            api_type="chat_completions",
+            continuation_mode="snapshot",
+            input_snapshot='{"user_prompt":"原始提示词"}',
+            output_snapshot='{"content":"时间线输出"}',
+            created_at="2026-04-12T10:00:30",
+            updated_at="2026-04-12T10:00:30",
+        )
+    )
+    db_session.commit()
+
+    response = await ai_tasks_router.get_ai_task_timeline(
+        task_id=task.id,
+        db=db_session,
+        _=True,
+    )
+
+    assert response["usage"][0]["session_info"]["api_type"] == "chat_completions"
+    assert response["usage"][0]["session_info"]["output_snapshot"]["content"] == "时间线输出"

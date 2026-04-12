@@ -1,6 +1,7 @@
 from app.schemas.ai import (
     AITaskCancelRequest,
     AITaskRetryRequest,
+    AIUsageContinuationRequest,
     ModelAPIConfigBase,
     ModelAPIModelsRequest,
     ModelAPITestRequest,
@@ -38,6 +39,7 @@ from app.schemas.review import (
 __all__ = [
     "AITaskCancelRequest",
     "AITaskRetryRequest",
+    "AIUsageContinuationRequest",
     "ArticleBatchCategory",
     "ArticleBatchDelete",
     "ArticleBatchVisibility",

@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 
 from ai_client import is_english_content
 from media_service import maybe_ingest_top_image
-from models import AIAnalysis, AITask, Article, Category, generate_uuid, now_str
+from models import AIAnalysis, AITask, AIUsageLog, Article, Category, generate_uuid, now_str
 from slug_utils import generate_article_slug
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -262,23 +262,77 @@ class ArticleCommandService:
         if not normalized_error:
             raise ValueError("请填写修复说明")
 
-        article.ai_analysis.infographic_status = "pending"
+        self.enqueue_ai_continuation(
+            db,
+            usage_id=self._require_latest_usage_id(db, article_id, "infographic"),
+            feedback=normalized_error,
+            model_config_id=model_config_id,
+        )
+
+    def enqueue_ai_continuation(
+        self,
+        db: Session,
+        usage_id: str,
+        feedback: str,
+        model_config_id: str | None = None,
+    ) -> str:
+        usage = db.query(AIUsageLog).filter(AIUsageLog.id == usage_id).first()
+        if not usage:
+            raise ValueError("AI 调用记录不存在")
+        if usage.task_type != "process_ai_content":
+            raise ValueError("当前 AI 调用不支持继续生成")
+        if not usage.article_id:
+            raise ValueError("当前 AI 调用缺少文章信息")
+        if not usage.content_type:
+            raise ValueError("当前 AI 调用缺少内容类型")
+
+        normalized_feedback = (feedback or "").strip()
+        if not normalized_feedback:
+            raise ValueError("请填写修改意见")
+
+        article = db.query(Article).filter(Article.id == usage.article_id).first()
+        if not article:
+            raise ValueError("文章不存在")
+        if not article.ai_analysis:
+            raise ValueError("AI解读不存在")
+
+        setattr(article.ai_analysis, f"{usage.content_type}_status", "pending")
         article.ai_analysis.error_message = None
         article.ai_analysis.updated_at = now_str()
         db.commit()
 
-        self.ai_task_service.enqueue_task(
+        return self.ai_task_service.enqueue_task(
             db,
             task_type="process_ai_content",
-            article_id=article_id,
-            content_type="infographic",
+            article_id=usage.article_id,
+            content_type=usage.content_type,
             payload={
                 "category_id": article.category_id,
                 "model_config_id": model_config_id,
-                "repair_only": True,
-                "manual_repair_error": normalized_error,
+                "continuation_feedback": normalized_feedback,
+                "continuation_source_usage_id": usage.id,
             },
         )
+
+    def _require_latest_usage_id(
+        self,
+        db: Session,
+        article_id: str,
+        content_type: str,
+    ) -> str:
+        usage = (
+            db.query(AIUsageLog.id)
+            .filter(
+                AIUsageLog.article_id == article_id,
+                AIUsageLog.task_type == "process_ai_content",
+                AIUsageLog.content_type == content_type,
+            )
+            .order_by(AIUsageLog.created_at.desc(), AIUsageLog.id.desc())
+            .first()
+        )
+        if not usage:
+            raise ValueError("缺少可继续生成的 AI 调用记录")
+        return usage.id
 
     def delete_ai_content(self, db: Session, article_id: str, content_type: str) -> None:
         article = db.query(Article).filter(Article.id == article_id).first()

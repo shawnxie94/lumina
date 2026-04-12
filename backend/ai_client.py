@@ -68,7 +68,13 @@ def is_english_content(text: str, threshold: float = 0.7) -> bool:
 
 
 class ConfigurableAIClient:
-    def __init__(self, base_url: str, api_key: str, model_name: str):
+    def __init__(
+        self,
+        base_url: str,
+        api_key: str,
+        model_name: str,
+        api_type: str = "chat_completions",
+    ):
         if not api_key:
             raise ValueError("API key is required")
         if not base_url:
@@ -77,6 +83,7 @@ class ConfigurableAIClient:
         self.base_url = base_url
         self.api_key = api_key
         self.model_name = model_name
+        self.api_type = (api_type or "chat_completions").strip() or "chat_completions"
         self.client = AsyncOpenAI(base_url=base_url, api_key=api_key)
 
     def _serialize_usage(self, usage: Any) -> Optional[Dict[str, Any]]:
@@ -116,29 +123,43 @@ class ConfigurableAIClient:
             parameters = {}
 
         system_prompt = parameters.get("system_prompt")
-        messages = []
-        if system_prompt:
-            messages.append({"role": "system", "content": system_prompt})
-        messages.append({"role": "user", "content": prompt})
-
-        request_params = {
-            "model": self.model_name,
-            "messages": messages,
-            "max_tokens": parameters.get("max_tokens", max_tokens),
-            "temperature": parameters.get("temperature", temperature),
-        }
-
-        if "top_p" in parameters:
-            request_params["top_p"] = parameters["top_p"]
-
-        response_format = parameters.get("response_format")
-        if isinstance(response_format, str):
-            request_params["response_format"] = {"type": response_format}
-        elif isinstance(response_format, dict):
-            request_params["response_format"] = response_format
-
         try:
             start_time = time.monotonic()
+            if self.api_type == "responses":
+                request_params = self._build_responses_request(
+                    prompt=prompt,
+                    system_prompt=system_prompt,
+                    parameters=parameters,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                )
+                response = await self.client.responses.create(**request_params)
+                latency_ms = int((time.monotonic() - start_time) * 1000)
+                usage_data = self._serialize_usage(getattr(response, "usage", None))
+                content = self._extract_response_text(response)
+                return {
+                    "content": content,
+                    "usage": getattr(response, "usage", None),
+                    "model": getattr(response, "model", self.model_name),
+                    "finish_reason": getattr(response, "status", None),
+                    "latency_ms": latency_ms,
+                    "request_payload": request_params,
+                    "response_payload": {
+                        "id": getattr(response, "id", None),
+                        "content": content,
+                        "model": getattr(response, "model", self.model_name),
+                        "usage": usage_data,
+                        "finish_reason": getattr(response, "status", None),
+                    },
+                }
+
+            request_params = self._build_chat_request(
+                prompt=prompt,
+                system_prompt=system_prompt,
+                parameters=parameters,
+                max_tokens=max_tokens,
+                temperature=temperature,
+            )
             response = await self.client.chat.completions.create(**request_params)
             latency_ms = int((time.monotonic() - start_time) * 1000)
             usage_data = self._serialize_usage(getattr(response, "usage", None))
@@ -150,6 +171,7 @@ class ConfigurableAIClient:
                 "latency_ms": latency_ms,
                 "request_payload": request_params,
                 "response_payload": {
+                    "id": getattr(response, "id", None),
                     "content": response.choices[0].message.content,
                     "model": getattr(response, "model", self.model_name),
                     "usage": usage_data,
@@ -206,32 +228,46 @@ class ConfigurableAIClient:
             parameters = {}
 
         system_prompt = parameters.get("system_prompt")
-        messages = []
-        if system_prompt:
-            messages.append({"role": "system", "content": system_prompt})
-        messages.append({"role": "user", "content": final_prompt})
-
-        request_params = {
-            "model": self.model_name,
-            "messages": messages,
-            "max_tokens": parameters.get("max_tokens", max_tokens),
-            "temperature": parameters.get("temperature", temperature),
-        }
-
-        if "top_p" in parameters:
-            request_params["top_p"] = parameters["top_p"]
-
-        response_format = parameters.get("response_format")
-        if isinstance(response_format, str):
-            request_params["response_format"] = {"type": response_format}
-        elif isinstance(response_format, dict):
-            request_params["response_format"] = response_format
-
         try:
             print(
                 f"翻译请求 - 模型: {self.model_name}, prompt长度: {len(final_prompt)}"
             )
             start_time = time.monotonic()
+            if self.api_type == "responses":
+                request_params = self._build_responses_request(
+                    prompt=final_prompt,
+                    system_prompt=system_prompt,
+                    parameters=parameters,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                )
+                response = await self.client.responses.create(**request_params)
+                latency_ms = int((time.monotonic() - start_time) * 1000)
+                result = self._extract_response_text(response)
+                usage_data = self._serialize_usage(getattr(response, "usage", None))
+                return {
+                    "content": result,
+                    "usage": getattr(response, "usage", None),
+                    "model": getattr(response, "model", self.model_name),
+                    "finish_reason": getattr(response, "status", None),
+                    "latency_ms": latency_ms,
+                    "request_payload": request_params,
+                    "response_payload": {
+                        "id": getattr(response, "id", None),
+                        "content": result,
+                        "model": getattr(response, "model", self.model_name),
+                        "usage": usage_data,
+                        "finish_reason": getattr(response, "status", None),
+                    },
+                }
+
+            request_params = self._build_chat_request(
+                prompt=final_prompt,
+                system_prompt=system_prompt,
+                parameters=parameters,
+                max_tokens=max_tokens,
+                temperature=temperature,
+            )
             response = await self.client.chat.completions.create(**request_params)
             latency_ms = int((time.monotonic() - start_time) * 1000)
             result = response.choices[0].message.content
@@ -256,6 +292,89 @@ class ConfigurableAIClient:
         except Exception as e:
             print(f"翻译失败: {e}")
             raise
+
+    def _build_chat_request(
+        self,
+        *,
+        prompt: str,
+        system_prompt: str | None,
+        parameters: Dict[str, Any],
+        max_tokens: int,
+        temperature: float,
+    ) -> Dict[str, Any]:
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+
+        request_params: Dict[str, Any] = {
+            "model": self.model_name,
+            "messages": messages,
+            "max_tokens": parameters.get("max_tokens", max_tokens),
+            "temperature": parameters.get("temperature", temperature),
+        }
+        if "top_p" in parameters:
+            request_params["top_p"] = parameters["top_p"]
+        response_format = parameters.get("response_format")
+        if isinstance(response_format, str):
+            request_params["response_format"] = {"type": response_format}
+        elif isinstance(response_format, dict):
+            request_params["response_format"] = response_format
+        return request_params
+
+    def _build_responses_request(
+        self,
+        *,
+        prompt: str,
+        system_prompt: str | None,
+        parameters: Dict[str, Any],
+        max_tokens: int,
+        temperature: float,
+    ) -> Dict[str, Any]:
+        request_params: Dict[str, Any] = {
+            "model": self.model_name,
+            "input": prompt,
+            "instructions": system_prompt,
+            "max_output_tokens": parameters.get("max_tokens", max_tokens),
+            "temperature": parameters.get("temperature", temperature),
+        }
+        if "top_p" in parameters:
+            request_params["top_p"] = parameters["top_p"]
+        text_payload = self._build_responses_text_payload(parameters.get("response_format"))
+        if text_payload is not None:
+            request_params["text"] = text_payload
+        return request_params
+
+    def _build_responses_text_payload(
+        self, response_format: Dict[str, Any] | str | None
+    ) -> Dict[str, Any] | None:
+        if not response_format:
+            return None
+        if isinstance(response_format, str):
+            if response_format == "text":
+                return None
+            return {"format": {"type": response_format}}
+        if isinstance(response_format, dict):
+            return {"format": response_format}
+        return None
+
+    def _extract_response_text(self, response: Any) -> str:
+        output_text = getattr(response, "output_text", None)
+        if output_text:
+            return output_text
+        output = getattr(response, "output", None) or []
+        parts: list[str] = []
+        for item in output:
+            content_items = getattr(item, "content", None)
+            if isinstance(item, dict):
+                content_items = item.get("content")
+            for content in content_items or []:
+                if isinstance(content, dict):
+                    if content.get("type") == "output_text":
+                        parts.append(str(content.get("text") or ""))
+                elif getattr(content, "type", None) == "output_text":
+                    parts.append(str(getattr(content, "text", "") or ""))
+        return "".join(parts)
 
     async def generate_embedding(
         self,

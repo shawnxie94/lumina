@@ -1,17 +1,111 @@
 import asyncio
+import json
 import uuid
+from types import SimpleNamespace
 
 import app.domain.article_ai_pipeline_service as article_ai_pipeline_module
+from app.domain.ai_invocation_service import AIInvocationService
 from app.domain.article_ai_pipeline_service import ArticleAIPipelineService
+from app.domain.article_command_service import ArticleCommandService
 from models import (
+    AICallSession,
     AIAnalysis,
     AIAnalysisVersion,
+    AIUsageLog,
     Article,
     Category,
     ModelAPIConfig,
     PromptConfig,
     now_str,
 )
+
+
+def test_invoke_generation_records_chat_completion_snapshot(db_session, monkeypatch):
+    service = AIInvocationService()
+    captured = {}
+
+    async def fake_chat_create(**kwargs):
+        captured["request"] = kwargs
+        return SimpleNamespace(
+            id="chatcmpl-1",
+            model="gpt-4o",
+            choices=[
+                SimpleNamespace(
+                    message=SimpleNamespace(content="摘要结果"),
+                    finish_reason="stop",
+                )
+            ],
+            usage=SimpleNamespace(prompt_tokens=10, completion_tokens=5, total_tokens=15),
+        )
+
+    monkeypatch.setattr(service, "_create_chat_completion", fake_chat_create)
+
+    result = asyncio.run(
+        service.invoke_generation(
+            db=db_session,
+            api_type="chat_completions",
+            model_name="gpt-4o",
+            base_url="https://api.openai.com/v1",
+            api_key="sk-test",
+            system_prompt="sys",
+            user_prompt="user",
+            article_id="article-1",
+            task_type="process_ai_content",
+            content_type="summary",
+            task_id="task-1",
+        )
+    )
+
+    assert captured["request"]["messages"][0]["content"] == "sys"
+    assert result["session_info"]["continuation_mode"] == "snapshot"
+    assert result["session_info"]["input_snapshot"]["user_prompt"] == "user"
+
+
+def test_invoke_continuation_prefers_responses_previous_response_id(
+    db_session,
+    monkeypatch,
+):
+    service = AIInvocationService()
+    called = {}
+
+    async def fake_response_continue(**kwargs):
+        called["kwargs"] = kwargs
+        return {
+            "content": "更新后的摘要",
+            "usage": None,
+            "request_payload": kwargs,
+            "response_payload": {"id": "resp-2"},
+            "session_info": {
+                "api_type": "responses",
+                "continuation_mode": "provider",
+                "provider_response_id": "resp-2",
+                "input_snapshot": {"feedback": "请更短"},
+                "output_snapshot": {"content": "更新后的摘要"},
+            },
+        }
+
+    monkeypatch.setattr(service, "_invoke_responses_continuation", fake_response_continue)
+
+    result = asyncio.run(
+        service.invoke_continuation(
+            db=db_session,
+            session_info={
+                "api_type": "responses",
+                "provider_response_id": "resp-1",
+                "input_snapshot": {},
+                "output_snapshot": {},
+            },
+            feedback="请更短",
+            model_config={
+                "base_url": "https://api.openai.com/v1",
+                "api_key": "sk-test",
+                "model_name": "gpt-4.1",
+            },
+        )
+    )
+
+    assert called["kwargs"]["previous_response_id"] == "resp-1"
+    assert result["session_info"]["provider_response_id"] == "resp-2"
 
 
 def test_detect_media_kind_supports_book_links():
@@ -1198,6 +1292,135 @@ def test_process_ai_content_creates_summary_version_snapshot(db_session, monkeyp
     assert versions[0].content_text == "新的摘要版本"
     assert versions[0].source_task_id == "task-summary-version"
     assert persisted_analysis.current_summary_version_id == versions[0].id
+
+
+def test_process_ai_content_uses_invocation_service_and_persists_session(
+    db_session,
+    monkeypatch,
+):
+    article = Article(
+        title="Session Summary Article",
+        slug="session-summary-article",
+        content_md="This is a summary article.",
+        created_at=now_str(),
+        updated_at=now_str(),
+    )
+    db_session.add(article)
+    db_session.commit()
+    db_session.add(
+        AIAnalysis(
+            article_id=article.id,
+            summary_status="pending",
+            updated_at=now_str(),
+        )
+    )
+    db_session.commit()
+
+    service = ArticleAIPipelineService(current_task_id="task-summary-session")
+
+    async def fake_generation(**kwargs):
+        return {
+            "content": "新的摘要版本",
+            "usage": None,
+            "latency_ms": 8,
+            "request_payload": {"messages": []},
+            "response_payload": {"id": "resp-1"},
+            "session_info": {
+                "api_type": "chat_completions",
+                "continuation_mode": "snapshot",
+                "input_snapshot": {"user_prompt": "原始提示词"},
+                "output_snapshot": {"content": "新的摘要版本"},
+            },
+        }
+
+    monkeypatch.setattr(article_ai_pipeline_module, "SessionLocal", lambda: db_session)
+    monkeypatch.setattr(
+        service,
+        "get_ai_config",
+        lambda *args, **kwargs: {
+            "base_url": "https://example.com",
+            "api_key": "test-key",
+            "model_name": "test-model",
+            "model_api_config_id": None,
+            "price_input_per_1k": None,
+            "price_output_per_1k": None,
+            "currency": None,
+            "api_type": "chat_completions",
+            "prompt_template": "请总结：{content}",
+            "parameters": None,
+        },
+    )
+    monkeypatch.setattr(
+        service.ai_invocation_service,
+        "invoke_generation",
+        fake_generation,
+    )
+    monkeypatch.setattr(
+        article_ai_pipeline_module.ArticleEmbeddingService,
+        "has_available_remote_config",
+        lambda self, db: False,
+    )
+
+    asyncio.run(service.process_ai_content(article.id, None, "summary"))
+
+    usage = db_session.query(AIUsageLog).filter(AIUsageLog.article_id == article.id).one()
+    session = (
+        db_session.query(AICallSession)
+        .filter(AICallSession.usage_log_id == usage.id)
+        .one()
+    )
+    assert session.api_type == "chat_completions"
+    assert json.loads(session.output_snapshot)["content"] == "新的摘要版本"
+
+
+def test_repair_infographic_html_forwards_feedback_to_continuation_enqueue(
+    db_session,
+):
+    article = Article(
+        title="Repair Source",
+        slug="repair-source",
+        content_md="content",
+        created_at=now_str(),
+        updated_at=now_str(),
+    )
+    db_session.add(article)
+    db_session.commit()
+    db_session.add(
+        AIAnalysis(
+            article_id=article.id,
+            infographic_status="failed",
+            infographic_html="<div>old html</div>",
+            updated_at=now_str(),
+        )
+    )
+    usage = AIUsageLog(
+        task_id="task-infographic-source",
+        article_id=article.id,
+        task_type="process_ai_content",
+        content_type="infographic",
+        status="failed",
+        request_payload="{}",
+        response_payload="{}",
+        created_at=now_str(),
+    )
+    db_session.add(usage)
+    db_session.commit()
+
+    service = ArticleCommandService()
+    asyncio.run(
+        service.repair_infographic_html(
+            db_session,
+            article.id,
+            error_message="请缩短文字",
+        )
+    )
+
+    task = db_session.query(article_ai_pipeline_module.AITask).order_by(
+        article_ai_pipeline_module.AITask.created_at.desc()
+    ).first()
+    payload = json.loads(task.payload)
+    assert payload["continuation_feedback"] == "请缩短文字"
+    assert payload["continuation_source_usage_id"] == usage.id
 
 
 def test_repair_infographic_html_uses_latest_logged_candidate_on_failed_status(
