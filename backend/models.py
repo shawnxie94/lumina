@@ -388,6 +388,39 @@ class AIUsageLog(Base):
     created_at = Column(String, default=now_str)
 
 
+class AICallSession(Base):
+    __tablename__ = "ai_call_sessions"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    usage_log_id = Column(
+        String,
+        ForeignKey("ai_usage_logs.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    task_id = Column(String, nullable=True)
+    article_id = Column(
+        String,
+        ForeignKey("articles.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    task_type = Column(String, nullable=True)
+    content_type = Column(String, nullable=True)
+    api_type = Column(String, nullable=False, default="chat_completions")
+    continuation_mode = Column(String, nullable=False, default="snapshot")
+    provider_response_id = Column(String, nullable=True)
+    provider_request_id = Column(String, nullable=True)
+    provider_conversation_id = Column(String, nullable=True)
+    input_snapshot = Column(Text, nullable=True)
+    output_snapshot = Column(Text, nullable=True)
+    source_usage_log_id = Column(
+        String,
+        ForeignKey("ai_usage_logs.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    created_at = Column(String, default=now_str)
+    updated_at = Column(String, default=now_str)
+
+
 class ArticleEmbedding(Base):
     __tablename__ = "article_embeddings"
 
@@ -417,6 +450,7 @@ class ModelAPIConfig(Base):
     provider = Column(String, nullable=False, default="openai")
     model_name = Column(String, nullable=False, default="gpt-4o")
     model_type = Column(String, nullable=False, default="general")
+    api_type = Column(String, nullable=False, default="chat_completions")
     price_input_per_1k = Column(Float, nullable=True)
     price_output_per_1k = Column(Float, nullable=True)
     currency = Column(String, nullable=True)

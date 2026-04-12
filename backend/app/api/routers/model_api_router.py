@@ -19,6 +19,7 @@ def serialize_model_api_config(config: ModelAPIConfig) -> dict:
         "provider": config.provider or "openai",
         "model_name": config.model_name,
         "model_type": config.model_type or "general",
+        "api_type": config.api_type or "chat_completions",
         "price_input_per_1k": config.price_input_per_1k,
         "price_output_per_1k": config.price_output_per_1k,
         "currency": config.currency,
@@ -64,7 +65,7 @@ async def create_model_api_config(
                 {"is_default": False}
             )
 
-        new_config = ModelAPIConfig(**config.dict())
+        new_config = ModelAPIConfig(**config.model_dump())
         db.add(new_config)
         db.commit()
         db.refresh(new_config)
@@ -99,6 +100,7 @@ async def update_model_api_config(
         existing_config.provider = config.provider or "openai"
         existing_config.model_name = config.model_name
         existing_config.model_type = config.model_type or "general"
+        existing_config.api_type = config.api_type or "chat_completions"
         existing_config.price_input_per_1k = config.price_input_per_1k
         existing_config.price_output_per_1k = config.price_output_per_1k
         existing_config.currency = config.currency

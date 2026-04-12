@@ -35,6 +35,7 @@ class ModelAPIConfigBase(BaseModel):
     provider: str = "openai"
     model_name: str = "gpt-4o"
     model_type: str = "general"
+    api_type: str = "chat_completions"
     price_input_per_1k: Optional[float] = None
     price_output_per_1k: Optional[float] = None
     currency: Optional[str] = None
@@ -49,6 +50,13 @@ class ModelAPIConfigBase(BaseModel):
         if not trimmed:
             raise ValueError("模型API配置名称不能为空")
         return trimmed
+
+    @validator("api_type")
+    def validate_api_type(cls, value: str) -> str:
+        normalized = (value or "").strip()
+        if normalized not in {"chat_completions", "responses"}:
+            raise ValueError("API 类型不支持")
+        return normalized
 
 
 class PromptConfigBase(BaseModel):
