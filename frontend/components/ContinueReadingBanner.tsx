@@ -12,6 +12,7 @@ export function ContinueReadingBanner() {
   const { t } = useI18n();
 
   const isArticlePage = router.pathname === '/article/[id]';
+  const isReviewPage = router.pathname === '/reviews/[slug]';
 
   useEffect(() => {
     if (isCollapsed) return;
@@ -78,7 +79,11 @@ export function ContinueReadingBanner() {
         </div>
         <div className="py-2">
           {recentArticles.map((article) => {
-            const isCurrentArticle = isArticlePage && router.query.id === article.slug;
+            const articleType = article.type || 'article';
+            const articleHref = articleType === 'review' ? `/reviews/${article.slug}` : `/article/${article.slug}`;
+            const isCurrentArticle =
+              (articleType === 'article' && isArticlePage && router.query.id === article.slug) ||
+              (articleType === 'review' && isReviewPage && router.query.slug === article.slug);
             const displayTitle = article.title_trans?.trim() || article.title;
             const truncatedTitle = displayTitle.length > 20
               ? `${displayTitle.slice(0, 20)}...`
@@ -92,7 +97,7 @@ export function ContinueReadingBanner() {
                 }`}
               >
                 <Link
-                  href={`/article/${article.slug}`}
+                  href={articleHref}
                   className={`text-sm transition flex-1 truncate ${
                     isCurrentArticle
                       ? 'text-primary-ink'

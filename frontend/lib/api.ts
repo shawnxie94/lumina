@@ -112,6 +112,18 @@ const buildPublicRssQueryString = (params?: {
 	return queryString ? `?${queryString}` : "";
 };
 
+const buildPublicReviewRssQueryString = (params?: {
+	templateId?: string;
+}): string => {
+	const searchParams = new URLSearchParams();
+	const templateId = params?.templateId?.trim();
+	if (templateId) {
+		searchParams.set("template_id", templateId);
+	}
+	const queryString = searchParams.toString();
+	return queryString ? `?${queryString}` : "";
+};
+
 export const buildPublicRssRelativeUrl = (params?: {
 	categoryId?: string;
 	tagIds?: string[];
@@ -140,29 +152,41 @@ export const buildClientSafePublicRssUrl = (params?: {
 	return buildPublicRssUrl(params);
 };
 
+export const buildPublicReviewRssRelativeUrl = (params?: {
+	templateId?: string;
+}): string => `/backend/api/reviews/rss.xml${buildPublicReviewRssQueryString(params)}`;
+
+export const buildPublicReviewRssUrl = (params?: {
+	templateId?: string;
+}): string => {
+	if (typeof window !== "undefined") {
+		return `${window.location.origin}${buildPublicReviewRssRelativeUrl(params)}`;
+	}
+	return `${getApiBaseUrl()}/api/reviews/rss.xml${buildPublicReviewRssQueryString(params)}`;
+};
+
 export const resolveMediaUrl = (url?: string | null): string => {
 	if (!url) return "";
-	const apiBase = getApiBaseUrl().replace(/\/+$/, "");
-	if (url.startsWith("/media/")) {
-		return `${apiBase}${url}`;
+	if (url.startsWith("/backend/media/")) {
+		return url;
 	}
-	if (typeof window !== "undefined") {
-		try {
-			const parsed = new URL(url, apiBase);
-			const isLocalhost =
-				parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1";
-			const isMediaPath =
-				parsed.pathname.startsWith("/media/") ||
-				parsed.pathname.startsWith("/backend/media/");
-			if (isLocalhost && isMediaPath) {
-				const normalizedPath = parsed.pathname.startsWith("/backend/")
-					? parsed.pathname.replace("/backend", "")
-					: parsed.pathname;
-				return `${apiBase}${normalizedPath}`;
-			}
-		} catch {
-			return url;
+	if (url.startsWith("/media/")) {
+		return `/backend${url}`;
+	}
+	try {
+		const parsed = new URL(url);
+		const isLocalhost =
+			parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1";
+		const isMediaPath =
+			parsed.pathname.startsWith("/media/") ||
+			parsed.pathname.startsWith("/backend/media/");
+		if (isLocalhost && isMediaPath) {
+			return parsed.pathname.startsWith("/backend/")
+				? parsed.pathname
+				: `/backend${parsed.pathname}`;
 		}
+	} catch {
+		return url;
 	}
 	return url;
 };
@@ -501,9 +525,51 @@ export interface ArticleComment {
 	id: string;
 	article_id: string;
 	article_slug?: string;
+	article_title?: string;
 	user_id: string;
 	user_name: string;
 	user_avatar: string | null;
+	user_github_url?: string | null;
+	provider: string | null;
+	content: string;
+	reply_to_id?: string | null;
+	is_hidden?: boolean;
+	created_at: string;
+	updated_at: string;
+}
+
+export interface ReviewComment {
+	id: string;
+	review_id: string;
+	review_slug?: string;
+	user_id: string;
+	user_name: string;
+	user_avatar: string | null;
+	user_github_url?: string | null;
+	provider: string | null;
+	content: string;
+	reply_to_id?: string | null;
+	is_hidden?: boolean;
+	created_at: string;
+	updated_at: string;
+}
+
+export type CommentResourceType = "article" | "review";
+
+export interface AdminCommentItem {
+	id: string;
+	resource_type: CommentResourceType;
+	resource_title?: string | null;
+	article_id?: string | null;
+	article_slug?: string | null;
+	article_title?: string | null;
+	review_id?: string | null;
+	review_slug?: string | null;
+	review_title?: string | null;
+	user_id: string;
+	user_name: string;
+	user_avatar: string | null;
+	user_github_url?: string | null;
 	provider: string | null;
 	content: string;
 	reply_to_id?: string | null;
@@ -544,6 +610,158 @@ export interface BasicSettings {
 	home_secondary_button_url: string;
 }
 
+export type ReviewScheduleType = "weekly" | "monthly" | "custom_days";
+export type ReviewIssueStatus = "draft" | "published";
+export type ReviewTemplateInputMode = "abstract" | "summary" | "full_text";
+
+export interface ReviewIssueArticle {
+	id?: string;
+	article_id: string;
+	category_id?: string | null;
+	category_sort_order: number;
+	article_sort_order: number;
+}
+
+export interface ReviewIssueVersionSummary {
+	id: string;
+	slug: string;
+	title: string;
+	status: ReviewIssueStatus;
+	generated_at?: string | null;
+	published_at?: string | null;
+	created_at: string;
+	updated_at: string;
+}
+
+export interface ReviewNeighbor {
+	id: string;
+	slug: string;
+	title: string;
+	published_at?: string | null;
+	updated_at?: string | null;
+}
+
+export interface ReviewTemplateSummary {
+	id: string;
+	name: string;
+	slug: string;
+	include_all_categories?: boolean;
+	model_api_config_id?: string | null;
+	review_input_mode?: ReviewTemplateInputMode;
+	description?: string | null;
+	schedule_type?: ReviewScheduleType;
+	custom_interval_days?: number | null;
+	trigger_time?: string | null;
+	category_names?: string[];
+	temperature?: number | null;
+	max_tokens?: number | null;
+	top_p?: number | null;
+}
+
+export interface ReviewTemplate {
+	id: string;
+	name: string;
+	slug: string;
+	description?: string | null;
+	is_enabled: boolean;
+	schedule_type: ReviewScheduleType;
+	custom_interval_days?: number | null;
+	anchor_date: string;
+	timezone: string;
+	trigger_time: string;
+	include_all_categories: boolean;
+	category_ids: string[];
+	model_api_config_id?: string | null;
+	review_input_mode: ReviewTemplateInputMode;
+	system_prompt?: string | null;
+	prompt_template: string;
+	temperature?: number | null;
+	max_tokens?: number | null;
+	top_p?: number | null;
+	title_template: string;
+	next_run_at?: string | null;
+	last_run_at?: string | null;
+	created_at: string;
+	updated_at: string;
+}
+
+export type ReviewTemplateMutationInput = Omit<
+	ReviewTemplate,
+	"id" | "slug" | "created_at" | "updated_at" | "next_run_at" | "last_run_at"
+>;
+
+export interface ReviewIssue {
+	id: string;
+	slug: string;
+	title: string;
+	status: ReviewIssueStatus;
+	window_start: string;
+	window_end: string;
+	top_image?: string | null;
+	generated_at?: string | null;
+	published_at?: string | null;
+	created_at: string;
+	updated_at: string;
+	view_count?: number;
+	template: ReviewTemplateSummary | null;
+	category_names: string[];
+	summary: string;
+	version_count?: number;
+	versions?: ReviewIssueVersionSummary[];
+	markdown_content?: string;
+	article_sections_markdown?: string;
+	article_placeholder_blocks?: Record<string, string>;
+	selected_article_ids?: string[];
+	rendered_markdown?: string;
+	comment_count?: number;
+	prev_review?: ReviewNeighbor | null;
+	next_review?: ReviewNeighbor | null;
+	recent_reviews?: ReviewNeighbor[];
+}
+
+export interface ReviewTemplateFilterItem {
+	id: string;
+	name: string;
+	slug: string;
+	count: number;
+}
+
+export interface ReviewGenerationCandidate {
+	id: string;
+	slug: string;
+	title: string;
+	summary: string;
+	top_image?: string | null;
+	created_at: string;
+	category: {
+		id: string;
+		name: string;
+	} | null;
+}
+
+export interface ReviewTemplateGenerationPreview {
+	template: ReviewTemplateSummary;
+	date_start: string;
+	date_end: string;
+	window_start: string;
+	window_end: string;
+	period_label: string;
+	articles: ReviewGenerationCandidate[];
+}
+
+export interface ReviewIssueListResponse {
+	data: ReviewIssue[];
+	filters: {
+		templates: ReviewTemplateFilterItem[];
+	};
+	pagination: {
+		page: number;
+		size: number;
+		total: number;
+		total_pages: number;
+	};
+}
+
 export interface BackupImportResult {
 	success: boolean;
 	meta: {
@@ -562,7 +780,7 @@ export interface BackupImportResult {
 }
 
 export interface CommentListResponse {
-	items: ArticleComment[];
+	items: AdminCommentItem[];
 	pagination: {
 		page: number;
 		size: number;
@@ -696,6 +914,7 @@ export interface AITaskTimelineResponse {
 		article_id: string | null;
 		article_title: string | null;
 		article_slug: string | null;
+		article_kind?: string | null;
 		task_type: string;
 		content_type: string | null;
 		status: string;
@@ -712,6 +931,37 @@ export interface AITaskTimelineResponse {
 	};
 	events: AITaskTimelineEvent[];
 	usage: AITaskTimelineUsage[];
+}
+
+export interface AITaskListItem {
+	id: string;
+	article_id: string | null;
+	article_title: string | null;
+	article_slug: string | null;
+	article_kind?: string | null;
+	task_type: string;
+	content_type: string | null;
+	status: string;
+	attempts: number;
+	max_attempts: number;
+	run_at: string | null;
+	locked_at: string | null;
+	locked_by: string | null;
+	last_error: string | null;
+	last_error_type?: string | null;
+	created_at: string;
+	updated_at: string;
+	finished_at: string | null;
+}
+
+export interface AITaskListResponse {
+	data: AITaskListItem[];
+	pagination: {
+		page: number;
+		size: number;
+		total: number;
+		total_pages: number;
+	};
 }
 
 export interface PromptConfig {
@@ -834,6 +1084,22 @@ export const articleApi = {
 		};
 	},
 
+	updateAIContent: async (
+		articleSlug: string,
+		contentType: "summary" | "key_points" | "outline" | "quotes",
+		content: string,
+	): Promise<{
+		id: string;
+		content_type: string;
+		status: "updated";
+	}> => {
+		const response = await api.put(
+			`/api/articles/${articleSlug}/ai-content/${contentType}`,
+			{ content },
+		);
+		return response.data;
+	},
+
 	getAIContentVersions: async (
 		id: string,
 		contentType: VersionedAIContentType,
@@ -944,23 +1210,23 @@ export const articleApi = {
 		content_type?: string;
 		article_id?: string;
 		article_title?: string;
-	}) => {
+	}): Promise<AITaskListResponse> => {
 		try {
 			const response = await api.get("/api/ai-tasks", { params });
-			return response.data;
+			return response.data as AITaskListResponse;
 		} catch (error) {
 			if (isTransientNetworkError(error)) {
 				await sleep(250);
 				const retryResponse = await api.get("/api/ai-tasks", { params });
-				return retryResponse.data;
+				return retryResponse.data as AITaskListResponse;
 			}
 			throw error;
 		}
 	},
 
-	getAITask: async (taskId: string) => {
+	getAITask: async (taskId: string): Promise<AITaskListItem> => {
 		const response = await api.get(`/api/ai-tasks/${taskId}`);
-		return response.data;
+		return response.data as AITaskListItem;
 	},
 
 	getAITaskTimeline: async (taskId: string): Promise<AITaskTimelineResponse> => {
@@ -1409,6 +1675,11 @@ export const commentApi = {
 		});
 		return response.data as { id: string; is_hidden: boolean; updated_at: string };
 	},
+	getNotifications: async (after?: string) => {
+		const params = after ? { after } : undefined;
+		const response = await api.get("/api/comments/admin/notifications", { params });
+		return response.data as AdminCommentItem[];
+	},
 };
 
 export const basicSettingsApi = {
@@ -1423,6 +1694,187 @@ export const basicSettingsApi = {
 	getPublicSettings: async (): Promise<BasicSettings> => {
 		const response = await api.get("/api/settings/basic/public");
 		return response.data;
+	},
+};
+
+export const reviewApi = {
+	getPublicReviews: async (params?: {
+		page?: number;
+		size?: number;
+		template_id?: string;
+		search?: string;
+		published_at_start?: string;
+		published_at_end?: string;
+		visibility?: string;
+	}): Promise<ReviewIssueListResponse> => {
+		const response = await api.get("/api/reviews", { params });
+		return response.data;
+	},
+
+	getPublicReview: async (slug: string): Promise<ReviewIssue> => {
+		const response = await api.get(`/api/reviews/${slug}`);
+		return response.data;
+	},
+
+	recordReviewView: async (slug: string) => {
+		const response = await api.post(`/api/reviews/${slug}/view`);
+		return response.data as {
+			review_slug: string;
+			view_count: number;
+			counted: boolean;
+		};
+	},
+
+	getTemplates: async (): Promise<ReviewTemplate[]> => {
+		const response = await api.get("/api/review-templates");
+		return response.data;
+	},
+
+	createTemplate: async (
+		data: ReviewTemplateMutationInput,
+	) => {
+		const response = await api.post("/api/review-templates", data);
+		return response.data as { id: string };
+	},
+
+	updateTemplate: async (
+		id: string,
+		data: Partial<ReviewTemplateMutationInput>,
+	) => {
+		const response = await api.put(`/api/review-templates/${id}`, data);
+		return response.data as { success: boolean };
+	},
+
+	deleteTemplate: async (id: string) => {
+		const response = await api.delete(`/api/review-templates/${id}`);
+		return response.data as { success: boolean };
+	},
+
+	getTemplateIssues: async (id: string): Promise<ReviewIssue[]> => {
+		const response = await api.get(`/api/review-templates/${id}/issues`);
+		return response.data;
+	},
+
+	runTemplateNow: async (id: string) => {
+		const response = await api.post(`/api/review-templates/${id}/run-now`);
+		return response.data as { success: boolean; task_id: string };
+	},
+
+	getTemplateGenerationPreview: async (
+		id: string,
+		params?: {
+			date_start?: string;
+			date_end?: string;
+		},
+	): Promise<ReviewTemplateGenerationPreview> => {
+		const response = await api.get(`/api/review-templates/${id}/generation-preview`, {
+			params,
+		});
+		return response.data;
+	},
+
+	runTemplateManual: async (
+		id: string,
+		data: {
+			date_start?: string | null;
+			date_end?: string | null;
+			article_ids: string[];
+			model_api_config_id?: string | null;
+		},
+	) => {
+		const response = await api.post(`/api/review-templates/${id}/run-manual`, data);
+		return response.data as { success: boolean; task_id: string; issue_id: string };
+	},
+
+	getIssue: async (id: string): Promise<ReviewIssue> => {
+		const response = await api.get(`/api/review-issues/${id}`);
+		return response.data;
+	},
+
+	updateIssue: async (
+		id: string,
+		data: {
+			title?: string;
+			published_at?: string | null;
+			top_image?: string | null;
+			markdown_content: string;
+		},
+	): Promise<ReviewIssue> => {
+		const response = await api.put(`/api/review-issues/${id}`, data);
+		return response.data;
+	},
+
+	publishIssue: async (id: string) => {
+		const response = await api.post(`/api/review-issues/${id}/publish`);
+		return response.data as { success: boolean; status: ReviewIssueStatus };
+	},
+
+	unpublishIssue: async (id: string) => {
+		const response = await api.post(`/api/review-issues/${id}/unpublish`);
+		return response.data as { success: boolean; status: ReviewIssueStatus };
+	},
+
+	deleteIssue: async (id: string) => {
+		const response = await api.delete(`/api/review-issues/${id}`);
+		return response.data as { success: boolean };
+	},
+};
+
+export const reviewCommentApi = {
+	getReviewComments: async (reviewSlug: string): Promise<ReviewComment[]> => {
+		const response = await api.get(`/api/reviews/${reviewSlug}/comments`, {
+			params: { include_hidden: true },
+		});
+		return response.data as ReviewComment[];
+	},
+	createReviewComment: async (
+		reviewSlug: string,
+		content: string,
+		replyToId?: string | null,
+	) => {
+		const response = await fetch(`/api/review-comments/${reviewSlug}`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ content, reply_to_id: replyToId || null }),
+			credentials: "same-origin",
+		});
+		const data = await response.json();
+		if (!response.ok) {
+			throw new Error(data?.message || localize("发布评论失败", "Failed to post comment"));
+		}
+		return data as ReviewComment;
+	},
+	updateComment: async (commentId: string, content: string) => {
+		const response = await fetch(`/api/review-comments/item/${commentId}`, {
+			method: "PUT",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ content }),
+			credentials: "same-origin",
+		});
+		const data = await response.json();
+		if (!response.ok) {
+			throw new Error(
+				data?.message || localize("更新评论失败", "Failed to update comment"),
+			);
+		}
+		return data as ReviewComment;
+	},
+	deleteComment: async (commentId: string) => {
+		const response = await fetch(`/api/review-comments/item/${commentId}`, {
+			method: "DELETE",
+			credentials: "same-origin",
+		});
+		const data = await response.json();
+		if (!response.ok) {
+			throw new Error(data?.message || localize("删除评论失败", "Failed to delete comment"));
+		}
+		return data as { success: boolean };
+	},
+	toggleHidden: async (commentId: string, isHidden: boolean) => {
+		const response = await api.put(`/api/review-comments/${commentId}/visibility`, {
+			is_hidden: isHidden,
+		});
+		return response.data as { id: string; is_hidden: boolean; updated_at: string };
 	},
 };
 
@@ -1455,11 +1907,33 @@ export const storageSettingsApi = {
 	},
 };
 
+type MediaOwnerInput = string | { articleId?: string | null; reviewIssueId?: string | null };
+
+const resolveMediaOwnerPayload = (owner: MediaOwnerInput) => {
+	if (typeof owner === "string") {
+		return { article_id: owner, review_issue_id: undefined };
+	}
+	return {
+		article_id: owner.articleId || undefined,
+		review_issue_id: owner.reviewIssueId || undefined,
+	};
+};
+
 export const mediaApi = {
-	upload: async (articleId: string, file: File, kind: "image" | "book" = "image") => {
+	upload: async (
+		owner: MediaOwnerInput,
+		file: File,
+		kind: "image" | "book" = "image",
+	) => {
 		const form = new FormData();
 		form.append("file", file);
-		form.append("article_id", articleId);
+		const payload = resolveMediaOwnerPayload(owner);
+		if (payload.article_id) {
+			form.append("article_id", payload.article_id);
+		}
+		if (payload.review_issue_id) {
+			form.append("review_issue_id", payload.review_issue_id);
+		}
 		form.append("kind", kind);
 		const response = await api.post("/api/media/upload", form);
 		return response.data as {
@@ -1471,12 +1945,14 @@ export const mediaApi = {
 		};
 	},
 	ingest: async (
-		articleId: string,
+		owner: MediaOwnerInput,
 		url: string,
 		kind: "image" | "book" = "image",
 	) => {
+		const payload = resolveMediaOwnerPayload(owner);
 		const response = await api.post("/api/media/ingest", {
-			article_id: articleId,
+			article_id: payload.article_id,
+			review_issue_id: payload.review_issue_id,
 			url,
 			kind,
 		});
@@ -1524,8 +2000,15 @@ export const commentAdminApi = {
 		const response = await api.get("/api/comments", { params });
 		return response.data;
 	},
-	delete: async (commentId: string) => {
-		const response = await api.delete(`/api/comments/${commentId}`);
+	delete: async (
+		commentId: string,
+		resourceType: CommentResourceType = "article",
+	) => {
+		const endpoint =
+			resourceType === "review"
+				? `/api/review-comments/${commentId}`
+				: `/api/comments/${commentId}`;
+		const response = await api.delete(endpoint);
 		return response.data as { success: boolean };
 	},
 };

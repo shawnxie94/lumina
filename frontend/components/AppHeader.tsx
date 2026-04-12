@@ -6,12 +6,15 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useBasicSettings } from '@/contexts/BasicSettingsContext';
 import {
   articleApi,
+  commentApi,
   buildPublicRssUrl,
+  buildPublicReviewRssUrl,
   getErrorTaskPollIntervalMs,
   normalizePublicRssTagIds,
 } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { notificationStore, type NotificationItem } from '@/lib/notifications';
+import { extractCommentBody } from '@/components/comment/CommentSection';
 import {
   IconBell,
   IconGithub,
@@ -25,6 +28,9 @@ import {
   IconTrash,
   IconGlobe,
 } from '@/components/icons';
+
+const DARK_OVERRIDES_HREF = '/styles/dark-overrides.css';
+const LINK_ID = 'dark-overrides-link';
 
 const ERROR_PAGE_SIZE = 50;
 
@@ -46,7 +52,23 @@ type ErrorTaskItem = {
   finished_at: string | null;
 };
 
-export default function AppHeader() {
+const injectDarkOverrides = () => {
+  if (typeof document === 'undefined') return;
+  if (document.getElementById(LINK_ID)) return;
+  const link = document.createElement('link');
+  link.id = LINK_ID;
+  link.rel = 'stylesheet';
+  link.href = DARK_OVERRIDES_HREF;
+  document.head.appendChild(link);
+};
+
+const removeDarkOverrides = () => {
+  if (typeof document === 'undefined') return;
+  const link = document.getElementById(LINK_ID);
+  if (link) link.remove();
+};
+
+export default function AppHeader({ hideRss, activeNav }: { hideRss?: boolean; activeNav?: 'home' | 'feed' | 'review' }) {
   const router = useRouter();
   const { isAdmin, isLoading: authLoading, logout } = useAuth();
   const { t, language } = useI18n();
@@ -62,6 +84,15 @@ export default function AppHeader() {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [errorLoading, setErrorLoading] = useState(false);
 
+  const getCommentNotificationLink = useCallback((comment: Awaited<ReturnType<typeof commentApi.getNotifications>>[number]) => {
+    if (comment.resource_type === 'review') {
+      const reviewTarget = comment.review_slug || comment.review_id;
+      return reviewTarget ? `/reviews/${reviewTarget}#comment-${comment.id}` : undefined;
+    }
+    const articleTarget = comment.article_slug || comment.article_id;
+    return articleTarget ? `/article/${articleTarget}#comment-${comment.id}` : undefined;
+  }, []);
+
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const stored = localStorage.getItem('theme');
@@ -72,6 +103,9 @@ export default function AppHeader() {
     setTheme(initial);
     if (initial === 'system') {
       document.documentElement.removeAttribute('data-theme');
+    } else if (initial === 'dark') {
+      document.documentElement.setAttribute('data-theme', initial);
+      injectDarkOverrides();
     } else {
       document.documentElement.setAttribute('data-theme', initial);
     }
@@ -147,6 +181,7 @@ export default function AppHeader() {
       if (task.task_type === 'process_article_classification') return t('分类');
       if (task.task_type === 'process_article_translation') return t('翻译');
       if (task.task_type === 'process_article_embedding') return t('向量化');
+      if (task.task_type === 'generate_review_issue') return t('回顾');
       if (task.task_type === 'process_ai_content') {
         if (task.content_type === 'summary') return t('摘要');
         if (task.content_type === 'key_points') return t('总结');
@@ -200,14 +235,53 @@ export default function AppHeader() {
     return () => clearInterval(timer);
   }, [fetchErrorTasks, isAdmin]);
 
+  // Fetch comment notifications for admin
+  const fetchCommentNotifications = useCallback(async () => {
+    if (!isAdmin) return;
+    try {
+      const comments = await commentApi.getNotifications();
+      const items: NotificationItem[] = comments.map((comment) => {
+        const bodyContent = extractCommentBody(comment.content);
+        return {
+          id: `comment:${comment.id}`,
+          title: t('新评论'),
+          message: `${comment.user_name}: ${bodyContent.slice(0, 100)}${bodyContent.length > 100 ? '...' : ''}`,
+          level: 'info',
+          source: 'custom',
+          category: comment.resource_title || comment.article_title || comment.review_title || t('评论'),
+          createdAt: comment.created_at,
+          link: getCommentNotificationLink(comment),
+        };
+      });
+      notificationStore.replaceSource('custom', items);
+    } catch (error) {
+      console.error('Failed to fetch comment notifications:', error);
+    }
+  }, [getCommentNotificationLink, isAdmin, t]);
+
+  useEffect(() => {
+    if (!isAdmin) {
+      notificationStore.replaceSource('custom', []);
+      return;
+    }
+    fetchCommentNotifications();
+    const timer = setInterval(fetchCommentNotifications, getErrorTaskPollIntervalMs());
+    return () => clearInterval(timer);
+  }, [fetchCommentNotifications, isAdmin]);
+
   const applyTheme = (nextTheme: 'light' | 'dark' | 'system') => {
     setTheme(nextTheme);
     if (typeof window !== 'undefined') {
       localStorage.setItem('theme', nextTheme);
       if (nextTheme === 'system') {
         document.documentElement.removeAttribute('data-theme');
+        removeDarkOverrides();
+      } else if (nextTheme === 'dark') {
+        document.documentElement.setAttribute('data-theme', nextTheme);
+        injectDarkOverrides();
       } else {
         document.documentElement.setAttribute('data-theme', nextTheme);
+        removeDarkOverrides();
       }
     }
   };
@@ -276,6 +350,18 @@ export default function AppHeader() {
       tagIds,
     };
   }, [router.pathname, router.query.category_id, router.query.tag_ids]);
+  const reviewRssFilters = useMemo(() => {
+    if (router.pathname !== '/reviews' && router.pathname !== '/reviews/[slug]') {
+      return {};
+    }
+    const templateId =
+      router.pathname === '/reviews'
+        ? getQueryValue(router.query.template_id).trim()
+        : '';
+    return {
+      templateId: templateId || undefined,
+    };
+  }, [router.pathname, router.query.template_id]);
   const loginHref = useMemo(() => {
     const currentPath = router.asPath || '/';
     if (currentPath.startsWith('/login')) {
@@ -283,12 +369,16 @@ export default function AppHeader() {
     }
     return `/login?redirect=${encodeURIComponent(currentPath)}`;
   }, [router.asPath]);
-  const isHomeRoute = router.pathname === '/';
-  const isFeedRoute = router.pathname === '/list';
+  const isHomeRoute = activeNav === 'home' || (!activeNav && router.pathname === '/');
+  const isFeedRoute = activeNav === 'feed' || (!activeNav && router.pathname === '/list');
+  const isReviewRoute = activeNav === 'review' || (!activeNav && (router.pathname === '/reviews' || router.pathname === '/reviews/[slug]'));
   const handleOpenRss = useCallback(() => {
     if (typeof window === 'undefined') return;
-    window.open(buildPublicRssUrl(rssFilters), '_blank', 'noopener,noreferrer');
-  }, [rssFilters]);
+    const targetUrl = isReviewRoute
+      ? buildPublicReviewRssUrl(reviewRssFilters)
+      : buildPublicRssUrl(rssFilters);
+    window.open(targetUrl, '_blank', 'noopener,noreferrer');
+  }, [isReviewRoute, reviewRssFilters, rssFilters]);
 
   return (
     <header className="bg-surface border-b border-border shadow-sm">
@@ -322,6 +412,14 @@ export default function AppHeader() {
                 }`}
               >
                 {t('信息流')}
+              </Link>
+              <Link
+                href="/reviews"
+                className={`px-3 py-1 rounded-sm transition ${
+                  isReviewRoute ? 'bg-muted text-text-1' : 'text-text-2 hover:bg-muted hover:text-text-1'
+                }`}
+              >
+                {t('回顾')}
               </Link>
             </div>
           </div>
@@ -379,7 +477,17 @@ export default function AppHeader() {
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2">
                                 <div className="text-sm font-medium text-text-1 truncate">
-                                  {item.title}
+                                  {item.link ? (
+                                    <Link
+                                      href={item.link}
+                                      className="hover:text-primary transition"
+                                      onClick={() => setErrorMenuOpen(false)}
+                                    >
+                                      {item.title}
+                                    </Link>
+                                  ) : (
+                                    item.title
+                                  )}
                                 </div>
                                 <div
                                   className={`text-xs ${getLevelClass(item.level)}`}
@@ -393,7 +501,17 @@ export default function AppHeader() {
                                 )}
                               </div>
                               <div className="text-xs text-text-2 mt-1">
-                                {item.message}
+                                {item.link ? (
+                                  <Link
+                                    href={item.link}
+                                    className="hover:text-text-1 transition"
+                                    onClick={() => setErrorMenuOpen(false)}
+                                  >
+                                    {item.message}
+                                  </Link>
+                                ) : (
+                                  item.message
+                                )}
                               </div>
                               <div className="text-[11px] text-text-3 mt-1">
                                 {new Date(item.createdAt).toLocaleString(
@@ -492,7 +610,7 @@ export default function AppHeader() {
                 </div>
               )}
             </div>
-            {basicSettings.rss_enabled && (
+            {basicSettings.rss_enabled && !hideRss && (
               <button
                 type="button"
                 onClick={handleOpenRss}
@@ -510,6 +628,14 @@ export default function AppHeader() {
               }`}
             >
               {t('信息流')}
+            </Link>
+            <Link
+              href="/reviews"
+              className={`inline-flex lg:hidden h-8 items-center px-3 rounded-sm text-sm font-medium transition ${
+                isReviewRoute ? 'bg-muted text-text-1' : 'text-text-2 hover:bg-muted hover:text-text-1'
+              }`}
+            >
+              {t('回顾')}
             </Link>
             {resolvedAdmin && (
               <Link

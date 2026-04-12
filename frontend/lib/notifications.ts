@@ -9,6 +9,7 @@ export type NotificationItem = {
   source: NotificationSource;
   category?: string;
   createdAt: string;
+  link?: string;
 };
 
 const STORAGE_KEY = 'lumina-notifications';

@@ -15,7 +15,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.settings import get_settings
-from models import AIAnalysis, AdminSettings, MediaAsset, Article, now_str
+from models import AIAnalysis, AdminSettings, Article, MediaAsset, ReviewIssue, now_str
 
 logger = logging.getLogger("media_service")
 
@@ -111,14 +111,21 @@ def _write_bytes(storage_path: str, data: bytes) -> None:
 
 def _create_asset(
     db: Session,
-    article_id: str,
+    article_id: str | None,
+    *,
+    review_issue_id: str | None = None,
     storage_path: str,
     content_type: str | None,
     size: int | None,
     original_url: str | None = None,
 ) -> MediaAsset:
+    if article_id and review_issue_id:
+        raise HTTPException(status_code=400, detail="媒体资源只能归属于文章或回顾之一")
+    if not article_id and not review_issue_id:
+        raise HTTPException(status_code=400, detail="媒体资源必须指定文章或回顾归属")
     asset = MediaAsset(
         article_id=article_id,
+        review_issue_id=review_issue_id,
         storage_path=storage_path.replace("\\", "/"),
         content_type=content_type,
         size=size,
@@ -253,9 +260,11 @@ def _maybe_compress_image(
 
 async def save_upload_image(
     db: Session,
-    article_id: str,
+    article_id: str | None,
     file: UploadFile,
     kind: str = MEDIA_KIND_IMAGE,
+    *,
+    review_issue_id: str | None = None,
 ) -> tuple[MediaAsset, str]:
     data = await file.read()
     media_kind = _normalize_media_kind(kind)
@@ -286,6 +295,7 @@ async def save_upload_image(
     asset = _create_asset(
         db=db,
         article_id=article_id,
+        review_issue_id=review_issue_id,
         storage_path=storage_path,
         content_type=content_type,
         size=size,
@@ -296,9 +306,11 @@ async def save_upload_image(
 
 async def ingest_external_image(
     db: Session,
-    article_id: str,
+    article_id: str | None,
     url: str,
     kind: str = MEDIA_KIND_IMAGE,
+    *,
+    review_issue_id: str | None = None,
 ) -> tuple[MediaAsset, str]:
     media_kind = _normalize_media_kind(kind)
     if not url or not url.startswith(("http://", "https://")):
@@ -340,6 +352,7 @@ async def ingest_external_image(
     asset = _create_asset(
         db=db,
         article_id=article_id,
+        review_issue_id=review_issue_id,
         storage_path=storage_path,
         content_type=content_type,
         size=len(data),
@@ -588,10 +601,16 @@ def _extract_media_paths_from_markdown(content: str) -> set[str]:
 def cleanup_orphan_media(db: Session) -> dict:
     ensure_media_root()
     articles = db.query(Article.id, Article.content_md, Article.top_image).all()
+    review_issues = db.query(ReviewIssue.id, ReviewIssue.markdown_content, ReviewIssue.top_image).all()
     infographic_rows = db.query(AIAnalysis.infographic_image_url).all()
     referenced_paths: set[str] = set()
     for article_id, content_md, top_image in articles:
         referenced_paths |= _extract_media_paths_from_markdown(content_md or "")
+        rel = _extract_internal_media_rel_path(top_image or "")
+        if rel:
+            referenced_paths.add(rel)
+    for _issue_id, markdown_content, top_image in review_issues:
+        referenced_paths |= _extract_media_paths_from_markdown(markdown_content or "")
         rel = _extract_internal_media_rel_path(top_image or "")
         if rel:
             referenced_paths.add(rel)

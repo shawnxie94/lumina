@@ -5,6 +5,7 @@ interface ReadingArticle {
   slug: string;
   title: string;
   title_trans?: string | null;
+  type?: 'article' | 'review';
 }
 
 interface ReadingContextType {
@@ -21,38 +22,63 @@ interface ReadingContextType {
 const ReadingContext = createContext<ReadingContextType | undefined>(undefined);
 
 const MAX_RECENT_ARTICLES = 5;
+const RECENT_READING_STORAGE_KEY = 'recentReadingArticles';
+const RECENT_READING_COLLAPSED_STORAGE_KEY = 'recentReadingCollapsed';
+
+function parseStoredArticles(value: string | null): ReadingArticle[] {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
 
 export function ReadingProvider({ children }: { children: ReactNode }) {
-  const [recentArticles, setRecentArticles] = useState<ReadingArticle[]>([]);
-  const [isCollapsed, setIsCollapsed] = useState(true);
+  const [recentArticles, setRecentArticles] = useState<ReadingArticle[]>(() => {
+    if (typeof window === 'undefined') return [];
+    return parseStoredArticles(localStorage.getItem(RECENT_READING_STORAGE_KEY));
+  });
+  const [isCollapsed, setIsCollapsed] = useState(() => {
+    if (typeof window === 'undefined') return true;
+    return localStorage.getItem(RECENT_READING_COLLAPSED_STORAGE_KEY) === 'true';
+  });
   const [isHidden, setIsHidden] = useState(false);
-  const [initialized, setInitialized] = useState(false);
 
   useEffect(() => {
-    const stored = localStorage.getItem('recentReadingArticles');
-    if (stored) {
-      try {
-        setRecentArticles(JSON.parse(stored));
-      } catch {}
-    }
-    const collapsedStored = localStorage.getItem('recentReadingCollapsed');
-    if (collapsedStored !== null) {
-      setIsCollapsed(collapsedStored === 'true');
-    }
-    setInitialized(true);
+    if (typeof window === 'undefined') return;
+
+    const refreshFromStorage = () => {
+      setRecentArticles(parseStoredArticles(localStorage.getItem(RECENT_READING_STORAGE_KEY)));
+      const collapsedStored = localStorage.getItem(RECENT_READING_COLLAPSED_STORAGE_KEY);
+      if (collapsedStored !== null) {
+        setIsCollapsed(collapsedStored === 'true');
+      }
+    };
+
+    const handleStorageChange = (event: StorageEvent) => {
+      if (event.key !== RECENT_READING_STORAGE_KEY && event.key !== RECENT_READING_COLLAPSED_STORAGE_KEY) return;
+      refreshFromStorage();
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('focus', refreshFromStorage);
+    document.addEventListener('visibilitychange', refreshFromStorage);
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('focus', refreshFromStorage);
+      document.removeEventListener('visibilitychange', refreshFromStorage);
+    };
   }, []);
 
   useEffect(() => {
-    if (initialized) {
-      localStorage.setItem('recentReadingArticles', JSON.stringify(recentArticles));
-    }
-  }, [recentArticles, initialized]);
+    localStorage.setItem(RECENT_READING_STORAGE_KEY, JSON.stringify(recentArticles));
+  }, [recentArticles]);
 
   useEffect(() => {
-    if (initialized) {
-      localStorage.setItem('recentReadingCollapsed', String(isCollapsed));
-    }
-  }, [isCollapsed, initialized]);
+    localStorage.setItem(RECENT_READING_COLLAPSED_STORAGE_KEY, String(isCollapsed));
+  }, [isCollapsed]);
 
   const addArticle = useCallback((article: ReadingArticle) => {
     setRecentArticles((prev) => {

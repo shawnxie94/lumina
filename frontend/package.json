@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "node --test --import tsx"
+    "test": "node --test --import tsx scripts/test-ai-history-visibility.mjs tests/*.test.ts tests/*.test.tsx"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

@@ -3,7 +3,7 @@ import os
 from collections import defaultdict
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile
+from fastapi import APIRouter, Body, Depends, File, HTTPException, Request, Response, UploadFile
 from fastapi.responses import JSONResponse
 from sqlalchemy import func
 from sqlalchemy.orm import Session, load_only
@@ -20,7 +20,10 @@ from app.schemas import (
     ArticleVisibilityUpdate,
 )
 from app.domain.ai_task_service import AITaskService
-from app.domain.article_command_service import ArticleCommandService
+from app.domain.article_command_service import (
+    ArticleCommandService,
+    _complete_published_at_time,
+)
 from app.domain.article_ai_version_service import ArticleAIVersionService
 from app.domain.article_embedding_service import (
     REMOTE_EMBEDDING_REQUIRED_MESSAGE,
@@ -716,7 +719,7 @@ async def update_article(
         if article_data.author is not None:
             article.author = article_data.author
         if "published_at" in article_data.__fields_set__:
-            article.published_at = article_data.published_at
+            article.published_at = _complete_published_at_time(article_data.published_at)
         if article_data.top_image is not None:
             article.top_image = article_data.top_image
         if article_data.content_md is not None:
@@ -973,6 +976,33 @@ async def generate_ai_content(
             prompt_config_id=prompt_config_id,
         )
         return {"id": article.id, "content_type": content_type, "status": "processing"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.put("/api/articles/{article_slug}/ai-content/{content_type}")
+async def update_ai_content(
+    article_slug: str,
+    content_type: str,
+    content: str = Body(..., embed=True),
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
+    valid_types = ["summary", "key_points", "outline", "quotes"]
+    if content_type not in valid_types:
+        raise HTTPException(
+            status_code=400, detail=f"无效的内容类型，支持: {', '.join(valid_types)}"
+        )
+
+    try:
+        article = article_query_service.get_article_by_slug(db, article_slug)
+        if not article:
+            raise HTTPException(status_code=404, detail="文章不存在")
+        article_command_service.update_ai_content(db, article.id, content_type, content)
+        invalidate_public_article_derived_cache()
+        return {"id": article.id, "content_type": content_type, "status": "updated"}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:

@@ -82,6 +82,7 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
       GithubProvider({
         clientId: settings.github_client_id,
         clientSecret: settings.github_client_secret,
+        issuer: 'https://github.com/login/oauth',
       }),
     );
   }
@@ -113,9 +114,21 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
       strategy: 'jwt',
     },
     callbacks: {
-      async jwt({ token, account }) {
+      async jwt({ token, account, profile }) {
         if (account?.provider) {
           token.provider = account.provider;
+        }
+        if ((account?.provider || token.provider) === 'github') {
+          const normalizedProfile = profile as
+            | { login?: string; preferred_username?: string; username?: string }
+            | undefined;
+          const githubLogin =
+            normalizedProfile?.login ||
+            normalizedProfile?.preferred_username ||
+            normalizedProfile?.username ||
+            (token.github_username as string) ||
+            '';
+          token.github_username = githubLogin || undefined;
         }
         return token;
       },
@@ -123,6 +136,7 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
         if (session.user) {
           session.user.id = token.sub || '';
           session.user.provider = (token.provider as string) || '';
+          session.user.github_username = (token.github_username as string) || '';
         }
         return session;
       },

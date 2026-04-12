@@ -9,6 +9,7 @@ class CommentCreate(BaseModel):
     user_name: str
     user_avatar: Optional[str] = None
     provider: Optional[str] = None
+    github_username: Optional[str] = None
     reply_to_id: Optional[str] = None
 
 

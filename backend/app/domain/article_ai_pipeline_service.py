@@ -138,6 +138,7 @@ class ArticleAIPipelineService:
                         "properties": {
                             "category_id": {
                                 "type": "string",
+                                "description": "分类ID，无匹配时为空字符串",
                             }
                         },
                         "required": ["category_id"],
@@ -146,8 +147,9 @@ class ArticleAIPipelineService:
                 },
             },
             system_instruction=(
-                "固定输出协议：必须返回单个 JSON 对象，且只包含 category_id 字段。"
-                "category_id 必须是字符串；无匹配时返回空字符串；禁止输出解释或额外字段。"
+                "固定输出协议：必须返回单个 JSON 对象，且只包含 category_id 字段。\n"
+                "示例：{\"category_id\": \"abc123\"} 或 {\"category_id\": \"\"}\n"
+                "category_id 必须是字符串；无匹配时返回空字符串；禁止输出解释、Markdown 代码块或额外字段。"
             ),
         ),
         "tagging": PromptOutputContract(
@@ -170,7 +172,8 @@ class ArticleAIPipelineService:
                 },
             },
             system_instruction=(
-                "固定输出协议：必须返回单个 JSON 对象，且只包含 tags 字段。"
+                "固定输出协议：必须返回单个 JSON 对象，且只包含 tags 字段。\n"
+                "示例：{\"tags\": [\"标签1\", \"标签2\", \"标签3\"]}\n"
                 "tags 必须是字符串数组；禁止输出解释、Markdown 代码块或额外字段。"
             ),
         ),
@@ -192,7 +195,8 @@ class ArticleAIPipelineService:
                 },
             },
             system_instruction=(
-                "固定输出协议：必须返回单个 JSON 对象，且只包含 is_valid 和 error 字段。"
+                "固定输出协议：必须返回单个 JSON 对象，且只包含 is_valid 和 error 字段。\n"
+                "示例：{\"is_valid\": true, \"error\": \"\"} 或 {\"is_valid\": false, \"error\": \"内容不合规原因\"}\n"
                 "is_valid 必须是布尔值；error 必须是字符串；合规时 error 为空字符串；禁止输出额外字段。"
             ),
         ),
@@ -1666,7 +1670,7 @@ class ArticleAIPipelineService:
                 continue_round=None,
                 estimated_input_tokens=estimated_tokens,
             )
-            raise TaskTimeoutError("标题翻译超时，请稍后重试")
+            return None
         except Exception as exc:
             self._log_ai_usage(
                 db,
@@ -1687,7 +1691,7 @@ class ArticleAIPipelineService:
                 continue_round=None,
                 estimated_input_tokens=estimated_tokens,
             )
-            raise
+            return None
 
     def _build_cleaning_prompt(self, base_prompt: str | None, source_format: str) -> str | None:
         if not base_prompt:
@@ -2163,6 +2167,14 @@ class ArticleAIPipelineService:
                 db.commit()
                 raise TaskConfigError("未配置AI服务，请先在配置页面设置AI参数")
 
+            # 如果没有提示词配置，跳过 AI 调用
+            if not prompt:
+                article.status = "failed"
+                ai_analysis.error_message = "未配置清洗提示词，请先在配置页面设置"
+                ai_analysis.updated_at = now_str()
+                db.commit()
+                return
+
             cleaning_client = self.create_ai_client(cleaning_config)
             parameters = cleaning_config.get("parameters") or {}
             if prompt_parameters:
@@ -2411,6 +2423,8 @@ class ArticleAIPipelineService:
         article_id: str,
         category_id: str | None,
         cleaned_md: str | None = None,
+        model_config_id: str | None = None,
+        prompt_config_id: str | None = None,
     ):
         db = SessionLocal()
         try:
@@ -2436,12 +2450,66 @@ class ArticleAIPipelineService:
             if not cleaned_md_candidate:
                 raise TaskDataError("缺少待校验内容，请先执行内容清洗")
 
-            prompt_config = self._get_prompt_config(
-                db,
-                category_id=category_id,
-                prompt_type="content_validation",
-            )
-            if not prompt_config:
+            validation_config = None
+            prompt_config = None
+
+            if model_config_id:
+                model_config = (
+                    db.query(ModelAPIConfig)
+                    .filter(
+                        ModelAPIConfig.id == model_config_id,
+                        ModelAPIConfig.is_enabled == True,
+                    )
+                    .first()
+                )
+                if not model_config:
+                    raise TaskConfigError("指定模型配置不存在或已禁用")
+                self._assert_general_model(model_config)
+                validation_config = {
+                    "base_url": model_config.base_url,
+                    "api_key": model_config.api_key,
+                    "model_name": model_config.model_name,
+                    "model_api_config_id": model_config.id,
+                    "price_input_per_1k": model_config.price_input_per_1k,
+                    "price_output_per_1k": model_config.price_output_per_1k,
+                    "currency": model_config.currency,
+                    "context_window_tokens": model_config.context_window_tokens,
+                    "reserve_output_tokens": model_config.reserve_output_tokens,
+                }
+                # 当指定模型但未指定提示词时，获取默认验证提示词
+                if not prompt_config_id:
+                    prompt_config = self._get_prompt_config(
+                        db,
+                        category_id=category_id,
+                        prompt_type="content_validation",
+                    )
+            elif prompt_config_id:
+                prompt_config = (
+                    db.query(PromptConfig)
+                    .filter(
+                        PromptConfig.id == prompt_config_id,
+                        PromptConfig.is_enabled == True,
+                        PromptConfig.type == "content_validation",
+                    )
+                    .first()
+                )
+                if not prompt_config:
+                    raise TaskConfigError("指定校验提示词不存在、已禁用或类型不匹配")
+                validation_config = self.get_ai_config(
+                    db, category_id, prompt_type="content_validation"
+                )
+            else:
+                validation_config = self.get_ai_config(
+                    db, category_id, prompt_type="content_validation"
+                )
+                if validation_config:
+                    prompt_config = self._get_prompt_config(
+                        db,
+                        category_id=category_id,
+                        prompt_type="content_validation",
+                    )
+
+            if not validation_config:
                 article.content_md = cleaned_md_candidate
                 article.updated_at = now_str()
                 ai_analysis.error_message = None
@@ -2472,22 +2540,45 @@ class ArticleAIPipelineService:
                 )
                 return
 
-            validation_config = self.get_ai_config(
-                db, category_id, prompt_type="content_validation"
-            )
-            if not validation_config:
-                article.status = "failed"
-                ai_analysis.error_message = "未配置AI服务，请先在配置页面设置AI参数"
+            prompt = (prompt_config.prompt if prompt_config and hasattr(prompt_config, 'prompt')
+                      else validation_config.get("prompt_template"))
+
+            # 如果没有提示词配置，跳过 AI 调用但继续后续流程
+            if not prompt:
+                ai_analysis.error_message = "未配置校验提示词，跳过校验"
                 ai_analysis.updated_at = now_str()
+                # 使用原始清洗后的内容继续后续流程
+                article.content_md = cleaned_md_candidate
+                article.updated_at = now_str()
                 db.commit()
-                raise TaskConfigError("未配置AI服务，请先在配置页面设置AI参数")
+                try:
+                    ingest_stats = await maybe_ingest_article_images_with_stats(
+                        db, article
+                    )
+                    self._append_media_ingest_event(
+                        db, ingest_stats, stage="validation_skip"
+                    )
+                except Exception as exc:
+                    logger.warning("article_images_ingest_failed: %s", str(exc))
+                    self._append_media_ingest_event(
+                        db,
+                        {"total": 0, "success": 0, "failed": 0, "updated": False},
+                        stage="validation_skip_error",
+                    )
+                self._enqueue_task(
+                    db,
+                    task_type="process_article_classification",
+                    article_id=article_id,
+                    content_type="classification",
+                    payload={"category_id": category_id},
+                )
+                return
 
             validation_client = self.create_ai_client(validation_config)
             parameters = self._merge_protocol_parameters(
                 "content_validation",
                 validation_config.get("parameters"),
             )
-            prompt = validation_config.get("prompt_template")
             pricing = {
                 "model_api_config_id": validation_config.get("model_api_config_id"),
                 "price_input_per_1k": validation_config.get("price_input_per_1k"),
@@ -2624,7 +2715,11 @@ class ArticleAIPipelineService:
             db.close()
 
     async def process_article_classification(
-        self, article_id: str, category_id: str | None
+        self,
+        article_id: str,
+        category_id: str | None,
+        model_config_id: str | None = None,
+        prompt_config_id: str | None = None,
     ):
         db = SessionLocal()
         try:
@@ -2647,9 +2742,64 @@ class ArticleAIPipelineService:
             analysis.updated_at = now_str()
             db.commit()
 
-            classification_config = self.get_ai_config(
-                db, category_id, prompt_type="classification"
-            )
+            classification_config = None
+            prompt = None
+
+            if model_config_id:
+                model_config = (
+                    db.query(ModelAPIConfig)
+                    .filter(
+                        ModelAPIConfig.id == model_config_id,
+                        ModelAPIConfig.is_enabled == True,
+                    )
+                    .first()
+                )
+                if not model_config:
+                    raise TaskConfigError("指定模型配置不存在或已禁用")
+                self._assert_general_model(model_config)
+                classification_config = {
+                    "base_url": model_config.base_url,
+                    "api_key": model_config.api_key,
+                    "model_name": model_config.model_name,
+                    "model_api_config_id": model_config.id,
+                    "price_input_per_1k": model_config.price_input_per_1k,
+                    "price_output_per_1k": model_config.price_output_per_1k,
+                    "currency": model_config.currency,
+                    "context_window_tokens": model_config.context_window_tokens,
+                    "reserve_output_tokens": model_config.reserve_output_tokens,
+                }
+                # 当指定模型但未指定提示词时，获取默认分类提示词
+                if not prompt_config_id:
+                    default_prompt_config = self._get_prompt_config(
+                        db, category_id=category_id, prompt_type="classification"
+                    )
+                    if default_prompt_config:
+                        prompt = default_prompt_config.prompt
+                        parameters = build_parameters(default_prompt_config)
+                        classification_config["parameters"] = parameters or None
+
+            if prompt_config_id:
+                prompt_config_obj = (
+                    db.query(PromptConfig)
+                    .filter(
+                        PromptConfig.id == prompt_config_id,
+                        PromptConfig.is_enabled == True,
+                        PromptConfig.type == "classification",
+                    )
+                    .first()
+                )
+                if not prompt_config_obj:
+                    raise TaskConfigError("指定分类提示词不存在、已禁用或类型不匹配")
+                prompt = prompt_config_obj.prompt
+                parameters = build_parameters(prompt_config_obj)
+                if classification_config:
+                    classification_config["parameters"] = parameters or None
+
+            if not classification_config:
+                classification_config = self.get_ai_config(
+                    db, category_id, prompt_type="classification"
+                )
+
             if not classification_config:
                 analysis.classification_status = "failed"
                 if not analysis.error_message:
@@ -2658,119 +2808,129 @@ class ArticleAIPipelineService:
                 db.commit()
                 raise TaskConfigError("未配置AI服务，请先在配置页面设置AI参数")
 
-            categories = db.query(Category).order_by(Category.sort_order).all()
-            categories_payload = "\n".join(
-                [
-                    f"- {category.id} | {category.name} | {category.description or ''}".strip()
-                    for category in categories
-                ]
-            )
-            prompt = classification_config.get("prompt_template")
-            if prompt:
+            # 如果 prompt 还没有设置，尝试从 classification_config 获取
+            if not prompt and classification_config:
+                prompt = classification_config.get("prompt_template")
+
+            # 如果没有提示词配置，跳过 AI 调用但继续后续流程
+            skip_ai_call = not prompt
+            if skip_ai_call:
+                analysis.classification_status = "failed"
+                analysis.error_message = "未配置分类提示词，跳过分类"
+                analysis.updated_at = now_str()
+                db.commit()
+            else:
+                categories = db.query(Category).order_by(Category.sort_order).all()
+                categories_payload = "\n".join(
+                    [
+                        f"- {category.id} | {category.name} | {category.description or ''}".strip()
+                        for category in categories
+                    ]
+                )
                 if "{categories}" in prompt:
                     prompt = prompt.replace("{categories}", categories_payload)
                 else:
                     prompt = f"{prompt}\n\n分类列表：\n{categories_payload}"
-            parameters = self._merge_protocol_parameters(
-                "classification",
-                classification_config.get("parameters"),
-            )
-            pricing = {
-                "model_api_config_id": classification_config.get("model_api_config_id"),
-                "price_input_per_1k": classification_config.get("price_input_per_1k"),
-                "price_output_per_1k": classification_config.get("price_output_per_1k"),
-                "currency": classification_config.get("currency"),
-            }
-
-            try:
-                result = await self.create_ai_client(classification_config).generate_summary(
-                    article.content_md,
-                    prompt=prompt,
-                    parameters=parameters,
+                parameters = self._merge_protocol_parameters(
+                    "classification",
+                    classification_config.get("parameters"),
                 )
-                if isinstance(result, dict):
+                pricing = {
+                    "model_api_config_id": classification_config.get("model_api_config_id"),
+                    "price_input_per_1k": classification_config.get("price_input_per_1k"),
+                    "price_output_per_1k": classification_config.get("price_output_per_1k"),
+                    "currency": classification_config.get("currency"),
+                }
+
+                try:
+                    result = await self.create_ai_client(classification_config).generate_summary(
+                        article.content_md,
+                        prompt=prompt,
+                        parameters=parameters,
+                    )
+                    if isinstance(result, dict):
+                        self._log_ai_usage(
+                            db,
+                            model_config_id=pricing.get("model_api_config_id"),
+                            article_id=article_id,
+                            task_type="process_article_classification",
+                            content_type="classification",
+                            usage=result.get("usage"),
+                            latency_ms=result.get("latency_ms"),
+                            status="completed",
+                            error_message=None,
+                            price_input_per_1k=pricing.get("price_input_per_1k"),
+                            price_output_per_1k=pricing.get("price_output_per_1k"),
+                            currency=pricing.get("currency"),
+                            request_payload=result.get("request_payload"),
+                            response_payload=result.get("response_payload"),
+                        )
+                        result = result.get("content")
+
+                    parsed_result = self._parse_structured_task_result(
+                        "classification",
+                        result,
+                    )
+                    category_output = parsed_result.get("category_id", "").strip()
+                    if category_output:
+                        category = (
+                            db.query(Category).filter(Category.id == category_output).first()
+                        )
+                        if category:
+                            article.category_id = category.id
+                            article.updated_at = now_str()
+                            analysis.classification_status = "completed"
+                            analysis.error_message = None
+                            analysis.updated_at = now_str()
+                            db.commit()
+                        else:
+                            analysis.classification_status = "failed"
+                            analysis.error_message = "分类未命中：返回ID不存在"
+                            analysis.updated_at = now_str()
+                            db.commit()
+                    else:
+                        analysis.classification_status = "failed"
+                        analysis.error_message = "分类未命中：未返回分类ID"
+                        analysis.updated_at = now_str()
+                        db.commit()
+                except asyncio.TimeoutError:
                     self._log_ai_usage(
                         db,
                         model_config_id=pricing.get("model_api_config_id"),
                         article_id=article_id,
                         task_type="process_article_classification",
                         content_type="classification",
-                        usage=result.get("usage"),
-                        latency_ms=result.get("latency_ms"),
-                        status="completed",
-                        error_message=None,
+                        usage=None,
+                        latency_ms=None,
+                        status="failed",
+                        error_message="AI生成超时，请稍后重试",
                         price_input_per_1k=pricing.get("price_input_per_1k"),
                         price_output_per_1k=pricing.get("price_output_per_1k"),
                         currency=pricing.get("currency"),
-                        request_payload=result.get("request_payload"),
-                        response_payload=result.get("response_payload"),
                     )
-                    result = result.get("content")
-
-                parsed_result = self._parse_structured_task_result(
-                    "classification",
-                    result,
-                )
-                category_output = parsed_result.get("category_id", "").strip()
-                if category_output:
-                    category = (
-                        db.query(Category).filter(Category.id == category_output).first()
-                    )
-                    if category:
-                        article.category_id = category.id
-                        article.updated_at = now_str()
-                        db.commit()
-                    else:
-                        raise TaskDataError("分类未命中：返回ID不存在")
-                else:
-                    raise TaskDataError("分类未命中：未返回分类ID")
-
-                analysis.classification_status = "completed"
-                analysis.error_message = None
-                analysis.updated_at = now_str()
-                db.commit()
-            except asyncio.TimeoutError:
-                self._log_ai_usage(
-                    db,
-                    model_config_id=pricing.get("model_api_config_id"),
-                    article_id=article_id,
-                    task_type="process_article_classification",
-                    content_type="classification",
-                    usage=None,
-                    latency_ms=None,
-                    status="failed",
-                    error_message="AI生成超时，请稍后重试",
-                    price_input_per_1k=pricing.get("price_input_per_1k"),
-                    price_output_per_1k=pricing.get("price_output_per_1k"),
-                    currency=pricing.get("currency"),
-                )
-                analysis.classification_status = "failed"
-                if not analysis.error_message:
+                    analysis.classification_status = "failed"
                     analysis.error_message = "AI生成超时，请稍后重试"
-                analysis.updated_at = now_str()
-                db.commit()
-                raise TaskTimeoutError("分类任务超时")
-            except Exception as exc:
-                self._log_ai_usage(
-                    db,
-                    model_config_id=pricing.get("model_api_config_id"),
-                    article_id=article_id,
-                    task_type="process_article_classification",
-                    content_type="classification",
-                    usage=None,
-                    latency_ms=None,
-                    status="failed",
-                    error_message=str(exc),
-                    price_input_per_1k=pricing.get("price_input_per_1k"),
-                    price_output_per_1k=pricing.get("price_output_per_1k"),
-                    currency=pricing.get("currency"),
-                )
-                analysis.classification_status = "failed"
-                if not analysis.error_message:
+                    analysis.updated_at = now_str()
+                    db.commit()
+                except Exception as exc:
+                    self._log_ai_usage(
+                        db,
+                        model_config_id=pricing.get("model_api_config_id"),
+                        article_id=article_id,
+                        task_type="process_article_classification",
+                        content_type="classification",
+                        usage=None,
+                        latency_ms=None,
+                        status="failed",
+                        error_message=str(exc),
+                        price_input_per_1k=pricing.get("price_input_per_1k"),
+                        price_output_per_1k=pricing.get("price_output_per_1k"),
+                        currency=pricing.get("currency"),
+                    )
+                    analysis.classification_status = "failed"
                     analysis.error_message = str(exc)
-                analysis.updated_at = now_str()
-                db.commit()
-                raise
+                    analysis.updated_at = now_str()
+                    db.commit()
 
             effective_category_id = article.category_id or category_id
             if not analysis.tagging_manual_override:
@@ -2817,6 +2977,8 @@ class ArticleAIPipelineService:
         article_id: str,
         category_id: str | None,
         force: bool = False,
+        model_config_id: str | None = None,
+        prompt_config_id: str | None = None,
     ):
         db = SessionLocal()
         try:
@@ -2850,20 +3012,80 @@ class ArticleAIPipelineService:
             analysis.updated_at = now_str()
             db.commit()
 
-            tagging_config = self.get_ai_config(db, category_id, prompt_type="tagging")
+            tagging_config = None
+            prompt = None
+
+            if model_config_id:
+                model_config = (
+                    db.query(ModelAPIConfig)
+                    .filter(
+                        ModelAPIConfig.id == model_config_id,
+                        ModelAPIConfig.is_enabled == True,
+                    )
+                    .first()
+                )
+                if not model_config:
+                    raise TaskConfigError("指定模型配置不存在或已禁用")
+                self._assert_general_model(model_config)
+                tagging_config = {
+                    "base_url": model_config.base_url,
+                    "api_key": model_config.api_key,
+                    "model_name": model_config.model_name,
+                    "model_api_config_id": model_config.id,
+                    "price_input_per_1k": model_config.price_input_per_1k,
+                    "price_output_per_1k": model_config.price_output_per_1k,
+                    "currency": model_config.currency,
+                    "context_window_tokens": model_config.context_window_tokens,
+                    "reserve_output_tokens": model_config.reserve_output_tokens,
+                }
+                # 当指定模型但未指定提示词时，获取默认标签提示词
+                if not prompt_config_id:
+                    default_prompt_config = self._get_prompt_config(
+                        db, category_id=category_id, prompt_type="tagging"
+                    )
+                    if default_prompt_config:
+                        prompt = default_prompt_config.prompt
+
+            if prompt_config_id:
+                prompt_config_obj = (
+                    db.query(PromptConfig)
+                    .filter(
+                        PromptConfig.id == prompt_config_id,
+                        PromptConfig.is_enabled == True,
+                        PromptConfig.type == "tagging",
+                    )
+                    .first()
+                )
+                if not prompt_config_obj:
+                    raise TaskConfigError("指定标签提示词不存在、已禁用或类型不匹配")
+                prompt = prompt_config_obj.prompt
+
+            if not tagging_config:
+                tagging_config = self.get_ai_config(db, category_id, prompt_type="tagging")
+
             if not tagging_config:
                 analysis.tagging_status = "failed"
                 analysis.updated_at = now_str()
                 db.commit()
                 raise TaskConfigError("未配置AI服务，请先在配置页面设置AI参数")
 
-            prompt = tagging_config.get("prompt_template")
+            # 如果 prompt 还没有设置，尝试从 tagging_config 获取
+            if not prompt and tagging_config:
+                prompt = tagging_config.get("prompt_template")
+
+            # 如果没有提示词配置，跳过 AI 调用
+            if not prompt:
+                analysis.tagging_status = "failed"
+                analysis.tagging_error = "未配置标签提示词，请先在配置页面设置"
+                analysis.updated_at = now_str()
+                db.commit()
+                return
+
             category_name = article.category.name if article.category else ""
-            if prompt:
-                if "{category_name}" in prompt:
-                    prompt = prompt.replace("{category_name}", category_name)
-                elif category_name:
-                    prompt = f"{prompt}\n\n参考分类：{category_name}"
+            if "{category_name}" in prompt:
+                prompt = prompt.replace("{category_name}", category_name)
+            elif category_name:
+                prompt = f"{prompt}\n\n参考分类：{category_name}"
             parameters = self._merge_protocol_parameters(
                 "tagging",
                 tagging_config.get("parameters"),
@@ -2931,9 +3153,9 @@ class ArticleAIPipelineService:
                 )
                 analysis = article_tag_service.ensure_analysis(db, article)
                 analysis.tagging_status = "failed"
+                analysis.tagging_error = "AI生成超时，请稍后重试"
                 analysis.updated_at = now_str()
                 db.commit()
-                raise TaskTimeoutError("标签生成超时")
             except Exception as exc:
                 self._log_ai_usage(
                     db,
@@ -2951,9 +3173,9 @@ class ArticleAIPipelineService:
                 )
                 analysis = article_tag_service.ensure_analysis(db, article)
                 analysis.tagging_status = "failed"
+                analysis.tagging_error = str(exc)
                 analysis.updated_at = now_str()
                 db.commit()
-                raise
         finally:
             db.close()
 
@@ -3078,6 +3300,13 @@ class ArticleAIPipelineService:
             if not ai_config:
                 article.translation_status = "failed"
                 article.translation_error = "未配置AI服务，请先在配置页面设置AI参数"
+                db.commit()
+                return
+
+            # 如果没有提示词配置，跳过 AI 调用
+            if not trans_prompt:
+                article.translation_status = "failed"
+                article.translation_error = "未配置翻译提示词，请先在配置页面设置"
                 db.commit()
                 return
 
@@ -3437,6 +3666,15 @@ class ArticleAIPipelineService:
                     parameters.get("system_prompt"),
                 )
                 parameters = self._build_infographic_generation_parameters(parameters)
+            # 如果没有提示词配置且不是 infographic 类型，跳过 AI 调用
+            if not prompt and content_type != "infographic":
+                setattr(article.ai_analysis, f"{content_type}_status", "failed")
+                article.ai_analysis.error_message = (
+                    f"未配置{content_type}提示词，请先在配置页面设置"
+                )
+                article.ai_analysis.updated_at = now_str()
+                db.commit()
+                return
             parameters = self._merge_protocol_parameters(content_type, parameters)
             pricing = {
                 "model_api_config_id": ai_config.get("model_api_config_id"),
@@ -3587,7 +3825,5 @@ class ArticleAIPipelineService:
                 article.ai_analysis.error_message = str(exc)
                 article.ai_analysis.updated_at = now_str()
                 db.commit()
-            if isinstance(exc, TaskConfigError):
-                raise
         finally:
             db.close()

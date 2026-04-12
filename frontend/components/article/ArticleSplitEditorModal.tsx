@@ -146,7 +146,7 @@ export default function ArticleSplitEditorModal({
               }}
               className="bg-muted overflow-y-auto h-full hidden lg:block"
             >
-              <div className="max-w-3xl mx-auto bg-surface min-h-full shadow-sm">
+              <div className="w-full min-h-full bg-surface shadow-sm">
                 <div className="relative w-full aspect-[21/9] overflow-hidden">
                   {!previewImageHidden && (
                     <img

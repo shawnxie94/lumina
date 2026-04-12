@@ -1,6 +1,13 @@
 import type { IncomingMessage } from "http";
 
-import type { Article, ArticleDetail, BasicSettings, Tag } from "@/lib/api";
+import type {
+	Article,
+	ArticleDetail,
+	BasicSettings,
+	ReviewIssue,
+	ReviewIssueListResponse,
+	Tag,
+} from "@/lib/api";
 import { buildAbsoluteUrl } from "@/lib/seo";
 
 interface ArticleListResponse {
@@ -161,3 +168,42 @@ export const fetchServerTags = (req?: IncomingMessage) =>
 
 export const fetchServerAuthors = (req?: IncomingMessage) =>
 	fetchServerJson<string[]>(req, "/api/authors");
+
+export const fetchServerReviews = (
+	req: IncomingMessage | undefined,
+	params: Record<string, string | number | undefined>,
+) => {
+	const query = new URLSearchParams();
+	Object.entries(params).forEach(([key, value]) => {
+		if (value !== undefined && value !== null && value !== "") {
+			query.set(key, String(value));
+		}
+	});
+	const suffix = query.toString() ? `?${query.toString()}` : "";
+	return fetchServerJson<ReviewIssueListResponse>(req, `/api/reviews${suffix}`);
+};
+
+export const fetchAllServerReviews = async (
+	req: IncomingMessage | undefined,
+	params: Record<string, string | number | undefined>,
+): Promise<ReviewIssue[]> => {
+	const firstPage = await fetchServerReviews(req, {
+		...params,
+		page: 1,
+	});
+	const reviews = [...(firstPage.data || [])];
+	const totalPages = Math.max(1, firstPage.pagination.total_pages || 1);
+
+	for (let page = 2; page <= totalPages; page += 1) {
+		const response = await fetchServerReviews(req, {
+			...params,
+			page,
+		});
+		reviews.push(...(response.data || []));
+	}
+
+	return reviews;
+};
+
+export const fetchServerReview = (req: IncomingMessage | undefined, slug: string) =>
+	fetchServerJson<ReviewIssue>(req, `/api/reviews/${encodeURIComponent(slug)}`);

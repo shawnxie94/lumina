@@ -1,9 +1,10 @@
 import type { GetServerSideProps } from "next";
 
-import type { Article, Category } from "@/lib/api";
+import type { Article, Category, ReviewIssue } from "@/lib/api";
 import { buildCanonicalUrl, buildSitemapXml } from "@/lib/seo";
 import {
 	fetchAllServerArticles,
+	fetchAllServerReviews,
 	fetchServerCategories,
 	resolveRequestOrigin,
 } from "@/lib/serverApi";
@@ -25,16 +26,29 @@ const buildCategoryEntries = (origin: string, categories: Category[]) =>
 		priority: 0.7,
 	}));
 
+const buildReviewEntries = (origin: string, reviews: ReviewIssue[]) =>
+	reviews
+		.filter((review) => review.status === "published")
+		.map((review) => ({
+			loc: buildCanonicalUrl(origin, `/reviews/${review.slug}`),
+			lastmod: review.updated_at || review.published_at || review.created_at,
+			changefreq: "weekly" as const,
+			priority: 0.7,
+		}));
+
 export const getServerSideProps: GetServerSideProps = async ({ req, res }) => {
 	const origin = resolveRequestOrigin(req);
 
 	try {
-		const [articles, categories] = await Promise.all([
+		const [articles, categories, reviews] = await Promise.all([
 			fetchAllServerArticles(req, {
 				size: 500,
 				sort_by: "published_at_desc",
 			}),
 			fetchServerCategories(req),
+			fetchAllServerReviews(req, {
+				size: 100,
+			}),
 		]);
 
 		const xml = buildSitemapXml([
@@ -48,9 +62,15 @@ export const getServerSideProps: GetServerSideProps = async ({ req, res }) => {
 					changefreq: "daily",
 					priority: 0.9,
 				},
+				{
+					loc: buildCanonicalUrl(origin, "/reviews"),
+					changefreq: "weekly",
+					priority: 0.8,
+				},
 				...buildArticleEntries(origin, articles),
 				...buildCategoryEntries(origin, categories),
-			]);
+				...buildReviewEntries(origin, reviews),
+		]);
 
 		res.setHeader("Content-Type", "application/xml; charset=utf-8");
 		res.write(xml);
@@ -69,6 +89,11 @@ export const getServerSideProps: GetServerSideProps = async ({ req, res }) => {
 					loc: buildCanonicalUrl(origin, "/list"),
 					changefreq: "daily",
 					priority: 0.9,
+				},
+				{
+					loc: buildCanonicalUrl(origin, "/reviews"),
+					changefreq: "weekly",
+					priority: 0.8,
 				},
 			]),
 		);

@@ -4,6 +4,8 @@ from pydantic import BaseModel, ConfigDict, validator
 
 
 class AITaskRetryRequest(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
     task_ids: list[str]
     model_config_id: Optional[str] = None
     prompt_config_id: Optional[str] = None

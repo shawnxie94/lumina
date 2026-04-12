@@ -30,6 +30,11 @@ REQUIRED_SNAPSHOT_TABLES = {
     "media_assets",
     "model_api_configs",
     "prompt_configs",
+    "review_comments",
+    "review_issue_articles",
+    "review_issues",
+    "review_template_categories",
+    "review_templates",
     "tags",
 }
 SNAPSHOT_DATA_TABLES = REQUIRED_SNAPSHOT_TABLES | {"alembic_version"}

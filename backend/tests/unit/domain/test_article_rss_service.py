@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from starlette.requests import Request
 
 from app.domain.article_rss_service import ArticleRssService
+from app.domain.article_query_service import ArticleQueryService
 from app.domain import article_rss_service
 
 
@@ -66,3 +67,39 @@ def test_build_cache_key_uses_normalized_dimensions():
     assert cache_key.startswith("articles:rss:public:")
     assert "category:cat-1" in cache_key
     assert "tags:alpha%2Cbeta" in cache_key
+
+
+def test_render_articles_rss_includes_item_author_category_and_tags():
+    service = ArticleQueryService()
+    article = SimpleNamespace(
+        slug="hello-rss",
+        title="Hello RSS",
+        title_trans=None,
+        author="Shawn",
+        top_image="https://cdn.example.com/cover.png",
+        published_at="2026-04-10T10:00:00+08:00",
+        created_at="2026-04-09T10:00:00+08:00",
+        category=SimpleNamespace(name="产品"),
+        tags=[
+            SimpleNamespace(name="RSS"),
+            SimpleNamespace(name="信息流"),
+        ],
+        ai_analysis=SimpleNamespace(
+            summary="摘要内容",
+            quotes="第一条金句\n第二条金句",
+            infographic_image_url=None,
+        ),
+    )
+
+    content = service.render_articles_rss(
+        articles=[article],
+        public_base_url="https://lumina.example.com",
+        site_name="Lumina",
+        site_description="信息灯塔",
+    )
+
+    assert 'xmlns:dc="http://purl.org/dc/elements/1.1/"' in content
+    assert "<dc:creator><![CDATA[Shawn]]></dc:creator>" in content
+    assert "<category><![CDATA[产品]]></category>" in content
+    assert "<category><![CDATA[RSS]]></category>" in content
+    assert "<category><![CDATA[信息流]]></category>" in content

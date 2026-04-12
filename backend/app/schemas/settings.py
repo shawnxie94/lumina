@@ -42,5 +42,6 @@ class BasicSettingsUpdate(BaseModel):
 
 class MediaIngestRequest(BaseModel):
     url: str
-    article_id: str
+    article_id: Optional[str] = None
+    review_issue_id: Optional[str] = None
     kind: Literal["image", "book"] = "image"

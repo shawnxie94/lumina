@@ -28,6 +28,12 @@ from app.schemas.settings import (
     RecommendationSettingsUpdate,
     StorageSettingsUpdate,
 )
+from app.schemas.review import (
+    ReviewIssueUpdateRequest,
+    ReviewTemplateBase,
+    ReviewTemplateManualRunRequest,
+    ReviewTemplateUpdate,
+)
 
 __all__ = [
     "AITaskCancelRequest",
@@ -57,5 +63,9 @@ __all__ = [
     "ModelAPITestRequest",
     "PromptConfigBase",
     "RecommendationSettingsUpdate",
+    "ReviewIssueUpdateRequest",
+    "ReviewTemplateBase",
+    "ReviewTemplateManualRunRequest",
+    "ReviewTemplateUpdate",
     "StorageSettingsUpdate",
 ]
