@@ -666,7 +666,7 @@ class ArticleQueryService:
 
         for article in articles:
             article_link = _build_public_feed_url(base_url, f"/article/{article.slug}")
-            pub_date = _to_rfc2822_datetime(article.published_at or article.created_at)
+            pub_date = _to_rfc2822_datetime(article.created_at)
             display_title = _get_preferred_article_title(article)
             author = (article.author or "").strip()
             category_name = (
