@@ -42,6 +42,7 @@ import { BackToTop } from '@/components/BackToTop';
 import { IconEdit, IconEye, IconEyeOff, IconSearch, IconTag, IconTrash, IconPlus } from '@/components/icons';
 import { useAuth } from '@/contexts/AuthContext';
 import { useBasicSettings } from '@/contexts/BasicSettingsContext';
+import { resolveCreateArticlePatch, type CreatePendingMedia } from '@/lib/createArticleMedia';
 import { useI18n } from '@/lib/i18n';
 import { parseQuickDateOption, quickDateOptions, type QuickDateOption } from '@/lib/listFilters';
 import { buildCanonicalUrl, buildPathWithQuery, getListPageSeo, resolveSeoAssetUrl } from '@/lib/seo';
@@ -76,10 +77,6 @@ interface PastedMediaLink {
   kind: PastedMediaKind;
   url: string;
 }
-
-type CreatePendingMedia =
-  | { token: string; kind: 'file'; file: File; mediaKind: 'image' }
-  | { token: string; kind: 'url'; url: string; mediaKind: 'image' | 'book' };
 
 const IMAGE_LINK_PATTERN = /\.(png|jpe?g|gif|webp|svg|bmp|avif)(\?.*)?$/i;
 const VIDEO_LINK_PATTERN = /\.(mp4|webm|mov|m4v|ogv|ogg)(\?.*)?$/i;
@@ -1687,38 +1684,31 @@ export default function Home({
       const createdArticleId = response?.id ? String(response.id) : '';
       const createdArticleSlug = response?.slug ? String(response.slug) : '';
 
-      let patchedContent = originalContent;
       let transferSuccessCount = 0;
       let transferFailedCount = 0;
-      if (
-        pendingMedia.length > 0 &&
-        createdArticleId &&
-        createdArticleSlug &&
-        createMediaStorageEnabled
-      ) {
-        for (const item of pendingMedia) {
-          try {
-            const result =
-              item.kind === 'file'
-                ? await mediaApi.upload(createdArticleId, item.file)
-                : await mediaApi.ingest(createdArticleId, item.url, item.mediaKind);
-            patchedContent = patchedContent.split(item.token).join(result.url);
-            transferSuccessCount += 1;
-          } catch (error) {
-            console.error('Failed to transfer pasted media:', error);
-            transferFailedCount += 1;
-            if (item.kind === 'url') {
-              patchedContent = patchedContent.split(item.token).join(item.url);
-            } else {
-              patchedContent = patchedContent.split(`![](${item.token})`).join('');
-              patchedContent = patchedContent.split(item.token).join('');
-            }
-          }
-        }
+      if (createdArticleId && createdArticleSlug) {
+        const patchResult = await resolveCreateArticlePatch({
+          originalContent,
+          pendingMedia,
+          topImage: createTopImage.trim(),
+          articleId: createdArticleId,
+          mediaStorageEnabled: createMediaStorageEnabled,
+          ingestUrl: (articleId, url, mediaKind) =>
+            mediaApi.ingest(articleId, url, mediaKind),
+          uploadFile: (articleId, file) => mediaApi.upload(articleId, file),
+        });
 
-        if (patchedContent !== originalContent) {
+        transferSuccessCount = patchResult.transferSuccessCount;
+        transferFailedCount = patchResult.transferFailedCount;
+
+        const shouldPatch =
+          patchResult.patch.content_md !== originalContent ||
+          (patchResult.patch.top_image || '') !== (createTopImage.trim() || '');
+
+        if (shouldPatch) {
           await articleApi.updateArticle(createdArticleSlug, {
-            content_md: patchedContent,
+            content_md: patchResult.patch.content_md,
+            top_image: patchResult.patch.top_image,
           });
         }
       }
