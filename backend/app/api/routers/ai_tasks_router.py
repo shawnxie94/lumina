@@ -2,7 +2,7 @@ import json
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, load_only
 
 from app.schemas import AITaskCancelRequest, AITaskRetryRequest
@@ -44,6 +44,38 @@ def _parse_task_payload(task: AITask) -> dict:
     except Exception:
         return {}
     return payload if isinstance(payload, dict) else {}
+
+
+def _resolve_root_task_id(task: AITask) -> str:
+    return (task.root_task_id or task.id or "").strip() or task.id
+
+
+def _select_root_task(chain_tasks: list[AITask], root_task_id: str) -> AITask:
+    return next(
+        (item for item in chain_tasks if item.id == root_task_id),
+        chain_tasks[0],
+    )
+
+
+def _select_latest_task(chain_tasks: list[AITask]) -> AITask:
+    return max(
+        chain_tasks,
+        key=lambda item: (
+            item.updated_at or "",
+            item.created_at or "",
+            item.id or "",
+        ),
+    )
+
+
+def _list_chain_tasks(db: Session, task: AITask) -> list[AITask]:
+    root_task_id = _resolve_root_task_id(task)
+    return (
+        db.query(AITask)
+        .filter(func.coalesce(AITask.root_task_id, AITask.id) == root_task_id)
+        .order_by(AITask.created_at.asc(), AITask.id.asc())
+        .all()
+    )
 
 
 def _resolve_task_target(
@@ -136,12 +168,13 @@ async def list_ai_tasks(
         else:
             query = query.filter(False)
 
-    total = query.count()
     tasks = (
         query.options(
             load_only(
                 AITask.id,
                 AITask.article_id,
+                AITask.parent_task_id,
+                AITask.root_task_id,
                 AITask.task_type,
                 AITask.content_type,
                 AITask.status,
@@ -157,13 +190,64 @@ async def list_ai_tasks(
                 AITask.finished_at,
             )
         )
-        .order_by(AITask.created_at.desc())
-        .offset((page - 1) * size)
-        .limit(size)
+        .order_by(AITask.created_at.desc(), AITask.id.desc())
         .all()
     )
 
-    article_ids = [task.article_id for task in tasks if task.article_id]
+    root_ids_in_order: list[str] = []
+    seen_root_ids: set[str] = set()
+    for task in tasks:
+        root_id = _resolve_root_task_id(task)
+        if root_id in seen_root_ids:
+            continue
+        seen_root_ids.add(root_id)
+        root_ids_in_order.append(root_id)
+
+    total = len(root_ids_in_order)
+    page_root_ids = root_ids_in_order[(page - 1) * size : page * size]
+
+    chain_tasks: list[AITask] = []
+    if page_root_ids:
+        chain_tasks = (
+            db.query(AITask)
+            .options(
+                load_only(
+                    AITask.id,
+                    AITask.article_id,
+                    AITask.parent_task_id,
+                    AITask.root_task_id,
+                    AITask.task_type,
+                    AITask.content_type,
+                    AITask.status,
+                    AITask.attempts,
+                    AITask.max_attempts,
+                    AITask.run_at,
+                    AITask.locked_at,
+                    AITask.locked_by,
+                    AITask.last_error,
+                    AITask.last_error_type,
+                    AITask.created_at,
+                    AITask.updated_at,
+                    AITask.finished_at,
+                )
+            )
+            .filter(func.coalesce(AITask.root_task_id, AITask.id).in_(page_root_ids))
+            .order_by(AITask.created_at.asc(), AITask.id.asc())
+            .all()
+        )
+
+    chain_map: dict[str, list[AITask]] = {root_id: [] for root_id in page_root_ids}
+    for task in chain_tasks:
+        chain_map.setdefault(_resolve_root_task_id(task), []).append(task)
+
+    article_ids = [
+        root_task.article_id
+        for root_id in page_root_ids
+        for root_task in [
+            _select_root_task(chain_map[root_id], root_id) if chain_map[root_id] else None
+        ]
+        if root_task and root_task.article_id
+    ]
     article_map = {}
     if article_ids:
         articles = (
@@ -182,27 +266,35 @@ async def list_ai_tasks(
     return {
         "data": [
             {
-                "id": task.id,
-                "article_id": task.article_id,
+                "id": root_task.id,
+                "root_task_id": root_id,
+                "latest_task_id": latest_task.id,
+                "chain_length": len(grouped_tasks),
+                "has_continuations": len(grouped_tasks) > 1,
+                "article_id": root_task.article_id,
                 "article_title": target["title"],
                 "article_slug": target["slug"],
                 "article_kind": target["kind"],
-                "task_type": task.task_type,
-                "content_type": task.content_type,
-                "status": task.status,
-                "attempts": task.attempts,
-                "max_attempts": task.max_attempts,
-                "run_at": task.run_at,
-                "locked_at": task.locked_at,
-                "locked_by": task.locked_by,
-                "last_error": task.last_error,
-                "last_error_type": task.last_error_type,
-                "created_at": task.created_at,
-                "updated_at": task.updated_at,
-                "finished_at": task.finished_at,
+                "task_type": root_task.task_type,
+                "content_type": root_task.content_type,
+                "status": latest_task.status,
+                "attempts": latest_task.attempts,
+                "max_attempts": latest_task.max_attempts,
+                "run_at": latest_task.run_at,
+                "locked_at": latest_task.locked_at,
+                "locked_by": latest_task.locked_by,
+                "last_error": latest_task.last_error,
+                "last_error_type": latest_task.last_error_type,
+                "created_at": root_task.created_at,
+                "updated_at": latest_task.updated_at,
+                "finished_at": latest_task.finished_at,
             }
-            for task in tasks
-            for target in [_resolve_task_target(db, task, article_cache=article_map)]
+            for root_id in page_root_ids
+            for grouped_tasks in [chain_map.get(root_id, [])]
+            if grouped_tasks
+            for root_task in [_select_root_task(grouped_tasks, root_id)]
+            for latest_task in [_select_latest_task(grouped_tasks)]
+            for target in [_resolve_task_target(db, root_task, article_cache=article_map)]
         ],
         "pagination": {
             "page": page,
@@ -223,28 +315,36 @@ async def get_ai_task(
     if not task:
         raise HTTPException(status_code=404, detail="任务不存在")
 
-    target = _resolve_task_target(db, task)
+    chain_tasks = _list_chain_tasks(db, task)
+    root_task_id = _resolve_root_task_id(task)
+    root_task = _select_root_task(chain_tasks, root_task_id)
+    latest_task = _select_latest_task(chain_tasks)
+    target = _resolve_task_target(db, root_task)
 
     return {
-        "id": task.id,
-        "article_id": task.article_id,
+        "id": root_task.id,
+        "root_task_id": root_task.id,
+        "latest_task_id": latest_task.id,
+        "chain_length": len(chain_tasks),
+        "has_continuations": len(chain_tasks) > 1,
+        "article_id": root_task.article_id,
         "article_title": target["title"],
         "article_slug": target["slug"],
         "article_kind": target["kind"],
-        "task_type": task.task_type,
-        "content_type": task.content_type,
-        "status": task.status,
-        "payload": task.payload,
-        "attempts": task.attempts,
-        "max_attempts": task.max_attempts,
-        "run_at": task.run_at,
-        "locked_at": task.locked_at,
-        "locked_by": task.locked_by,
-        "last_error": task.last_error,
-        "last_error_type": task.last_error_type,
-        "created_at": task.created_at,
-        "updated_at": task.updated_at,
-        "finished_at": task.finished_at,
+        "task_type": root_task.task_type,
+        "content_type": root_task.content_type,
+        "status": latest_task.status,
+        "payload": latest_task.payload,
+        "attempts": latest_task.attempts,
+        "max_attempts": latest_task.max_attempts,
+        "run_at": latest_task.run_at,
+        "locked_at": latest_task.locked_at,
+        "locked_by": latest_task.locked_by,
+        "last_error": latest_task.last_error,
+        "last_error_type": latest_task.last_error_type,
+        "created_at": root_task.created_at,
+        "updated_at": latest_task.updated_at,
+        "finished_at": latest_task.finished_at,
     }
 
 
@@ -258,37 +358,27 @@ async def get_ai_task_timeline(
     if not task:
         raise HTTPException(status_code=404, detail="任务不存在")
 
-    target = _resolve_task_target(db, task)
+    chain_tasks = _list_chain_tasks(db, task)
+    root_task_id = _resolve_root_task_id(task)
+    root_task = _select_root_task(chain_tasks, root_task_id)
+    latest_task = _select_latest_task(chain_tasks)
+    target = _resolve_task_target(db, root_task)
+    task_ids = [item.id for item in chain_tasks]
 
     events = (
         db.query(AITaskEvent)
-        .filter(AITaskEvent.task_id == task_id)
-        .order_by(AITaskEvent.created_at.asc())
+        .filter(AITaskEvent.task_id.in_(task_ids))
+        .order_by(AITaskEvent.created_at.asc(), AITaskEvent.id.asc())
         .all()
     )
 
     usage_query = (
         db.query(AIUsageLog, ModelAPIConfig.name)
         .outerjoin(ModelAPIConfig, AIUsageLog.model_api_config_id == ModelAPIConfig.id)
-        .filter(AIUsageLog.task_id == task_id)
+        .filter(AIUsageLog.task_id.in_(task_ids))
     )
-    if task.task_type:
-        usage_query = usage_query.filter(
-            or_(AIUsageLog.task_type == task.task_type, AIUsageLog.task_type.is_(None))
-        )
-    if task.article_id:
-        usage_query = usage_query.filter(
-            or_(AIUsageLog.article_id == task.article_id, AIUsageLog.article_id.is_(None))
-        )
-    if task.content_type:
-        usage_query = usage_query.filter(
-            or_(
-                AIUsageLog.content_type == task.content_type,
-                AIUsageLog.content_type.is_(None),
-            )
-        )
 
-    usage_rows = usage_query.order_by(AIUsageLog.created_at.asc()).all()
+    usage_rows = usage_query.order_by(AIUsageLog.created_at.asc(), AIUsageLog.id.asc()).all()
     usage_ids = [log.id for log, _ in usage_rows]
     session_map: dict[str, AICallSession] = {}
     if usage_ids:
@@ -312,6 +402,8 @@ async def get_ai_task_timeline(
         event_items.append(
             {
                 "id": event.id,
+                "task_id": event.task_id,
+                "root_task_id": root_task.id,
                 "event_type": event.event_type,
                 "from_status": event.from_status,
                 "to_status": event.to_status,
@@ -327,6 +419,8 @@ async def get_ai_task_timeline(
         usage_items.append(
             {
                 "id": log.id,
+                "task_id": log.task_id,
+                "root_task_id": root_task.id,
                 "model_api_config_id": log.model_api_config_id,
                 "model_api_config_name": model_name,
                 "task_type": log.task_type,
@@ -355,24 +449,28 @@ async def get_ai_task_timeline(
 
     return {
         "task": {
-            "id": task.id,
-            "article_id": task.article_id,
+            "id": root_task.id,
+            "root_task_id": root_task.id,
+            "latest_task_id": latest_task.id,
+            "chain_length": len(chain_tasks),
+            "has_continuations": len(chain_tasks) > 1,
+            "article_id": root_task.article_id,
             "article_title": target["title"],
             "article_slug": target["slug"],
             "article_kind": target["kind"],
-            "task_type": task.task_type,
-            "content_type": task.content_type,
-            "status": task.status,
-            "attempts": task.attempts,
-            "max_attempts": task.max_attempts,
-            "run_at": task.run_at,
-            "locked_at": task.locked_at,
-            "locked_by": task.locked_by,
-            "last_error": task.last_error,
-            "last_error_type": task.last_error_type,
-            "created_at": task.created_at,
-            "updated_at": task.updated_at,
-            "finished_at": task.finished_at,
+            "task_type": root_task.task_type,
+            "content_type": root_task.content_type,
+            "status": latest_task.status,
+            "attempts": latest_task.attempts,
+            "max_attempts": latest_task.max_attempts,
+            "run_at": latest_task.run_at,
+            "locked_at": latest_task.locked_at,
+            "locked_by": latest_task.locked_by,
+            "last_error": latest_task.last_error,
+            "last_error_type": latest_task.last_error_type,
+            "created_at": root_task.created_at,
+            "updated_at": latest_task.updated_at,
+            "finished_at": latest_task.finished_at,
         },
         "events": event_items,
         "usage": usage_items,

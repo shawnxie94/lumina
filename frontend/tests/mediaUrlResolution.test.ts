@@ -61,6 +61,10 @@ test("resolveMediaUrl normalizes local absolute media urls to backend-relative p
 			resolveMediaUrl("http://localhost:8000/media/2026/03/example.png"),
 			"/backend/media/2026/03/example.png",
 		);
+		assert.equal(
+			resolveMediaUrl("http://api:8000/backend/media/2026/03/example.png"),
+			"/backend/media/2026/03/example.png",
+		);
 	} finally {
 		setWindow(originalWindow);
 	}

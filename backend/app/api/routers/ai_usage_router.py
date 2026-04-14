@@ -112,7 +112,7 @@ async def continue_ai_usage(
         raise HTTPException(status_code=400, detail="当前 AI 调用不支持继续生成")
 
     try:
-        task_id = article_command_service.enqueue_ai_continuation(
+        task_id, root_task_id = article_command_service.enqueue_ai_continuation(
             db=db,
             usage_id=usage.id,
             feedback=payload.feedback,
@@ -121,7 +121,12 @@ async def continue_ai_usage(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
-    return {"usage_id": usage.id, "task_id": task_id, "status": "pending"}
+    return {
+        "usage_id": usage.id,
+        "task_id": task_id,
+        "root_task_id": root_task_id,
+        "status": "pending",
+    }
 
 
 @router.get("/api/ai-usage/summary")

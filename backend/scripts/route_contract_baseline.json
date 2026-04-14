@@ -48,6 +48,12 @@
     ]
   },
   {
+    "path": "/api/ai-usage/{usage_id}/continue",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/articles",
     "methods": [
       "GET"
@@ -265,6 +271,24 @@
   },
   {
     "path": "/api/backup/export",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/backup/export-jobs/latest",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/backup/export-jobs/latest",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/backup/export-jobs/latest/download",
     "methods": [
       "GET"
     ]

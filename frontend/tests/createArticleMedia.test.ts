@@ -47,3 +47,37 @@ test("resolveCreateArticlePatch keeps original top image when ingest fails", asy
 	);
 	assert.equal(result.transferFailedCount, 1);
 });
+
+test("resolveCreateArticlePatch derives top image from first transferred markdown image", async () => {
+	const token = "__LUMINA_CREATE_MEDIA_demo__";
+	const result = await resolveCreateArticlePatch({
+		originalContent: `![封面](${token})\n\n正文内容`,
+		pendingMedia: [
+			{
+				token,
+				kind: "url",
+				url: "https://cdn.example.com/original-cover.png",
+				mediaKind: "image",
+			},
+		],
+		topImage: "",
+		articleId: "article-1",
+		mediaStorageEnabled: true,
+		ingestUrl: async () => ({
+			url: "http://api:8000/backend/media/2026/04/transferred-cover.png",
+		}),
+		uploadFile: async () => {
+			throw new Error("not used");
+		},
+	});
+
+	assert.equal(
+		result.patch.content_md,
+		"![封面](/backend/media/2026/04/transferred-cover.png)\n\n正文内容",
+	);
+	assert.equal(
+		result.patch.top_image,
+		"/backend/media/2026/04/transferred-cover.png",
+	);
+	assert.equal(result.transferFailedCount, 0);
+});

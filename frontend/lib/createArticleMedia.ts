@@ -1,6 +1,37 @@
+import { resolveMediaUrl } from "@/lib/api";
+
 export type CreatePendingMedia =
 	| { token: string; kind: "file"; file: File; mediaKind: "image" }
 	| { token: string; kind: "url"; url: string; mediaKind: "image" | "book" };
+
+const MARKDOWN_IMAGE_PATTERN = /!\[[^\]]*\]\(([^)]+)\)/g;
+
+const normalizeResolvedMediaUrl = (url?: string | null): string => {
+	const normalized = resolveMediaUrl(url);
+	if (normalized) return normalized;
+	return (url || "").trim();
+};
+
+const extractFirstMarkdownImageUrl = (markdown: string): string | undefined => {
+	const pattern = new RegExp(MARKDOWN_IMAGE_PATTERN.source, MARKDOWN_IMAGE_PATTERN.flags);
+	let match = pattern.exec(markdown);
+	while (match) {
+		let target = (match[1] || "").trim();
+		if (!target) {
+			match = pattern.exec(markdown);
+			continue;
+		}
+		if (target.startsWith("<") && target.includes(">")) {
+			target = target.slice(1, target.indexOf(">")).trim();
+		} else if (target.includes(" ")) {
+			target = target.split(" ", 1)[0]?.trim() || "";
+		}
+		const normalized = normalizeResolvedMediaUrl(target);
+		if (normalized) return normalized;
+		match = pattern.exec(markdown);
+	}
+	return undefined;
+};
 
 export async function resolveCreateArticlePatch(input: {
 	originalContent: string;
@@ -34,7 +65,11 @@ export async function resolveCreateArticlePatch(input: {
 				item.kind === "file"
 					? await input.uploadFile(input.articleId, item.file)
 					: await input.ingestUrl(input.articleId, item.url, item.mediaKind);
-			patchedContent = patchedContent.split(item.token).join(result.url);
+			const normalizedUrl = normalizeResolvedMediaUrl(result.url);
+			patchedContent = patchedContent.split(item.token).join(normalizedUrl);
+			if (trimmedTopImage && trimmedTopImage === item.token) {
+				patchedTopImage = normalizedUrl;
+			}
 			transferSuccessCount += 1;
 		} catch {
 			transferFailedCount += 1;
@@ -54,12 +89,16 @@ export async function resolveCreateArticlePatch(input: {
 				trimmedTopImage,
 				"image",
 			);
-			patchedTopImage = result.url;
+			patchedTopImage = normalizeResolvedMediaUrl(result.url);
 			transferSuccessCount += 1;
 		} catch {
 			transferFailedCount += 1;
 			patchedTopImage = trimmedTopImage;
 		}
+	}
+
+	if (!trimmedTopImage) {
+		patchedTopImage = extractFirstMarkdownImageUrl(patchedContent);
 	}
 
 	return {

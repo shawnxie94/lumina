@@ -4,7 +4,7 @@ import pytest
 
 import app.domain.article_command_service as article_command_service_module
 from app.domain.article_command_service import ArticleCommandService
-from models import AIAnalysis, AIAnalysisVersion, AITask, Article, now_str
+from models import AIAnalysis, AIAnalysisVersion, AITask, AIUsageLog, Article, now_str
 
 
 class StubAITaskService:
@@ -218,3 +218,60 @@ def test_delete_ai_content_rejects_inflight_ai_task(db_session):
         assert str(exc) == "当前类型的 AI 解读正在生成中，请稍后再试"
     else:
         raise AssertionError("expected delete_ai_content to reject inflight task")
+
+
+def test_enqueue_ai_continuation_links_new_task_to_source_chain(db_session):
+    service = ArticleCommandService()
+    article = Article(
+        title="Continuation Chain Article",
+        slug="continuation-chain-article",
+        content_md="content",
+        created_at="2026-04-13T10:00:00",
+        updated_at="2026-04-13T10:00:00",
+    )
+    db_session.add(article)
+    db_session.commit()
+    db_session.add(
+        AIAnalysis(
+            article_id=article.id,
+            summary_status="completed",
+            updated_at="2026-04-13T10:00:00",
+        )
+    )
+    source_task = AITask(
+        id="task-source",
+        article_id=article.id,
+        root_task_id="task-root",
+        task_type="process_ai_content",
+        content_type="summary",
+        status="completed",
+        payload="{}",
+        attempts=1,
+        max_attempts=1,
+        run_at="2026-04-13T10:00:00",
+        created_at="2026-04-13T10:00:00",
+        updated_at="2026-04-13T10:00:00",
+    )
+    usage = AIUsageLog(
+        task_id=source_task.id,
+        article_id=article.id,
+        task_type="process_ai_content",
+        content_type="summary",
+        status="completed",
+        request_payload="{}",
+        response_payload="{}",
+        created_at="2026-04-13T10:01:00",
+    )
+    db_session.add_all([source_task, usage])
+    db_session.commit()
+
+    task_id, root_task_id = service.enqueue_ai_continuation(
+        db_session,
+        usage_id=usage.id,
+        feedback="请更短",
+    )
+
+    created = db_session.query(AITask).filter(AITask.id == task_id).one()
+    assert root_task_id == "task-root"
+    assert created.parent_task_id == "task-source"
+    assert created.root_task_id == "task-root"

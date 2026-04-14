@@ -70,6 +70,16 @@ import {
 	getRetryPromptTypeForTask,
 	parseAITaskFilterValue,
 } from "@/lib/aiTaskMeta";
+import {
+	getAIContinuationCopy,
+	isAIContinuationSupported,
+	resolveAIContinuationModelConfigId,
+} from "@/lib/aiContinuation";
+import {
+	BACKUP_EXPORT_POLL_INTERVAL_MS,
+	canDownloadBackupExport,
+	getBackupExportStatusText,
+} from "@/lib/backupExport";
 import { useI18n } from "@/lib/i18n";
 import {
 	type AIUsageListResponse,
@@ -82,6 +92,7 @@ import {
 	aiUsageApi,
 	articleApi,
 	backupApi,
+	type BackupExportJob,
 	type BasicSettings,
 	basicSettingsApi,
 	categoryApi,
@@ -342,6 +353,11 @@ const CURRENCY_OPTIONS = [
 	{ value: "JPY", labelKey: "日元 (JPY)" },
 ];
 
+const MODEL_API_TYPE_OPTIONS = [
+	{ value: "chat_completions" as const, label: "Chat Completions API" },
+	{ value: "responses" as const, label: "Responses API" },
+];
+
 interface Category {
 	id: string;
 	name: string;
@@ -353,6 +369,10 @@ interface Category {
 
 interface AITaskItem {
 	id: string;
+	root_task_id?: string | null;
+	latest_task_id?: string | null;
+	chain_length?: number;
+	has_continuations?: boolean;
 	article_id: string | null;
 	article_title?: string | null;
 	article_slug?: string | null;
@@ -393,6 +413,8 @@ interface TaskTimelineNode {
 interface TaskTimelineChain {
 	id: string;
 	index: number;
+	task_id: string | null;
+	root_task_id: string | null;
 	trigger_event_type: string | null;
 	start_at: string;
 	events: AITaskTimelineEvent[];
@@ -468,6 +490,11 @@ const buildTaskTimelineChains = (
 			{
 				id: "chain:0",
 				index: 0,
+				task_id: usage[0]?.task_id || timeline.task.latest_task_id || timeline.task.id,
+				root_task_id:
+					usage[0]?.root_task_id ||
+					timeline.task.root_task_id ||
+					timeline.task.id,
 				trigger_event_type: null,
 				start_at: usage[0]?.created_at || timeline.task.created_at,
 				events: [],
@@ -511,6 +538,16 @@ const buildTaskTimelineChains = (
 		return {
 			id: `chain:${chainEvents[0]?.id || chainIndex}`,
 			index: chainIndex,
+			task_id:
+				chainEvents[0]?.task_id ||
+				chainUsage[0]?.task_id ||
+				timeline.task.latest_task_id ||
+				timeline.task.id,
+			root_task_id:
+				chainEvents[0]?.root_task_id ||
+				chainUsage[0]?.root_task_id ||
+				timeline.task.root_task_id ||
+				timeline.task.id,
 			trigger_event_type: chainEvents[0]?.event_type || null,
 			start_at: chainStartAt,
 			events: chainEvents,
@@ -701,17 +738,20 @@ export default function AdminPage() {
 	>([]);
 	const [retryTaskOptionsLoading, setRetryTaskOptionsLoading] = useState(false);
 	const [retryTaskSubmitting, setRetryTaskSubmitting] = useState(false);
-	const [showInfographicRepairModal, setShowInfographicRepairModal] =
+	const [showAIContinuationModal, setShowAIContinuationModal] = useState(false);
+	const [aiContinuationOptionsLoading, setAIContinuationOptionsLoading] =
 		useState(false);
-	const [infographicRepairOptionsLoading, setInfographicRepairOptionsLoading] =
+	const [aiContinuationSubmitting, setAIContinuationSubmitting] =
 		useState(false);
-	const [infographicRepairSubmitting, setInfographicRepairSubmitting] =
-		useState(false);
-	const [infographicRepairError, setInfographicRepairError] = useState("");
-	const [infographicRepairModelConfigId, setInfographicRepairModelConfigId] =
+	const [aiContinuationFeedback, setAIContinuationFeedback] = useState("");
+	const [aiContinuationModelConfigId, setAIContinuationModelConfigId] =
 		useState("");
-	const [infographicRepairModelOptions, setInfographicRepairModelOptions] =
+	const [aiContinuationModelOptions, setAIContinuationModelOptions] =
 		useState<ModelAPIConfig[]>([]);
+	const [aiContinuationUsageId, setAIContinuationUsageId] = useState("");
+	const [aiContinuationContentType, setAIContinuationContentType] = useState<
+		string | null
+	>(null);
 
 	const [usageLogs, setUsageLogs] = useState<AIUsageLogItem[]>([]);
 	const [usageSummary, setUsageSummary] = useState<
@@ -949,6 +989,20 @@ export default function AdminPage() {
 		selectedTaskTimelineUsageNode?.content_type ||
 		selectedTaskTimeline?.task.content_type ||
 		null;
+	const selectedTaskTimelineUsageSupportsContinuation =
+		selectedTaskTimelineNode?.kind === "usage" &&
+		isAIContinuationSupported({
+			taskType:
+				selectedTaskTimelineUsageNode?.task_type ||
+				selectedTaskTimeline?.task.task_type,
+			contentType: selectedTaskTimelineUsageContentType,
+			requestPayload: selectedTaskTimelineUsageNode?.request_payload,
+			sessionInfo: selectedTaskTimelineUsageNode?.session_info,
+		});
+	const aiContinuationCopy = useMemo(
+		() => getAIContinuationCopy(aiContinuationContentType, t),
+		[aiContinuationContentType, t],
+	);
 
 	const [editingModelAPIConfig, setEditingModelAPIConfig] =
 		useState<ModelAPIConfig | null>(null);
@@ -1104,6 +1158,17 @@ export default function AdminPage() {
 				setShowModelAPIModal(false);
 				return;
 			}
+			if (showAIContinuationModal) {
+				setShowAIContinuationModal(false);
+				setAIContinuationOptionsLoading(false);
+				setAIContinuationSubmitting(false);
+				setAIContinuationFeedback("");
+				setAIContinuationModelConfigId("");
+				setAIContinuationModelOptions([]);
+				setAIContinuationUsageId("");
+				setAIContinuationContentType(null);
+				return;
+			}
 			if (showCategoryModal) {
 				setShowCategoryModal(false);
 				return;
@@ -1120,9 +1185,10 @@ export default function AdminPage() {
 		showUsagePayloadModal,
 		showUsageCostModal,
 		showModelAPITestModal,
-		showPromptPreview,
+			showPromptPreview,
 			showPromptModal,
 			showModelAPIModal,
+			showAIContinuationModal,
 			showCategoryModal,
 			confirmState,
 		]);
@@ -1166,6 +1232,7 @@ export default function AdminPage() {
 		provider: "openai",
 		model_name: "gpt-4o",
 		model_type: "general",
+		api_type: "chat_completions" as "chat_completions" | "responses",
 		price_input_per_1k: "",
 		price_output_per_1k: "",
 		currency: "USD",
@@ -1231,6 +1298,15 @@ export default function AdminPage() {
 	const [categorySaving, setCategorySaving] = useState(false);
 	const [promptImporting, setPromptImporting] = useState(false);
 	const backupImportInputRef = useRef<HTMLInputElement>(null);
+	const backupExportPollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+		null,
+	);
+	const previousBackupExportStatusRef = useRef<BackupExportJob["status"] | null>(
+		null,
+	);
+	const [backupExportJob, setBackupExportJob] = useState<BackupExportJob | null>(
+		null,
+	);
 	const [backupExporting, setBackupExporting] = useState(false);
 	const [backupImporting, setBackupImporting] = useState(false);
 	const [pendingTaskActionIds, setPendingTaskActionIds] = useState<Set<string>>(
@@ -1493,6 +1569,20 @@ export default function AdminPage() {
 		} finally {
 			setStorageSettingsLoading(false);
 			setStorageStatsLoading(false);
+		}
+	};
+
+	const fetchLatestBackupExportJob = async (options?: { silent?: boolean }) => {
+		try {
+			const data = await backupApi.getLatestExportJob();
+			setBackupExportJob(data);
+			return data;
+		} catch (error) {
+			console.error("Failed to fetch latest backup export job:", error);
+			if (!options?.silent) {
+				showToast(t("备份状态加载失败"), "error");
+			}
+			return null;
 		}
 	};
 
@@ -1791,6 +1881,7 @@ export default function AdminPage() {
 		}
 		if (activeSection === "storage") {
 			fetchStorageSettings();
+			fetchLatestBackupExportJob({ silent: true });
 			return;
 		}
 	}, [
@@ -1806,6 +1897,38 @@ export default function AdminPage() {
 		if (!showPromptModal || modelLoading || modelAPIConfigs.length > 0) return;
 		void fetchModelAPIConfigs();
 	}, [showPromptModal, modelLoading, modelAPIConfigs.length]);
+
+	useEffect(() => {
+		const previousStatus = previousBackupExportStatusRef.current;
+		const nextStatus = backupExportJob?.status ?? null;
+		if (previousStatus === "processing" && nextStatus === "completed") {
+			showToast(t("最新备份已生成，可开始下载"));
+		}
+		if (previousStatus === "processing" && nextStatus === "failed") {
+			showToast(t("备份导出失败"), "error");
+		}
+		previousBackupExportStatusRef.current = nextStatus;
+	}, [backupExportJob?.status, showToast, t]);
+
+	/* eslint-disable react-hooks/exhaustive-deps */
+	useEffect(() => {
+		if (backupExportPollTimerRef.current) {
+			clearTimeout(backupExportPollTimerRef.current);
+			backupExportPollTimerRef.current = null;
+		}
+		if (!routeInitialized || activeSection !== "storage") return;
+		if (backupExportJob?.status !== "processing") return;
+		backupExportPollTimerRef.current = setTimeout(() => {
+			void fetchLatestBackupExportJob({ silent: true });
+		}, BACKUP_EXPORT_POLL_INTERVAL_MS);
+		return () => {
+			if (backupExportPollTimerRef.current) {
+				clearTimeout(backupExportPollTimerRef.current);
+				backupExportPollTimerRef.current = null;
+			}
+		};
+	}, [activeSection, backupExportJob?.status, routeInitialized]);
+	/* eslint-enable react-hooks/exhaustive-deps */
 
 	useEffect(() => {
 		setCommentValidationResult(null);
@@ -1918,6 +2041,7 @@ export default function AdminPage() {
 			provider: "openai",
 			model_name: "gpt-4o",
 			model_type: nextModelType,
+			api_type: "chat_completions",
 			price_input_per_1k: "",
 			price_output_per_1k: "",
 			currency: "USD",
@@ -1945,6 +2069,7 @@ export default function AdminPage() {
 			provider: config.provider || "openai",
 			model_name: config.model_name,
 			model_type: config.model_type || "general",
+			api_type: config.api_type || "chat_completions",
 			price_input_per_1k: config.price_input_per_1k?.toString() || "",
 			price_output_per_1k: config.price_output_per_1k?.toString() || "",
 			currency: config.currency || "USD",
@@ -2564,70 +2689,89 @@ export default function AdminPage() {
 		}
 	};
 
-	const closeInfographicRepairModal = () => {
-		setShowInfographicRepairModal(false);
-		setInfographicRepairOptionsLoading(false);
-		setInfographicRepairSubmitting(false);
-		setInfographicRepairError("");
-		setInfographicRepairModelConfigId("");
-		setInfographicRepairModelOptions([]);
+	const closeAIContinuationModal = () => {
+		setShowAIContinuationModal(false);
+		setAIContinuationOptionsLoading(false);
+		setAIContinuationSubmitting(false);
+		setAIContinuationFeedback("");
+		setAIContinuationModelConfigId("");
+		setAIContinuationModelOptions([]);
+		setAIContinuationUsageId("");
+		setAIContinuationContentType(null);
 	};
 
-	const handleOpenInfographicRepairModal = async () => {
-		const articleSlug = selectedTaskTimeline?.task.article_slug;
+	const handleOpenAIContinuationModal = async () => {
+		const usage = selectedTaskTimelineUsageNode;
+		const contentType = selectedTaskTimelineUsageContentType;
 		if (
-			!articleSlug ||
 			selectedTaskTimelineNode?.kind !== "usage" ||
-			selectedTaskTimelineUsageContentType !== "infographic"
+			!usage ||
+			!isAIContinuationSupported({
+				taskType: usage.task_type || selectedTaskTimeline?.task.task_type,
+				contentType,
+				requestPayload: usage.request_payload,
+				sessionInfo: usage.session_info,
+			})
 		) {
-			showToast(t("操作失败"), "error");
+			showToast(t("当前调用暂不支持提交修改意见"), "error");
 			return;
 		}
-		setInfographicRepairError(
-			selectedTaskTimelineUsageNode?.error_message ||
-				selectedTaskTimeline?.task.last_error ||
-				"",
+		setAIContinuationUsageId(usage.id);
+		setAIContinuationContentType(contentType);
+		setAIContinuationFeedback(
+			contentType === "infographic"
+				? usage.error_message || selectedTaskTimeline?.task.last_error || ""
+				: "",
 		);
-		setInfographicRepairModelConfigId("");
-		setInfographicRepairModelOptions([]);
-		setInfographicRepairOptionsLoading(true);
-		setShowInfographicRepairModal(true);
+		setAIContinuationModelConfigId("");
+		setAIContinuationModelOptions([]);
+		setAIContinuationOptionsLoading(true);
+		setShowAIContinuationModal(true);
 		try {
-			const models = await articleApi.getModelAPIConfigs();
-			setInfographicRepairModelOptions(
-				(models as ModelAPIConfig[]).filter(
-					(config) => config.is_enabled && config.model_type !== "vector",
-				),
+			const models = (await articleApi.getModelAPIConfigs()).filter(
+				(config: ModelAPIConfig) =>
+					config.is_enabled && config.model_type !== "vector",
+			);
+			setAIContinuationModelOptions(models);
+			setAIContinuationModelConfigId(
+				resolveAIContinuationModelConfigId(usage.model_api_config_id, models),
 			);
 		} catch (error) {
-			console.error("Failed to load infographic repair configs:", error);
-			showToast(t("加载修复配置失败"), "error");
+			console.error("Failed to load ai continuation configs:", error);
+			showToast(t("加载模型配置失败"), "error");
 		} finally {
-			setInfographicRepairOptionsLoading(false);
+			setAIContinuationOptionsLoading(false);
 		}
 	};
 
-	const handleSubmitInfographicRepair = async () => {
-		const articleSlug = selectedTaskTimeline?.task.article_slug;
-		if (!articleSlug || infographicRepairSubmitting) return;
-		setInfographicRepairSubmitting(true);
-		try {
-			await articleApi.repairInfographic(
-				articleSlug,
-				infographicRepairError,
-				infographicRepairModelConfigId || undefined,
-			);
-			showToast(t("已提交信息图修复请求"));
-			closeInfographicRepairModal();
-			await handleRefreshTaskTimeline();
-		} catch (error: any) {
-			console.error("Failed to submit infographic repair:", error);
+	const handleSubmitAIContinuation = async () => {
+		if (!aiContinuationUsageId || aiContinuationSubmitting) return;
+		if (!aiContinuationFeedback.trim()) {
 			showToast(
-				error?.response?.data?.detail || t("信息图修复失败"),
+				aiContinuationContentType === "infographic"
+					? t("请填写修复说明")
+					: t("请填写修改意见"),
+				"error",
+			);
+			return;
+		}
+		setAIContinuationSubmitting(true);
+		try {
+			const result = await articleApi.continueAIUsage(aiContinuationUsageId, {
+				feedback: aiContinuationFeedback,
+				model_config_id: aiContinuationModelConfigId || undefined,
+			});
+			showToast(aiContinuationCopy.successMessage);
+			closeAIContinuationModal();
+			await handleOpenTaskTimeline(result.root_task_id || result.task_id);
+		} catch (error: any) {
+			console.error("Failed to submit ai continuation:", error);
+			showToast(
+				error?.response?.data?.detail || aiContinuationCopy.failureMessage,
 				"error",
 			);
 		} finally {
-			setInfographicRepairSubmitting(false);
+			setAIContinuationSubmitting(false);
 		}
 	};
 
@@ -2645,7 +2789,7 @@ export default function AdminPage() {
 		setSelectedTaskEventId(null);
 		setTaskTimelineRefreshing(false);
 		setTaskTimelineError("");
-		closeInfographicRepairModal();
+		closeAIContinuationModal();
 	};
 
 	const getTaskTargetHref = (
@@ -2851,6 +2995,41 @@ export default function AdminPage() {
 		return `${modelNames[0]} +${modelNames.length - 1}`;
 	};
 
+	const getTaskChainAdjustmentLabel = (task: AITaskItem) => {
+		if (!task.has_continuations || !task.chain_length || task.chain_length <= 1) {
+			return null;
+		}
+		return t("已调整 {count} 次").replace(
+			"{count}",
+			String(task.chain_length - 1),
+		);
+	};
+
+	const getTaskTimelineExecutionLabel = (taskId?: string | null) => {
+		const rootTaskId =
+			selectedTaskTimeline?.task.root_task_id || selectedTaskTimeline?.task.id;
+		if (!taskId || !rootTaskId) return null;
+		if (taskId === rootTaskId) return t("初始生成");
+		const continuationTaskIds = Array.from(
+			new Set(
+				taskTimelineChains
+					.map((chain) => chain.task_id)
+					.filter((chainTaskId): chainTaskId is string => Boolean(chainTaskId))
+					.filter((chainTaskId) => chainTaskId !== rootTaskId),
+			),
+		);
+		const continuationIndex = continuationTaskIds.indexOf(taskId);
+		if (continuationIndex < 0) return t("续写");
+		return `${t("续写")} #${continuationIndex + 1}`;
+	};
+
+	const getTaskTimelineChainLabel = (chain: TaskTimelineChain) => {
+		const executionLabel = getTaskTimelineExecutionLabel(chain.task_id);
+		const modelLabel = getTaskTimelineChainModelLabel(chain);
+		if (!executionLabel) return modelLabel;
+		return `${executionLabel} · ${modelLabel}`;
+	};
+
 	const getTaskTimelineNodeDisplayStatus = (
 		node: TaskTimelineNode,
 		nodes: TaskTimelineNode[],
@@ -2942,7 +3121,10 @@ export default function AdminPage() {
 	};
 
 	const getTaskTimelineNodeLabel = (node: TaskTimelineNode) => {
-		if (node.kind === "usage") return t("AI调用");
+		if (node.kind === "usage") {
+			const executionLabel = getTaskTimelineExecutionLabel(node.usage?.task_id);
+			return executionLabel ? `${t("AI调用")} · ${executionLabel}` : t("AI调用");
+		}
 		return getTaskEventLabel((node.event as AITaskTimelineEvent).event_type);
 	};
 
@@ -3044,6 +3226,13 @@ export default function AdminPage() {
 		}
 		const cost = (tokens / 1000) * price;
 		return `${label}: (${tokens} / 1000) * ${price.toFixed(6)} = ${cost.toFixed(6)} ${currency}`;
+	};
+
+	const formatModelAPITypeLabel = (apiType: string | null | undefined) => {
+		if (apiType === "responses") {
+			return "Responses API";
+		}
+		return "Chat Completions API";
 	};
 
 	const formatCostValue = (value: number | null | undefined, digits = 6) => {
@@ -3384,35 +3573,35 @@ export default function AdminPage() {
 		return parsed.toLocaleString();
 	};
 
+	const backupExportStatusText = getBackupExportStatusText(
+		backupExportJob,
+		t,
+		formatBackupTimestamp,
+	);
+	const backupExportDownloadReady = canDownloadBackupExport(backupExportJob);
+
 	const handleExportBackup = async () => {
 		if (backupExporting) return;
 		setBackupExporting(true);
 		try {
-			const blob = await backupApi.exportBackup();
-			const url = URL.createObjectURL(blob);
-			const link = document.createElement("a");
-			const now = new Date();
-			const timestamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(
-				2,
-				"0",
-			)}${String(now.getDate()).padStart(2, "0")}_${String(
-				now.getHours(),
-			).padStart(2, "0")}${String(now.getMinutes()).padStart(2, "0")}${String(
-				now.getSeconds(),
-			).padStart(2, "0")}`;
-			link.href = url;
-			link.download = `lumina-backup-${timestamp}.zip`;
-			document.body.appendChild(link);
-			link.click();
-			document.body.removeChild(link);
-			URL.revokeObjectURL(url);
-			showToast(t("备份导出成功"));
+			const job = await backupApi.startLatestExportJob();
+			setBackupExportJob(job);
+			showToast(t("备份已开始后台生成"));
 		} catch (error) {
 			console.error("Failed to export backup:", error);
 			showToast(t("备份导出失败"), "error");
 		} finally {
 			setBackupExporting(false);
 		}
+	};
+
+	const handleDownloadLatestBackup = () => {
+		if (!backupExportDownloadReady || typeof document === "undefined") return;
+		const link = document.createElement("a");
+		link.href = backupApi.getLatestExportDownloadUrl();
+		document.body.appendChild(link);
+		link.click();
+		document.body.removeChild(link);
 	};
 
 	const handleImportBackup = async (
@@ -4332,6 +4521,14 @@ export default function AdminPage() {
 																		</span>
 																		<span>
 																			{config.model_type || "general"}
+																		</span>
+																	</div>
+																	<div>
+																		<span className="font-medium">
+																			{t("API类型")}：
+																		</span>
+																		<span>
+																			{formatModelAPITypeLabel(config.api_type)}
 																		</span>
 																	</div>
 																	{(config.model_type || "general") !==
@@ -5453,20 +5650,38 @@ export default function AdminPage() {
 														</p>
 													</div>
 													<div className="flex shrink-0 flex-wrap items-center gap-2 md:ml-auto">
+														{backupExportDownloadReady && (
+															<Button
+																onClick={handleDownloadLatestBackup}
+																disabled={backupImporting}
+																variant="secondary"
+															>
+																{t("下载最新备份")}
+															</Button>
+														)}
 														<Button
 															onClick={handleExportBackup}
-															disabled={backupExporting || backupImporting}
+															disabled={
+																backupExporting ||
+																backupImporting ||
+																backupExportJob?.status === "processing"
+															}
 															variant="secondary"
 														>
-															{backupExporting
-																? t("导出中...")
-																: t("导出备份")}
+															{backupExporting ||
+															backupExportJob?.status === "processing"
+																? t("生成中...")
+																: t("生成备份")}
 														</Button>
 														<Button
 															onClick={() =>
 																backupImportInputRef.current?.click()
 															}
-															disabled={backupImporting || backupExporting}
+															disabled={
+																backupImporting ||
+																backupExporting ||
+																backupExportJob?.status === "processing"
+															}
 															loading={backupImporting}
 															variant="secondary"
 														>
@@ -5476,6 +5691,9 @@ export default function AdminPage() {
 														</Button>
 													</div>
 												</div>
+												<p className="text-xs text-text-3">
+													{backupExportStatusText}
+												</p>
 												<TextInput
 													ref={backupImportInputRef}
 													type="file"
@@ -5621,6 +5839,11 @@ export default function AdminPage() {
 																		<div className="text-xs text-text-3">
 																			#{task.id.slice(0, 8)}
 																		</div>
+																		{getTaskChainAdjustmentLabel(task) && (
+																			<div className="text-xs text-text-3">
+																				{getTaskChainAdjustmentLabel(task)}
+																			</div>
+																		)}
 																		{openingTaskTimelineId === task.id && (
 																			<div className="text-xs text-text-3">
 																				{t("加载中...")}
@@ -6378,6 +6601,24 @@ export default function AdminPage() {
 							/>
 						</FormField>
 
+						<FormField label={t("API类型")}>
+							<SelectField
+								value={modelAPIFormData.api_type}
+								onChange={(value) =>
+									setModelAPIFormData({
+										...modelAPIFormData,
+										api_type: value as "chat_completions" | "responses",
+									})
+								}
+								className="w-full"
+								popupClassName="select-modern-dropdown"
+								options={MODEL_API_TYPE_OPTIONS.map((option) => ({
+									value: option.value,
+									label: option.label,
+								}))}
+							/>
+						</FormField>
+
 						<FormField label={t("API密钥")} required>
 							<div className="flex flex-wrap items-center gap-2">
 								<TextInput
@@ -6738,6 +6979,19 @@ export default function AdminPage() {
 									<div>
 										{t("任务ID")}: {selectedTaskTimeline.task.id}
 									</div>
+									{selectedTaskTimeline.task.has_continuations &&
+										selectedTaskTimeline.task.chain_length &&
+										selectedTaskTimeline.task.chain_length > 1 && (
+											<div>
+												{t("任务链")}:{" "}
+												{t("已调整 {count} 次").replace(
+													"{count}",
+													String(
+														selectedTaskTimeline.task.chain_length - 1,
+													),
+												)}
+											</div>
+										)}
 									<div>
 										{t("状态")}:{" "}
 										{getTaskStatusLabel(selectedTaskTimeline.task.status)}
@@ -6790,13 +7044,7 @@ export default function AdminPage() {
 													active={selectedTaskTimelineChain?.id === chain.id}
 													variant="pill"
 													>
-														{new Date(chain.start_at).toLocaleTimeString(
-															"zh-CN",
-															{
-															hour12: false,
-														},
-													)}{" "}
-														· {getTaskTimelineChainModelLabel(chain)}
+														{getTaskTimelineChainLabel(chain)}
 												</SelectableButton>
 											))
 										)}
@@ -7017,12 +7265,10 @@ export default function AdminPage() {
 															null;
 														const usageDisplayStatus =
 															nodeDisplayStatus || usage.status;
-														const showManualInfographicRepairAction =
-															Boolean(
-																selectedTaskTimeline?.task.article_slug &&
-																	usageContentType === "infographic" &&
-																	usageDisplayStatus === "failed",
-															);
+														const continuationCopy =
+															getAIContinuationCopy(usageContentType, t);
+														const showAIContinuationAction =
+															selectedTaskTimelineUsageSupportsContinuation;
 														const usageMeta = {
 															model: usage.model_api_config_name || t("未知模型"),
 															status: getUsageStatusLabel(usageDisplayStatus),
@@ -7058,14 +7304,14 @@ export default function AdminPage() {
 																		</div>
 																	</div>
 																	<div className="flex items-center gap-2">
-																		{showManualInfographicRepairAction && (
+																		{showAIContinuationAction && (
 																			<IconButton
 																				type="button"
 																				variant="ghost"
 																				size="sm"
-																				onClick={handleOpenInfographicRepairModal}
-																				title={t("手动修复")}
-																				aria-label={t("手动修复")}
+																				onClick={handleOpenAIContinuationModal}
+																				title={continuationCopy.title}
+																				aria-label={continuationCopy.title}
 																			>
 																				<IconEdit className="h-4 w-4" />
 																			</IconButton>
@@ -7153,33 +7399,31 @@ export default function AdminPage() {
 					</ModalShell>
 				)}
 
-				{showInfographicRepairModal && (
+				{showAIContinuationModal && (
 					<ModalShell
-						isOpen={showInfographicRepairModal}
-						onClose={closeInfographicRepairModal}
-						title={t("选择信息图修复配置")}
+						isOpen={showAIContinuationModal}
+						onClose={closeAIContinuationModal}
+						title={aiContinuationCopy.title}
 						widthClassName="max-w-md"
 						footer={
 							<div className="flex justify-end gap-2">
 								<Button
 									type="button"
 									variant="secondary"
-									onClick={closeInfographicRepairModal}
-									disabled={infographicRepairSubmitting}
+									onClick={closeAIContinuationModal}
+									disabled={aiContinuationSubmitting}
 								>
 									{t("取消")}
 								</Button>
 								<Button
 									type="button"
 									variant="primary"
-									onClick={handleSubmitInfographicRepair}
+									onClick={handleSubmitAIContinuation}
 									disabled={
-										infographicRepairSubmitting ||
-										infographicRepairOptionsLoading ||
-										!selectedTaskTimeline?.task.article_slug
+										aiContinuationSubmitting || aiContinuationOptionsLoading
 									}
 								>
-									{t("提交修复")}
+									{aiContinuationCopy.submitLabel}
 								</Button>
 							</div>
 						}
@@ -7187,13 +7431,13 @@ export default function AdminPage() {
 						<div className="space-y-4">
 							<FormField label={t("模型配置")}>
 								<SelectField
-									value={infographicRepairModelConfigId}
-									onChange={(value) => setInfographicRepairModelConfigId(value)}
+									value={aiContinuationModelConfigId}
+									onChange={(value) => setAIContinuationModelConfigId(value)}
 									className="w-full"
-									disabled={infographicRepairOptionsLoading}
+									disabled={aiContinuationOptionsLoading}
 									options={[
 										{ value: "", label: t("使用默认配置") },
-										...infographicRepairModelOptions.map((config) => ({
+										...aiContinuationModelOptions.map((config) => ({
 											value: config.id,
 											label: `${config.name} (${config.model_name})`,
 										})),
@@ -7201,13 +7445,13 @@ export default function AdminPage() {
 								/>
 							</FormField>
 
-							<FormField label={t("修复说明")}>
+							<FormField label={aiContinuationCopy.feedbackLabel}>
 								<TextArea
-									value={infographicRepairError}
-									onChange={(e) => setInfographicRepairError(e.target.value)}
+									value={aiContinuationFeedback}
+									onChange={(e) => setAIContinuationFeedback(e.target.value)}
 									rows={6}
-									placeholder={t("请描述当前信息图存在的布局或样式问题")}
-									disabled={infographicRepairSubmitting}
+									placeholder={aiContinuationCopy.placeholder}
+									disabled={aiContinuationSubmitting}
 								/>
 							</FormField>
 						</div>

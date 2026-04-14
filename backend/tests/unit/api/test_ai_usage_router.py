@@ -65,7 +65,7 @@ async def test_continue_ai_usage_accepts_process_ai_content_usage(
     monkeypatch.setattr(
         ai_usage_router.article_command_service,
         "enqueue_ai_continuation",
-        lambda **kwargs: "task-continuation-1",
+        lambda **kwargs: ("task-continuation-1", "task-root-1"),
     )
 
     response = await ai_usage_router.continue_ai_usage(
@@ -78,5 +78,6 @@ async def test_continue_ai_usage_accepts_process_ai_content_usage(
     assert response == {
         "usage_id": usage.id,
         "task_id": "task-continuation-1",
+        "root_task_id": "task-root-1",
         "status": "pending",
     }

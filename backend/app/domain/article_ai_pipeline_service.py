@@ -3627,6 +3627,7 @@ class ArticleAIPipelineService:
                     "api_key": model_config.api_key,
                     "model_name": model_config.model_name,
                     "model_api_config_id": model_config.id,
+                    "api_type": model_config.api_type or "chat_completions",
                     "price_input_per_1k": model_config.price_input_per_1k,
                     "price_output_per_1k": model_config.price_output_per_1k,
                     "currency": model_config.currency,
@@ -3714,6 +3715,7 @@ class ArticleAIPipelineService:
             }
 
             try:
+                generation_error: Exception | None = None
                 default_max_tokens = self.DEFAULT_AI_CONTENT_MAX_TOKENS.get(
                     content_type, 500
                 )
@@ -3725,6 +3727,8 @@ class ArticleAIPipelineService:
                     if not session_info:
                         raise TaskDataError("原始 AI 调用缺少可继续生成的上下文")
                     session_info["source_usage_log_id"] = source_usage.id
+                    if self.current_task_id:
+                        session_info["continuation_task_id"] = self.current_task_id
                     result = await self.ai_invocation_service.invoke_continuation(
                         db=db,
                         session_info=session_info,
@@ -3836,7 +3840,7 @@ class ArticleAIPipelineService:
                                 article_id=article_id,
                                 content_type="embedding",
                             )
-            except asyncio.TimeoutError:
+            except asyncio.TimeoutError as exc:
                 self._log_ai_usage(
                     db,
                     model_config_id=pricing.get("model_api_config_id"),
@@ -3855,6 +3859,7 @@ class ArticleAIPipelineService:
                 article.ai_analysis.error_message = "AI生成超时，请稍后重试"
                 article.ai_analysis.updated_at = now_str()
                 print(f"{content_type} 生成超时: {article.title}")
+                generation_error = exc
             except Exception as exc:
                 self._log_ai_usage(
                     db,
@@ -3874,8 +3879,12 @@ class ArticleAIPipelineService:
                 article.ai_analysis.error_message = str(exc)
                 article.ai_analysis.updated_at = now_str()
                 print(f"{content_type} 生成失败: {article.title}, 错误: {exc}")
+                generation_error = exc
 
             db.commit()
+
+            if generation_error is not None:
+                raise generation_error
 
             if content_type == "summary":
                 article = db.query(Article).filter(Article.id == article_id).first()
@@ -3901,5 +3910,6 @@ class ArticleAIPipelineService:
                 article.ai_analysis.error_message = str(exc)
                 article.ai_analysis.updated_at = now_str()
                 db.commit()
+            raise
         finally:
             db.close()

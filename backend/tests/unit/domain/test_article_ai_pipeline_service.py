@@ -4,6 +4,7 @@ import uuid
 from types import SimpleNamespace
 
 import app.domain.article_ai_pipeline_service as article_ai_pipeline_module
+import pytest
 from app.domain.ai_invocation_service import AIInvocationService
 from app.domain.article_ai_pipeline_service import ArticleAIPipelineService
 from app.domain.article_command_service import ArticleCommandService
@@ -11,6 +12,8 @@ from models import (
     AICallSession,
     AIAnalysis,
     AIAnalysisVersion,
+    AITask,
+    AITaskEvent,
     AIUsageLog,
     Article,
     Category,
@@ -106,6 +109,508 @@ def test_invoke_continuation_prefers_responses_previous_response_id(
 
     assert called["kwargs"]["previous_response_id"] == "resp-1"
     assert result["session_info"]["provider_response_id"] == "resp-2"
+
+
+def test_invoke_continuation_fallback_from_responses_omits_original_prompts(
+    db_session,
+    monkeypatch,
+):
+    service = AIInvocationService()
+    called = {}
+    fallback_task = AITask(
+        id="task-cont-1",
+        article_id=None,
+        parent_task_id="task-root-1",
+        root_task_id="task-root-1",
+        task_type="process_ai_content",
+        content_type="summary",
+        status="processing",
+        payload="{}",
+        attempts=1,
+        max_attempts=1,
+        run_at=now_str(),
+        created_at=now_str(),
+        updated_at=now_str(),
+    )
+    db_session.add(fallback_task)
+    db_session.commit()
+
+    async def fake_response_continue(**kwargs):
+        raise RuntimeError("provider continuation unsupported")
+
+    async def fake_snapshot_continue(**kwargs):
+        called["kwargs"] = kwargs
+        return {
+            "content": "回退后的摘要",
+            "usage": None,
+            "request_payload": {"messages": [{"role": "user", "content": "只保留反馈"}]},
+            "response_payload": {"id": "chatcmpl-fallback"},
+            "session_info": {
+                "api_type": "chat_completions",
+                "continuation_mode": "snapshot",
+                "provider_response_id": None,
+                "input_snapshot": {"feedback": "请更短"},
+                "output_snapshot": {"content": "回退后的摘要"},
+            },
+        }
+
+    monkeypatch.setattr(service, "_invoke_responses_continuation", fake_response_continue)
+    monkeypatch.setattr(service, "_invoke_snapshot_continuation", fake_snapshot_continue)
+
+    result = asyncio.run(
+        service.invoke_continuation(
+            db=db_session,
+            session_info={
+                "api_type": "responses",
+                "provider_response_id": "resp-1",
+                "continuation_task_id": fallback_task.id,
+                "input_snapshot": {
+                    "system_prompt": "你是一名资深内容分析师",
+                    "user_prompt": "这是原始大提示词",
+                },
+                "output_snapshot": {"content": "上一版输出"},
+            },
+            feedback="请更短",
+            model_config={
+                "base_url": "https://api.openai.com/v1",
+                "api_key": "sk-test",
+                "model_name": "gpt-4.1",
+            },
+        )
+    )
+
+    assert called["kwargs"]["session_info"]["input_snapshot"] == {
+        "system_prompt": "你是一名资深内容分析师",
+        "user_prompt": "这是原始大提示词",
+    }
+    assert called["kwargs"]["session_info"]["output_snapshot"] == {"content": "上一版输出"}
+    fallback_event = (
+        db_session.query(AITaskEvent)
+        .filter(
+            AITaskEvent.task_id == fallback_task.id,
+            AITaskEvent.event_type == "continuation_provider_fallback",
+        )
+        .one()
+    )
+    assert fallback_event.message == "Responses 续写失败，已回退到快照续写"
+    assert "provider continuation unsupported" in (fallback_event.details or "")
+    assert result["content"] == "回退后的摘要"
+
+
+def test_invoke_continuation_caches_unsupported_previous_response_id(
+    db_session,
+    monkeypatch,
+):
+    service = AIInvocationService()
+    service._unsupported_previous_response_cache.clear()
+    calls = {"provider": 0, "snapshot": 0}
+
+    async def fake_response_continue(**kwargs):
+        calls["provider"] += 1
+        raise RuntimeError(
+            "Error code: 400 - {'detail': 'Unsupported parameter: previous_response_id'}"
+        )
+
+    async def fake_snapshot_continue(**kwargs):
+        calls["snapshot"] += 1
+        return {
+            "content": "回退后的摘要",
+            "usage": None,
+            "request_payload": {"messages": [{"role": "user", "content": "只保留反馈"}]},
+            "response_payload": {"id": "chatcmpl-fallback"},
+            "session_info": {
+                "api_type": "chat_completions",
+                "continuation_mode": "snapshot",
+                "provider_response_id": None,
+                "input_snapshot": {"feedback": "请更短"},
+                "output_snapshot": {"content": "回退后的摘要"},
+            },
+        }
+
+    monkeypatch.setattr(service, "_invoke_responses_continuation", fake_response_continue)
+    monkeypatch.setattr(service, "_invoke_snapshot_continuation", fake_snapshot_continue)
+
+    session_info = {
+        "api_type": "responses",
+        "provider_response_id": "resp-1",
+        "input_snapshot": {
+            "system_prompt": "你是一名资深内容分析师",
+            "user_prompt": "这是原始大提示词",
+        },
+        "output_snapshot": {"content": "上一版输出"},
+    }
+    model_config = {
+        "base_url": "https://www.right.codes/codex/v1",
+        "api_key": "sk-test",
+        "model_name": "gpt-5.4",
+    }
+
+    first = asyncio.run(
+        service.invoke_continuation(
+            db=db_session,
+            session_info=session_info,
+            feedback="请更短",
+            model_config=model_config,
+        )
+    )
+    second = asyncio.run(
+        service.invoke_continuation(
+            db=db_session,
+            session_info=session_info,
+            feedback="请更短",
+            model_config=model_config,
+        )
+    )
+
+    assert first["content"] == "回退后的摘要"
+    assert second["content"] == "回退后的摘要"
+    assert calls["provider"] == 1
+    assert calls["snapshot"] == 2
+    assert (
+        "https://www.right.codes/codex/v1|gpt-5.4|responses"
+        in service._unsupported_previous_response_cache
+    )
+
+
+def test_invoke_generation_uses_list_input_items_for_responses(
+    db_session,
+    monkeypatch,
+):
+    service = AIInvocationService()
+    captured = {}
+
+    async def fake_create_response(**kwargs):
+        captured["request"] = kwargs
+        return SimpleNamespace(
+            id="resp-1",
+            model="gpt-5.4",
+            output_text="摘要结果",
+            usage=SimpleNamespace(input_tokens=10, output_tokens=5, total_tokens=15),
+        )
+
+    monkeypatch.setattr(service, "_create_response", fake_create_response)
+
+    result = asyncio.run(
+        service.invoke_generation(
+            db=db_session,
+            api_type="responses",
+            model_name="gpt-5.4",
+            base_url="https://api.openai.com/v1",
+            api_key="sk-test",
+            system_prompt="sys",
+            user_prompt="user",
+            article_id="article-1",
+            task_type="process_ai_content",
+            content_type="summary",
+            task_id="task-1",
+        )
+    )
+
+    assert captured["request"]["instructions"] == "sys"
+    assert captured["request"]["input"] == [
+        {
+            "role": "user",
+            "content": "user",
+        }
+    ]
+    assert result["session_info"]["continuation_mode"] == "provider"
+
+
+def test_invoke_generation_extracts_responses_output_from_output_parts(
+    db_session,
+    monkeypatch,
+):
+    service = AIInvocationService()
+
+    async def fake_create_response(**kwargs):
+        return SimpleNamespace(
+            id="resp-structured-1",
+            model="gpt-5.4",
+            output_text=None,
+            output=[
+                SimpleNamespace(
+                    content=[
+                        SimpleNamespace(type="output_text", text="从 output 数组解析出的结果")
+                    ]
+                )
+            ],
+            usage=SimpleNamespace(input_tokens=12, output_tokens=6, total_tokens=18),
+        )
+
+    monkeypatch.setattr(service, "_create_response", fake_create_response)
+
+    result = asyncio.run(
+        service.invoke_generation(
+            db=db_session,
+            api_type="responses",
+            model_name="gpt-5.4",
+            base_url="https://api.openai.com/v1",
+            api_key="sk-test",
+            system_prompt="sys",
+            user_prompt="user",
+            article_id="article-1",
+            task_type="process_ai_content",
+            content_type="summary",
+            task_id="task-1",
+        )
+    )
+
+    assert result["content"] == "从 output 数组解析出的结果"
+    assert result["response_payload"]["content"] == "从 output 数组解析出的结果"
+
+
+def test_invoke_generation_extracts_responses_plain_string_response(
+    db_session,
+    monkeypatch,
+):
+    service = AIInvocationService()
+
+    async def fake_create_response(**kwargs):
+        return "测试成功"
+
+    monkeypatch.setattr(service, "_create_response", fake_create_response)
+
+    result = asyncio.run(
+        service.invoke_generation(
+            db=db_session,
+            api_type="responses",
+            model_name="gpt-5.4",
+            base_url="https://api.openai.com/v1",
+            api_key="sk-test",
+            system_prompt="sys",
+            user_prompt="user",
+            article_id="article-1",
+            task_type="process_ai_content",
+            content_type="summary",
+            task_id="task-1",
+        )
+    )
+
+    assert result["content"] == "测试成功"
+    assert result["response_payload"]["content"] == "测试成功"
+
+
+def test_invoke_generation_extracts_responses_event_stream_done_text(
+    db_session,
+    monkeypatch,
+):
+    service = AIInvocationService()
+
+    async def fake_create_response(**kwargs):
+        return (
+            'event: response.created\n'
+            'data: {"type":"response.created","response":{"id":"resp-stream-1","model":"gpt-5.4","status":"in_progress"}}\n\n'
+            'event: response.output_text.delta\n'
+            'data: {"type":"response.output_text.delta","delta":"过"}\n\n'
+            'event: response.output_text.done\n'
+            'data: {"type":"response.output_text.done","text":"最终摘要"}\n\n'
+            'event: response.completed\n'
+            'data: {"type":"response.completed","response":{"id":"resp-stream-1","status":"completed"}}\n\n'
+        )
+
+    monkeypatch.setattr(service, "_create_response", fake_create_response)
+
+    result = asyncio.run(
+        service.invoke_generation(
+            db=db_session,
+            api_type="responses",
+            model_name="gpt-5.4",
+            base_url="https://api.openai.com/v1",
+            api_key="sk-test",
+            system_prompt="sys",
+            user_prompt="user",
+            article_id="article-1",
+            task_type="process_ai_content",
+            content_type="summary",
+            task_id="task-1",
+        )
+    )
+
+    assert result["content"] == "最终摘要"
+    assert result["response_payload"]["content"] == "最终摘要"
+    assert result["response_payload"]["id"] == "resp-stream-1"
+    assert result["session_info"]["provider_response_id"] == "resp-stream-1"
+
+
+def test_invoke_responses_continuation_uses_list_input_items(monkeypatch):
+    service = AIInvocationService()
+    captured = {}
+
+    async def fake_create_response(**kwargs):
+        captured["request"] = kwargs
+        return SimpleNamespace(
+            id="resp-2",
+            output_text="更新后的摘要",
+            usage=SimpleNamespace(input_tokens=10, output_tokens=5, total_tokens=15),
+        )
+
+    monkeypatch.setattr(service, "_create_response", fake_create_response)
+
+    result = asyncio.run(
+        service._invoke_responses_continuation(
+            previous_response_id="resp-1",
+            feedback="请更短",
+            model_config={
+                "base_url": "https://api.openai.com/v1",
+                "api_key": "sk-test",
+                "model_name": "gpt-5.4",
+            },
+            session_info={},
+        )
+    )
+
+    assert captured["request"]["previous_response_id"] == "resp-1"
+    assert captured["request"]["input"] == [
+        {
+            "role": "user",
+            "content": "请更短",
+        }
+    ]
+    assert "instructions" not in captured["request"]
+    assert result["session_info"]["input_snapshot"] == {"feedback": "请更短"}
+    assert result["session_info"]["provider_response_id"] == "resp-2"
+
+
+def test_invoke_responses_continuation_extracts_output_from_output_parts(monkeypatch):
+    service = AIInvocationService()
+
+    async def fake_create_response(**kwargs):
+        return SimpleNamespace(
+            id="resp-structured-2",
+            output_text="",
+            output=[
+                {
+                    "content": [
+                        {
+                            "type": "output_text",
+                            "text": "从续写 output 数组解析出的结果",
+                        }
+                    ]
+                }
+            ],
+            usage=SimpleNamespace(input_tokens=8, output_tokens=4, total_tokens=12),
+        )
+
+    monkeypatch.setattr(service, "_create_response", fake_create_response)
+
+    result = asyncio.run(
+        service._invoke_responses_continuation(
+            previous_response_id="resp-1",
+            feedback="请更短",
+            model_config={
+                "base_url": "https://api.openai.com/v1",
+                "api_key": "sk-test",
+                "model_name": "gpt-5.4",
+            },
+            session_info={},
+        )
+    )
+
+    assert result["content"] == "从续写 output 数组解析出的结果"
+    assert result["response_payload"]["content"] == "从续写 output 数组解析出的结果"
+
+
+def test_invoke_responses_continuation_extracts_plain_string_response(monkeypatch):
+    service = AIInvocationService()
+
+    async def fake_create_response(**kwargs):
+        return "续写测试成功"
+
+    monkeypatch.setattr(service, "_create_response", fake_create_response)
+
+    result = asyncio.run(
+        service._invoke_responses_continuation(
+            previous_response_id="resp-1",
+            feedback="请更短",
+            model_config={
+                "base_url": "https://api.openai.com/v1",
+                "api_key": "sk-test",
+                "model_name": "gpt-5.4",
+            },
+            session_info={},
+        )
+    )
+
+    assert result["content"] == "续写测试成功"
+    assert result["response_payload"]["content"] == "续写测试成功"
+
+
+def test_invoke_responses_continuation_extracts_event_stream_done_text(monkeypatch):
+    service = AIInvocationService()
+
+    async def fake_create_response(**kwargs):
+        return (
+            'event: response.created\n'
+            'data: {"type":"response.created","response":{"id":"resp-stream-2","model":"gpt-5.4","status":"in_progress"}}\n\n'
+            'event: response.output_text.delta\n'
+            'data: {"type":"response.output_text.delta","delta":"过"}\n\n'
+            'event: response.output_text.done\n'
+            'data: {"type":"response.output_text.done","text":"续写后的最终结果"}\n\n'
+            'event: response.completed\n'
+            'data: {"type":"response.completed","response":{"id":"resp-stream-2","status":"completed"}}\n\n'
+        )
+
+    monkeypatch.setattr(service, "_create_response", fake_create_response)
+
+    result = asyncio.run(
+        service._invoke_responses_continuation(
+            previous_response_id="resp-1",
+            feedback="请更短",
+            model_config={
+                "base_url": "https://api.openai.com/v1",
+                "api_key": "sk-test",
+                "model_name": "gpt-5.4",
+            },
+            session_info={},
+        )
+    )
+
+    assert result["content"] == "续写后的最终结果"
+    assert result["response_payload"]["content"] == "续写后的最终结果"
+    assert result["response_payload"]["id"] == "resp-stream-2"
+    assert result["session_info"]["provider_response_id"] == "resp-stream-2"
+
+
+def test_invoke_snapshot_continuation_handles_feedback_only_snapshot(monkeypatch):
+    service = AIInvocationService()
+    captured = {}
+
+    async def fake_chat_create(**kwargs):
+        captured["request"] = kwargs
+        return SimpleNamespace(
+            id="chatcmpl-2",
+            model="gpt-4o",
+            choices=[
+                SimpleNamespace(
+                    message=SimpleNamespace(content="更新后的结果"),
+                    finish_reason="stop",
+                )
+            ],
+            usage=SimpleNamespace(prompt_tokens=12, completion_tokens=6, total_tokens=18),
+        )
+
+    monkeypatch.setattr(service, "_create_chat_completion", fake_chat_create)
+
+    result = asyncio.run(
+        service._invoke_snapshot_continuation(
+            feedback="请更短",
+            model_config={
+                "base_url": "https://api.openai.com/v1",
+                "api_key": "sk-test",
+                "model_name": "gpt-4o",
+            },
+            session_info={
+                "input_snapshot": {"feedback": "上一次反馈"},
+                "output_snapshot": {"content": "上一版完整结果"},
+            },
+        )
+    )
+
+    user_message = captured["request"]["messages"][-1]["content"]
+    assert "原始生成要求" not in user_message
+    assert "上一版完整结果" in user_message
+    assert "请更短" in user_message
+    assert result["content"] == "更新后的结果"
 
 
 def test_detect_media_kind_supports_book_links():
@@ -464,13 +969,17 @@ def test_process_ai_content_infographic_marks_failed_when_html_invalid(
         lambda: FakeRenderService(),
     )
 
-    asyncio.run(
-        service.process_ai_content(
-            article_id=article_id,
-            category_id=None,
-            content_type="infographic",
+    with pytest.raises(
+        article_ai_pipeline_module.TaskDataError,
+        match="信息图 HTML 校验失败",
+    ):
+        asyncio.run(
+            service.process_ai_content(
+                article_id=article_id,
+                category_id=None,
+                content_type="infographic",
+            )
         )
-    )
 
     persisted = (
         db_session.query(AIAnalysis).filter(AIAnalysis.article_id == article_id).one()
@@ -1373,6 +1882,183 @@ def test_process_ai_content_uses_invocation_service_and_persists_session(
     assert json.loads(session.output_snapshot)["content"] == "新的摘要版本"
 
 
+def test_process_ai_content_reraises_generation_failures_after_logging(
+    db_session,
+    monkeypatch,
+):
+    article_id = str(uuid.uuid4())
+    article = Article(
+        id=article_id,
+        title="Failed Summary Article",
+        slug="failed-summary-article",
+        content_md="This is a failing summary article.",
+        created_at=now_str(),
+        updated_at=now_str(),
+    )
+    db_session.add(article)
+    db_session.commit()
+    db_session.add(
+        AIAnalysis(
+            article_id=article.id,
+            summary_status="pending",
+            updated_at=now_str(),
+        )
+    )
+    db_session.commit()
+
+    service = ArticleAIPipelineService(current_task_id="task-summary-failure")
+
+    async def fake_generation(**kwargs):
+        raise RuntimeError("Error code: 400 - {'detail': 'Input must be a list'}")
+
+    monkeypatch.setattr(article_ai_pipeline_module, "SessionLocal", lambda: db_session)
+    monkeypatch.setattr(
+        service,
+        "get_ai_config",
+        lambda *args, **kwargs: {
+            "base_url": "https://example.com",
+            "api_key": "test-key",
+            "model_name": "test-model",
+            "model_api_config_id": None,
+            "price_input_per_1k": None,
+            "price_output_per_1k": None,
+            "currency": None,
+            "api_type": "responses",
+            "prompt_template": "请总结：{content}",
+            "parameters": None,
+        },
+    )
+    monkeypatch.setattr(
+        service.ai_invocation_service,
+        "invoke_generation",
+        fake_generation,
+    )
+    monkeypatch.setattr(
+        article_ai_pipeline_module.ArticleEmbeddingService,
+        "has_available_remote_config",
+        lambda self, db: False,
+    )
+
+    with pytest.raises(RuntimeError, match="Input must be a list"):
+        asyncio.run(service.process_ai_content(article_id, None, "summary"))
+
+    usage = db_session.query(AIUsageLog).filter(AIUsageLog.article_id == article_id).one()
+    persisted_analysis = (
+        db_session.query(AIAnalysis).filter(AIAnalysis.article_id == article_id).one()
+    )
+    assert usage.status == "failed"
+    assert persisted_analysis.summary_status == "failed"
+    assert "Input must be a list" in (persisted_analysis.error_message or "")
+
+
+def test_process_ai_content_preserves_responses_api_type_for_explicit_model_config(
+    db_session,
+    monkeypatch,
+):
+    article = Article(
+        title="Responses Session Article",
+        slug="responses-session-article",
+        content_md="This is a responses article.",
+        created_at=now_str(),
+        updated_at=now_str(),
+    )
+    db_session.add(article)
+    db_session.commit()
+    db_session.add(
+        AIAnalysis(
+            article_id=article.id,
+            summary_status="pending",
+            updated_at=now_str(),
+        )
+    )
+    model_config = ModelAPIConfig(
+        name="Responses Model",
+        base_url="https://api.openai.com/v1",
+        api_key="sk-test",
+        model_name="gpt-5.4",
+        api_type="responses",
+        is_enabled=True,
+        created_at=now_str(),
+        updated_at=now_str(),
+    )
+    db_session.add(model_config)
+    db_session.commit()
+
+    service = ArticleAIPipelineService(current_task_id="task-responses-session")
+    captured = {}
+
+    async def fake_generation(**kwargs):
+        captured["api_type"] = kwargs["api_type"]
+        return {
+            "content": "新的摘要版本",
+            "usage": None,
+            "latency_ms": 5,
+            "request_payload": {"model": "gpt-5.4", "input": "prompt"},
+            "response_payload": {"id": "resp-1"},
+            "session_info": {
+                "api_type": "responses",
+                "continuation_mode": "provider",
+                "provider_response_id": "resp-1",
+                "input_snapshot": {"user_prompt": "原始提示词"},
+                "output_snapshot": {"content": "新的摘要版本"},
+            },
+        }
+
+    monkeypatch.setattr(article_ai_pipeline_module, "SessionLocal", lambda: db_session)
+    monkeypatch.setattr(
+        service,
+        "get_ai_config",
+        lambda *args, **kwargs: {
+            "base_url": "https://default.example.com",
+            "api_key": "default-key",
+            "model_name": "default-model",
+            "model_api_config_id": None,
+            "price_input_per_1k": None,
+            "price_output_per_1k": None,
+            "currency": None,
+            "api_type": "chat_completions",
+            "prompt_template": "请总结：{content}",
+            "parameters": None,
+        },
+    )
+    monkeypatch.setattr(
+        service,
+        "create_ai_client",
+        lambda config: captured.setdefault("client_config", dict(config)) or SimpleNamespace(),
+    )
+    monkeypatch.setattr(
+        service.ai_invocation_service,
+        "invoke_generation",
+        fake_generation,
+    )
+    monkeypatch.setattr(
+        article_ai_pipeline_module.ArticleEmbeddingService,
+        "has_available_remote_config",
+        lambda self, db: False,
+    )
+
+    asyncio.run(
+        service.process_ai_content(
+            article.id,
+            None,
+            "summary",
+            model_config_id=model_config.id,
+        )
+    )
+
+    usage = db_session.query(AIUsageLog).filter(AIUsageLog.article_id == article.id).one()
+    session = (
+        db_session.query(AICallSession)
+        .filter(AICallSession.usage_log_id == usage.id)
+        .one()
+    )
+    assert captured["client_config"]["api_type"] == "responses"
+    assert captured["api_type"] == "responses"
+    assert session.api_type == "responses"
+    assert session.continuation_mode == "provider"
+    assert session.provider_response_id == "resp-1"
+
+
 def test_repair_infographic_html_forwards_feedback_to_continuation_enqueue(
     db_session,
 ):
@@ -1391,6 +2077,23 @@ def test_repair_infographic_html_forwards_feedback_to_continuation_enqueue(
             infographic_status="failed",
             infographic_html="<div>old html</div>",
             updated_at=now_str(),
+        )
+    )
+    db_session.add(
+        article_ai_pipeline_module.AITask(
+            id="task-infographic-source",
+            article_id=article.id,
+            root_task_id="task-infographic-source",
+            task_type="process_ai_content",
+            content_type="infographic",
+            status="failed",
+            payload="{}",
+            attempts=1,
+            max_attempts=1,
+            run_at=now_str(),
+            created_at=now_str(),
+            updated_at=now_str(),
+            finished_at=now_str(),
         )
     )
     usage = AIUsageLog(

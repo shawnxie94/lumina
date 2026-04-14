@@ -313,6 +313,8 @@ class AITask(Base):
 
     id = Column(String, primary_key=True, default=generate_uuid)
     article_id = Column(String, ForeignKey("articles.id"), nullable=True)
+    parent_task_id = Column(String, nullable=True)
+    root_task_id = Column(String, nullable=True, index=True)
     task_type = Column(String, nullable=False)
     content_type = Column(String, nullable=True)
     status = Column(String, default="pending")

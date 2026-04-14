@@ -3,7 +3,15 @@ from __future__ import annotations
 import pytest
 
 from app.api.routers import ai_tasks_router
-from models import AICallSession, AIUsageLog, AITask, Article, ReviewIssue, ReviewTemplate
+from models import (
+    AICallSession,
+    AIUsageLog,
+    AITask,
+    AITaskEvent,
+    Article,
+    ReviewIssue,
+    ReviewTemplate,
+)
 
 
 @pytest.fixture
@@ -61,6 +69,81 @@ async def test_list_ai_tasks_prefers_translated_article_title(db_session):
 
     assert response["data"][0]["article_title"] == "任务文章译文标题"
     assert response["data"][0]["article_slug"] == "task-article"
+
+
+@pytest.mark.anyio
+async def test_list_ai_tasks_collapses_same_chain_to_root_row(db_session):
+    article = Article(
+        title="Chain Aggregation Article",
+        title_trans="链路聚合文章",
+        slug="chain-aggregation-article",
+        content_md="content",
+        content_trans="",
+        top_image="",
+        author="Tester",
+        published_at="2026-04-13T10:00:00",
+        source_domain="example.com",
+        status="completed",
+        is_visible=True,
+        created_at="2026-04-13T10:00:00",
+        updated_at="2026-04-13T10:00:00",
+    )
+    db_session.add(article)
+    db_session.commit()
+
+    root_task = AITask(
+        id="task-root",
+        article_id=article.id,
+        root_task_id="task-root",
+        task_type="process_ai_content",
+        content_type="summary",
+        status="completed",
+        payload="{}",
+        attempts=1,
+        max_attempts=1,
+        run_at="2026-04-13T10:00:00",
+        created_at="2026-04-13T10:00:00",
+        updated_at="2026-04-13T10:00:00",
+        finished_at="2026-04-13T10:00:00",
+    )
+    continuation_task = AITask(
+        id="task-cont-1",
+        article_id=article.id,
+        parent_task_id="task-root",
+        root_task_id="task-root",
+        task_type="process_ai_content",
+        content_type="summary",
+        status="failed",
+        payload='{"continuation_feedback":"请更短"}',
+        attempts=1,
+        max_attempts=1,
+        run_at="2026-04-13T10:05:00",
+        created_at="2026-04-13T10:05:00",
+        updated_at="2026-04-13T10:06:00",
+        finished_at="2026-04-13T10:06:00",
+        last_error="too long",
+    )
+    db_session.add_all([root_task, continuation_task])
+    db_session.commit()
+
+    response = await ai_tasks_router.list_ai_tasks(
+        page=1,
+        size=20,
+        status=None,
+        task_type=None,
+        content_type=None,
+        article_id=None,
+        article_title=None,
+        db=db_session,
+        _=True,
+    )
+
+    assert len(response["data"]) == 1
+    assert response["data"][0]["id"] == "task-root"
+    assert response["data"][0]["latest_task_id"] == "task-cont-1"
+    assert response["data"][0]["status"] == "failed"
+    assert response["data"][0]["chain_length"] == 2
+    assert response["data"][0]["has_continuations"] is True
 
 
 @pytest.mark.anyio
@@ -159,6 +242,114 @@ async def test_get_ai_task_timeline_prefers_translated_article_title(db_session)
 
     assert response["task"]["article_title"] == "时间线译文标题"
     assert response["task"]["article_slug"] == "timeline-article"
+
+
+@pytest.mark.anyio
+async def test_get_ai_task_timeline_merges_chain_tasks(db_session):
+    article = Article(
+        title="Timeline Chain Article",
+        title_trans="时间线链路文章",
+        slug="timeline-chain-article",
+        content_md="content",
+        content_trans="",
+        top_image="",
+        author="Tester",
+        published_at="2026-04-13T10:00:00",
+        source_domain="example.com",
+        status="completed",
+        is_visible=True,
+        created_at="2026-04-13T10:00:00",
+        updated_at="2026-04-13T10:00:00",
+    )
+    db_session.add(article)
+    db_session.commit()
+
+    root_task = AITask(
+        id="task-root",
+        article_id=article.id,
+        root_task_id="task-root",
+        task_type="process_ai_content",
+        content_type="summary",
+        status="completed",
+        payload="{}",
+        attempts=1,
+        max_attempts=1,
+        run_at="2026-04-13T10:00:00",
+        created_at="2026-04-13T10:00:00",
+        updated_at="2026-04-13T10:01:00",
+        finished_at="2026-04-13T10:01:00",
+    )
+    continuation_task = AITask(
+        id="task-cont-1",
+        article_id=article.id,
+        parent_task_id="task-root",
+        root_task_id="task-root",
+        task_type="process_ai_content",
+        content_type="summary",
+        status="failed",
+        payload='{"continuation_feedback":"请更短"}',
+        attempts=1,
+        max_attempts=1,
+        run_at="2026-04-13T10:05:00",
+        created_at="2026-04-13T10:05:00",
+        updated_at="2026-04-13T10:06:00",
+        finished_at="2026-04-13T10:06:00",
+    )
+    root_event = AITaskEvent(
+        task_id="task-root",
+        event_type="completed",
+        created_at="2026-04-13T10:01:00",
+    )
+    continuation_event = AITaskEvent(
+        task_id="task-cont-1",
+        event_type="failed",
+        created_at="2026-04-13T10:06:00",
+    )
+    root_usage = AIUsageLog(
+        id="usage-root",
+        task_id="task-root",
+        article_id=article.id,
+        task_type="process_ai_content",
+        content_type="summary",
+        status="completed",
+        created_at="2026-04-13T10:00:30",
+    )
+    continuation_usage = AIUsageLog(
+        id="usage-cont",
+        task_id="task-cont-1",
+        article_id=article.id,
+        task_type="process_ai_content",
+        content_type="summary",
+        status="completed",
+        created_at="2026-04-13T10:05:30",
+    )
+    db_session.add_all(
+        [
+            root_task,
+            continuation_task,
+            root_event,
+            continuation_event,
+            root_usage,
+            continuation_usage,
+        ]
+    )
+    db_session.commit()
+
+    response = await ai_tasks_router.get_ai_task_timeline(
+        task_id="task-cont-1",
+        db=db_session,
+        _=True,
+    )
+
+    assert response["task"]["id"] == "task-root"
+    assert [item["task_id"] for item in response["events"]] == [
+        "task-root",
+        "task-cont-1",
+    ]
+    assert [item["task_id"] for item in response["usage"]] == [
+        "task-root",
+        "task-cont-1",
+    ]
 
 
 @pytest.mark.anyio

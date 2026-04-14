@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel
 
 
@@ -24,3 +26,14 @@ class BackupRestoreResult(BaseModel):
     success: bool
     meta: BackupRestoreMeta
     restored: BackupRestorePayload
+
+
+class BackupExportJobStatus(BaseModel):
+    status: Literal["idle", "processing", "completed", "failed"]
+    filename: str | None = None
+    file_path: str | None = None
+    file_size: int | None = None
+    error_message: str | None = None
+    created_at: str | None = None
+    started_at: str | None = None
+    finished_at: str | None = None

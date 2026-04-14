@@ -1,13 +1,150 @@
 from __future__ import annotations
 
 import copy
+import json
+import logging
 import time
 from typing import Any
 
 from openai import AsyncOpenAI
+from task_state import append_task_event
+
+
+logger = logging.getLogger(__name__)
 
 
 class AIInvocationService:
+    _unsupported_previous_response_cache: set[str] = set()
+
+    def _build_responses_input_items(self, text: str) -> list[dict[str, str]]:
+        return [
+            {
+                "role": "user",
+                "content": text,
+            }
+        ]
+
+    def _provider_continuation_cache_key(self, model_config: dict[str, Any]) -> str:
+        base_url = str(model_config.get("base_url") or "").rstrip("/")
+        model_name = str(model_config.get("model_name") or "").strip()
+        return f"{base_url}|{model_name}|responses"
+
+    def _supports_provider_continuation(self, model_config: dict[str, Any]) -> bool:
+        cache_key = self._provider_continuation_cache_key(model_config)
+        return cache_key not in self._unsupported_previous_response_cache
+
+    def _mark_provider_continuation_unsupported(self, model_config: dict[str, Any]) -> None:
+        cache_key = self._provider_continuation_cache_key(model_config)
+        self._unsupported_previous_response_cache.add(cache_key)
+
+    def _is_unsupported_previous_response_error(self, exc: Exception) -> bool:
+        message = str(exc).lower()
+        return (
+            "previous_response_id" in message
+            and "unsupported parameter" in message
+        )
+
+    def _extract_responses_text(self, response: Any) -> str:
+        if isinstance(response, str):
+            event_stream_text = self._extract_event_stream_text(response)
+            if event_stream_text is not None:
+                return event_stream_text
+            return response
+        output_text = getattr(response, "output_text", None)
+        if output_text:
+            return output_text
+
+        output = getattr(response, "output", None) or []
+        parts: list[str] = []
+        for item in output:
+            content_items = getattr(item, "content", None)
+            if isinstance(item, dict):
+                content_items = item.get("content")
+            for content in content_items or []:
+                if isinstance(content, dict):
+                    if content.get("type") == "output_text":
+                        parts.append(str(content.get("text") or ""))
+                elif getattr(content, "type", None) == "output_text":
+                    parts.append(str(getattr(content, "text", "") or ""))
+        return "".join(parts)
+
+    def _extract_event_stream_metadata(self, response_text: str) -> dict[str, Any]:
+        metadata: dict[str, Any] = {}
+        if "event:" not in response_text or "data:" not in response_text:
+            return metadata
+        for chunk in response_text.split("\n\n"):
+            chunk = chunk.strip()
+            if not chunk:
+                continue
+            event_name: str | None = None
+            data_lines: list[str] = []
+            for line in chunk.splitlines():
+                if line.startswith("event:"):
+                    event_name = line[len("event:") :].strip()
+                elif line.startswith("data:"):
+                    data_lines.append(line[len("data:") :].strip())
+            if not event_name or not data_lines:
+                continue
+            data_str = "\n".join(data_lines).strip()
+            if not data_str:
+                continue
+            try:
+                payload = json.loads(data_str)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(payload, dict):
+                continue
+            if event_name not in {"response.created", "response.completed"}:
+                continue
+            response_payload = payload.get("response")
+            candidate = response_payload if isinstance(response_payload, dict) else payload
+            if not metadata.get("id") and candidate.get("id"):
+                metadata["id"] = candidate.get("id")
+            if not metadata.get("model") and candidate.get("model"):
+                metadata["model"] = candidate.get("model")
+            if candidate.get("status"):
+                metadata["status"] = candidate.get("status")
+        return metadata
+
+    def _extract_event_stream_text(self, response_text: str) -> str | None:
+        if "event:" not in response_text or "data:" not in response_text:
+            return None
+        done_text: str | None = None
+        delta_parts: list[str] = []
+        for chunk in response_text.split("\n\n"):
+            chunk = chunk.strip()
+            if not chunk:
+                continue
+            event_name: str | None = None
+            data_lines: list[str] = []
+            for line in chunk.splitlines():
+                if line.startswith("event:"):
+                    event_name = line[len("event:") :].strip()
+                elif line.startswith("data:"):
+                    data_lines.append(line[len("data:") :].strip())
+            if not event_name or not data_lines:
+                continue
+            data_str = "\n".join(data_lines).strip()
+            if not data_str:
+                continue
+            try:
+                payload = json.loads(data_str)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(payload, dict):
+                continue
+            if event_name == "response.output_text.done":
+                done_text = str(payload.get("text") or payload.get("data") or "")
+            elif event_name == "response.output_text.delta":
+                delta = payload.get("delta")
+                if delta:
+                    delta_parts.append(str(delta))
+        if done_text is not None:
+            return done_text
+        if delta_parts:
+            return "".join(delta_parts)
+        return None
+
     def _serialize_usage(self, usage: Any) -> dict[str, Any] | None:
         if usage is None:
             return None
@@ -176,6 +313,18 @@ class AIInvocationService:
     ) -> dict:
         api_type = (session_info.get("api_type") or "chat_completions").strip()
         if api_type == "responses":
+            if not self._supports_provider_continuation(model_config):
+                logger.info(
+                    "Skip provider continuation due to cached unsupported "
+                    "previous_response_id capability for base_url=%s model=%s",
+                    model_config.get("base_url"),
+                    model_config.get("model_name"),
+                )
+                return await self._invoke_snapshot_continuation(
+                    feedback=feedback,
+                    model_config=model_config,
+                    session_info=session_info,
+                )
             try:
                 return await self._invoke_responses_continuation(
                     previous_response_id=session_info.get("provider_response_id"),
@@ -183,7 +332,36 @@ class AIInvocationService:
                     model_config=model_config,
                     session_info=session_info,
                 )
-            except Exception:
+            except Exception as exc:
+                if self._is_unsupported_previous_response_error(exc):
+                    self._mark_provider_continuation_unsupported(model_config)
+                fallback_task_id = session_info.get("continuation_task_id") or (
+                    dict(session_info.get("input_snapshot") or {}).get("task_id")
+                )
+                logger.warning(
+                    "Responses continuation failed; falling back to snapshot continuation "
+                    "for task_id=%s previous_response_id=%s error=%s",
+                    fallback_task_id,
+                    session_info.get("provider_response_id"),
+                    exc,
+                )
+                if db is not None and fallback_task_id:
+                    append_task_event(
+                        db,
+                        task_id=str(fallback_task_id),
+                        event_type="continuation_provider_fallback",
+                        from_status=None,
+                        to_status=None,
+                        message="Responses 续写失败，已回退到快照续写",
+                        error_type="provider_fallback",
+                        details={
+                            "reason": str(exc),
+                            "previous_response_id": session_info.get(
+                                "provider_response_id"
+                            ),
+                        },
+                    )
+                    db.flush()
                 return await self._invoke_snapshot_continuation(
                     feedback=feedback,
                     model_config=model_config,
@@ -282,7 +460,7 @@ class AIInvocationService:
         parameters = dict(request_context.get("parameters") or {})
         request_payload = {
             "model": model_name,
-            "input": user_prompt,
+            "input": self._build_responses_input_items(user_prompt),
             "instructions": system_prompt,
         }
         if request_context.get("max_tokens") is not None:
@@ -297,13 +475,17 @@ class AIInvocationService:
             **request_payload,
         )
         latency_ms = int((time.monotonic() - start) * 1000)
-        content = getattr(response, "output_text", None) or ""
+        content = self._extract_responses_text(response)
+        response_meta = (
+            self._extract_event_stream_metadata(response) if isinstance(response, str) else {}
+        )
         usage = self._serialize_usage(getattr(response, "usage", None))
         response_payload = {
-            "id": getattr(response, "id", None),
+            "id": getattr(response, "id", None) or response_meta.get("id"),
             "content": content,
-            "model": getattr(response, "model", model_name),
+            "model": getattr(response, "model", None) or response_meta.get("model") or model_name,
             "usage": usage,
+            "finish_reason": getattr(response, "status", None) or response_meta.get("status"),
         }
         return {
             "content": content,
@@ -314,7 +496,7 @@ class AIInvocationService:
             "session_info": {
                 "api_type": "responses",
                 "continuation_mode": "provider",
-                "provider_response_id": getattr(response, "id", None),
+                "provider_response_id": response_payload["id"],
                 "provider_request_id": None,
                 "provider_conversation_id": None,
                 "input_snapshot": {
@@ -344,31 +526,37 @@ class AIInvocationService:
         request_payload = {
             "model": model_config["model_name"],
             "previous_response_id": previous_response_id,
-            "input": feedback,
+            "input": self._build_responses_input_items(feedback),
         }
         response = await self._create_response(
             base_url=model_config["base_url"],
             api_key=model_config["api_key"],
             **request_payload,
         )
-        content = getattr(response, "output_text", None) or ""
+        content = self._extract_responses_text(response)
+        response_meta = (
+            self._extract_event_stream_metadata(response) if isinstance(response, str) else {}
+        )
         usage = self._serialize_usage(getattr(response, "usage", None))
+        response_id = getattr(response, "id", None) or response_meta.get("id")
         return {
             "content": content,
             "usage": usage,
             "latency_ms": None,
             "request_payload": request_payload,
-            "response_payload": {"id": getattr(response, "id", None), "content": content},
+            "response_payload": {
+                "id": response_id,
+                "content": content,
+                "finish_reason": getattr(response, "status", None)
+                or response_meta.get("status"),
+            },
             "session_info": {
                 "api_type": "responses",
                 "continuation_mode": "provider",
-                "provider_response_id": getattr(response, "id", None),
+                "provider_response_id": response_id,
                 "provider_request_id": None,
                 "provider_conversation_id": None,
-                "input_snapshot": {
-                    **dict(session_info.get("input_snapshot") or {}),
-                    "feedback": feedback,
-                },
+                "input_snapshot": {"feedback": feedback},
                 "output_snapshot": {"content": content},
                 "source_usage_log_id": session_info.get("source_usage_log_id"),
             },
@@ -386,17 +574,24 @@ class AIInvocationService:
         prior_content = str(output_snapshot.get("content") or "").strip()
         system_prompt = input_snapshot.get("system_prompt")
         user_prompt = str(input_snapshot.get("user_prompt") or "").strip()
-        continuation_prompt = user_prompt
         if prior_content:
-            continuation_prompt = (
-                f"{user_prompt}\n\n"
-                f"以上是原始生成要求。\n\n"
-                f"这是上一版输出：\n{prior_content}\n\n"
-                f"请基于以上上下文，根据以下修改意见生成更新后的完整结果：\n{feedback}"
-            )
+            if user_prompt:
+                continuation_prompt = (
+                    f"{user_prompt}\n\n"
+                    f"以上是原始生成要求。\n\n"
+                    f"这是上一版输出：\n{prior_content}\n\n"
+                    f"请基于以上上下文，根据以下修改意见生成更新后的完整结果：\n{feedback}"
+                )
+            else:
+                continuation_prompt = (
+                    f"这是上一版输出：\n{prior_content}\n\n"
+                    f"请根据以下修改意见生成更新后的完整结果：\n{feedback}"
+                )
         else:
             continuation_prompt = (
                 f"{user_prompt}\n\n请根据以下修改意见生成更新后的完整结果：\n{feedback}"
+                if user_prompt
+                else feedback
             )
         return await self._invoke_chat_generation(
             model_name=model_config["model_name"],

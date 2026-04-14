@@ -175,12 +175,14 @@ export const resolveMediaUrl = (url?: string | null): string => {
 	}
 	try {
 		const parsed = new URL(url);
-		const isLocalhost =
-			parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1";
+		const isLocalMediaHost =
+			parsed.hostname === "localhost" ||
+			parsed.hostname === "127.0.0.1" ||
+			parsed.hostname === "api";
 		const isMediaPath =
 			parsed.pathname.startsWith("/media/") ||
 			parsed.pathname.startsWith("/backend/media/");
-		if (isLocalhost && isMediaPath) {
+		if (isLocalMediaHost && isMediaPath) {
 			return parsed.pathname.startsWith("/backend/")
 				? parsed.pathname
 				: `/backend${parsed.pathname}`;
@@ -779,6 +781,23 @@ export interface BackupImportResult {
 	};
 }
 
+export type BackupExportJobState =
+	| "idle"
+	| "processing"
+	| "completed"
+	| "failed";
+
+export interface BackupExportJob {
+	status: BackupExportJobState;
+	filename?: string | null;
+	file_path?: string | null;
+	file_size?: number | null;
+	error_message?: string | null;
+	created_at?: string | null;
+	started_at?: string | null;
+	finished_at?: string | null;
+}
+
 export interface CommentListResponse {
 	items: AdminCommentItem[];
 	pagination: {
@@ -811,6 +830,7 @@ export interface ModelAPIConfig {
 	provider?: string | null;
 	model_name: string;
 	model_type?: string | null;
+	api_type?: "chat_completions" | "responses" | null;
 	price_input_per_1k?: number | null;
 	price_output_per_1k?: number | null;
 	currency?: string | null;
@@ -820,6 +840,17 @@ export interface ModelAPIConfig {
 	is_default: boolean;
 	created_at: string;
 	updated_at: string;
+}
+
+export interface AICallSessionInfo {
+	api_type?: "chat_completions" | "responses" | null;
+	continuation_mode?: "provider" | "snapshot" | null;
+	provider_response_id?: string | null;
+	provider_request_id?: string | null;
+	provider_conversation_id?: string | null;
+	input_snapshot?: Record<string, unknown> | null;
+	output_snapshot?: Record<string, unknown> | null;
+	source_usage_log_id?: string | null;
 }
 
 export interface AIUsageLogItem {
@@ -875,6 +906,8 @@ export interface AIUsageSummaryResponse {
 
 export interface AITaskTimelineEvent {
 	id: string;
+	task_id?: string | null;
+	root_task_id?: string | null;
 	event_type: string;
 	from_status: string | null;
 	to_status: string | null;
@@ -886,6 +919,8 @@ export interface AITaskTimelineEvent {
 
 export interface AITaskTimelineUsage {
 	id: string;
+	task_id?: string | null;
+	root_task_id?: string | null;
 	model_api_config_id: string | null;
 	model_api_config_name: string | null;
 	task_type: string | null;
@@ -905,12 +940,17 @@ export interface AITaskTimelineUsage {
 	error_message: string | null;
 	request_payload: string | null;
 	response_payload: string | null;
+	session_info: AICallSessionInfo | null;
 	created_at: string;
 }
 
 export interface AITaskTimelineResponse {
 	task: {
 		id: string;
+		root_task_id?: string | null;
+		latest_task_id?: string | null;
+		chain_length?: number;
+		has_continuations?: boolean;
 		article_id: string | null;
 		article_title: string | null;
 		article_slug: string | null;
@@ -935,6 +975,10 @@ export interface AITaskTimelineResponse {
 
 export interface AITaskListItem {
 	id: string;
+	root_task_id?: string | null;
+	latest_task_id?: string | null;
+	chain_length?: number;
+	has_continuations?: boolean;
 	article_id: string | null;
 	article_title: string | null;
 	article_slug: string | null;
@@ -1323,6 +1367,22 @@ export const articleApi = {
 		return response.data;
 	},
 
+	continueAIUsage: async (
+		usageId: string,
+		data: {
+			feedback: string;
+			model_config_id?: string;
+		},
+	) => {
+		const response = await api.post(`/api/ai-usage/${usageId}/continue`, data);
+		return response.data as {
+			usage_id: string;
+			task_id: string;
+			root_task_id?: string | null;
+			status: "pending";
+		};
+	},
+
 	uploadInfographicImage: async (id: string, file: File) => {
 		const formData = new FormData();
 		formData.append("file", file);
@@ -1363,6 +1423,7 @@ export const articleApi = {
 		provider?: string;
 		model_name?: string;
 		model_type?: string;
+		api_type?: "chat_completions" | "responses";
 		price_input_per_1k?: number;
 		price_output_per_1k?: number;
 		currency?: string;
@@ -1384,6 +1445,7 @@ export const articleApi = {
 			provider?: string;
 			model_name?: string;
 			model_type?: string;
+			api_type?: "chat_completions" | "responses";
 			price_input_per_1k?: number;
 			price_output_per_1k?: number;
 			currency?: string;
@@ -1495,6 +1557,16 @@ export const backupApi = {
 		});
 		return response.data as Blob;
 	},
+	getLatestExportJob: async (): Promise<BackupExportJob> => {
+		const response = await api.get("/api/backup/export-jobs/latest");
+		return response.data as BackupExportJob;
+	},
+	startLatestExportJob: async (): Promise<BackupExportJob> => {
+		const response = await api.post("/api/backup/export-jobs/latest");
+		return response.data as BackupExportJob;
+	},
+	getLatestExportDownloadUrl: (): string =>
+		`${getApiBaseUrl()}/api/backup/export-jobs/latest/download`,
 	importBackup: async (file: File): Promise<BackupImportResult> => {
 		const formData = new FormData();
 		formData.append("file", file);

@@ -60,3 +60,28 @@ def test_wait_for_required_tables_waits_for_review_tables_by_default():
     )
 
     assert sleeps == [0.5]
+
+
+def test_prepare_worker_database_runs_migrations_before_waiting(monkeypatch):
+    calls: list[tuple[str, object]] = []
+
+    monkeypatch.setattr(
+        worker,
+        "run_db_migrations",
+        lambda database_url=None: calls.append(("migrate", database_url)),
+    )
+    monkeypatch.setattr(
+        worker,
+        "wait_for_required_tables",
+        lambda **kwargs: calls.append(("wait", kwargs["poll_interval"])),
+    )
+
+    worker.prepare_worker_database(
+        database_url="sqlite:///worker-test.db",
+        poll_interval=2.5,
+    )
+
+    assert calls == [
+        ("migrate", "sqlite:///worker-test.db"),
+        ("wait", 2.5),
+    ]

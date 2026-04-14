@@ -275,7 +275,7 @@ class ArticleCommandService:
         usage_id: str,
         feedback: str,
         model_config_id: str | None = None,
-    ) -> str:
+    ) -> tuple[str, str]:
         usage = db.query(AIUsageLog).filter(AIUsageLog.id == usage_id).first()
         if not usage:
             raise ValueError("AI 调用记录不存在")
@@ -289,6 +289,14 @@ class ArticleCommandService:
         normalized_feedback = (feedback or "").strip()
         if not normalized_feedback:
             raise ValueError("请填写修改意见")
+        if not usage.task_id:
+            raise ValueError("当前 AI 调用缺少来源任务")
+
+        source_task = db.query(AITask).filter(AITask.id == usage.task_id).first()
+        if not source_task:
+            raise ValueError("来源任务不存在")
+
+        root_task_id = source_task.root_task_id or source_task.id
 
         article = db.query(Article).filter(Article.id == usage.article_id).first()
         if not article:
@@ -301,7 +309,7 @@ class ArticleCommandService:
         article.ai_analysis.updated_at = now_str()
         db.commit()
 
-        return self.ai_task_service.enqueue_task(
+        task_id = self.ai_task_service.enqueue_task(
             db,
             task_type="process_ai_content",
             article_id=usage.article_id,
@@ -312,7 +320,10 @@ class ArticleCommandService:
                 "continuation_feedback": normalized_feedback,
                 "continuation_source_usage_id": usage.id,
             },
+            parent_task_id=source_task.id,
+            root_task_id=root_task_id,
         )
+        return task_id, root_task_id
 
     def _require_latest_usage_id(
         self,

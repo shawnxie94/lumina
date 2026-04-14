@@ -317,6 +317,27 @@ def test_backup_service_exports_zip_archive_with_filtered_snapshot(
         snapshot.close()
 
 
+def test_backup_service_export_latest_replaces_previous_archive(
+    db_session: Session, tmp_path: Path
+):
+    media_root = tmp_path / "source-media"
+    _build_archive_fixture(db_session, media_root)
+    service = BackupService(
+        media_root=str(media_root),
+        current_schema_version=CURRENT_SCHEMA_VERSION,
+        source_commit="test-commit",
+    )
+    export_root = tmp_path / "backups"
+
+    first = service.export_backup_file(db_session, export_root=export_root)
+    second = service.export_backup_file(db_session, export_root=export_root)
+
+    assert first["path"] == second["path"]
+    assert first["filename"] == "lumina-backup-latest.zip"
+    assert Path(first["path"]).exists()
+    assert list(export_root.glob("*.zip")) == [export_root / "lumina-backup-latest.zip"]
+
+
 def test_backup_service_restores_snapshot_and_media(
     db_session: Session, tmp_path: Path
 ):

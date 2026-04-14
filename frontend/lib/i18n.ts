@@ -97,7 +97,23 @@ const translations: Record<Language, Record<string | number, string>> = {
 		"导出业务全量镜像 zip，除去统计、任务、向量和日志，且包含敏感配置。":
 			"Export a full business snapshot zip, excluding stats, tasks, vectors, and logs, and including sensitive secrets.",
 		导出备份: "Export backup",
+		下载最新备份: "Download latest backup",
+		生成备份: "Generate backup",
 		导入备份: "Import backup",
+		"最新备份已生成，可开始下载": "Latest backup is ready to download",
+		备份状态加载失败: "Failed to load backup status",
+		备份已开始后台生成: "Backup generation started in the background",
+		"点击生成最新备份，完成后可直接下载。":
+			"Generate the latest backup. Once it finishes, you can download it directly.",
+		"备份正在后台生成，生成完成后可下载最新文件。":
+			"The backup is being generated in the background. Download the latest file once it completes.",
+		"最近一次备份生成失败：{error}":
+			"Latest backup generation failed: {error}",
+		"最近一次备份生成失败，请重试。":
+			"Latest backup generation failed. Please try again.",
+		时间未知: "Unknown time",
+		"最新备份已生成：{time} · {size}":
+			"Latest backup generated: {time} · {size}",
 		"说明：仅支持 zip 镜像备份；不会恢复统计、任务、向量和日志数据，且备份文件包含敏感配置。":
 			"Note: only zip snapshot backups are supported; stats, tasks, vectors, and logs are not restored, and the archive contains sensitive secrets.",
 		原评论不存在: "Original comment not found",
@@ -553,8 +569,19 @@ const translations: Record<Language, Record<string | number, string>> = {
 		请求输入: "Request input",
 		响应输出: "Response output",
 		名称: "Name",
+		API类型: "API type",
 		API地址: "API URL",
 		模型类型: "Model type",
+		"上下文窗口（tokens）": "Context window (tokens)",
+		"输出预留（tokens）": "Reserved output (tokens)",
+		"上下文窗口必须大于 0": "Context window must be greater than 0",
+		"输出预留不能小于 0": "Reserved output cannot be less than 0",
+		"输出预留必须小于上下文窗口":
+			"Reserved output must be smaller than the context window",
+		"绑定模型缺少上下文窗口或输出预留，无法启用分块参数":
+			"The linked model is missing a context window or reserved output, so chunk parameters cannot be enabled.",
+		"该三项需同时填写；并且关联模型需配置上下文窗口与输出预留，否则后端会拒绝保存。":
+			"These three fields must be filled together, and the linked model must also define a context window and reserved output, otherwise the backend will reject the save.",
 		计费: "Pricing",
 		"OpenAI 兼容": "OpenAI compatible",
 		编辑模型API配置: "Edit model API config",

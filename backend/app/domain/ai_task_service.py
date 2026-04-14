@@ -39,6 +39,8 @@ class AITaskService:
         article_id: str | None = None,
         content_type: str | None = None,
         payload: dict | None = None,
+        parent_task_id: str | None = None,
+        root_task_id: str | None = None,
     ) -> str:
         payload_json = json.dumps(
             payload or {}, ensure_ascii=False, sort_keys=True, separators=(",", ":")
@@ -70,6 +72,8 @@ class AITaskService:
         now_iso = get_now_iso()
         task = AITask(
             article_id=article_id,
+            parent_task_id=parent_task_id,
+            root_task_id=root_task_id,
             task_type=task_type,
             content_type=content_type,
             payload=payload_json,
@@ -83,6 +87,8 @@ class AITaskService:
 
         try:
             db.flush()
+            if not task.root_task_id:
+                task.root_task_id = task.id
             append_task_event(
                 db,
                 task_id=task.id,

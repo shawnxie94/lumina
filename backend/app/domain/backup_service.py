@@ -68,21 +68,8 @@ class BackupService:
         def _stream() -> Iterable[bytes]:
             with tempfile.TemporaryDirectory(prefix="lumina-backup-export-") as temp_dir:
                 temp_path = Path(temp_dir)
-                snapshot_path = temp_path / "snapshot.db"
                 archive_path = temp_path / "lumina-backup.zip"
-                manifest_path = temp_path / "manifest.json"
-
-                self._create_filtered_snapshot(source_db_path, snapshot_path)
-                manifest = self._build_manifest(source_db_path)
-                manifest_path.write_text(
-                    json.dumps(manifest, ensure_ascii=False, indent=2),
-                    encoding="utf-8",
-                )
-                self._build_archive(
-                    archive_path=archive_path,
-                    snapshot_path=snapshot_path,
-                    manifest_path=manifest_path,
-                )
+                self._write_archive_file(source_db_path, archive_path)
 
                 with archive_path.open("rb") as archive_file:
                     while True:
@@ -92,6 +79,38 @@ class BackupService:
                         yield chunk
 
         return _stream()
+
+    def export_backup_file(
+        self,
+        db: Session | None = None,
+        *,
+        export_root: str | Path | None = None,
+        filename: str = "lumina-backup-latest.zip",
+    ) -> dict[str, Any]:
+        source_db_path = self._resolve_database_path(db)
+        target_root = (
+            Path(export_root)
+            if export_root is not None
+            else source_db_path.parent / "backups"
+        )
+        target_root.mkdir(parents=True, exist_ok=True)
+        archive_path = target_root / filename
+        temp_archive_path = target_root / f"{filename}.tmp"
+        temp_archive_path.unlink(missing_ok=True)
+
+        try:
+            manifest = self._write_archive_file(source_db_path, temp_archive_path)
+            temp_archive_path.replace(archive_path)
+        finally:
+            if temp_archive_path.exists():
+                temp_archive_path.unlink()
+
+        return {
+            "path": str(archive_path),
+            "filename": archive_path.name,
+            "file_size": archive_path.stat().st_size,
+            "created_at": manifest["exported_at"],
+        }
 
     def import_backup(self, db: Session, archive_input: BinaryIO | bytes) -> dict[str, Any]:
         with acquire_restore_lock(self.database_url):
@@ -177,6 +196,29 @@ class BackupService:
                         continue
                     relative = path.relative_to(self.media_root).as_posix()
                     archive.write(path, arcname=f"media/{relative}")
+
+    def _write_archive_file(
+        self,
+        source_db_path: Path,
+        archive_path: Path,
+    ) -> dict[str, Any]:
+        with tempfile.TemporaryDirectory(prefix="lumina-backup-export-") as temp_dir:
+            temp_path = Path(temp_dir)
+            snapshot_path = temp_path / "snapshot.db"
+            manifest_path = temp_path / "manifest.json"
+
+            self._create_filtered_snapshot(source_db_path, snapshot_path)
+            manifest = self._build_manifest(source_db_path)
+            manifest_path.write_text(
+                json.dumps(manifest, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            self._build_archive(
+                archive_path=archive_path,
+                snapshot_path=snapshot_path,
+                manifest_path=manifest_path,
+            )
+            return manifest
 
     def _create_filtered_snapshot(self, source_db_path: Path, snapshot_path: Path) -> None:
         source = sqlite3.connect(str(source_db_path))

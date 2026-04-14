@@ -356,3 +356,30 @@ def test_ai_call_sessions_table_and_api_type_column_exist_after_upgrade(tmp_path
     } <= session_columns
 
     engine.dispose()
+
+
+def test_ai_task_chain_columns_exist_after_upgrade(tmp_path):
+    db_path = tmp_path / "migration-ai-task-chain.db"
+    backend_dir = Path(__file__).resolve().parents[3]
+    config = Config(str(backend_dir / "alembic.ini"))
+    config.set_main_option("sqlalchemy.url", f"sqlite:///{db_path}")
+    config.attributes["database_url_override"] = f"sqlite:///{db_path}"
+
+    command.upgrade(config, "head")
+
+    engine = create_engine(
+        f"sqlite:///{db_path}",
+        connect_args={"check_same_thread": False},
+    )
+    with engine.begin() as conn:
+        task_columns = {
+            row[1] for row in conn.execute(text("PRAGMA table_info(ai_tasks)")).fetchall()
+        }
+        task_indexes = {
+            row[1] for row in conn.execute(text("PRAGMA index_list(ai_tasks)")).fetchall()
+        }
+
+    assert {"parent_task_id", "root_task_id"} <= task_columns
+    assert any("root_task_id" in index_name for index_name in task_indexes)
+
+    engine.dispose()

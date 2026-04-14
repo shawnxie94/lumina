@@ -5,6 +5,7 @@ from collections.abc import Callable
 from sqlalchemy import inspect
 
 from app.core.backup_lock import restore_lock_active
+from app.core.db_migrations import run_db_migrations
 from app.core.settings import get_settings, validate_startup_settings
 from task_errors import normalize_task_error
 
@@ -52,6 +53,11 @@ def wait_for_required_tables(
         sleep(poll_interval)
 
 
+def prepare_worker_database(*, database_url: str, poll_interval: float) -> None:
+    run_db_migrations(database_url)
+    wait_for_required_tables(poll_interval=poll_interval)
+
+
 def main() -> None:
     settings = get_settings()
     validate_startup_settings(settings)
@@ -63,7 +69,10 @@ def main() -> None:
     task_service = AITaskService(worker_id=ai_worker.worker_id)
     poll_interval = ai_worker.poll_interval
     task_timeout_seconds = ai_worker.task_timeout
-    wait_for_required_tables(poll_interval=max(float(poll_interval), 1.0))
+    prepare_worker_database(
+        database_url=settings.database_url,
+        poll_interval=max(float(poll_interval), 1.0),
+    )
 
     while True:
         if restore_lock_active(settings.database_url):

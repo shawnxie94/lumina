@@ -101,6 +101,41 @@ class ConfigurableAIClient:
             "total_tokens": getattr(usage, "total_tokens", None),
         }
 
+    def _extract_event_stream_metadata(self, response_text: str) -> Dict[str, Any]:
+        metadata: Dict[str, Any] = {}
+        if "event:" not in response_text or "data:" not in response_text:
+            return metadata
+        for chunk in response_text.split("\n\n"):
+            chunk = chunk.strip()
+            if not chunk:
+                continue
+            event_name: Optional[str] = None
+            data_lines: list[str] = []
+            for line in chunk.splitlines():
+                if line.startswith("event:"):
+                    event_name = line[len("event:") :].strip()
+                elif line.startswith("data:"):
+                    data_lines.append(line[len("data:") :].strip())
+            if not event_name or not data_lines:
+                continue
+            try:
+                payload = json.loads("\n".join(data_lines).strip())
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(payload, dict):
+                continue
+            if event_name not in {"response.created", "response.completed"}:
+                continue
+            response_payload = payload.get("response")
+            candidate = response_payload if isinstance(response_payload, dict) else payload
+            if not metadata.get("id") and candidate.get("id"):
+                metadata["id"] = candidate.get("id")
+            if not metadata.get("model") and candidate.get("model"):
+                metadata["model"] = candidate.get("model")
+            if candidate.get("status"):
+                metadata["status"] = candidate.get("status")
+        return metadata
+
     async def generate_summary(
         self,
         content: str,
@@ -137,19 +172,30 @@ class ConfigurableAIClient:
                 latency_ms = int((time.monotonic() - start_time) * 1000)
                 usage_data = self._serialize_usage(getattr(response, "usage", None))
                 content = self._extract_response_text(response)
+                response_meta = (
+                    self._extract_event_stream_metadata(response)
+                    if isinstance(response, str)
+                    else {}
+                )
                 return {
                     "content": content,
                     "usage": getattr(response, "usage", None),
-                    "model": getattr(response, "model", self.model_name),
-                    "finish_reason": getattr(response, "status", None),
+                    "model": getattr(response, "model", None)
+                    or response_meta.get("model")
+                    or self.model_name,
+                    "finish_reason": getattr(response, "status", None)
+                    or response_meta.get("status"),
                     "latency_ms": latency_ms,
                     "request_payload": request_params,
                     "response_payload": {
-                        "id": getattr(response, "id", None),
+                        "id": getattr(response, "id", None) or response_meta.get("id"),
                         "content": content,
-                        "model": getattr(response, "model", self.model_name),
+                        "model": getattr(response, "model", None)
+                        or response_meta.get("model")
+                        or self.model_name,
                         "usage": usage_data,
-                        "finish_reason": getattr(response, "status", None),
+                        "finish_reason": getattr(response, "status", None)
+                        or response_meta.get("status"),
                     },
                 }
 
@@ -245,19 +291,30 @@ class ConfigurableAIClient:
                 latency_ms = int((time.monotonic() - start_time) * 1000)
                 result = self._extract_response_text(response)
                 usage_data = self._serialize_usage(getattr(response, "usage", None))
+                response_meta = (
+                    self._extract_event_stream_metadata(response)
+                    if isinstance(response, str)
+                    else {}
+                )
                 return {
                     "content": result,
                     "usage": getattr(response, "usage", None),
-                    "model": getattr(response, "model", self.model_name),
-                    "finish_reason": getattr(response, "status", None),
+                    "model": getattr(response, "model", None)
+                    or response_meta.get("model")
+                    or self.model_name,
+                    "finish_reason": getattr(response, "status", None)
+                    or response_meta.get("status"),
                     "latency_ms": latency_ms,
                     "request_payload": request_params,
                     "response_payload": {
-                        "id": getattr(response, "id", None),
+                        "id": getattr(response, "id", None) or response_meta.get("id"),
                         "content": result,
-                        "model": getattr(response, "model", self.model_name),
+                        "model": getattr(response, "model", None)
+                        or response_meta.get("model")
+                        or self.model_name,
                         "usage": usage_data,
-                        "finish_reason": getattr(response, "status", None),
+                        "finish_reason": getattr(response, "status", None)
+                        or response_meta.get("status"),
                     },
                 }
 
@@ -333,7 +390,12 @@ class ConfigurableAIClient:
     ) -> Dict[str, Any]:
         request_params: Dict[str, Any] = {
             "model": self.model_name,
-            "input": prompt,
+            "input": [
+                {
+                    "role": "user",
+                    "content": prompt,
+                }
+            ],
             "instructions": system_prompt,
             "max_output_tokens": parameters.get("max_tokens", max_tokens),
             "temperature": parameters.get("temperature", temperature),
@@ -359,6 +421,11 @@ class ConfigurableAIClient:
         return None
 
     def _extract_response_text(self, response: Any) -> str:
+        if isinstance(response, str):
+            event_stream_text = self._extract_event_stream_text(response)
+            if event_stream_text is not None:
+                return event_stream_text
+            return response
         output_text = getattr(response, "output_text", None)
         if output_text:
             return output_text
@@ -375,6 +442,45 @@ class ConfigurableAIClient:
                 elif getattr(content, "type", None) == "output_text":
                     parts.append(str(getattr(content, "text", "") or ""))
         return "".join(parts)
+
+    def _extract_event_stream_text(self, response_text: str) -> str | None:
+        if "event:" not in response_text or "data:" not in response_text:
+            return None
+        done_text: str | None = None
+        delta_parts: list[str] = []
+        for chunk in response_text.split("\n\n"):
+            chunk = chunk.strip()
+            if not chunk:
+                continue
+            event_name: str | None = None
+            data_lines: list[str] = []
+            for line in chunk.splitlines():
+                if line.startswith("event:"):
+                    event_name = line[len("event:") :].strip()
+                elif line.startswith("data:"):
+                    data_lines.append(line[len("data:") :].strip())
+            if not event_name or not data_lines:
+                continue
+            data_str = "\n".join(data_lines).strip()
+            if not data_str:
+                continue
+            try:
+                payload = json.loads(data_str)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(payload, dict):
+                continue
+            if event_name == "response.output_text.done":
+                done_text = str(payload.get("text") or payload.get("data") or "")
+            elif event_name == "response.output_text.delta":
+                delta = payload.get("delta")
+                if delta:
+                    delta_parts.append(str(delta))
+        if done_text is not None:
+            return done_text
+        if delta_parts:
+            return "".join(delta_parts)
+        return None
 
     async def generate_embedding(
         self,

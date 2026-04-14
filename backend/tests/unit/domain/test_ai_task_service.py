@@ -49,6 +49,22 @@ def test_enqueue_task_deduplicates_by_normalized_payload(db_session):
     }
 
 
+def test_enqueue_task_creates_new_root_chain(db_session):
+    service = AITaskService(worker_id="worker-test")
+
+    task_id = service.enqueue_task(
+        db_session,
+        task_type="process_ai_content",
+        article_id="article-1",
+        content_type="summary",
+        payload={"mode": "initial"},
+    )
+
+    task = db_session.query(AITask).filter(AITask.id == task_id).one()
+    assert task.parent_task_id is None
+    assert task.root_task_id == task.id
+
+
 def test_claim_task_updates_status_lock_and_attempts(db_session, make_task, monkeypatch):
     service = AITaskService(worker_id="worker-test")
     task = make_task(
