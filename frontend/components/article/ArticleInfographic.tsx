@@ -17,6 +17,11 @@ const INLINE_COLOR_FUNCTION_RE =
 	/^(?:rgb|rgba|hsl|hsla)\(\s*[-\d.%\s,]+\)$/i;
 export type InfographicImageExportResult = "clipboard" | "download";
 
+interface InfographicMeasuredSize {
+	width: number;
+	height: number;
+}
+
 interface InfographicCanvasProps {
 	html: string;
 	canvasRef?: RefObject<HTMLDivElement | null>;
@@ -24,6 +29,7 @@ interface InfographicCanvasProps {
 	paddingClassName: string;
 	contentClassName: string;
 	style?: CSSProperties;
+	onMeasure?: (size: InfographicMeasuredSize) => void;
 }
 
 interface InfographicPreviewCardProps {
@@ -44,6 +50,15 @@ interface InfographicLightboxProps {
 	previewLabel: string;
 	closeLabel: string;
 	onClose: () => void;
+}
+
+function resolveInfographicAspectRatio(
+	size?: InfographicMeasuredSize | null,
+): number {
+	if (!size?.width || !size?.height) {
+		return INFOGRAPHIC_CANVAS_WIDTH / INFOGRAPHIC_CANVAS_HEIGHT;
+	}
+	return size.width / size.height;
 }
 
 function extractInlineRootStyle(html: string): string | undefined {
@@ -225,6 +240,7 @@ function InfographicCanvas({
 	paddingClassName,
 	contentClassName,
 	style,
+	onMeasure,
 }: InfographicCanvasProps) {
 	const viewportRef = useRef<HTMLDivElement>(null);
 	const contentRef = useRef<HTMLDivElement>(null);
@@ -304,6 +320,10 @@ function InfographicCanvas({
 		return () => observer.disconnect();
 	}, [html]);
 
+	useEffect(() => {
+		onMeasure?.(intrinsicSize);
+	}, [intrinsicSize, onMeasure]);
+
 	return (
 		<div
 			ref={canvasRef as Ref<HTMLDivElement> | undefined}
@@ -339,11 +359,19 @@ export function InfographicPreviewCard({
 	previewLabel,
 	interactive = true,
 }: InfographicPreviewCardProps) {
+	const [measuredSize, setMeasuredSize] = useState<InfographicMeasuredSize | null>(null);
+
 	const content = (
-		<div className="relative w-full">
+		<div
+			className="relative w-full"
+			style={{
+				aspectRatio: resolveInfographicAspectRatio(measuredSize),
+			}}
+		>
 			<InfographicCanvas
 				html={html}
-				className="aspect-[3/4] w-full overflow-hidden rounded-[24px] transition duration-200 group-hover:opacity-95"
+				onMeasure={setMeasuredSize}
+				className="h-full w-full overflow-hidden rounded-[24px] transition duration-200 group-hover:opacity-95"
 				paddingClassName="box-border h-full w-full"
 				contentClassName="h-full w-full"
 				style={buildInfographicSurfaceStyle(html)}
@@ -400,6 +428,10 @@ export function InfographicLightbox({
 	closeLabel,
 	onClose,
 }: InfographicLightboxProps) {
+	const [measuredSize, setMeasuredSize] = useState<InfographicMeasuredSize | null>(null);
+	const aspectRatio = resolveInfographicAspectRatio(measuredSize);
+	const maxHeight = "92vh";
+
 	return (
 		<div
 			className="fixed inset-0 z-[70] bg-black/75 backdrop-blur-[1px]"
@@ -424,13 +456,16 @@ export function InfographicLightbox({
 					{title}
 				</div>
 				<div
-					className="relative aspect-[3/4]"
+					className="relative"
 					style={{
-						width: "min(96vw, calc(92vh * 3 / 4))",
+						width: `min(96vw, calc(92vh * ${aspectRatio}))`,
+						height: `min(92vh, calc(96vw / ${aspectRatio}))`,
+						maxHeight,
 					}}
 				>
 					<InfographicCanvas
 						html={html}
+						onMeasure={setMeasuredSize}
 						className="h-full w-full overflow-hidden rounded-[28px] shadow-[0_30px_80px_rgba(0,0,0,0.35)]"
 						paddingClassName="box-border h-full w-full"
 						contentClassName="h-full w-full"
