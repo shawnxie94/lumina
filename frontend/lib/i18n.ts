@@ -378,9 +378,38 @@ const translations: Record<Language, Record<string | number, string>> = {
 		开始日期: "Start date",
 		结束日期: "End date",
 		"搜索文章标题...": "Search article titles...",
+		搜索文章: "Search articles",
 		"搜索中...": "Searching...",
 		未找到匹配的文章: "No matching articles",
 		输入关键词搜索文章: "Type keywords to search",
+		插入引用: "Insert reference",
+		插入文章引用: "Insert article reference",
+		插入内容引用: "Insert content reference",
+		已选入本期: "Included in this review",
+		"选择一篇文章后，可插入文章引用或内容引用。":
+			"Select an article to insert either an article placeholder or a content reference.",
+		返回列表: "Back to list",
+		已选文章: "Selected article",
+		返回选择模式: "Back to mode selection",
+		"优先使用译文，为空时回退原文":
+			"Prefer translated content and fall back to raw markdown when it is empty.",
+		"加载引用内容中...": "Loading reference content...",
+		暂无可引用内容: "No quote-ready content available",
+		未检测到可引用的正文内容: "No quote-ready article body detected",
+		引用内容加载失败: "Failed to load reference content",
+		引用文章搜索失败: "Failed to search articles for references",
+		"搜索文章后，直接选择插入文章引用，或进入正文预览挑选内容引用":
+			"Search an article, then either insert the article reference directly or enter preview mode to select a content quote.",
+		"输入 /ref 可打开引用插入。":
+			"Type /ref to open the reference insert panel.",
+		"你可以插入文章占位符，或从正文中手动挑选一段内容作为引用。":
+			"Insert an article placeholder, or manually pick a paragraph from the article body as a quote.",
+		"在正文预览中拖动鼠标选择一段文字，然后点击浮动按钮插入引用":
+			"Drag across the preview to select text, then click the floating button to insert the quote.",
+		拖动鼠标选择正文后插入引用:
+			"Drag across the article body, then insert the selected quote.",
+		请选择正文中的内容后再插入:
+			"Select article body content before inserting.",
 		清除: "Clear",
 		请输入密码: "Please enter password",
 		密码长度至少6位: "Password must be at least 6 characters",

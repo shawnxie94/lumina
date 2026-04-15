@@ -410,6 +410,51 @@ async def test_search_articles_matches_translated_title(db_session):
 
 
 @pytest.mark.anyio
+async def test_search_articles_excludes_hidden_articles(db_session):
+    visible_article = Article(
+        title="Visible Search Article",
+        title_trans="可见搜索文章",
+        slug="visible-search-article",
+        content_md="content",
+        content_trans="",
+        top_image="",
+        author="Tester",
+        published_at=now_str(),
+        source_domain="example.com",
+        status="completed",
+        is_visible=True,
+        created_at=now_str(),
+        updated_at=now_str(),
+    )
+    hidden_article = Article(
+        title="Hidden Search Article",
+        title_trans="隐藏搜索文章",
+        slug="hidden-search-article",
+        content_md="content",
+        content_trans="",
+        top_image="",
+        author="Tester",
+        published_at=now_str(),
+        source_domain="example.com",
+        status="completed",
+        is_visible=False,
+        created_at=now_str(),
+        updated_at=now_str(),
+    )
+    db_session.add_all([visible_article, hidden_article])
+    db_session.commit()
+
+    response = await article_router.search_articles(
+        query="搜索文章",
+        limit=20,
+        db=db_session,
+        _=True,
+    )
+
+    assert [item["slug"] for item in response] == ["visible-search-article"]
+
+
+@pytest.mark.anyio
 async def test_get_article_includes_translated_titles_for_neighbors(db_session):
     previous_article = Article(
         title="Previous Original Title",

@@ -1157,6 +1157,33 @@ class ReviewService:
                     block_lines.extend(["", f"![]({item['top_image']})"])
                 block_lines.extend(["", item["summary"]])
                 blocks[slug] = "\n".join(block_lines).strip()
+        referenced_slugs = self._extract_article_placeholders(issue.markdown_content)
+        missing_slugs = [slug for slug in referenced_slugs if slug not in blocks]
+        if missing_slugs:
+            extra_articles = (
+                db.query(Article)
+                .options(joinedload(Article.ai_analysis))
+                .filter(Article.slug.in_(missing_slugs))
+                .filter(Article.is_visible == True)
+                .all()
+            )
+            for article in extra_articles:
+                slug = (article.slug or "").strip()
+                if not slug or slug in blocks:
+                    continue
+                item = {
+                    "title": (article.title_trans or "").strip() or article.title,
+                    "slug": slug,
+                    "summary": (article.ai_analysis.summary if article.ai_analysis else "")
+                    or "（暂无摘要）",
+                    "top_image": article.top_image or "",
+                    "hidden": False,
+                }
+                block_lines = [self._build_article_heading_link(item)]
+                if item["top_image"]:
+                    block_lines.extend(["", f"![]({item['top_image']})"])
+                block_lines.extend(["", item["summary"]])
+                blocks[slug] = "\n".join(block_lines).strip()
         return blocks
 
     def _group_issue_article_items(

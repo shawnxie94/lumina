@@ -1,7 +1,15 @@
 import type { GetServerSideProps } from "next";
 import Link from "next/link";
 import { useRouter } from "next/router";
-import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent } from "react";
+import {
+	useCallback,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+	type ChangeEvent,
+	type ClipboardEvent,
+} from "react";
 
 import { signIn, signOut, useSession } from "next-auth/react";
 
@@ -11,6 +19,7 @@ import Button from "@/components/Button";
 import ConfirmModal from "@/components/ConfirmModal";
 import IconButton from "@/components/IconButton";
 import ReviewManualGenerateModal from "@/components/ReviewManualGenerateModal";
+import ReviewReferenceInsertPanel from "@/components/ReviewReferenceInsertPanel";
 import SeoHead from "@/components/SeoHead";
 import { BackToTop } from "@/components/BackToTop";
 import ArticleMetaRow from "@/components/article/ArticleMetaRow";
@@ -62,6 +71,11 @@ import {
 	resolveSeoAssetUrl,
 } from "@/lib/seo";
 import {
+	detectReviewReferenceCommand,
+	formatReviewReferenceInsertion,
+	type ReviewReferenceCommandMatch,
+} from "@/lib/reviewReference";
+import {
 	fetchServerBasicSettings,
 	fetchServerReview,
 	resolveRequestOrigin,
@@ -95,6 +109,11 @@ type PastedMediaKind = "image" | "video" | "audio" | "book";
 interface PastedMediaLink {
 	kind: PastedMediaKind;
 	url: string;
+}
+
+interface EditorSelectionRange {
+	start: number;
+	end: number;
 }
 
 const REVIEW_ARTICLE_SECTIONS_PLACEHOLDER = "{{review_article_sections}}";
@@ -215,6 +234,27 @@ function insertTextAtCursor(
 	onChange(nextValue);
 	requestAnimationFrame(() => {
 		const cursor = start + text.length;
+		target.setSelectionRange(cursor, cursor);
+		target.focus();
+	});
+}
+
+function replaceTextRange(
+	target: HTMLTextAreaElement,
+	range: EditorSelectionRange,
+	text: string,
+	onChange: (value: string) => void,
+) {
+	const formattedText = formatReviewReferenceInsertion(
+		target.value,
+		range.start,
+		range.end,
+		text,
+	);
+	const nextValue = `${target.value.slice(0, range.start)}${formattedText}${target.value.slice(range.end)}`;
+	onChange(nextValue);
+	requestAnimationFrame(() => {
+		const cursor = range.start + formattedText.length;
 		target.setSelectionRange(cursor, cursor);
 		target.focus();
 	});
@@ -477,6 +517,9 @@ export default function ReviewDetailPage({
 	const [mediaStorageEnabled, setMediaStorageEnabled] = useState(false);
 	const [mediaStorageLoading, setMediaStorageLoading] = useState(false);
 	const [mediaUploading, setMediaUploading] = useState(false);
+	const [showReferenceInsertPanel, setShowReferenceInsertPanel] = useState(false);
+	const [referenceCommandRange, setReferenceCommandRange] =
+		useState<ReviewReferenceCommandMatch | null>(null);
 
 	const [comments, setComments] = useState<ReviewComment[]>([]);
 	const [commentsLoading, setCommentsLoading] = useState(false);
@@ -498,6 +541,7 @@ export default function ReviewDetailPage({
 	const editContentRef = useRef<HTMLTextAreaElement | null>(null);
 	const previewRef = useRef<HTMLDivElement | null>(null);
 	const activeHeadingMapRef = useRef<Map<string, number>>(new Map());
+	const referenceSelectionRef = useRef<EditorSelectionRange>({ start: 0, end: 0 });
 
 	const lightboxImage = lightboxImages[lightboxIndex] || null;
 	const hasLightboxMultiple = lightboxImages.length > 1;
@@ -935,7 +979,66 @@ export default function ReviewDetailPage({
 
 	const closeEditMode = () => {
 		resetEditDraft(review);
+		setShowReferenceInsertPanel(false);
+		setReferenceCommandRange(null);
 		setIsEditing(false);
+	};
+
+	const rememberEditorSelection = (target: HTMLTextAreaElement) => {
+		referenceSelectionRef.current = {
+			start: target.selectionStart ?? target.value.length,
+			end: target.selectionEnd ?? target.value.length,
+		};
+	};
+
+	const restoreEditorSelection = (range?: EditorSelectionRange) => {
+		const target = editContentRef.current;
+		if (!target) return;
+		const nextRange = range || referenceSelectionRef.current;
+		requestAnimationFrame(() => {
+			target.focus();
+			target.setSelectionRange(nextRange.start, nextRange.end);
+		});
+	};
+
+	const handleCloseReferenceInsertPanel = () => {
+		setShowReferenceInsertPanel(false);
+		const fallbackRange = referenceCommandRange
+			? {
+					start: referenceCommandRange.end,
+					end: referenceCommandRange.end,
+				}
+			: referenceSelectionRef.current;
+		setReferenceCommandRange(null);
+		restoreEditorSelection(fallbackRange);
+	};
+
+	const handleInsertReference = (insertedMarkdown: string) => {
+		const target = editContentRef.current;
+		if (!target) return;
+		const range = referenceCommandRange
+			? {
+					start: referenceCommandRange.lineStart,
+					end: referenceCommandRange.lineEnd,
+				}
+			: referenceSelectionRef.current;
+		setShowReferenceInsertPanel(false);
+		setReferenceCommandRange(null);
+		replaceTextRange(target, range, insertedMarkdown, setMarkdownContent);
+	};
+
+	const handleMarkdownContentChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
+		const nextValue = event.target.value;
+		setMarkdownContent(nextValue);
+		rememberEditorSelection(event.target);
+		if (showReferenceInsertPanel) return;
+		const match = detectReviewReferenceCommand(
+			nextValue,
+			event.target.selectionStart ?? nextValue.length,
+		);
+		if (!match) return;
+		setReferenceCommandRange(match);
+		setShowReferenceInsertPanel(true);
 	};
 
 	const handleOpenRegenerateModal = () => {
@@ -1438,33 +1541,40 @@ export default function ReviewDetailPage({
 												<span className="text-xs font-normal text-text-3">
 													{t("支持全部文章占位符 {{review_article_sections}} 和单篇文章占位符 {{article_slug}}。")}
 												</span>
+												<span className="text-xs font-normal text-text-3">
+													{t("输入 /ref 可打开引用插入。")}
+												</span>
 												{!mediaStorageEnabled ? (
 													<span className="text-xs font-normal text-text-3">
-														{t("未开启本地存储，外链将保持不变")}
-													</span>
-												) : null}
+													{t("未开启本地存储，外链将保持不变")}
+												</span>
+											) : null}
+										</div>
+											<div className="flex items-center gap-2">
+												<IconButton
+													onClick={handleBatchConvertMarkdownImages}
+													disabled={mediaUploading || !mediaStorageEnabled}
+													title={
+														mediaStorageEnabled
+															? t("扫描并转存外链图片")
+															: t("未开启本地图片存储")
+													}
+													variant="ghost"
+													size="md"
+													className="hover:bg-muted"
+												>
+													<IconLink className="h-4 w-4" />
+												</IconButton>
 											</div>
-											<IconButton
-												onClick={handleBatchConvertMarkdownImages}
-												disabled={mediaUploading || !mediaStorageEnabled}
-												title={
-													mediaStorageEnabled
-														? t("扫描并转存外链图片")
-														: t("未开启本地图片存储")
-												}
-												variant="ghost"
-												size="md"
-												className="hover:bg-muted"
-											>
-												<IconLink className="h-4 w-4" />
-											</IconButton>
 										</div>
 										<TextArea
 											ref={editContentRef}
 											rows={26}
 											value={markdownContent}
-											onChange={(event) => setMarkdownContent(event.target.value)}
+											onChange={handleMarkdownContentChange}
 											onPaste={handleEditPaste}
+											onClick={(event) => rememberEditorSelection(event.currentTarget)}
+											onKeyUp={(event) => rememberEditorSelection(event.currentTarget)}
 											onScroll={() => {
 												if (!editContentRef.current || !previewRef.current) return;
 												syncScrollPosition(editContentRef.current, previewRef.current);
@@ -1824,6 +1934,12 @@ export default function ReviewDetailPage({
 				initialSelectedArticleIds={review.selected_article_ids || []}
 				lockTemplateSelection
 				title={t("重新生成回顾")}
+			/>
+			<ReviewReferenceInsertPanel
+				isOpen={showReferenceInsertPanel}
+				onClose={handleCloseReferenceInsertPanel}
+				onInsert={handleInsertReference}
+				selectedArticleIds={review.selected_article_ids || []}
 			/>
 
 			{lightboxImage && (

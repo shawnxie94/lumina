@@ -228,6 +228,15 @@ body {
   color: var(--text-2);
 }
 
+.review-reference-preview--text-only img,
+.review-reference-preview--text-only video,
+.review-reference-preview--text-only audio,
+.review-reference-preview--text-only iframe,
+.review-reference-preview--text-only embed,
+.review-reference-preview--text-only .media-embed {
+  display: none !important;
+}
+
 .article-prose p,
 .article-prose li {
   text-align: justify;

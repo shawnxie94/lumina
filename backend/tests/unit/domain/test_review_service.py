@@ -451,6 +451,32 @@ def test_render_issue_markdown_replaces_article_slug_placeholders(db_session):
     assert "最新摘要" in rendered
 
 
+def test_render_issue_markdown_replaces_visible_article_slug_placeholders_outside_issue_selection(
+    db_session,
+):
+    service = ReviewService()
+    template = make_template(db_session, schedule_type="weekly")
+    issue = make_issue(
+        db_session,
+        template.id,
+        markdown_content="# 回顾\n\n## 额外引用\n\n### {{visible-external-article}}\n",
+    )
+    article = make_article(
+        db_session,
+        title="Visible External Article",
+        created_at="2026-04-02T08:00:00+08:00",
+        summary="外部可见文章摘要",
+    )
+    article.slug = "visible-external-article"
+    db_session.commit()
+
+    rendered = service.render_issue_markdown(db_session, issue, is_admin=False)
+
+    assert "{{visible-external-article}}" not in rendered
+    assert "### [Visible External Article](/article/visible-external-article)" in rendered
+    assert "外部可见文章摘要" in rendered
+
+
 def test_render_issue_markdown_hides_non_public_articles_for_public_view(db_session):
     service = ReviewService()
     category = make_category(db_session, "AI", 1)
@@ -522,6 +548,38 @@ def test_render_issue_markdown_removes_empty_category_blocks_for_public_view(db_
 
     assert "## AI" not in public_rendered
     assert "{{hidden-article}}" not in public_rendered
+
+
+def test_build_article_placeholder_render_blocks_includes_visible_external_article_placeholders(
+    db_session,
+):
+    service = ReviewService()
+    template = make_template(db_session, schedule_type="weekly")
+    issue = make_issue(
+        db_session,
+        template.id,
+        markdown_content="# 回顾\n\n### {{visible-external-article}}\n",
+    )
+    article = make_article(
+        db_session,
+        title="Visible External Article",
+        created_at="2026-04-02T08:00:00+08:00",
+        summary="外部可见文章摘要",
+    )
+    article.slug = "visible-external-article"
+    db_session.commit()
+
+    blocks = service.build_article_placeholder_render_blocks(
+        db_session,
+        issue,
+        is_admin=True,
+    )
+
+    assert "visible-external-article" in blocks
+    assert "[Visible External Article](/article/visible-external-article)" in blocks[
+        "visible-external-article"
+    ]
+    assert "外部可见文章摘要" in blocks["visible-external-article"]
 
 
 def test_serialize_issue_card_falls_back_when_issue_top_image_file_is_missing(db_session):

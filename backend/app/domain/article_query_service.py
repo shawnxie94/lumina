@@ -357,7 +357,12 @@ class ArticleQueryService:
             db.query(Article.id, Article.title, Article.title_trans, Article.slug),
             query_text,
         )
-        return query.order_by(Article.created_at.desc()).limit(limit).all()
+        return (
+            query.filter(Article.is_visible == True)
+            .order_by(Article.created_at.desc())
+            .limit(limit)
+            .all()
+        )
 
     def get_article_neighbors(
         self,
