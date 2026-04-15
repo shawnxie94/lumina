@@ -80,6 +80,11 @@ import {
 	fetchServerReview,
 	resolveRequestOrigin,
 } from "@/lib/serverApi";
+import {
+	downloadMarkdownFile,
+	resolveDetailExportFilename,
+	resolveReviewDetailExportMarkdown,
+} from "@/lib/detailMarkdownExport";
 import { renderSafeMarkdown } from "@/lib/safeHtml";
 
 interface ReviewDetailPageProps {
@@ -1299,6 +1304,23 @@ export default function ReviewDetailPage({
 		}
 	};
 
+	const handleExportMarkdown = useCallback(() => {
+		try {
+			const content = resolveReviewDetailExportMarkdown({
+				title: review.title,
+				topImage: review.top_image,
+				renderedMarkdown: review.rendered_markdown,
+				markdownContent: review.markdown_content,
+			});
+			const filename = resolveDetailExportFilename("review", review.slug);
+			downloadMarkdownFile(filename, content);
+			showToast(t("导出成功"), "success");
+		} catch (error) {
+			console.error("Failed to export review markdown:", error);
+			showToast(t("导出失败"), "error");
+		}
+	}, [review, showToast, t]);
+
 	// Comment handlers for CommentSection
 	const handleSubmitComment = async (content: string, replyToId?: string | null) => {
 		if (!session || review.status !== "published") return;
@@ -1629,6 +1651,15 @@ export default function ReviewDetailPage({
 										</h2>
 									</div>
 									<div className="flex flex-wrap items-center gap-2">
+										<IconButton
+											onClick={handleExportMarkdown}
+											variant="ghost"
+											size="md"
+											title={t("导出 Markdown")}
+											className="rounded-sm"
+										>
+											<IconDoc className="h-4 w-4" />
+										</IconButton>
 										{isAdmin ? (
 											<>
 												<IconButton

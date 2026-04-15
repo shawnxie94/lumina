@@ -82,3 +82,19 @@ test("article detail page wires markdown export into the content toolbar", () =>
 	assert.match(source, /showToast\(t\("导出成功"\)/);
 	assert.match(source, /showToast\(t\("导出失败"\), "error"\)/);
 });
+
+test("review detail page wires markdown export into the content toolbar", () => {
+	const source = readFileSync(
+		join(process.cwd(), "pages/reviews/[slug].tsx"),
+		"utf8",
+	);
+
+	assert.match(source, /resolveReviewDetailExportMarkdown/);
+	assert.match(source, /resolveDetailExportFilename/);
+	assert.match(source, /downloadMarkdownFile/);
+	assert.match(source, /renderedMarkdown: review\.rendered_markdown/);
+	assert.match(source, /markdownContent: review\.markdown_content/);
+	assert.match(source, /title=\{t\("导出 Markdown"\)\}/);
+	assert.match(source, /showToast\(t\("导出成功"\), "success"\)/);
+	assert.match(source, /showToast\(t\("导出失败"\), "error"\)/);
+});
