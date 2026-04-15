@@ -69,6 +69,7 @@ import ConfirmModal from "@/components/ConfirmModal";
 import { BackToTop } from "@/components/BackToTop";
 import {
 	IconBolt,
+	IconArrowDown,
 	IconBook,
 	IconCheck,
 	IconClock,
@@ -3246,6 +3247,7 @@ export default function ArticleDetailPage({
 
 		try {
 			const content = resolveArticleDetailExportMarkdown({
+				origin: siteOrigin,
 				title: article.title,
 				topImage: article.top_image,
 				contentTrans: article.content_trans,
@@ -3258,7 +3260,7 @@ export default function ArticleDetailPage({
 			console.error("Failed to export article markdown:", error);
 			showToast(t("导出失败"), "error");
 		}
-	}, [article, showToast, t]);
+	}, [article, showToast, siteOrigin, t]);
 
 	const handleToggleVisibility = async () => {
 		if (!id || !article) return;
@@ -4308,7 +4310,7 @@ export default function ArticleDetailPage({
 										title={t("导出 Markdown")}
 										className="rounded-sm"
 									>
-										<IconDoc className="h-4 w-4" />
+										<IconArrowDown className="h-4 w-4" />
 									</IconButton>
 									{article.content_trans && (
 										<button

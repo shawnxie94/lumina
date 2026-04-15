@@ -28,6 +28,7 @@ import CommentSection, {
 } from "@/components/comment/CommentSection";
 import { useToast } from "@/components/Toast";
 import {
+	IconArrowDown,
 	IconBook,
 	IconCheck,
 	IconChevronDown,
@@ -1307,6 +1308,7 @@ export default function ReviewDetailPage({
 	const handleExportMarkdown = useCallback(() => {
 		try {
 			const content = resolveReviewDetailExportMarkdown({
+				origin: siteOrigin,
 				title: review.title,
 				topImage: review.top_image,
 				renderedMarkdown: review.rendered_markdown,
@@ -1319,7 +1321,7 @@ export default function ReviewDetailPage({
 			console.error("Failed to export review markdown:", error);
 			showToast(t("导出失败"), "error");
 		}
-	}, [review, showToast, t]);
+	}, [review, showToast, siteOrigin, t]);
 
 	// Comment handlers for CommentSection
 	const handleSubmitComment = async (content: string, replyToId?: string | null) => {
@@ -1658,7 +1660,7 @@ export default function ReviewDetailPage({
 											title={t("导出 Markdown")}
 											className="rounded-sm"
 										>
-											<IconDoc className="h-4 w-4" />
+											<IconArrowDown className="h-4 w-4" />
 										</IconButton>
 										{isAdmin ? (
 											<>
