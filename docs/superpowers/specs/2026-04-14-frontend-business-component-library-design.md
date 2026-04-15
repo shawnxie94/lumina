@@ -62,6 +62,28 @@ Lumina 已有一层相对稳定的 primitives：
   - [frontend/components/article/ArticleTagBar.tsx](/Users/shawn/Documents/GitHub/lumina/frontend/components/article/ArticleTagBar.tsx)
   - [frontend/components/article/ArticleSplitEditorModal.tsx](/Users/shawn/Documents/GitHub/lumina/frontend/components/article/ArticleSplitEditorModal.tsx)
 
+### 新增逻辑带来的新信号
+
+在首版 spec 之后，前端又新增了一批值得纳入抽象判断的逻辑，说明复用面已经不只停留在“列表 / 设置 / 卡片”层：
+
+- 管理页新增了任务链时间线、AI 续写反馈弹窗、备份导出轮询与下载状态：
+  - [frontend/pages/admin.tsx](/Users/shawn/Documents/GitHub/lumina/frontend/pages/admin.tsx)
+  - [frontend/lib/aiContinuation.ts](/Users/shawn/Documents/GitHub/lumina/frontend/lib/aiContinuation.ts)
+  - [frontend/lib/backupExport.ts](/Users/shawn/Documents/GitHub/lumina/frontend/lib/backupExport.ts)
+  - [frontend/lib/useLatestBackupExportJob.ts](/Users/shawn/Documents/GitHub/lumina/frontend/lib/useLatestBackupExportJob.ts)
+- 文章详情新增了 Markdown 导出和固定高度的版本历史主从预览弹窗：
+  - [frontend/pages/article/[id].tsx](/Users/shawn/Documents/GitHub/lumina/frontend/pages/article/[id].tsx)
+  - [frontend/lib/detailMarkdownExport.ts](/Users/shawn/Documents/GitHub/lumina/frontend/lib/detailMarkdownExport.ts)
+- 回顾详情新增了 Markdown 导出、`/ref` 命令触发的引用插入，以及引用内容预览面板：
+  - [frontend/pages/reviews/[slug].tsx](/Users/shawn/Documents/GitHub/lumina/frontend/pages/reviews/[slug].tsx)
+  - [frontend/components/ReviewReferenceInsertPanel.tsx](/Users/shawn/Documents/GitHub/lumina/frontend/components/ReviewReferenceInsertPanel.tsx)
+  - [frontend/lib/reviewReference.ts](/Users/shawn/Documents/GitHub/lumina/frontend/lib/reviewReference.ts)
+
+这组新增逻辑说明两个新结论：
+
+1. 组件库除了视觉组件，还需要承载一批“无界面但可复用”的 headless hooks / utils。
+2. 后台工作流型 UI 已经成为独立包的重要组成，而不是只有列表页和设置页值得抽象。
+
 ### 当前抽象的主要问题
 
 1. 组件命名偏项目内语义，例如 `ArticleSplitEditorModal`，不利于跨项目复用。
@@ -193,6 +215,46 @@ Lumina 已有一层相对稳定的 primitives：
 - 只保留跨项目也成立的内容语义
 - 不能绑定 Lumina 的实体类型和上下文
 
+### 一点五、组件层之外的 supporting modules
+
+三层结构适用于“组件本身”，但从最近新增逻辑看，独立包还应明确保留两类 supporting modules：
+
+#### `hooks`
+
+职责：
+
+- 提供无界面、可复用的状态机和交互流程
+
+候选能力：
+
+- `useAsyncJobPolling`
+- `useTaskTimelineViewer`
+- `useReferenceInsertion`
+- `useContentExport`
+
+约束：
+
+- 不直接依赖项目 API client
+- 通过回调或 service adapter 注入异步行为
+
+#### `utils`
+
+职责：
+
+- 提供格式化、命令解析、导出拼接、选择区替换等纯函数能力
+
+候选能力：
+
+- markdown 导出文档拼装
+- 引用命令检测与格式化
+- 工作流文案 copy resolver
+- 状态文本解析
+
+约束：
+
+- 保持无副作用或把副作用限制在极薄适配层
+- 不直接读取浏览器全局对象，除非在明确的 adapter 中
+
 ### 二、首批抽象优先级
 
 #### P0：应最先沉淀
@@ -215,20 +277,29 @@ Lumina 已有一层相对稳定的 primitives：
 1. `SplitEditorModal`
 2. `ConfirmActionModal`
 3. `ActionToolbar`
-4. `RecordTable`
-5. `ContentMetaRow`
-6. `ContentTagList`
+4. `AsyncJobStatusPanel`
+5. `TaskTimelineViewer`
+6. `VersionHistoryBrowser`
+7. `ReferenceInsertPanel`
+8. `ContentMetaRow`
+9. `ContentTagList`
 
 #### P2：暂缓进入独立包核心
 
 1. `ArticleCard`
 2. `ReviewCard`
 3. `CommentSection`
+4. `RecordTable`
 
 原因：
 
 - 当前与 Lumina 数据结构、权限和流程耦合较深
 - 容易导致库 API 被项目现状反向绑架
+
+补充说明：
+
+- `RecordTable` 仍然有价值，但最近新增逻辑表明“固定高度工作流弹窗 / 主从预览 / 异步任务状态”比通用表格更早进入复用区。
+- `ReferenceInsertPanel` 有较强的内容场景属性，但它体现的是“搜索 -> 预览 -> 插入”工作流模式，可保留在 P1，前提是拆掉直接依赖 `articleApi` 和 `useI18n` 的部分。
 
 ### 三、命名策略
 
@@ -262,6 +333,7 @@ packages/
       primitives/
       patterns/
       domains/
+      utils/
       theme/
       hooks/
       types/
@@ -275,6 +347,8 @@ packages/
 - `@scope/cms-ui`
 - `@scope/cms-ui/patterns`
 - `@scope/cms-ui/domains`
+- `@scope/cms-ui/hooks`
+- `@scope/cms-ui/utils`
 - `@scope/cms-ui/theme`
 
 ### 五、主题与样式管理
@@ -328,6 +402,12 @@ packages/
 - Lumina 的 `useAuth`
 - Lumina 的 API client
 
+同样的约束也适用于 `hooks` 和 `utils`：
+
+- `hooks` 不能直接写死后端接口实现
+- `utils` 不能直接绑定项目实体类型
+- 浏览器下载、剪贴板、轮询等副作用应尽量压缩到 adapter 层
+
 对 `antd` 的处理建议：
 
 - 短期内允许留在适配层
@@ -347,12 +427,21 @@ packages/
 - 文案通过 props 或 locale object 注入
 - 跳转通过 `href`、`onNavigate`、`renderLink` 注入
 - 数据通过轻量 view-model props 注入
+- 异步行为通过 service adapter 或 action callback 注入
 
 例如：
 
 - `ContentCard` 接收 `title`、`coverUrl`、`metaItems`、`actions`
 - `FilterPanel` 接收 `filters`、`values`、`onChange`
 - `SettingsShell` 接收 `sections`、`activeKey`、`onSectionChange`
+- `TaskTimelineViewer` 接收 `timeline`、`selectedNodeId`、`onSelectNode`
+- `useAsyncJobPolling` 接收 `loadJob`、`onCompleted`、`onFailed`
+
+最近新增逻辑对应的拆分建议：
+
+- [frontend/lib/useLatestBackupExportJob.ts](/Users/shawn/Documents/GitHub/lumina/frontend/lib/useLatestBackupExportJob.ts) 说明“异步任务轮询”适合成为通用 hook，而不是页面私有逻辑。
+- [frontend/lib/detailMarkdownExport.ts](/Users/shawn/Documents/GitHub/lumina/frontend/lib/detailMarkdownExport.ts) 说明“详情导出”适合拆成 utils + action adapter，而不是只做一个按钮组件。
+- [frontend/components/ReviewReferenceInsertPanel.tsx](/Users/shawn/Documents/GitHub/lumina/frontend/components/ReviewReferenceInsertPanel.tsx) 说明“搜索 + 预览 + 插入”型工作流要拆成 pattern 外壳和宿主数据适配层。
 
 ## 落地路线图
 
@@ -392,11 +481,14 @@ packages/
 4. `FilterPanel`
 5. `ResourceListLayout`
 6. `SettingsShell`
+7. `AsyncJobStatusPanel`
+8. `TaskTimelineViewer`
 
 原因：
 
 - 这些组件的输入输出最稳定
 - 不会过早触碰详情页深层业务逻辑
+- 最近新增的后台工作流已经证明 `AsyncJobStatusPanel` 和 `TaskTimelineViewer` 有独立抽象价值
 
 ### 第三阶段：引入内容域组件
 
@@ -410,6 +502,9 @@ packages/
 2. `ContentTagList`
 3. `SplitEditorModal`
 4. `ContentCard`
+5. `VersionHistoryBrowser`
+6. `ReferenceInsertPanel`
+7. `content export utils`
 
 ### 第四阶段：评估是否独立仓库 / 私有包发布
 
@@ -467,6 +562,7 @@ packages/
 
 - 禁止直接依赖 `useI18n`、`useAuth`、`router`
 - 统一通过 props / adapter 注入
+- 对 `articleApi.searchArticles()`、`backupApi.getLatestExportJob()` 这类数据能力，一律先抽成 service interface，再由宿主项目接入实现
 
 ### 风险 3：核心层被第三方 UI 框架锁死
 
@@ -482,13 +578,21 @@ packages/
 - `ArticleCard`、`ReviewCard`、`CommentSection` 暂不进入首批核心包
 - 优先抽容器、布局、筛选、设置类模式组件
 
+### 风险 5：把“有状态工作流”误判成普通组件
+
+规避：
+
+- 对任务链、备份轮询、历史版本预览、引用插入等场景，优先拆成 `hook + pattern + adapter`
+- 不把搜索请求、轮询请求、下载请求直接糊进组件内部
+
 ## 结论
 
 本次前端样式与业务组件抽象的推荐方向是：
 
 1. 采用 **primitives / patterns / domains** 三层结构。
-2. 目标定位为 **可独立发布的内容管理组件库**，但先在 Lumina 仓库内包化验证。
-3. 首批只做最通用的中后台模式组件，不急于抽深度内容业务组件。
-4. 所有组件从一开始就遵守“去项目上下文、去实体绑定、去路由耦合”的独立包约束。
+2. 在三层组件之外，明确保留 **hooks / utils / adapters** 这类 supporting modules。
+3. 目标定位为 **可独立发布的内容管理组件库**，但先在 Lumina 仓库内包化验证。
+4. 首批只做最通用的中后台模式组件，同时开始关注任务链、备份状态、历史预览这类工作流型 pattern。
+5. 所有组件与 hooks 从一开始就遵守“去项目上下文、去实体绑定、去路由耦合”的独立包约束。
 
 后续如果进入实现阶段，应先基于本设计再写一份按文件和迁移顺序展开的 implementation plan。

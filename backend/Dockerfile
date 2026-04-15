@@ -8,7 +8,7 @@ ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
 
 COPY . .
 
-RUN pip install --no-cache-dir --no-compile -e .
+RUN pip install --no-build-isolation --no-cache-dir --no-compile -e .
 
 RUN mkdir -p /app/data
 

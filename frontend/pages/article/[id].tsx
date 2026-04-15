@@ -4584,9 +4584,11 @@ export default function ArticleDetailPage({
 						onClose={() => setShowVersionHistoryModal(false)}
 						title={`${getAiContentLabel(historyContentType, t)} · ${t("版本历史")}`}
 						widthClassName="max-w-4xl"
+						panelClassName="flex h-[min(90vh,48rem)] flex-col"
+						bodyClassName="min-h-0 flex-1 overflow-hidden p-4"
 					>
-						<div className="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
-							<div className="space-y-3">
+						<div className="grid h-full min-h-0 gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
+							<div className="min-h-0 overflow-y-auto space-y-3">
 								<div className="text-xs text-text-3">
 									{versionHistoryLoading[historyContentType]
 										? t("加载中")
@@ -4666,7 +4668,7 @@ export default function ArticleDetailPage({
 									})}
 								</div>
 							</div>
-							<div className="rounded-lg border border-border bg-muted p-4">
+							<div className="min-h-0 overflow-y-auto rounded-lg border border-border bg-muted p-4">
 								{previewVersion ? (
 									<div className="space-y-3">
 										<div className="flex items-center justify-between gap-2">

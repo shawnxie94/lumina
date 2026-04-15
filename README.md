@@ -11,11 +11,12 @@ Lumina is an information management workspace that combines a web app, FastAPI b
 - **Browser capture workflow**: one-click full-page or selection capture via popup/context menu, with built-in recent capture history, error logs, and site-adapter extraction.
 - **Structured article library**: title search plus category/tag/author/source/time filters, with batch category, hide, and delete actions for efficient content management.
 - **Deep reading experience**: detail page supports original/translated views, immersive mode, TOC, article notes, highlight annotations, and rendering for code, math, and common media embeds.
-- **AI insight pipeline**: generate summaries, key points, quotes, outlines, translations, auto-classification, auto-tagging, and similar-article recommendations with monitorable, cancelable, retryable background tasks.
+- **AI insight pipeline**: generate summaries, key points, quotes, outlines, translations, auto-classification, auto-tagging, and similar-article recommendations with monitorable background tasks that also support continuation feedback, repair rounds, cancellation, retry, and chain-based timelines.
+- **Review workflow**: create template-driven periodic reviews, regenerate draft reviews from selected articles, and insert either article placeholders or quoted content references directly inside the review editor.
 - **Comments and collaboration**: article comments/replies, admin moderation (hide/delete), GitHub/Google OAuth sign-in, and sensitive-word filtering for public discussions.
-- **Admin control center**: configure site basics and home copy, model APIs (general/vector), prompts, recommendation strategy, categories, comments, and storage settings.
+- **Admin control center**: configure site basics and home copy, model APIs (general/vector), prompts, recommendation strategy, categories, comments, review templates, and storage settings.
 - **Operations and observability**: monitor AI task timelines, usage metrics (calls/tokens/cost), header notification center for failed tasks/API errors, and key backend health signals.
-- **Content lifecycle management**: local media storage/compression/cleanup, Markdown export, public RSS feeds, plus JSON backup export and strict incremental import for migration and recovery.
+- **Content lifecycle management**: local media storage/compression/cleanup, detail-page Markdown export for both articles and reviews, public RSS feeds for articles and reviews, plus background backup generation/download and strict incremental import for migration and recovery.
 - **Localized UI and access model**: built-in Chinese/English UI support, light/dark themes, guest browsing, and admin-authenticated management flows.
 
 ## Product Flow
@@ -84,20 +85,32 @@ flowchart LR
 
 ![Comments](./docs/assets/screenshots/05-page-comments.png)
 
-- **Content export**: export article title, cover image, and summary by category.
+- **Content export**: export article title, cover image, and summary by category, and download the current article or review detail page as Markdown.
 
 ![Export](./docs/assets/screenshots/05-page-export.png)
 
-- **RSS subscription**: public RSS feeds are available and can be filtered by category and tags.
+- **Review workspace**: published review pages, template-based review generation, article/content reference insertion, and review comments are available out of the box.
 
-- **Notification center**: the header aggregates failed AI tasks and API error notifications in one place.
+![Review](./docs/assets/screenshots/05-review.png)
+
+- **RSS subscription**: public RSS feeds are available for both articles and reviews, with article feeds supporting category and tag filters.
+
+![RSS subscription](./docs/assets/screenshots/05-rss.png)
+
+- **Notification center**: the header aggregates failed AI task chains and API error notifications in one place.
+
+![Notification center](./docs/assets/screenshots/05-notice.png)
+
+- **Backup operations**: the admin storage panel can trigger the latest backup as a background job, poll progress, and download the generated archive when ready.
+
+![Backup operations](./docs/assets/screenshots/05-backup.png)
 
 More features are coming...
 
 ## Quick Start
 
 ```bash
-docker-compose up -d
+docker compose up -d
 ./scripts/docker_healthcheck.sh
 ```
 

@@ -6866,7 +6866,6 @@ export default function AdminPage() {
 						onClose={closeTaskTimelineModal}
 						title={t("任务链路详情")}
 						widthClassName="max-w-4xl"
-						panelClassName="max-h-[90vh] overflow-y-auto"
 						headerClassName="border-b border-border p-6"
 						bodyClassName="space-y-4 p-6"
 						footerClassName="border-t border-border bg-muted p-6"
