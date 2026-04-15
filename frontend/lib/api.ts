@@ -1551,12 +1551,6 @@ export const articleApi = {
 };
 
 export const backupApi = {
-	exportBackup: async (): Promise<Blob> => {
-		const response = await api.get("/api/backup/export", {
-			responseType: "blob",
-		});
-		return response.data as Blob;
-	},
 	getLatestExportJob: async (): Promise<BackupExportJob> => {
 		const response = await api.get("/api/backup/export-jobs/latest");
 		return response.data as BackupExportJob;

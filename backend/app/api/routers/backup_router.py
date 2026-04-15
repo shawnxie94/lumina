@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime
-
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.core.public_cache import (
@@ -28,22 +26,6 @@ backup_service = BackupService()
 
 def _serialize_backup_export_state() -> BackupExportJobStatus:
     return BackupExportJobStatus(**backup_export_runtime.get_state().to_dict())
-
-
-@router.get("/api/backup/export")
-async def export_backup(
-    db: Session = Depends(get_db),
-    _: bool = Depends(get_admin_or_internal),
-):
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"lumina-backup-{timestamp}.zip"
-    headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
-    return StreamingResponse(
-        backup_service.export_backup_stream(db),
-        media_type="application/zip",
-        headers=headers,
-    )
-
 
 @router.post("/api/backup/export-jobs/latest", response_model=BackupExportJobStatus)
 async def create_latest_backup_export_job(

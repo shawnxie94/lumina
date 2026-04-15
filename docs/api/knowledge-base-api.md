@@ -50,7 +50,9 @@ X-Internal-Token: <INTERNAL_API_TOKEN>
 - `GET /api/articles/{article_slug}`：匿名可访问可见文章；Bearer/Internal 可访问全部
 - `POST /api/articles/report-url`：必须 Bearer 或 Internal（二选一）
 - `POST /api/export`：必须 Bearer 或 Internal（二选一）
-- `GET /api/backup/export`：必须 Bearer 或 Internal（二选一）
+- `POST /api/backup/export-jobs/latest`：必须 Bearer 或 Internal（二选一）
+- `GET /api/backup/export-jobs/latest`：必须 Bearer 或 Internal（二选一）
+- `GET /api/backup/export-jobs/latest/download`：必须 Bearer 或 Internal（二选一）
 
 ## 3. 获取文章列表
 
@@ -286,32 +288,70 @@ curl -s "http://localhost:8000/backend/api/export" \
 
 ### 6.2 备份导出
 
-`GET /api/backup/export`
+备份导出现在采用“后台生成 + 状态查询 + 下载最新文件”的三段式流程。
 
-### 6.2.1 入参
+#### 6.2.1 创建/复用最新备份任务
+
+`POST /api/backup/export-jobs/latest`
 
 - 无请求体
-- 无查询参数
+- 如果当前已有进行中的导出任务，接口会直接返回该任务状态，不会重复启动
 
-### 6.2.2 Bearer 调用示例
+Bearer 调用示例：
 
 ```bash
-curl -L -OJ "http://localhost:8000/backend/api/backup/export" \
+curl -s "http://localhost:8000/backend/api/backup/export-jobs/latest" \
+  -X POST \
   -H "Authorization: Bearer <admin-token>"
 ```
 
-### 6.2.3 Internal Token 调用示例
+成功响应（200）：
+
+```json
+{
+  "status": "processing",
+  "filename": "lumina-backup-latest.zip",
+  "file_path": "/abs/path/to/data/backups/lumina-backup-latest.zip",
+  "file_size": null,
+  "error_message": null,
+  "created_at": null,
+  "started_at": "2026-04-12T12:00:00+00:00",
+  "finished_at": null
+}
+```
+
+#### 6.2.2 查询最新备份任务状态
+
+`GET /api/backup/export-jobs/latest`
+
+Internal Token 调用示例：
 
 ```bash
-curl -L -OJ "http://localhost:8000/backend/api/backup/export" \
+curl -s "http://localhost:8000/backend/api/backup/export-jobs/latest" \
   -H "X-Internal-Token: <INTERNAL_API_TOKEN>"
 ```
 
-### 6.2.4 响应说明
+状态字段说明：
 
-- `Content-Type: application/json; charset=utf-8`
-- `Content-Disposition: attachment; filename="lumina-backup-YYYYMMDD_HHMMSS.json"`
-- 响应体为备份 JSON，包含 `meta` 与 `data` 两部分（如 `categories`、`articles`、`ai_analyses` 等）
+- `idle`：尚未生成过备份
+- `processing`：正在后台生成
+- `completed`：最近一次生成成功，可下载
+- `failed`：最近一次生成失败，`error_message` 会返回失败原因
+
+#### 6.2.3 下载最新备份文件
+
+`GET /api/backup/export-jobs/latest/download`
+
+```bash
+curl -L -OJ "http://localhost:8000/backend/api/backup/export-jobs/latest/download" \
+  -H "Authorization: Bearer <admin-token>"
+```
+
+响应说明：
+
+- `Content-Type: application/zip`
+- `Content-Disposition: attachment; filename="lumina-backup-latest.zip"`
+- 当最新备份尚未生成或文件缺失时，返回 `404`
 
 ## 7. 安全与限制
 

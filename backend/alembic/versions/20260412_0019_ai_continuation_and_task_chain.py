@@ -1,4 +1,4 @@
-"""add ai call sessions and model api type
+"""add ai continuation and task chain support
 
 Revision ID: 20260412_0019
 Revises: 20260410_0018
@@ -26,6 +26,10 @@ def _table_exists(inspector: sa.Inspector, table_name: str) -> bool:
     return table_name in set(inspector.get_table_names())
 
 
+def _index_names(inspector: sa.Inspector, table_name: str) -> set[str]:
+    return {index["name"] for index in inspector.get_indexes(table_name)}
+
+
 def upgrade() -> None:
     bind = op.get_bind()
     inspector = inspect(bind)
@@ -48,6 +52,24 @@ def upgrade() -> None:
                 server_default="chat_completions",
             )
 
+        inspector = inspect(bind)
+
+    if _table_exists(inspector, "ai_tasks"):
+        column_names = _column_names(inspector, "ai_tasks")
+        index_names = _index_names(inspector, "ai_tasks")
+        with op.batch_alter_table("ai_tasks") as batch_op:
+            if "parent_task_id" not in column_names:
+                batch_op.add_column(sa.Column("parent_task_id", sa.String(), nullable=True))
+            if "root_task_id" not in column_names:
+                batch_op.add_column(sa.Column("root_task_id", sa.String(), nullable=True))
+            if "ix_ai_tasks_root_task_id" not in index_names:
+                batch_op.create_index(
+                    "ix_ai_tasks_root_task_id",
+                    ["root_task_id"],
+                    unique=False,
+                )
+
+        op.execute("UPDATE ai_tasks SET root_task_id = id WHERE root_task_id IS NULL")
         inspector = inspect(bind)
 
     if not _table_exists(inspector, "ai_call_sessions"):
@@ -93,6 +115,17 @@ def downgrade() -> None:
 
     if _table_exists(inspector, "ai_call_sessions"):
         op.drop_table("ai_call_sessions")
+
+    if _table_exists(inspector, "ai_tasks"):
+        column_names = _column_names(inspector, "ai_tasks")
+        index_names = _index_names(inspector, "ai_tasks")
+        with op.batch_alter_table("ai_tasks") as batch_op:
+            if "ix_ai_tasks_root_task_id" in index_names:
+                batch_op.drop_index("ix_ai_tasks_root_task_id")
+            if "root_task_id" in column_names:
+                batch_op.drop_column("root_task_id")
+            if "parent_task_id" in column_names:
+                batch_op.drop_column("parent_task_id")
 
     if _table_exists(inspector, "model_api_configs") and "api_type" in _column_names(
         inspector, "model_api_configs"

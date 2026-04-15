@@ -1,6 +1,6 @@
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, validator
+from pydantic import BaseModel, ConfigDict, field_validator
 
 
 class AITaskRetryRequest(BaseModel):
@@ -21,7 +21,8 @@ class AIUsageContinuationRequest(BaseModel):
     feedback: str
     model_config_id: Optional[str] = None
 
-    @validator("feedback")
+    @field_validator("feedback")
+    @classmethod
     def validate_feedback(cls, value: str) -> str:
         trimmed = (value or "").strip()
         if not trimmed:
@@ -58,14 +59,16 @@ class ModelAPIConfigBase(BaseModel):
     is_enabled: bool = True
     is_default: bool = False
 
-    @validator("name")
+    @field_validator("name")
+    @classmethod
     def validate_name(cls, value: str) -> str:
         trimmed = value.strip()
         if not trimmed:
             raise ValueError("模型API配置名称不能为空")
         return trimmed
 
-    @validator("api_type")
+    @field_validator("api_type")
+    @classmethod
     def validate_api_type(cls, value: str) -> str:
         normalized = (value or "").strip()
         if normalized not in {"chat_completions", "responses"}:

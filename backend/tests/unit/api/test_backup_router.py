@@ -150,3 +150,16 @@ def test_download_latest_backup_export_returns_404_when_missing(
     response = client.get("/api/backup/export-jobs/latest/download")
     assert response.status_code == 404
 
+
+def test_legacy_streaming_backup_export_route_is_unavailable(
+    db_session, tmp_path: Path, monkeypatch
+):
+    client, _runtime = _create_client(
+        tmp_path=tmp_path,
+        db_session=db_session,
+        monkeypatch=monkeypatch,
+        export_backup_file=lambda *args, **kwargs: {},
+    )
+
+    response = client.get("/api/backup/export")
+    assert response.status_code == 404

@@ -270,12 +270,6 @@
     ]
   },
   {
-    "path": "/api/backup/export",
-    "methods": [
-      "GET"
-    ]
-  },
-  {
     "path": "/api/backup/export-jobs/latest",
     "methods": [
       "GET"

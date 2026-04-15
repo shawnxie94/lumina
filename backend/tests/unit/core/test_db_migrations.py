@@ -60,11 +60,11 @@ def test_infographic_related_migrations_are_ordered_and_explicit():
 def test_ai_continuation_migration_is_ordered_and_explicit():
     versions_dir = Path(__file__).resolve().parents[3] / "alembic" / "versions"
     ai_continuation_migrations = sorted(
-        versions_dir.glob("*ai_call_sessions_and_api_type*.py")
+        versions_dir.glob("*ai_continuation_and_task_chain*.py")
     )
 
     assert [path.name for path in ai_continuation_migrations] == [
-        "20260412_0019_ai_call_sessions_and_api_type.py",
+        "20260412_0019_ai_continuation_and_task_chain.py",
     ]
 
 
@@ -381,5 +381,161 @@ def test_ai_task_chain_columns_exist_after_upgrade(tmp_path):
 
     assert {"parent_task_id", "root_task_id"} <= task_columns
     assert any("root_task_id" in index_name for index_name in task_indexes)
+
+    engine.dispose()
+
+
+def test_ai_continuation_migration_backfills_existing_task_chain_and_api_type(tmp_path):
+    db_path = tmp_path / "migration-ai-continuation-backfill.db"
+    engine = create_engine(
+        f"sqlite:///{db_path}",
+        connect_args={"check_same_thread": False},
+    )
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                CREATE TABLE articles (
+                    id VARCHAR NOT NULL PRIMARY KEY,
+                    slug VARCHAR
+                )
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                CREATE TABLE model_api_configs (
+                    id VARCHAR NOT NULL PRIMARY KEY,
+                    name VARCHAR NOT NULL,
+                    base_url VARCHAR NOT NULL,
+                    api_key VARCHAR NOT NULL,
+                    provider VARCHAR,
+                    model_name VARCHAR NOT NULL,
+                    model_type VARCHAR,
+                    price_input_per_1k FLOAT,
+                    price_output_per_1k FLOAT,
+                    currency VARCHAR,
+                    context_window_tokens INTEGER,
+                    reserve_output_tokens INTEGER,
+                    is_enabled BOOLEAN,
+                    is_default BOOLEAN,
+                    created_at VARCHAR,
+                    updated_at VARCHAR
+                )
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                CREATE TABLE ai_usage_logs (
+                    id VARCHAR NOT NULL PRIMARY KEY,
+                    model_api_config_id VARCHAR,
+                    task_id VARCHAR,
+                    article_id VARCHAR,
+                    task_type VARCHAR,
+                    content_type VARCHAR,
+                    status VARCHAR NOT NULL,
+                    prompt_tokens INTEGER,
+                    completion_tokens INTEGER,
+                    total_tokens INTEGER,
+                    cost_input FLOAT,
+                    cost_output FLOAT,
+                    cost_total FLOAT,
+                    currency VARCHAR,
+                    latency_ms INTEGER,
+                    finish_reason VARCHAR,
+                    truncated BOOLEAN,
+                    chunk_index INTEGER,
+                    continue_round INTEGER,
+                    estimated_input_tokens INTEGER,
+                    error_message TEXT,
+                    request_payload TEXT,
+                    response_payload TEXT,
+                    created_at VARCHAR
+                )
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                CREATE TABLE ai_tasks (
+                    id VARCHAR NOT NULL PRIMARY KEY,
+                    article_id VARCHAR,
+                    task_type VARCHAR NOT NULL,
+                    content_type VARCHAR,
+                    status VARCHAR,
+                    payload TEXT,
+                    attempts INTEGER,
+                    max_attempts INTEGER,
+                    run_at VARCHAR,
+                    locked_at VARCHAR,
+                    locked_by VARCHAR,
+                    last_error TEXT,
+                    last_error_type VARCHAR,
+                    created_at VARCHAR,
+                    updated_at VARCHAR,
+                    finished_at VARCHAR
+                )
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                INSERT INTO model_api_configs (
+                    id, name, base_url, api_key, provider, model_name, model_type,
+                    is_enabled, is_default, created_at, updated_at
+                )
+                VALUES (
+                    'model-1', 'Default model', 'https://example.com', 'secret',
+                    'openai', 'gpt-4o', 'general', 1, 1,
+                    '2026-04-12T00:00:00', '2026-04-12T00:00:00'
+                )
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                INSERT INTO ai_tasks (
+                    id, article_id, task_type, content_type, status, payload,
+                    attempts, max_attempts, run_at, created_at, updated_at, finished_at
+                )
+                VALUES (
+                    'task-1', NULL, 'process_ai_content', 'summary', 'completed', '{}',
+                    1, 1, '2026-04-12T00:00:00', '2026-04-12T00:00:00',
+                    '2026-04-12T00:00:00', '2026-04-12T00:00:00'
+                )
+                """
+            )
+        )
+
+    backend_dir = Path(__file__).resolve().parents[3]
+    config = Config(str(backend_dir / "alembic.ini"))
+    config.set_main_option("sqlalchemy.url", f"sqlite:///{db_path}")
+    config.attributes["database_url_override"] = f"sqlite:///{db_path}"
+    command.stamp(config, "20260410_0018")
+    command.upgrade(config, "head")
+
+    with engine.begin() as conn:
+        api_type = conn.execute(
+            text("SELECT api_type FROM model_api_configs WHERE id = 'model-1'")
+        ).scalar_one()
+        row = conn.execute(
+            text(
+                """
+                SELECT parent_task_id, root_task_id
+                FROM ai_tasks
+                WHERE id = 'task-1'
+                """
+            )
+        ).one()
+
+    assert api_type == "chat_completions"
+    assert row.parent_task_id is None
+    assert row.root_task_id == "task-1"
 
     engine.dispose()

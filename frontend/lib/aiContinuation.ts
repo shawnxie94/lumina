@@ -1,3 +1,5 @@
+import type { AICallSessionInfo } from "@/lib/api";
+
 type Translate = (key: string) => string;
 
 export type AIContinuationContentType =
@@ -7,22 +9,11 @@ export type AIContinuationContentType =
   | "quotes"
   | "infographic";
 
-export interface AIContinuationSessionInfo {
-  api_type?: "chat_completions" | "responses" | null;
-  continuation_mode?: "provider" | "snapshot" | null;
-  provider_response_id?: string | null;
-  provider_request_id?: string | null;
-  provider_conversation_id?: string | null;
-  input_snapshot?: Record<string, unknown> | null;
-  output_snapshot?: Record<string, unknown> | null;
-  source_usage_log_id?: string | null;
-}
-
 export interface AIContinuationTarget {
   taskType?: string | null;
   contentType?: string | null;
   requestPayload?: string | null;
-  sessionInfo?: AIContinuationSessionInfo | null;
+  sessionInfo?: AICallSessionInfo | null;
 }
 
 export interface AIContinuationModelOption {

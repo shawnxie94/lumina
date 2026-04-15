@@ -75,12 +75,8 @@ import {
 	isAIContinuationSupported,
 	resolveAIContinuationModelConfigId,
 } from "@/lib/aiContinuation";
-import {
-	BACKUP_EXPORT_POLL_INTERVAL_MS,
-	canDownloadBackupExport,
-	getBackupExportStatusText,
-} from "@/lib/backupExport";
 import { useI18n } from "@/lib/i18n";
+import { useLatestBackupExportJob } from "@/lib/useLatestBackupExportJob";
 import {
 	type AIUsageListResponse,
 	type AIUsageLogItem,
@@ -92,7 +88,6 @@ import {
 	aiUsageApi,
 	articleApi,
 	backupApi,
-	type BackupExportJob,
 	type BasicSettings,
 	basicSettingsApi,
 	categoryApi,
@@ -1298,16 +1293,6 @@ export default function AdminPage() {
 	const [categorySaving, setCategorySaving] = useState(false);
 	const [promptImporting, setPromptImporting] = useState(false);
 	const backupImportInputRef = useRef<HTMLInputElement>(null);
-	const backupExportPollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
-		null,
-	);
-	const previousBackupExportStatusRef = useRef<BackupExportJob["status"] | null>(
-		null,
-	);
-	const [backupExportJob, setBackupExportJob] = useState<BackupExportJob | null>(
-		null,
-	);
-	const [backupExporting, setBackupExporting] = useState(false);
 	const [backupImporting, setBackupImporting] = useState(false);
 	const [pendingTaskActionIds, setPendingTaskActionIds] = useState<Set<string>>(
 		new Set(),
@@ -1569,20 +1554,6 @@ export default function AdminPage() {
 		} finally {
 			setStorageSettingsLoading(false);
 			setStorageStatsLoading(false);
-		}
-	};
-
-	const fetchLatestBackupExportJob = async (options?: { silent?: boolean }) => {
-		try {
-			const data = await backupApi.getLatestExportJob();
-			setBackupExportJob(data);
-			return data;
-		} catch (error) {
-			console.error("Failed to fetch latest backup export job:", error);
-			if (!options?.silent) {
-				showToast(t("备份状态加载失败"), "error");
-			}
-			return null;
 		}
 	};
 
@@ -1879,11 +1850,10 @@ export default function AdminPage() {
 			fetchCommentSettings();
 			return;
 		}
-		if (activeSection === "storage") {
-			fetchStorageSettings();
-			fetchLatestBackupExportJob({ silent: true });
-			return;
-		}
+			if (activeSection === "storage") {
+				fetchStorageSettings();
+				return;
+			}
 	}, [
 		activeSection,
 		aiSubSection,
@@ -1897,38 +1867,6 @@ export default function AdminPage() {
 		if (!showPromptModal || modelLoading || modelAPIConfigs.length > 0) return;
 		void fetchModelAPIConfigs();
 	}, [showPromptModal, modelLoading, modelAPIConfigs.length]);
-
-	useEffect(() => {
-		const previousStatus = previousBackupExportStatusRef.current;
-		const nextStatus = backupExportJob?.status ?? null;
-		if (previousStatus === "processing" && nextStatus === "completed") {
-			showToast(t("最新备份已生成，可开始下载"));
-		}
-		if (previousStatus === "processing" && nextStatus === "failed") {
-			showToast(t("备份导出失败"), "error");
-		}
-		previousBackupExportStatusRef.current = nextStatus;
-	}, [backupExportJob?.status, showToast, t]);
-
-	/* eslint-disable react-hooks/exhaustive-deps */
-	useEffect(() => {
-		if (backupExportPollTimerRef.current) {
-			clearTimeout(backupExportPollTimerRef.current);
-			backupExportPollTimerRef.current = null;
-		}
-		if (!routeInitialized || activeSection !== "storage") return;
-		if (backupExportJob?.status !== "processing") return;
-		backupExportPollTimerRef.current = setTimeout(() => {
-			void fetchLatestBackupExportJob({ silent: true });
-		}, BACKUP_EXPORT_POLL_INTERVAL_MS);
-		return () => {
-			if (backupExportPollTimerRef.current) {
-				clearTimeout(backupExportPollTimerRef.current);
-				backupExportPollTimerRef.current = null;
-			}
-		};
-	}, [activeSection, backupExportJob?.status, routeInitialized]);
-	/* eslint-enable react-hooks/exhaustive-deps */
 
 	useEffect(() => {
 		setCommentValidationResult(null);
@@ -3572,37 +3510,19 @@ export default function AdminPage() {
 		if (Number.isNaN(parsed.getTime())) return value;
 		return parsed.toLocaleString();
 	};
-
-	const backupExportStatusText = getBackupExportStatusText(
+	const {
 		backupExportJob,
+		backupExporting,
+		backupExportStatusText,
+		backupExportDownloadReady,
+		handleExportBackup,
+		handleDownloadLatestBackup,
+	} = useLatestBackupExportJob({
+		active: routeInitialized && activeSection === "storage",
 		t,
-		formatBackupTimestamp,
-	);
-	const backupExportDownloadReady = canDownloadBackupExport(backupExportJob);
-
-	const handleExportBackup = async () => {
-		if (backupExporting) return;
-		setBackupExporting(true);
-		try {
-			const job = await backupApi.startLatestExportJob();
-			setBackupExportJob(job);
-			showToast(t("备份已开始后台生成"));
-		} catch (error) {
-			console.error("Failed to export backup:", error);
-			showToast(t("备份导出失败"), "error");
-		} finally {
-			setBackupExporting(false);
-		}
-	};
-
-	const handleDownloadLatestBackup = () => {
-		if (!backupExportDownloadReady || typeof document === "undefined") return;
-		const link = document.createElement("a");
-		link.href = backupApi.getLatestExportDownloadUrl();
-		document.body.appendChild(link);
-		link.click();
-		document.body.removeChild(link);
-	};
+		showToast,
+		formatTimestamp: formatBackupTimestamp,
+	});
 
 	const handleImportBackup = async (
 		event: React.ChangeEvent<HTMLInputElement>,

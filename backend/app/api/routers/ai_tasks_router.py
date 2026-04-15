@@ -24,6 +24,25 @@ from task_state import append_task_event, ensure_task_status_transition
 
 router = APIRouter()
 ai_call_session_service = AICallSessionService()
+TASK_LOAD_ONLY_FIELDS = (
+    AITask.id,
+    AITask.article_id,
+    AITask.parent_task_id,
+    AITask.root_task_id,
+    AITask.task_type,
+    AITask.content_type,
+    AITask.status,
+    AITask.attempts,
+    AITask.max_attempts,
+    AITask.run_at,
+    AITask.locked_at,
+    AITask.locked_by,
+    AITask.last_error,
+    AITask.last_error_type,
+    AITask.created_at,
+    AITask.updated_at,
+    AITask.finished_at,
+)
 
 
 def _get_preferred_article_title(article) -> str | None:
@@ -76,6 +95,68 @@ def _list_chain_tasks(db: Session, task: AITask) -> list[AITask]:
         .order_by(AITask.created_at.asc(), AITask.id.asc())
         .all()
     )
+
+
+def _build_filtered_task_query(
+    db: Session,
+    *,
+    status: str | None,
+    task_type: str | None,
+    content_type: str | None,
+    article_id: str | None,
+    article_title: str | None,
+):
+    query = db.query(AITask)
+    if status:
+        query = query.filter(AITask.status == status)
+    if task_type:
+        query = query.filter(AITask.task_type == task_type)
+    if content_type:
+        query = query.filter(AITask.content_type == content_type)
+    if article_id:
+        query = query.filter(AITask.article_id == article_id)
+    if article_title:
+        matching_articles = (
+            db.query(Article.id)
+            .filter(
+                or_(
+                    Article.title.contains(article_title),
+                    Article.title_trans.contains(article_title),
+                )
+            )
+            .all()
+        )
+        article_ids = [article.id for article in matching_articles]
+        if article_ids:
+            query = query.filter(AITask.article_id.in_(article_ids))
+        else:
+            query = query.filter(False)
+    return query
+
+
+def _paginate_task_chain_roots(query, *, page: int, size: int) -> tuple[int, list[str]]:
+    root_task_id_expr = func.coalesce(AITask.root_task_id, AITask.id)
+    grouped_subquery = (
+        query.with_entities(
+            root_task_id_expr.label("root_task_id"),
+            func.max(AITask.created_at).label("sort_created_at"),
+            func.max(AITask.id).label("sort_id"),
+        )
+        .group_by(root_task_id_expr)
+        .subquery()
+    )
+    total = query.session.query(func.count()).select_from(grouped_subquery).scalar() or 0
+    rows = (
+        query.session.query(grouped_subquery.c.root_task_id)
+        .order_by(
+            grouped_subquery.c.sort_created_at.desc(),
+            grouped_subquery.c.sort_id.desc(),
+        )
+        .offset((page - 1) * size)
+        .limit(size)
+        .all()
+    )
+    return total, [str(row.root_task_id) for row in rows if row.root_task_id]
 
 
 def _resolve_task_target(
@@ -141,96 +222,21 @@ async def list_ai_tasks(
     page = max(page, 1)
     size = max(1, min(size, 100))
 
-    query = db.query(AITask)
-
-    if status:
-        query = query.filter(AITask.status == status)
-    if task_type:
-        query = query.filter(AITask.task_type == task_type)
-    if content_type:
-        query = query.filter(AITask.content_type == content_type)
-    if article_id:
-        query = query.filter(AITask.article_id == article_id)
-    if article_title:
-        matching_articles = (
-            db.query(Article.id)
-            .filter(
-                or_(
-                    Article.title.contains(article_title),
-                    Article.title_trans.contains(article_title),
-                )
-            )
-            .all()
-        )
-        article_ids = [article.id for article in matching_articles]
-        if article_ids:
-            query = query.filter(AITask.article_id.in_(article_ids))
-        else:
-            query = query.filter(False)
-
-    tasks = (
-        query.options(
-            load_only(
-                AITask.id,
-                AITask.article_id,
-                AITask.parent_task_id,
-                AITask.root_task_id,
-                AITask.task_type,
-                AITask.content_type,
-                AITask.status,
-                AITask.attempts,
-                AITask.max_attempts,
-                AITask.run_at,
-                AITask.locked_at,
-                AITask.locked_by,
-                AITask.last_error,
-                AITask.last_error_type,
-                AITask.created_at,
-                AITask.updated_at,
-                AITask.finished_at,
-            )
-        )
-        .order_by(AITask.created_at.desc(), AITask.id.desc())
-        .all()
+    query = _build_filtered_task_query(
+        db,
+        status=status,
+        task_type=task_type,
+        content_type=content_type,
+        article_id=article_id,
+        article_title=article_title,
     )
-
-    root_ids_in_order: list[str] = []
-    seen_root_ids: set[str] = set()
-    for task in tasks:
-        root_id = _resolve_root_task_id(task)
-        if root_id in seen_root_ids:
-            continue
-        seen_root_ids.add(root_id)
-        root_ids_in_order.append(root_id)
-
-    total = len(root_ids_in_order)
-    page_root_ids = root_ids_in_order[(page - 1) * size : page * size]
+    total, page_root_ids = _paginate_task_chain_roots(query, page=page, size=size)
 
     chain_tasks: list[AITask] = []
     if page_root_ids:
         chain_tasks = (
             db.query(AITask)
-            .options(
-                load_only(
-                    AITask.id,
-                    AITask.article_id,
-                    AITask.parent_task_id,
-                    AITask.root_task_id,
-                    AITask.task_type,
-                    AITask.content_type,
-                    AITask.status,
-                    AITask.attempts,
-                    AITask.max_attempts,
-                    AITask.run_at,
-                    AITask.locked_at,
-                    AITask.locked_by,
-                    AITask.last_error,
-                    AITask.last_error_type,
-                    AITask.created_at,
-                    AITask.updated_at,
-                    AITask.finished_at,
-                )
-            )
+            .options(load_only(*TASK_LOAD_ONLY_FIELDS))
             .filter(func.coalesce(AITask.root_task_id, AITask.id).in_(page_root_ids))
             .order_by(AITask.created_at.asc(), AITask.id.asc())
             .all()

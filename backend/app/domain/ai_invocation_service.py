@@ -68,10 +68,9 @@ class AIInvocationService:
                     parts.append(str(getattr(content, "text", "") or ""))
         return "".join(parts)
 
-    def _extract_event_stream_metadata(self, response_text: str) -> dict[str, Any]:
-        metadata: dict[str, Any] = {}
+    def _iter_event_stream_payloads(self, response_text: str):
         if "event:" not in response_text or "data:" not in response_text:
-            return metadata
+            return
         for chunk in response_text.split("\n\n"):
             chunk = chunk.strip()
             if not chunk:
@@ -94,6 +93,11 @@ class AIInvocationService:
                 continue
             if not isinstance(payload, dict):
                 continue
+            yield event_name, payload
+
+    def _extract_event_stream_metadata(self, response_text: str) -> dict[str, Any]:
+        metadata: dict[str, Any] = {}
+        for event_name, payload in self._iter_event_stream_payloads(response_text) or []:
             if event_name not in {"response.created", "response.completed"}:
                 continue
             response_payload = payload.get("response")
@@ -107,32 +111,9 @@ class AIInvocationService:
         return metadata
 
     def _extract_event_stream_text(self, response_text: str) -> str | None:
-        if "event:" not in response_text or "data:" not in response_text:
-            return None
         done_text: str | None = None
         delta_parts: list[str] = []
-        for chunk in response_text.split("\n\n"):
-            chunk = chunk.strip()
-            if not chunk:
-                continue
-            event_name: str | None = None
-            data_lines: list[str] = []
-            for line in chunk.splitlines():
-                if line.startswith("event:"):
-                    event_name = line[len("event:") :].strip()
-                elif line.startswith("data:"):
-                    data_lines.append(line[len("data:") :].strip())
-            if not event_name or not data_lines:
-                continue
-            data_str = "\n".join(data_lines).strip()
-            if not data_str:
-                continue
-            try:
-                payload = json.loads(data_str)
-            except json.JSONDecodeError:
-                continue
-            if not isinstance(payload, dict):
-                continue
+        for event_name, payload in self._iter_event_stream_payloads(response_text) or []:
             if event_name == "response.output_text.done":
                 done_text = str(payload.get("text") or payload.get("data") or "")
             elif event_name == "response.output_text.delta":

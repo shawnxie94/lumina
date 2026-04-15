@@ -147,6 +147,95 @@ async def test_list_ai_tasks_collapses_same_chain_to_root_row(db_session):
 
 
 @pytest.mark.anyio
+async def test_list_ai_tasks_paginates_by_root_task_chain(db_session):
+    article = Article(
+        title="Chain Pagination Article",
+        title_trans="链路分页文章",
+        slug="chain-pagination-article",
+        content_md="content",
+        content_trans="",
+        top_image="",
+        author="Tester",
+        published_at="2026-04-13T10:00:00",
+        source_domain="example.com",
+        status="completed",
+        is_visible=True,
+        created_at="2026-04-13T10:00:00",
+        updated_at="2026-04-13T10:00:00",
+    )
+    db_session.add(article)
+    db_session.commit()
+
+    db_session.add_all(
+        [
+            AITask(
+                id="task-root-1",
+                article_id=article.id,
+                root_task_id="task-root-1",
+                task_type="process_ai_content",
+                content_type="summary",
+                status="completed",
+                payload="{}",
+                attempts=1,
+                max_attempts=1,
+                run_at="2026-04-13T10:00:00",
+                created_at="2026-04-13T10:00:00",
+                updated_at="2026-04-13T10:00:00",
+                finished_at="2026-04-13T10:00:00",
+            ),
+            AITask(
+                id="task-root-1-cont",
+                article_id=article.id,
+                parent_task_id="task-root-1",
+                root_task_id="task-root-1",
+                task_type="process_ai_content",
+                content_type="summary",
+                status="completed",
+                payload='{"continuation_feedback":"请更短"}',
+                attempts=1,
+                max_attempts=1,
+                run_at="2026-04-13T10:05:00",
+                created_at="2026-04-13T10:05:00",
+                updated_at="2026-04-13T10:06:00",
+                finished_at="2026-04-13T10:06:00",
+            ),
+            AITask(
+                id="task-root-2",
+                article_id=article.id,
+                root_task_id="task-root-2",
+                task_type="process_ai_content",
+                content_type="summary",
+                status="completed",
+                payload="{}",
+                attempts=1,
+                max_attempts=1,
+                run_at="2026-04-13T11:00:00",
+                created_at="2026-04-13T11:00:00",
+                updated_at="2026-04-13T11:00:00",
+                finished_at="2026-04-13T11:00:00",
+            ),
+        ]
+    )
+    db_session.commit()
+
+    response = await ai_tasks_router.list_ai_tasks(
+        page=1,
+        size=1,
+        status=None,
+        task_type=None,
+        content_type=None,
+        article_id=None,
+        article_title=None,
+        db=db_session,
+        _=True,
+    )
+
+    assert response["pagination"]["total"] == 2
+    assert response["pagination"]["total_pages"] == 2
+    assert [item["id"] for item in response["data"]] == ["task-root-2"]
+
+
+@pytest.mark.anyio
 async def test_list_ai_tasks_article_title_filter_matches_translated_title(db_session):
     article = Article(
         title="Original Filter Title",

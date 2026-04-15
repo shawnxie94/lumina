@@ -107,14 +107,10 @@ async def continue_ai_usage(
     db: Session = Depends(get_db),
     _: bool = Depends(get_current_admin),
 ):
-    usage = db.query(AIUsageLog).filter(AIUsageLog.id == usage_id).first()
-    if not usage or usage.task_type != "process_ai_content":
-        raise HTTPException(status_code=400, detail="当前 AI 调用不支持继续生成")
-
     try:
         task_id, root_task_id = article_command_service.enqueue_ai_continuation(
             db=db,
-            usage_id=usage.id,
+            usage_id=usage_id,
             feedback=payload.feedback,
             model_config_id=payload.model_config_id,
         )
@@ -122,7 +118,7 @@ async def continue_ai_usage(
         raise HTTPException(status_code=400, detail=str(exc))
 
     return {
-        "usage_id": usage.id,
+        "usage_id": usage_id,
         "task_id": task_id,
         "root_task_id": root_task_id,
         "status": "pending",
