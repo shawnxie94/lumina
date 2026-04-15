@@ -317,6 +317,7 @@ const translations: Record<Language, Record<string | number, string>> = {
 		阅读数: "Views",
 		评论数: "Comments",
 		内容: "Content",
+		"导出 Markdown": "Export Markdown",
 		全部作者: "All authors",
 		发表时间: "Published time",
 		暂无筛选条件: "No active filters",

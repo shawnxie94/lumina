@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 import {
 	resolveArticleDetailExportMarkdown,
@@ -65,4 +67,18 @@ test("resolveDetailExportFilename uses resource kind and slug", () => {
 		"review-shawn-weekly-2026-04-05.md",
 	);
 	assert.equal(resolveDetailExportFilename("article", ""), "article-export.md");
+});
+
+test("article detail page wires markdown export into the content toolbar", () => {
+	const source = readFileSync(
+		join(process.cwd(), "pages/article/[id].tsx"),
+		"utf8",
+	);
+
+	assert.match(source, /resolveArticleDetailExportMarkdown/);
+	assert.match(source, /resolveDetailExportFilename/);
+	assert.match(source, /downloadMarkdownFile/);
+	assert.match(source, /title=\{t\("导出 Markdown"\)\}/);
+	assert.match(source, /showToast\(t\("导出成功"\)/);
+	assert.match(source, /showToast\(t\("导出失败"\), "error"\)/);
 });

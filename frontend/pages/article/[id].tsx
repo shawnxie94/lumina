@@ -106,6 +106,11 @@ import {
 	fetchServerBasicSettings,
 	resolveRequestOrigin,
 } from "@/lib/serverApi";
+import {
+	downloadMarkdownFile,
+	resolveArticleDetailExportMarkdown,
+	resolveDetailExportFilename,
+} from "@/lib/detailMarkdownExport";
 import { renderSafeMarkdown, sanitizeRichHtml } from "@/lib/safeHtml";
 import { signIn, signOut, useSession } from "next-auth/react";
 
@@ -3236,6 +3241,25 @@ export default function ArticleDetailPage({
 		}
 	};
 
+	const handleExportMarkdown = useCallback(() => {
+		if (!article) return;
+
+		try {
+			const content = resolveArticleDetailExportMarkdown({
+				title: article.title,
+				topImage: article.top_image,
+				contentTrans: article.content_trans,
+				contentMd: article.content_md,
+			});
+			const filename = resolveDetailExportFilename("article", article.slug);
+			downloadMarkdownFile(filename, content);
+			showToast(t("导出成功"), "success");
+		} catch (error) {
+			console.error("Failed to export article markdown:", error);
+			showToast(t("导出失败"), "error");
+		}
+	}, [article, showToast, t]);
+
 	const handleToggleVisibility = async () => {
 		if (!id || !article) return;
 
@@ -4277,6 +4301,15 @@ export default function ArticleDetailPage({
 									)}
 								</div>
 								<div className="flex flex-wrap items-center gap-2">
+									<IconButton
+										onClick={handleExportMarkdown}
+										variant="ghost"
+										size="md"
+										title={t("导出 Markdown")}
+										className="rounded-sm"
+									>
+										<IconDoc className="h-4 w-4" />
+									</IconButton>
 									{article.content_trans && (
 										<button
 											type="button"
