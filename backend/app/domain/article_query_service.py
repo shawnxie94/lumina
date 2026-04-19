@@ -352,16 +352,21 @@ def _build_public_feed_url(
 class ArticleQueryService:
     RSS_ITEM_LIMIT = 50
 
-    def search_articles_by_title(self, db: Session, query_text: str, limit: int = 20):
+    def search_articles_by_title(
+        self,
+        db: Session,
+        query_text: str,
+        limit: int = 20,
+        include_hidden: bool = False,
+    ):
         query = _apply_title_search_filter(
             db.query(Article.id, Article.title, Article.title_trans, Article.slug),
             query_text,
         )
+        if not include_hidden:
+            query = query.filter(Article.is_visible == True)
         return (
-            query.filter(Article.is_visible == True)
-            .order_by(Article.created_at.desc())
-            .limit(limit)
-            .all()
+            query.order_by(Article.created_at.desc()).limit(limit).all()
         )
 
     def get_article_neighbors(

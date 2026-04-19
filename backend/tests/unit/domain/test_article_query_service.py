@@ -414,6 +414,37 @@ def test_get_articles_search_matches_translated_title(db_session):
     assert [item.title for item in articles] == ["Original Search Title"]
 
 
+def test_search_articles_by_title_can_include_hidden_articles_for_admin(db_session):
+    service = ArticleQueryService()
+    make_article(
+        db_session,
+        title="Visible Search Article",
+        title_trans="可见搜索文章",
+        published_at="2026-03-20",
+        created_at="2026-03-20T08:00:00+00:00",
+        is_visible=True,
+    )
+    make_article(
+        db_session,
+        title="Hidden Search Article",
+        title_trans="隐藏搜索文章",
+        published_at="2026-03-21",
+        created_at="2026-03-21T08:00:00+00:00",
+        is_visible=False,
+    )
+
+    articles = service.search_articles_by_title(
+        db_session,
+        query_text="搜索文章",
+        include_hidden=True,
+    )
+
+    assert [item.title for item in articles] == [
+        "Hidden Search Article",
+        "Visible Search Article",
+    ]
+
+
 def test_get_articles_filters_by_any_selected_tag(db_session):
     service = ArticleQueryService()
     ai_tag = make_tag(db_session, "AI")

@@ -295,6 +295,7 @@ async def search_articles(
         db,
         query_text=query,
         limit=limit,
+        include_hidden=True,
     )
 
     return [

@@ -410,7 +410,7 @@ async def test_search_articles_matches_translated_title(db_session):
 
 
 @pytest.mark.anyio
-async def test_search_articles_excludes_hidden_articles(db_session):
+async def test_search_articles_includes_hidden_articles_for_admin(db_session):
     visible_article = Article(
         title="Visible Search Article",
         title_trans="可见搜索文章",
@@ -451,7 +451,10 @@ async def test_search_articles_excludes_hidden_articles(db_session):
         _=True,
     )
 
-    assert [item["slug"] for item in response] == ["visible-search-article"]
+    assert [item["slug"] for item in response] == [
+        "hidden-search-article",
+        "visible-search-article",
+    ]
 
 
 @pytest.mark.anyio
