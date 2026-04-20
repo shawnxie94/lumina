@@ -25,6 +25,9 @@ const resolveExportAssetUrl = (origin: string, url?: string | null): string => {
 	if (!normalized) return "";
 	if (
 		/^(?:https?:)?\/\//i.test(normalized) ||
+		normalized.startsWith("#") ||
+		normalized.startsWith("mailto:") ||
+		normalized.startsWith("tel:") ||
 		normalized.startsWith("data:") ||
 		normalized.startsWith("blob:")
 	) {
@@ -44,10 +47,24 @@ const resolveExportAssetUrl = (origin: string, url?: string | null): string => {
 
 const absolutizeMarkdownMediaUrls = (origin: string, markdown: string): string =>
 	(markdown || "")
+		.replace(
+			/(^|[^!])\[([^\]]*)\]\((\S+?)(\s+"[^"]*")?\)/gm,
+			(_match, prefix, text, url, titlePart = "") => {
+				const resolved = resolveExportAssetUrl(origin, url);
+				return `${prefix}[${text}](${resolved}${titlePart})`;
+			},
+		)
 		.replace(/!\[([^\]]*)\]\((\S+?)(\s+"[^"]*")?\)/g, (_match, alt, url, titlePart = "") => {
 			const resolved = resolveExportAssetUrl(origin, url);
 			return `![${alt}](${resolved}${titlePart})`;
 		})
+		.replace(
+			/<a\b([^>]*?)\shref=(["'])([^"']+)\2([^>]*)>/gi,
+			(_match, beforeHref, quote, href, afterHref) => {
+				const resolved = resolveExportAssetUrl(origin, href);
+				return `<a${beforeHref} href=${quote}${resolved}${quote}${afterHref}>`;
+			},
+		)
 		.replace(
 			/<(img|video|audio|source|embed|iframe)\b([^>]*?)\ssrc=(["'])([^"']+)\3([^>]*)>/gi,
 			(_match, tagName, beforeSrc, quote, src, afterSrc) => {

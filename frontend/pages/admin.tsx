@@ -5735,7 +5735,10 @@ export default function AdminPage() {
 													</thead>
 													<tbody className="divide-y divide-border">
 														{taskItems.map((task) => (
-															<tr key={task.id} className="hover:bg-muted">
+															<tr
+																key={task.id}
+																className="transition-colors hover:bg-muted"
+															>
 																<td className="px-4 py-3">
 																	<button
 																		type="button"
@@ -6197,7 +6200,7 @@ export default function AdminPage() {
 															return (
 																<tr
 																	key={comment.id}
-																	className="hover:bg-muted/40"
+																	className="transition-colors hover:bg-muted"
 																>
 																	<td className="px-4 py-3 text-text-2 whitespace-nowrap">
 																		{new Date(

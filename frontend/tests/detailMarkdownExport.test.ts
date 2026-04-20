@@ -99,6 +99,19 @@ test("resolveReviewDetailExportMarkdown converts relative markdown image urls to
 	);
 });
 
+test("resolveReviewDetailExportMarkdown converts relative article links to absolute urls", () => {
+	assert.equal(
+		resolveReviewDetailExportMarkdown({
+			origin: "http://localhost:3000",
+			title: "Review With Relative Article Link",
+			topImage: null,
+			renderedMarkdown: "### [文章标题](/article/export-article)\n\n摘要内容",
+			markdownContent: "",
+		}),
+		"# Review With Relative Article Link\n\n### [文章标题](http://localhost:3000/article/export-article)\n\n摘要内容",
+	);
+});
+
 test("article detail page wires markdown export into the content toolbar", () => {
 	const source = readFileSync(
 		join(process.cwd(), "pages/article/[id].tsx"),
