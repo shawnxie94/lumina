@@ -15,6 +15,7 @@ import {
   BasicSettings,
   Category,
   Tag,
+  normalizeMediaHtml,
   resolveMediaUrl,
 } from '@/lib/api';
 import { buildArticleHref as buildNavigableArticleHref } from '@/lib/articlePreview';
@@ -2413,7 +2414,7 @@ export default function Home({
         isSaving={createSaving}
         previewImageUrl={resolveMediaUrl(createTopImage || basicSettings.site_logo_url || '/logo.png') || ''}
         previewImageAlt={createTitle}
-        previewHtml={renderSafeMarkdown(createContent || '', { enableMediaEmbed: true })}
+        previewHtml={normalizeMediaHtml(renderSafeMarkdown(createContent || '', { enableMediaEmbed: true }))}
         closeOnBackdrop
       />
 

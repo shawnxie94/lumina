@@ -57,6 +57,7 @@ import {
 	commentSettingsApi,
 	getApiBaseUrl,
 	mediaApi,
+	normalizeMediaHtml,
 	resolveMediaUrl,
 	reviewApi,
 	reviewCommentApi,
@@ -877,9 +878,9 @@ export default function ReviewDetailPage({
 	]);
 	const editPreviewHtml = useMemo(
 		() =>
-			renderSafeMarkdown(editPreviewMarkdown, {
+			normalizeMediaHtml(renderSafeMarkdown(editPreviewMarkdown, {
 				enableMediaEmbed: true,
-			}),
+			})),
 		[editPreviewMarkdown],
 	);
 

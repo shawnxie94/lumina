@@ -4905,9 +4905,9 @@ export default function ArticleDetailPage({
 				isSaving={saving}
 				previewImageUrl={editPreviewTopImageUrl || fallbackTopImageUrl || ""}
 				previewImageAlt={editTitle}
-				previewHtml={renderSafeMarkdown(editContent || "", {
+				previewHtml={normalizeMediaHtml(renderSafeMarkdown(editContent || "", {
 					enableMediaEmbed: true,
-				})}
+				}))}
 			/>
 
 			{showSelectionToolbar && selectionToolbarPos && isAdmin && (

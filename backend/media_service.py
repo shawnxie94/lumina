@@ -5,11 +5,12 @@ import re
 import uuid
 from datetime import datetime
 from io import BytesIO
+from pathlib import Path
 from typing import Literal, cast
 from urllib.parse import urlparse
 
 import httpx
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 from fastapi import HTTPException, UploadFile
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -27,6 +28,8 @@ MAX_MEDIA_SIZE = media_settings.max_size
 DEFAULT_COMPRESS_THRESHOLD = 1536 * 1024
 DEFAULT_MAX_DIM = 2000
 DEFAULT_WEBP_QUALITY = 80
+WATERMARK_TEXT = "Lumina"
+WATERMARK_FONT_PATH = Path(__file__).resolve().parent / "app" / "assets" / "LXGWWenKaiMono.ttf"
 MEDIA_KIND_IMAGE = "image"
 MEDIA_KIND_BOOK = "book"
 SUPPORTED_MEDIA_KINDS = {MEDIA_KIND_IMAGE, MEDIA_KIND_BOOK}
@@ -258,6 +261,106 @@ def _maybe_compress_image(
         return data, content_type, None
 
 
+def _load_watermark_font(font_size: int) -> ImageFont.ImageFont:
+    if WATERMARK_FONT_PATH.exists():
+        return ImageFont.truetype(str(WATERMARK_FONT_PATH), font_size)
+
+    candidates = [
+        "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+        "/Library/Fonts/Arial Bold.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "Arial Bold.ttf",
+        "DejaVuSans-Bold.ttf",
+    ]
+    for path in candidates:
+        try:
+            return ImageFont.truetype(path, font_size)
+        except OSError:
+            continue
+    raise OSError("no scalable watermark font available")
+
+
+def _fit_watermark_font(
+    draw: ImageDraw.ImageDraw,
+    text: str,
+    *,
+    target_width: int,
+    max_height: int,
+) -> tuple[ImageFont.ImageFont, tuple[int, int, int, int]]:
+    low = 18
+    high = max(low, max_height * 2)
+    best_font = _load_watermark_font(low)
+    best_bbox = draw.textbbox((0, 0), text, font=best_font)
+
+    while low <= high:
+        mid = (low + high) // 2
+        font = _load_watermark_font(mid)
+        bbox = draw.textbbox((0, 0), text, font=font)
+        text_width = bbox[2] - bbox[0]
+        text_height = bbox[3] - bbox[1]
+        if text_width <= target_width and text_height <= max_height:
+            best_font = font
+            best_bbox = bbox
+            low = mid + 1
+        else:
+            high = mid - 1
+
+    return best_font, best_bbox
+
+
+def _apply_lumina_watermark(
+    data: bytes,
+    content_type: str | None,
+    webp_quality: int,
+) -> tuple[bytes, str | None, str | None]:
+    if not data or not content_type or not content_type.startswith("image/"):
+        return data, content_type, None
+
+    try:
+        with Image.open(BytesIO(data)) as source:
+            if bool(getattr(source, "is_animated", False)):
+                return data, content_type, None
+
+            source = ImageOps.exif_transpose(source)
+            image = source.convert("RGBA")
+            width, height = image.size
+            if width <= 0 or height <= 0:
+                return data, content_type, None
+
+            overlay = Image.new("RGBA", image.size, (255, 255, 255, 0))
+            draw = ImageDraw.Draw(overlay)
+            font, bbox = _fit_watermark_font(
+                draw,
+                WATERMARK_TEXT,
+                target_width=max(72, int(width * 0.15)),
+                max_height=max(28, int(height * 0.18)),
+            )
+            text_width = bbox[2] - bbox[0]
+            text_height = bbox[3] - bbox[1]
+            margin_x = max(16, width // 22)
+            margin_y = max(12, height // 18)
+            x = max(margin_x, width - text_width - margin_x)
+            y = max(margin_y, height - text_height - margin_y)
+            draw.text(
+                (x, y - bbox[1]),
+                WATERMARK_TEXT,
+                font=font,
+                fill=(218, 218, 218, 105),
+            )
+
+            buffer = BytesIO()
+            Image.alpha_composite(image, overlay).save(
+                buffer,
+                format="WEBP",
+                quality=webp_quality,
+                method=6,
+            )
+            return buffer.getvalue(), "image/webp", ".webp"
+    except Exception as exc:
+        logger.warning("image_watermark_failed: %s", str(exc))
+        return data, content_type, None
+
+
 async def save_upload_image(
     db: Session,
     article_id: str | None,
@@ -280,6 +383,12 @@ async def save_upload_image(
             settings["max_dim"],
             settings["webp_quality"],
         )
+        data, content_type, watermark_ext = _apply_lumina_watermark(
+            data,
+            content_type,
+            settings["webp_quality"],
+        )
+        ext_override = watermark_ext or ext_override
         _validate_size(len(data))
     else:
         content_type, ext_override = _validate_book_content(
@@ -338,6 +447,12 @@ async def ingest_external_image(
             settings["max_dim"],
             settings["webp_quality"],
         )
+        data, content_type, watermark_ext = _apply_lumina_watermark(
+            data,
+            content_type,
+            settings["webp_quality"],
+        )
+        ext_override = watermark_ext or ext_override
         _validate_size(len(data))
     else:
         content_type, ext_override = _validate_book_content(
