@@ -478,6 +478,28 @@ def test_backup_service_rejects_newer_schema_backup(
         restore_engine.dispose()
 
 
+def test_restore_media_directory_keeps_target_directory_mountpoint(tmp_path: Path):
+    archive_media_root = tmp_path / "archive-media"
+    target_media_root = tmp_path / "target-media"
+    target_media_root.mkdir()
+    original_inode = target_media_root.stat().st_ino
+    _write_media(target_media_root, "legacy/file.txt", b"legacy")
+    _write_media(archive_media_root, "2026/04/top.webp", b"WEBPDATA")
+
+    service = BackupService(
+        database_url=f"sqlite:///{tmp_path / 'target.db'}",
+        media_root=str(target_media_root),
+        current_schema_version=CURRENT_SCHEMA_VERSION,
+    )
+
+    service._restore_media_directory(archive_media_root, target_media_root)
+
+    assert target_media_root.exists()
+    assert target_media_root.stat().st_ino == original_inode
+    assert not (target_media_root / "legacy/file.txt").exists()
+    assert (target_media_root / "2026/04/top.webp").read_bytes() == b"WEBPDATA"
+
+
 def test_backup_service_rolls_back_database_and_media_when_restore_fails(
     db_session: Session, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):

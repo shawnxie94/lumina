@@ -334,12 +334,10 @@ class BackupService:
                 transient.unlink()
 
     def _restore_media_directory(self, archive_media_root: Path, target_media_root: Path) -> None:
-        if target_media_root.exists():
-            shutil.rmtree(target_media_root)
+        self._clear_directory_contents(target_media_root)
+        target_media_root.mkdir(parents=True, exist_ok=True)
         if archive_media_root.exists():
-            shutil.copytree(archive_media_root, target_media_root)
-        else:
-            target_media_root.mkdir(parents=True, exist_ok=True)
+            self._copy_directory_contents(archive_media_root, target_media_root)
 
     def _restore_rollback(self, database_path: Path, rollback_state: dict[str, Any]) -> None:
         for suffix in ("", "-wal", "-shm"):
@@ -351,12 +349,34 @@ class BackupService:
         for suffix, backup_path in db_backup.items():
             shutil.copy2(Path(backup_path), Path(f"{database_path}{suffix}"))
 
-        if self.media_root.exists():
-            shutil.rmtree(self.media_root)
+        self._clear_directory_contents(self.media_root)
 
         media_backup = Path(rollback_state["media_backup"])
         if rollback_state.get("media_exists") and media_backup.exists():
-            shutil.copytree(media_backup, self.media_root)
+            self.media_root.mkdir(parents=True, exist_ok=True)
+            self._copy_directory_contents(media_backup, self.media_root)
+
+    def _clear_directory_contents(self, directory: Path) -> None:
+        if not directory.exists():
+            return
+        if not directory.is_dir():
+            directory.unlink()
+            return
+
+        for child in directory.iterdir():
+            if child.is_dir() and not child.is_symlink():
+                shutil.rmtree(child)
+            else:
+                child.unlink()
+
+    def _copy_directory_contents(self, source: Path, target: Path) -> None:
+        target.mkdir(parents=True, exist_ok=True)
+        for child in source.iterdir():
+            destination = target / child.name
+            if child.is_dir() and not child.is_symlink():
+                shutil.copytree(child, destination, dirs_exist_ok=True)
+            else:
+                shutil.copy2(child, destination)
 
     def _resolve_database_path(self, db: Session | None) -> Path:
         database_url = self.database_url

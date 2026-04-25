@@ -6,7 +6,11 @@ from alembic.config import Config
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
-from app.core.db_migrations import resolve_database_url
+from app.core.db_migrations import (
+    migration_lock,
+    resolve_database_url,
+    sqlite_database_path,
+)
 from models import Base, PromptConfig, now_str
 
 
@@ -45,6 +49,24 @@ def test_resolve_database_url_falls_back_to_ini_then_settings():
         resolve_database_url(settings_url="sqlite:///settings.db")
         == "sqlite:///settings.db"
     )
+
+
+def test_sqlite_database_path_resolves_relative_path_from_backend_dir(tmp_path):
+    assert sqlite_database_path("sqlite:///./data/articles.db", base_dir=tmp_path) == (
+        tmp_path / "data" / "articles.db"
+    )
+
+
+def test_sqlite_database_path_ignores_non_file_sqlite_urls(tmp_path):
+    assert sqlite_database_path("sqlite:///:memory:", base_dir=tmp_path) is None
+    assert sqlite_database_path("postgresql://db/lumina", base_dir=tmp_path) is None
+
+
+def test_migration_lock_creates_shared_sqlite_lock_file(tmp_path):
+    db_path = tmp_path / "data" / "articles.db"
+
+    with migration_lock(f"sqlite:///{db_path}", base_dir=tmp_path):
+        assert (tmp_path / "data" / ".articles.db.migration.lock").exists()
 
 
 def test_infographic_related_migrations_are_ordered_and_explicit():

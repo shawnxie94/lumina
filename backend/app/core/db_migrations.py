@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 import os
 from pathlib import Path
+from typing import Iterator
 
 from alembic import command
 from alembic.config import Config
@@ -35,4 +37,42 @@ def run_db_migrations(database_url: str | None = None) -> None:
     resolved_database_url = resolve_database_url(override_url=database_url)
     config.set_main_option("sqlalchemy.url", resolved_database_url)
     config.attributes["database_url_override"] = resolved_database_url
-    command.upgrade(config, "head")
+    with migration_lock(resolved_database_url, base_dir=backend_dir):
+        command.upgrade(config, "head")
+
+
+def sqlite_database_path(database_url: str, *, base_dir: Path) -> Path | None:
+    if not database_url.startswith("sqlite:///"):
+        return None
+
+    raw_path = database_url.removeprefix("sqlite:///")
+    if raw_path in {"", ":memory:"}:
+        return None
+
+    database_path = Path(raw_path)
+    if not database_path.is_absolute():
+        database_path = base_dir / database_path
+    return database_path
+
+
+@contextmanager
+def migration_lock(database_url: str, *, base_dir: Path) -> Iterator[None]:
+    database_path = sqlite_database_path(database_url, base_dir=base_dir)
+    if database_path is None:
+        yield
+        return
+
+    try:
+        import fcntl
+    except ImportError:
+        yield
+        return
+
+    lock_path = database_path.parent / f".{database_path.name}.migration.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with lock_path.open("a+") as lock_file:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
