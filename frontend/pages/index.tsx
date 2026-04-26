@@ -25,6 +25,7 @@ import {
   buildMetaDescription,
   resolveSeoAssetUrl,
 } from '@/lib/seo';
+import { stripMarkdownStyles } from '@/lib/markdownText';
 import {
   fetchServerArticles,
   fetchServerBasicSettings,
@@ -252,6 +253,7 @@ export default function HomePage({
     const href = `/reviews/${review.slug}`;
     const displayTitle = review.title;
     const topImage = resolveMediaUrl(review.top_image || logoUrl) || fallbackTopImageUrl;
+    const reviewSummary = stripMarkdownStyles(review.summary);
 
     const categoryChips = getReviewCategoryChips(review, t);
 
@@ -277,9 +279,9 @@ export default function HomePage({
           <h3 className="text-base font-semibold text-text-1 truncate group-hover:text-primary transition" title={displayTitle}>
             {displayTitle}
           </h3>
-          {review.summary && (
+          {reviewSummary && (
             <p className="mt-2 text-sm text-text-3 line-clamp-2">
-              {review.summary}
+              {reviewSummary}
             </p>
           )}
           <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-text-3">

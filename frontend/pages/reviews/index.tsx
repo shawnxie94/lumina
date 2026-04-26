@@ -39,6 +39,7 @@ import {
 	reviewApi,
 } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
+import { stripMarkdownStyles } from "@/lib/markdownText";
 import {
 	buildCanonicalUrl,
 	buildMetaDescription,
@@ -822,6 +823,7 @@ export default function ReviewListPage({
 											(() => {
 												const showViewStat = (review.view_count ?? 0) > 0;
 												const showCommentStat = (review.comment_count ?? 0) > 0;
+												const reviewSummary = stripMarkdownStyles(review.summary);
 												const mediaStatsOverlay = (showViewStat || showCommentStat) ? (
 													<div
 														className="absolute inset-x-2 bottom-1.5 flex items-center justify-end gap-2 pointer-events-none text-[11px] font-semibold leading-none text-white"
@@ -936,9 +938,9 @@ export default function ReviewListPage({
 																<span>{t("发表时间")}：{formatDate(new Date(review.published_at))}</span>
 															) : null}
 														</div>
-														{review.summary ? (
+														{reviewSummary ? (
 															<p className="mt-2 text-text-2 line-clamp-3">
-																{review.summary}
+																{reviewSummary}
 															</p>
 														) : null}
 														{(review.version_count || 1) > 1 ? (
