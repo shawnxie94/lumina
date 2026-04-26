@@ -30,6 +30,12 @@ flowchart LR
     E --> F["导出内容"]
 ```
 
+### RSS 阅读
+
+Android 手机端 RSS 阅读可使用 [readrops-lumina](https://github.com/shawnxie94/readrops-lumina), [安装包](https://github.com/shawnxie94/readrops-lumina/releases)，支持快速采集内容到 [Lumina](https://github.com/shawnxie94/lumina)。
+
+![RSS 阅读](./docs/assets/screenshots/rss-reader.png)
+
 ## 页面截图
 ### 1) 主页
 

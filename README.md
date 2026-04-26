@@ -30,6 +30,12 @@ flowchart LR
     E --> F["Export content"]
 ```
 
+### RSS Reader
+
+Android phone RSS reader can use [readrops-lumina](https://github.com/shawnxie94/readrops-lumina), [download](https://github.com/shawnxie94/readrops-lumina/releases), to quickly collect content to [Lumina](https://github.com/shawnxie94/lumina).
+
+![RSS reader](./docs/assets/screenshots/rss-reader.png)
+
 ## Screenshots
 
 ### 1) Home
