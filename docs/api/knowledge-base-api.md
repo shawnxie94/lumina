@@ -4,6 +4,7 @@
 
 - 文章列表获取（支持筛选）
 - 文章详情获取（含正文与 AI 解读）
+- 文章内容创建（直接上传 HTML/Markdown）
 - 文章 URL 上报（只传 URL 自动抓取）
 - 文章导出（批量导出 Markdown）
 - 备份导出（导出 JSON 备份）
@@ -48,6 +49,7 @@ X-Internal-Token: <INTERNAL_API_TOKEN>
 
 - `GET /api/articles`：匿名可访问（仅返回可见文章）；Bearer/Internal 可访问全部
 - `GET /api/articles/{article_slug}`：匿名可访问可见文章；Bearer/Internal 可访问全部
+- `POST /api/articles`：必须 Bearer 或 Internal（二选一）
 - `POST /api/articles/report-url`：必须 Bearer 或 Internal（二选一）
 - `POST /api/export`：必须 Bearer 或 Internal（二选一）
 - `POST /api/backup/export-jobs/latest`：必须 Bearer 或 Internal（二选一）
@@ -136,13 +138,80 @@ curl -s "http://localhost:8000/backend/api/articles/<article-slug>"
 - 导航字段：`prev_article`、`next_article`
 - 批注字段：`note_content`、`note_annotations`、`note_recommendation_level`
 
-## 5. URL 上报文章
+## 5. 创建文章
+
+`POST /api/articles`
+
+客户端可直接上传已提取的文章正文，适用于浏览器扩展、移动端 WebView 等已经能拿到页面内容的场景。
+
+### 5.1 请求体
+
+```json
+{
+  "title": "文章标题",
+  "content_html": "<article>...</article>",
+  "content_md": "Markdown 正文，可选",
+  "source_url": "https://example.com/post/123",
+  "top_image": "https://example.com/image.jpg",
+  "author": "作者",
+  "published_at": "2026-04-26",
+  "source_domain": "example.com",
+  "category_id": "optional-category-id",
+  "skip_ai_processing": false
+}
+```
+
+- `title`：必填
+- `content_html` / `content_md`：至少提供一个
+- `source_url`：可选；用于去重和来源跳转
+- `skip_ai_processing`：可选，默认 `false`
+
+### 5.2 Internal Token 调用示例
+
+```bash
+curl -s "http://localhost:8000/backend/api/articles" \
+  -H "X-Internal-Token: <INTERNAL_API_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "文章标题",
+    "content_html": "<article>...</article>",
+    "source_url": "https://example.com/post/123",
+    "source_domain": "example.com",
+    "skip_ai_processing": false
+  }'
+```
+
+### 5.3 成功响应（200）
+
+```json
+{
+  "id": "string",
+  "slug": "string",
+  "status": "pending|processing|completed"
+}
+```
+
+### 5.4 重复 URL 响应（409）
+
+```json
+{
+  "code": "source_url_exists",
+  "existing": {
+    "id": "string",
+    "slug": "string",
+    "title": "string",
+    "status": "string"
+  }
+}
+```
+
+## 6. URL 上报文章
 
 `POST /api/articles/report-url`
 
 服务端会同步抓取 URL 内容并入库，然后走既有清洗/AI 流程。
 
-### 5.1 请求体
+### 6.1 请求体
 
 ```json
 {
@@ -158,7 +227,7 @@ curl -s "http://localhost:8000/backend/api/articles/<article-slug>"
 - `is_visible`：可选，默认沿用系统默认（通常为 `false`）
 - `skip_ai_processing`：可选，默认 `false`
 
-### 5.2 Bearer 调用示例
+### 6.2 Bearer 调用示例
 
 ```bash
 curl -s "http://localhost:8000/backend/api/articles/report-url" \
@@ -172,7 +241,7 @@ curl -s "http://localhost:8000/backend/api/articles/report-url" \
   }'
 ```
 
-### 5.3 Internal Token 调用示例
+### 6.3 Internal Token 调用示例
 
 ```bash
 curl -s "http://localhost:8000/backend/api/articles/report-url" \
@@ -183,7 +252,7 @@ curl -s "http://localhost:8000/backend/api/articles/report-url" \
   }'
 ```
 
-### 5.4 成功响应（200）
+### 6.4 成功响应（200）
 
 ```json
 {
@@ -194,7 +263,7 @@ curl -s "http://localhost:8000/backend/api/articles/report-url" \
 }
 ```
 
-### 5.5 重复 URL 响应（409）
+### 6.5 重复 URL 响应（409）
 
 ```json
 {
@@ -208,7 +277,7 @@ curl -s "http://localhost:8000/backend/api/articles/report-url" \
 }
 ```
 
-### 5.6 常见错误码
+### 6.6 常见错误码
 
 - `400`：URL 不合法、页面内容为空、内容过大等
 - `401/403`：认证失败
@@ -216,13 +285,13 @@ curl -s "http://localhost:8000/backend/api/articles/report-url" \
 - `502`：抓取失败（网络或上游异常）
 - `504`：抓取超时
 
-## 6. 导出接口
+## 7. 导出接口
 
-### 6.1 文章导出
+### 7.1 文章导出
 
 `POST /api/export`
 
-### 6.1.1 请求体
+### 7.1.1 请求体
 
 ```json
 {
@@ -247,7 +316,7 @@ curl -s "http://localhost:8000/backend/api/articles/report-url" \
 - 校验规则：当 `article_slugs` 未提供时，至少需要一个筛选字段
 - 兼容行为：当 `article_slugs` 传空数组时，接口返回空内容字符串
 
-### 6.1.2 Bearer 调用示例
+### 7.1.2 Bearer 调用示例
 
 ```bash
 curl -s "http://localhost:8000/backend/api/export" \
@@ -258,7 +327,7 @@ curl -s "http://localhost:8000/backend/api/export" \
   }'
 ```
 
-### 6.1.3 Internal Token 调用示例（按筛选条件导出）
+### 7.1.3 Internal Token 调用示例（按筛选条件导出）
 
 ```bash
 curl -s "http://localhost:8000/backend/api/export" \
@@ -272,7 +341,7 @@ curl -s "http://localhost:8000/backend/api/export" \
   }'
 ```
 
-### 6.1.4 成功响应（200）
+### 7.1.4 成功响应（200）
 
 ```json
 {
@@ -281,16 +350,16 @@ curl -s "http://localhost:8000/backend/api/export" \
 }
 ```
 
-### 6.1.5 常见错误码
+### 7.1.5 常见错误码
 
 - `400`：请求体非法或导出过程异常
 - `401/403`：认证失败（未登录或 token 失效）
 
-### 6.2 备份导出
+### 7.2 备份导出
 
 备份导出现在采用“后台生成 + 状态查询 + 下载最新文件”的三段式流程。
 
-#### 6.2.1 创建/复用最新备份任务
+#### 7.2.1 创建/复用最新备份任务
 
 `POST /api/backup/export-jobs/latest`
 
@@ -320,7 +389,7 @@ curl -s "http://localhost:8000/backend/api/backup/export-jobs/latest" \
 }
 ```
 
-#### 6.2.2 查询最新备份任务状态
+#### 7.2.2 查询最新备份任务状态
 
 `GET /api/backup/export-jobs/latest`
 
@@ -338,7 +407,7 @@ curl -s "http://localhost:8000/backend/api/backup/export-jobs/latest" \
 - `completed`：最近一次生成成功，可下载
 - `failed`：最近一次生成失败，`error_message` 会返回失败原因
 
-#### 6.2.3 下载最新备份文件
+#### 7.2.3 下载最新备份文件
 
 `GET /api/backup/export-jobs/latest/download`
 
@@ -353,7 +422,7 @@ curl -L -OJ "http://localhost:8000/backend/api/backup/export-jobs/latest/downloa
 - `Content-Disposition: attachment; filename="lumina-backup-latest.zip"`
 - 当最新备份尚未生成或文件缺失时，返回 `404`
 
-## 7. 安全与限制
+## 8. 安全与限制
 
 - URL 上报默认禁止访问内网/本机地址（如 `localhost`、`127.0.0.1`、`10.x`、`172.16-31.x`、`192.168.x`、`::1`）
 - 同一 `source_url` 在系统内唯一，重复上报返回 `409`

@@ -122,7 +122,7 @@ def resolve_has_version_history(
 async def create_article(
     article: ArticleCreate,
     db: Session = Depends(get_db),
-    _: bool = Depends(get_current_admin),
+    _: bool = Depends(get_admin_or_internal),
 ):
     try:
         article_id = await article_command_service.create_article(article.dict(), db)
@@ -131,6 +131,23 @@ async def create_article(
         status = article_obj.status if article_obj else "processing"
         invalidate_public_article_meta_cache()
         return {"id": article_id, "slug": slug, "status": status}
+    except ValueError as e:
+        error_message = str(e)
+        if "已存在" in error_message and article.source_url:
+            existing = db.query(Article).filter(Article.source_url == article.source_url).first()
+            return JSONResponse(
+                status_code=409,
+                content={
+                    "code": "source_url_exists",
+                    "existing": {
+                        "id": existing.id if existing else None,
+                        "slug": existing.slug if existing else None,
+                        "title": existing.title if existing else None,
+                        "status": existing.status if existing else None,
+                    },
+                },
+            )
+        raise HTTPException(status_code=400, detail=error_message)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
