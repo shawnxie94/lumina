@@ -19,6 +19,11 @@ from app.core.dependencies import (
     require_internal_token,
 )
 from app.domain.article_rss_service import ArticleRssService
+from app.domain.detail_markdown_export_service import (
+    build_detail_export_markdown,
+    build_markdown_response,
+    resolve_export_origin,
+)
 from app.schemas import (
     CommentCreate,
     CommentUpdate,
@@ -202,6 +207,24 @@ async def get_public_review_detail(
 ):
     issue = review_service.get_public_issue_by_slug(db, review_slug, is_admin=is_admin)
     return review_service.serialize_issue_detail(db, issue, is_admin=is_admin)
+
+
+@router.get("/api/reviews/{review_slug}/export.md")
+async def export_public_review_markdown(
+    review_slug: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    is_admin: bool = Depends(check_is_admin_or_internal),
+):
+    issue = review_service.get_public_issue_by_slug(db, review_slug, is_admin=is_admin)
+    markdown = build_detail_export_markdown(
+        origin=resolve_export_origin(request),
+        title=issue.title,
+        top_image=issue.top_image,
+        body=review_service.render_issue_markdown(db, issue, is_admin=is_admin)
+        or issue.markdown_content,
+    )
+    return build_markdown_response(markdown, f"review-{issue.slug}.md")
 
 
 @router.post("/api/reviews/{review_slug}/view")

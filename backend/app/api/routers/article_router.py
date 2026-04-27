@@ -40,6 +40,11 @@ from app.domain.article_url_ingest_service import (
     ArticleUrlIngestGatewayTimeoutError,
     ArticleUrlIngestService,
 )
+from app.domain.detail_markdown_export_service import (
+    build_detail_export_markdown,
+    build_markdown_response,
+    resolve_export_origin,
+)
 from app.core.dependencies import (
     check_is_admin_or_internal,
     get_admin_or_internal,
@@ -505,6 +510,30 @@ async def get_article(
         if next_article
         else None,
     }
+
+
+@router.get("/api/articles/{article_slug}/export.md")
+async def export_article_markdown(
+    article_slug: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    is_admin: bool = Depends(check_is_admin_or_internal),
+):
+    article = article_query_service.get_article_by_slug(
+        db,
+        article_slug,
+        include_relations=False,
+    )
+    if not article or (not is_admin and not article.is_visible):
+        raise HTTPException(status_code=404, detail="文章不存在")
+
+    markdown = build_detail_export_markdown(
+        origin=resolve_export_origin(request),
+        title=article.title,
+        top_image=article.top_image,
+        body=article.content_trans or article.content_md,
+    )
+    return build_markdown_response(markdown, f"article-{article.slug}.md")
 
 
 @router.post("/api/articles/{article_slug}/view")
