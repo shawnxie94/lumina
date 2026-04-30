@@ -123,6 +123,12 @@ docker compose up -d
 - API（接口）：<http://localhost:8000/backend>
 - API（文档）：<http://localhost:8000/docs>
 
+## 生产部署说明
+
+- Docker Compose 文件已包含针对 `/backend/` 的 API 健康检查。
+- `./scripts/docker_watchdog.sh` 可通过 cron 或 systemd 定时执行，在 API 探针无响应时重启 API 服务。
+- 生产环境建议由 nginx 直接服务 `/backend/media/`，不要让媒体文件流量经过 FastAPI。配置示例见 `deploy/nginx/lumina.conf.example`。
+
 ## 最小开发说明
 
 ```bash

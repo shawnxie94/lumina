@@ -10,7 +10,8 @@ services:
       - INTERNAL_API_TOKEN=${INTERNAL_API_TOKEN:-dev-internal-token-change-me}
       - ERROR_TASK_POLL_INTERVAL_MS=${ERROR_TASK_POLL_INTERVAL_MS:-600000}
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     networks:
       - app-network
 
@@ -30,6 +31,18 @@ services:
       - MEDIA_PUBLIC_BASE_URL=${MEDIA_PUBLIC_BASE_URL:-}
     volumes:
       - ./data:/app/data
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/backend/', timeout=3).read()",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     networks:
       - app-network
 
@@ -48,7 +61,8 @@ services:
     volumes:
       - ./data:/app/data
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     networks:
       - app-network
 

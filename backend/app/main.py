@@ -1,10 +1,10 @@
 import os
 
 from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
 
 from app.core.http import configure_cors, configure_request_middleware
 from app.core.settings import get_settings, validate_startup_settings
+from app.core.static_media import CachedStaticFiles
 
 
 def create_app() -> FastAPI:
@@ -21,7 +21,7 @@ def create_app() -> FastAPI:
     media_base = media.normalized_base_url
     app.mount(
         media_base,
-        StaticFiles(directory=media.root, check_dir=False),
+        CachedStaticFiles(directory=media.root, check_dir=False),
         name="media",
     )
     prefixed_media_base = (
@@ -32,7 +32,7 @@ def create_app() -> FastAPI:
     if prefixed_media_base != media_base:
         app.mount(
             prefixed_media_base,
-            StaticFiles(directory=media.root, check_dir=False),
+            CachedStaticFiles(directory=media.root, check_dir=False),
             name="media_prefixed",
         )
 

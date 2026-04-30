@@ -126,6 +126,12 @@ Open:
 - API (routes): <http://localhost:8000/backend>
 - API (docs): <http://localhost:8000/docs>
 
+## Production Notes
+
+- Docker Compose files include an API healthcheck against `/backend/`.
+- `./scripts/docker_watchdog.sh` can be run from cron or systemd to restart the API service when the health probe stops responding.
+- For production deployments, serve `/backend/media/` directly from nginx instead of proxying media files through FastAPI. See `deploy/nginx/lumina.conf.example`.
+
 ## Minimal Dev Notes
 
 ```bash
