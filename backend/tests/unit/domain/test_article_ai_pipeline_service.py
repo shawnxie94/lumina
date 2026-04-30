@@ -8,6 +8,7 @@ import pytest
 from app.domain.ai_invocation_service import AIInvocationService
 from app.domain.article_ai_pipeline_service import ArticleAIPipelineService
 from app.domain.article_command_service import ArticleCommandService
+from task_errors import TaskExternalError
 from models import (
     AICallSession,
     AIAnalysis,
@@ -1559,6 +1560,73 @@ def test_process_article_classification_uses_structured_category_id(
     ]
 
 
+def test_process_article_classification_failure_raises_after_followups(
+    db_session,
+    monkeypatch,
+):
+    article = Article(
+        title="Classification Failure Article",
+        slug="classification-failure-article",
+        content_md="这是一篇关于工具产品的文章。",
+        created_at=now_str(),
+        updated_at=now_str(),
+    )
+    db_session.add(article)
+    db_session.commit()
+    db_session.refresh(article)
+    article_id = article.id
+
+    service = ArticleAIPipelineService()
+    enqueued = []
+
+    class FakeClient:
+        async def generate_summary(self, content, **kwargs):
+            raise RuntimeError("provider rejected response format")
+
+    monkeypatch.setattr(article_ai_pipeline_module, "SessionLocal", lambda: db_session)
+    monkeypatch.setattr(
+        service,
+        "get_ai_config",
+        lambda *args, **kwargs: {
+            "base_url": "https://example.com",
+            "api_key": "test-key",
+            "model_name": "test-model",
+            "model_api_config_id": None,
+            "price_input_per_1k": None,
+            "price_output_per_1k": None,
+            "currency": None,
+            "prompt_template": "请分类：{content}",
+            "parameters": {"system_prompt": "请分类"},
+        },
+    )
+    monkeypatch.setattr(service, "create_ai_client", lambda config: FakeClient())
+    monkeypatch.setattr(
+        service,
+        "_enqueue_task",
+        lambda db, **kwargs: enqueued.append(kwargs),
+    )
+
+    with pytest.raises(TaskExternalError, match="provider rejected response format"):
+        asyncio.run(service.process_article_classification(article_id, None))
+
+    persisted_analysis = (
+        db_session.query(AIAnalysis).filter(AIAnalysis.article_id == article_id).one()
+    )
+    usage_log = (
+        db_session.query(AIUsageLog)
+        .filter(AIUsageLog.article_id == article_id)
+        .filter(AIUsageLog.content_type == "classification")
+        .one()
+    )
+    assert persisted_analysis.classification_status == "failed"
+    assert persisted_analysis.error_message == "provider rejected response format"
+    assert usage_log.status == "failed"
+    assert [item["task_type"] for item in enqueued] == [
+        "process_article_tagging",
+        "process_ai_content",
+    ]
+
+
 def test_process_article_tagging_uses_structured_tag_list(
     db_session,
     monkeypatch,
@@ -1629,6 +1697,63 @@ def test_process_article_tagging_uses_structured_tag_list(
         ]
     )
     assert persisted_analysis.tagging_status == "completed"
+
+
+def test_process_article_tagging_failure_marks_task_failed(
+    db_session,
+    monkeypatch,
+):
+    article = Article(
+        title="Tagging Failure Article",
+        slug="tagging-failure-article",
+        content_md="这是一篇关于 AI 产品与知识管理的文章。",
+        created_at=now_str(),
+        updated_at=now_str(),
+    )
+    db_session.add(article)
+    db_session.commit()
+    db_session.refresh(article)
+    article_id = article.id
+
+    service = ArticleAIPipelineService()
+
+    class FakeClient:
+        async def generate_summary(self, content, **kwargs):
+            raise RuntimeError("provider rejected response format")
+
+    monkeypatch.setattr(article_ai_pipeline_module, "SessionLocal", lambda: db_session)
+    monkeypatch.setattr(
+        service,
+        "get_ai_config",
+        lambda *args, **kwargs: {
+            "base_url": "https://example.com",
+            "api_key": "test-key",
+            "model_name": "test-model",
+            "model_api_config_id": None,
+            "price_input_per_1k": None,
+            "price_output_per_1k": None,
+            "currency": None,
+            "prompt_template": "请打标签：{content}",
+            "parameters": {"system_prompt": "请提炼标签"},
+        },
+    )
+    monkeypatch.setattr(service, "create_ai_client", lambda config: FakeClient())
+
+    with pytest.raises(TaskExternalError, match="provider rejected response format"):
+        asyncio.run(service.process_article_tagging(article_id, None))
+
+    persisted_analysis = (
+        db_session.query(AIAnalysis).filter(AIAnalysis.article_id == article_id).one()
+    )
+    usage_log = (
+        db_session.query(AIUsageLog)
+        .filter(AIUsageLog.article_id == article_id)
+        .filter(AIUsageLog.content_type == "tagging")
+        .one()
+    )
+    assert persisted_analysis.tagging_status == "failed"
+    assert persisted_analysis.error_message == "provider rejected response format"
+    assert usage_log.status == "failed"
 
 
 def test_process_article_validation_uses_structured_validation_payload(

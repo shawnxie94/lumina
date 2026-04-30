@@ -9,11 +9,12 @@ from PIL import Image
 from media_service import (
     _apply_lumina_watermark,
     _extract_media_paths_from_markdown,
+    _find_existing_media_asset,
     _normalize_media_kind,
     _validate_book_content,
     save_upload_image,
 )
-from models import AdminSettings, Article
+from models import AdminSettings, Article, MediaAsset
 
 
 @pytest.fixture
@@ -113,6 +114,53 @@ def test_apply_lumina_watermark_outputs_webp_with_visible_text():
     assert ext == ".webp"
     assert _bottom_right_pixel_delta(watermarked, original) > 1
     assert _changed_columns_ratio(watermarked, original) > 0.25
+
+
+def test_apply_lumina_watermark_resizes_large_pixel_images():
+    original = _make_png_bytes(size=(2400, 1200))
+
+    watermarked, content_type, ext = _apply_lumina_watermark(
+        original,
+        "image/png",
+        80,
+        max_dim=600,
+    )
+
+    assert content_type == "image/webp"
+    assert ext == ".webp"
+    with Image.open(BytesIO(watermarked)) as image:
+        assert max(image.size) == 600
+
+
+def test_find_existing_media_asset_reuses_existing_file(db_session, tmp_path, monkeypatch):
+    import media_service
+
+    monkeypatch.setattr(media_service, "MEDIA_ROOT", str(tmp_path))
+    media_file = tmp_path / "2026" / "04" / "demo.webp"
+    media_file.parent.mkdir(parents=True)
+    media_file.write_bytes(b"WEBP")
+    article = Article(title="Demo", slug="demo")
+    db_session.add(article)
+    db_session.flush()
+    asset = MediaAsset(
+        article_id=article.id,
+        storage_path="2026/04/demo.webp",
+        content_type="image/webp",
+        size=4,
+        original_url="https://example.com/demo.png",
+    )
+    db_session.add(asset)
+    db_session.commit()
+
+    existing = _find_existing_media_asset(
+        db_session,
+        article_id=article.id,
+        review_issue_id=None,
+        original_url="https://example.com/demo.png",
+    )
+
+    assert existing is not None
+    assert existing.id == asset.id
 
 
 @pytest.mark.anyio

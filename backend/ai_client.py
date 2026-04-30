@@ -417,8 +417,28 @@ class ConfigurableAIClient:
                 return None
             return {"format": {"type": response_format}}
         if isinstance(response_format, dict):
-            return {"format": response_format}
+            return {"format": self._normalize_responses_response_format(response_format)}
         return None
+
+    def _normalize_responses_response_format(
+        self, response_format: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        if (
+            response_format.get("type") == "json_schema"
+            and isinstance(response_format.get("json_schema"), dict)
+        ):
+            json_schema = dict(response_format["json_schema"])
+            normalized = {
+                "type": "json_schema",
+                "name": json_schema.get("name"),
+                "schema": json_schema.get("schema"),
+            }
+            if "description" in json_schema:
+                normalized["description"] = json_schema["description"]
+            if "strict" in json_schema:
+                normalized["strict"] = json_schema["strict"]
+            return {key: value for key, value in normalized.items() if value is not None}
+        return dict(response_format)
 
     def _extract_response_text(self, response: Any) -> str:
         if isinstance(response, str):

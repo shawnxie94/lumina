@@ -312,6 +312,7 @@ def _apply_lumina_watermark(
     data: bytes,
     content_type: str | None,
     webp_quality: int,
+    max_dim: int | None = None,
 ) -> tuple[bytes, str | None, str | None]:
     if not data or not content_type or not content_type.startswith("image/"):
         return data, content_type, None
@@ -322,6 +323,8 @@ def _apply_lumina_watermark(
                 return data, content_type, None
 
             source = ImageOps.exif_transpose(source)
+            if max_dim and max_dim > 0 and max(source.size) > max_dim:
+                source.thumbnail((max_dim, max_dim))
             image = source.convert("RGBA")
             width, height = image.size
             if width <= 0 or height <= 0:
@@ -361,6 +364,37 @@ def _apply_lumina_watermark(
         return data, content_type, None
 
 
+def _find_existing_media_asset(
+    db: Session,
+    *,
+    article_id: str | None,
+    review_issue_id: str | None,
+    original_url: str,
+) -> MediaAsset | None:
+    normalized_url = (original_url or "").strip()
+    if not normalized_url:
+        return None
+
+    query = db.query(MediaAsset).filter(MediaAsset.original_url == normalized_url)
+    if article_id:
+        query = query.filter(MediaAsset.article_id == article_id)
+    else:
+        query = query.filter(MediaAsset.article_id.is_(None))
+    if review_issue_id:
+        query = query.filter(MediaAsset.review_issue_id == review_issue_id)
+    else:
+        query = query.filter(MediaAsset.review_issue_id.is_(None))
+
+    asset = query.order_by(MediaAsset.created_at.desc(), MediaAsset.id.desc()).first()
+    if not asset or not asset.storage_path:
+        return None
+
+    full_path = os.path.join(MEDIA_ROOT, asset.storage_path)
+    if not os.path.exists(full_path):
+        return None
+    return asset
+
+
 async def save_upload_image(
     db: Session,
     article_id: str | None,
@@ -387,6 +421,7 @@ async def save_upload_image(
             data,
             content_type,
             settings["webp_quality"],
+            max_dim=settings["max_dim"],
         )
         ext_override = watermark_ext or ext_override
         _validate_size(len(data))
@@ -426,6 +461,15 @@ async def ingest_external_image(
         detail = "图片链接无效" if media_kind == MEDIA_KIND_IMAGE else "书籍链接无效"
         raise HTTPException(status_code=400, detail=detail)
 
+    existing_asset = _find_existing_media_asset(
+        db,
+        article_id=article_id,
+        review_issue_id=review_issue_id,
+        original_url=url,
+    )
+    if existing_asset:
+        return existing_asset, _build_media_url(existing_asset.storage_path)
+
     timeout = httpx.Timeout(10.0, connect=5.0)
     async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
         response = await client.get(url)
@@ -451,6 +495,7 @@ async def ingest_external_image(
             data,
             content_type,
             settings["webp_quality"],
+            max_dim=settings["max_dim"],
         )
         ext_override = watermark_ext or ext_override
         _validate_size(len(data))

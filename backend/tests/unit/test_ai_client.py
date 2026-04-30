@@ -26,6 +26,49 @@ def test_build_responses_request_uses_list_input_items():
     assert request["instructions"] == "你是助手"
 
 
+def test_build_responses_request_normalizes_json_schema_format():
+    client = ConfigurableAIClient(
+        base_url="https://api.openai.com/v1",
+        api_key="sk-test",
+        model_name="gpt-5.4",
+        api_type="responses",
+    )
+
+    request = client._build_responses_request(
+        prompt="请选择分类",
+        system_prompt=None,
+        parameters={
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "article_classification_result",
+                    "schema": {
+                        "type": "object",
+                        "properties": {"category_id": {"type": "string"}},
+                        "required": ["category_id"],
+                        "additionalProperties": False,
+                    },
+                    "strict": True,
+                },
+            }
+        },
+        max_tokens=500,
+        temperature=0,
+    )
+
+    assert request["text"]["format"] == {
+        "type": "json_schema",
+        "name": "article_classification_result",
+        "schema": {
+            "type": "object",
+            "properties": {"category_id": {"type": "string"}},
+            "required": ["category_id"],
+            "additionalProperties": False,
+        },
+        "strict": True,
+    }
+
+
 def test_extract_response_text_supports_plain_string_response():
     client = ConfigurableAIClient(
         base_url="https://api.openai.com/v1",

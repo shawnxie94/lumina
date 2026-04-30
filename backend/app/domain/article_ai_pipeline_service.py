@@ -2821,6 +2821,7 @@ class ArticleAIPipelineService:
 
             # 如果没有提示词配置，跳过 AI 调用但继续后续流程
             skip_ai_call = not prompt
+            classification_task_error: Exception | None = None
             if skip_ai_call:
                 analysis.classification_status = "failed"
                 analysis.error_message = "未配置分类提示词，跳过分类"
@@ -2919,6 +2920,9 @@ class ArticleAIPipelineService:
                     analysis.error_message = "AI生成超时，请稍后重试"
                     analysis.updated_at = now_str()
                     db.commit()
+                    classification_task_error = TaskTimeoutError(
+                        "AI生成超时，请稍后重试"
+                    )
                 except Exception as exc:
                     self._log_ai_usage(
                         db,
@@ -2938,6 +2942,7 @@ class ArticleAIPipelineService:
                     analysis.error_message = str(exc)
                     analysis.updated_at = now_str()
                     db.commit()
+                    classification_task_error = TaskExternalError(str(exc))
 
             effective_category_id = article.category_id or category_id
             if not analysis.tagging_manual_override:
@@ -2976,6 +2981,9 @@ class ArticleAIPipelineService:
                 article.translation_status = "skipped"
                 article.translation_error = None
                 db.commit()
+
+            if classification_task_error is not None:
+                raise classification_task_error
         finally:
             db.close()
 
@@ -3083,7 +3091,7 @@ class ArticleAIPipelineService:
             # 如果没有提示词配置，跳过 AI 调用
             if not prompt:
                 analysis.tagging_status = "failed"
-                analysis.tagging_error = "未配置标签提示词，请先在配置页面设置"
+                analysis.error_message = "未配置标签提示词，请先在配置页面设置"
                 analysis.updated_at = now_str()
                 db.commit()
                 return
@@ -3160,9 +3168,10 @@ class ArticleAIPipelineService:
                 )
                 analysis = article_tag_service.ensure_analysis(db, article)
                 analysis.tagging_status = "failed"
-                analysis.tagging_error = "AI生成超时，请稍后重试"
+                analysis.error_message = "AI生成超时，请稍后重试"
                 analysis.updated_at = now_str()
                 db.commit()
+                raise TaskTimeoutError("AI生成超时，请稍后重试")
             except Exception as exc:
                 self._log_ai_usage(
                     db,
@@ -3180,9 +3189,10 @@ class ArticleAIPipelineService:
                 )
                 analysis = article_tag_service.ensure_analysis(db, article)
                 analysis.tagging_status = "failed"
-                analysis.tagging_error = str(exc)
+                analysis.error_message = str(exc)
                 analysis.updated_at = now_str()
                 db.commit()
+                raise TaskExternalError(str(exc))
         finally:
             db.close()
 
