@@ -710,6 +710,28 @@ def test_serialize_issue_card_includes_view_count_and_public_comment_count(db_se
     assert payload["comment_count"] == 1
 
 
+def test_serialize_issue_card_summary_skips_heading_and_reference_blocks(db_session):
+    service = ReviewService()
+    template = make_template(db_session, schedule_type="weekly")
+    issue = make_issue(
+        db_session,
+        template.id,
+        status="published",
+        markdown_content=(
+            "# 第 14 周回顾\n\n"
+            "> 这是一段文章引用，不应该成为回顾卡片摘要。\n\n"
+            "—— [被引用文章](/article/referenced-article)\n\n"
+            "本期回顾真正的开场摘要，应该展示在回顾卡片上。\n\n"
+            "## 文章列表\n\n"
+            "{{review_article_sections}}"
+        ),
+    )
+
+    payload = service.serialize_issue_card(db_session, issue)
+
+    assert payload["summary"] == "本期回顾真正的开场摘要，应该展示在回顾卡片上。"
+
+
 def test_serialize_issue_card_reuses_batch_resolution_maps(db_session, monkeypatch):
     service = ReviewService()
     category = make_category(db_session, "AI", 1)

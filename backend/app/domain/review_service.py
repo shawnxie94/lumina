@@ -39,6 +39,10 @@ SINGLE_BRACE_TEMPLATE_TOKEN_PATTERN = re.compile(
     r"(?<!\{)\{([a-zA-Z_][a-zA-Z0-9_]*)\}(?!\})"
 )
 MARKDOWN_HEADING_PATTERN = re.compile(r"^(#{1,6})\s+.+$")
+MARKDOWN_BLOCKQUOTE_PATTERN = re.compile(r"^\s{0,3}>")
+MARKDOWN_REFERENCE_ATTRIBUTION_PATTERN = re.compile(
+    r"^(?:\u2014{1,2}|--)\s*\[[^\]]+\]\([^)]+\)\s*$"
+)
 ISSUE_SLUG_VERSION_SUFFIX_PATTERN = re.compile(r"-v\d+$")
 DEFAULT_REVIEW_SYSTEM_PROMPT = (
     "你是一名技术内容主编，擅长把一组文章整理成结构清晰、判断克制、可直接发布前再润色的中文回顾草稿。"
@@ -1626,8 +1630,18 @@ class ReviewService:
 
     def _build_issue_excerpt(self, markdown_content: str | None) -> str:
         raw = (markdown_content or "").replace(REVIEW_ARTICLE_SECTIONS_PLACEHOLDER, "").strip()
-        lines = [line.strip() for line in raw.splitlines() if line.strip() and not line.startswith("#")]
-        return lines[0] if lines else ""
+        for paragraph in re.split(r"\n\s*\n+", raw):
+            lines = [line.strip() for line in paragraph.splitlines() if line.strip()]
+            if not lines:
+                continue
+            if all(MARKDOWN_HEADING_PATTERN.match(line) for line in lines):
+                continue
+            if all(MARKDOWN_BLOCKQUOTE_PATTERN.match(line) for line in lines):
+                continue
+            if all(MARKDOWN_REFERENCE_ATTRIBUTION_PATTERN.match(line) for line in lines):
+                continue
+            return " ".join(lines)
+        return ""
 
     def _serialize_issue_version(self, issue: ReviewIssue) -> dict[str, Any]:
         return {
