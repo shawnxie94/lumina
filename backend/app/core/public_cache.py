@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import dataclass
-from threading import Lock
+from threading import Event, Lock
 from time import monotonic
 from typing import Generic, TypeVar
 
@@ -22,6 +22,7 @@ CACHE_KEY_TAGS_PUBLIC = "tags:public"
 CACHE_KEY_AUTHORS_PUBLIC = "authors:public"
 CACHE_KEY_SOURCES_PUBLIC = "sources:public"
 CACHE_KEY_ARTICLES_RSS_PUBLIC_PREFIX = "articles:rss:public:"
+CACHE_KEY_REVIEWS_RSS_PUBLIC_PREFIX = "reviews:rss:public:"
 
 T = TypeVar("T")
 
@@ -36,6 +37,7 @@ class PublicTTLCache:
     def __init__(self) -> None:
         self._lock = Lock()
         self._store: dict[str, _CacheEntry[object]] = {}
+        self._inflight: dict[str, Event] = {}
 
     def get_or_set(
         self,
@@ -43,20 +45,34 @@ class PublicTTLCache:
         loader: Callable[[], T],
         ttl_seconds: int = PUBLIC_CACHE_TTL_SECONDS,
     ) -> T:
-        now = monotonic()
-        with self._lock:
-            entry = self._store.get(key)
-            if entry and entry.expire_at > now:
-                return deepcopy(entry.value)
-            if entry and entry.expire_at <= now:
-                self._store.pop(key, None)
+        while True:
+            now = monotonic()
+            with self._lock:
+                entry = self._store.get(key)
+                if entry and entry.expire_at > now:
+                    return deepcopy(entry.value)
+                if entry and entry.expire_at <= now:
+                    self._store.pop(key, None)
 
-        value = loader()
-        expire_at = now + max(1, ttl_seconds)
-        cached_value = deepcopy(value)
-        with self._lock:
-            self._store[key] = _CacheEntry(expire_at=expire_at, value=cached_value)
-        return deepcopy(cached_value)
+                inflight = self._inflight.get(key)
+                if inflight is None:
+                    inflight = Event()
+                    self._inflight[key] = inflight
+                    break
+
+            inflight.wait()
+
+        try:
+            value = loader()
+            expire_at = monotonic() + max(1, ttl_seconds)
+            cached_value = deepcopy(value)
+            with self._lock:
+                self._store[key] = _CacheEntry(expire_at=expire_at, value=cached_value)
+            return deepcopy(cached_value)
+        finally:
+            with self._lock:
+                self._inflight.pop(key, None)
+                inflight.set()
 
     def invalidate(self, *keys: str) -> None:
         if not keys:
@@ -98,7 +114,10 @@ def invalidate_public_cache_prefix(*prefixes: str) -> None:
 
 
 def invalidate_public_rss_cache() -> None:
-    invalidate_public_cache_prefix(CACHE_KEY_ARTICLES_RSS_PUBLIC_PREFIX)
+    invalidate_public_cache_prefix(
+        CACHE_KEY_ARTICLES_RSS_PUBLIC_PREFIX,
+        CACHE_KEY_REVIEWS_RSS_PUBLIC_PREFIX,
+    )
 
 
 def invalidate_public_article_derived_cache() -> None:

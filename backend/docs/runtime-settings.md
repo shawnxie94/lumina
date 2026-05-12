@@ -23,6 +23,9 @@
 | database | `SQLITE_SYNCHRONOUS` | `NORMAL` | SQLite 同步级别（OFF/NORMAL/FULL/EXTRA） |
 | database | `SQLITE_BUSY_TIMEOUT_MS` | `5000` | SQLite 锁等待超时（毫秒） |
 | database | `SQLITE_TEMP_STORE` | `2` | SQLite 临时存储位置（0/1/2） |
+| database | `DB_POOL_SIZE` | `5` | SQLAlchemy 连接池基础连接数 |
+| database | `DB_MAX_OVERFLOW` | `10` | SQLAlchemy 连接池允许的临时溢出连接数 |
+| database | `DB_POOL_TIMEOUT_SECONDS` | `3.0` | 连接池耗尽时等待连接的最长秒数，超过后快速失败 |
 | security | `INTERNAL_API_TOKEN` | 无（必填） | 内部请求校验 token；未设置将导致启动失败 |
 | cors | `ALLOWED_ORIGINS` | 空字符串 | 为空时允许 localhost:3000/127.0.0.1:3000 |
 | cors | `APP_PUBLIC_BASE_URL` | 空字符串 | 站点公开基址，供 RSS 等对外绝对链接生成使用 |
@@ -41,6 +44,9 @@
 - `SQLITE_SYNCHRONOUS` 仅支持 `OFF/NORMAL/FULL/EXTRA`。
 - `SQLITE_BUSY_TIMEOUT_MS` 必须大于 0。
 - `SQLITE_TEMP_STORE` 仅支持 `0/1/2`。
+- `DB_POOL_SIZE` 必须大于 0。
+- `DB_MAX_OVERFLOW` 不能小于 0。
+- `DB_POOL_TIMEOUT_SECONDS` 必须大于 0。
 - `MAX_MEDIA_SIZE` 必须大于 0。
 - `AI_WORKER_POLL_INTERVAL`、`AI_TASK_LOCK_TIMEOUT`、`AI_TASK_TIMEOUT` 必须大于 0。
 - `AI_TASK_TIMEOUT` 不能小于 `AI_TASK_LOCK_TIMEOUT`。

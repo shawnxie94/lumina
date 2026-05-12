@@ -54,6 +54,9 @@ class AppSettings(BaseSettings):
     sqlite_synchronous: str = Field(default="NORMAL", alias="SQLITE_SYNCHRONOUS")
     sqlite_busy_timeout_ms: int = Field(default=5000, alias="SQLITE_BUSY_TIMEOUT_MS")
     sqlite_temp_store: int = Field(default=2, alias="SQLITE_TEMP_STORE")
+    db_pool_size: int = Field(default=5, alias="DB_POOL_SIZE")
+    db_max_overflow: int = Field(default=10, alias="DB_MAX_OVERFLOW")
+    db_pool_timeout_seconds: float = Field(default=3.0, alias="DB_POOL_TIMEOUT_SECONDS")
     internal_api_token: str = Field(default="", alias="INTERNAL_API_TOKEN")
 
     allowed_origins: str = Field(default="", alias="ALLOWED_ORIGINS")
@@ -122,6 +125,12 @@ def validate_startup_settings(settings: AppSettings) -> None:
         errors.append("SQLITE_BUSY_TIMEOUT_MS 必须大于 0")
     if settings.sqlite_temp_store not in (0, 1, 2):
         errors.append("SQLITE_TEMP_STORE 仅支持 0/1/2")
+    if settings.db_pool_size <= 0:
+        errors.append("DB_POOL_SIZE 必须大于 0")
+    if settings.db_max_overflow < 0:
+        errors.append("DB_MAX_OVERFLOW 不能小于 0")
+    if settings.db_pool_timeout_seconds <= 0:
+        errors.append("DB_POOL_TIMEOUT_SECONDS 必须大于 0")
 
     if not settings.internal_api_token.strip():
         errors.append("INTERNAL_API_TOKEN 不能为空")

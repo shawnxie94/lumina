@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.core.dependencies import build_basic_settings
 from app.core.public_cache import CACHE_KEY_ARTICLES_RSS_PUBLIC_PREFIX
+from app.core.public_cache import CACHE_KEY_REVIEWS_RSS_PUBLIC_PREFIX
 from app.core.settings import get_settings
 from auth import get_admin_settings
 
@@ -67,6 +68,19 @@ class ArticleRssService:
         return (
             f"{CACHE_KEY_ARTICLES_RSS_PUBLIC_PREFIX}"
             f"{encoded_base}:category:{encoded_category}:tags:{encoded_tag_ids}"
+        )
+
+    def build_review_cache_key(
+        self,
+        public_base_url: str,
+        *,
+        template_id: str | None,
+    ) -> str:
+        encoded_base = quote(public_base_url or "", safe="")
+        encoded_template = quote((template_id or "").strip(), safe="")
+        return (
+            f"{CACHE_KEY_REVIEWS_RSS_PUBLIC_PREFIX}"
+            f"{encoded_base}:template:{encoded_template}"
         )
 
     def build_feed_content(

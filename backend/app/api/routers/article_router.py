@@ -279,7 +279,6 @@ async def get_articles_rss(
     tag_ids: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
-    article_rss_service.assert_rss_enabled(db)
     public_base_url = article_rss_service.resolve_public_base_url(request)
     normalized_tag_ids = article_rss_service.normalize_tag_ids(tag_ids)
     cache_key = article_rss_service.build_cache_key(
@@ -289,6 +288,7 @@ async def get_articles_rss(
     )
 
     def load_feed() -> str:
+        article_rss_service.assert_rss_enabled(db)
         return article_rss_service.build_feed_content(
             db=db,
             article_query_service=article_query_service,

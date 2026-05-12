@@ -7,7 +7,7 @@ from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload, load_only
 
-from app.core.public_cache import apply_public_cache_headers
+from app.core.public_cache import apply_public_cache_headers, get_public_cached
 from app.core.dependencies import build_basic_settings
 from app.core.dependencies import (
     check_is_admin_or_internal,
@@ -180,20 +180,29 @@ async def get_reviews_rss(
     template_id: str | None = None,
     db: Session = Depends(get_db),
 ):
-    article_rss_service.assert_rss_enabled(db)
     public_base_url = article_rss_service.resolve_public_base_url(request)
-    reviews = review_service.get_reviews_for_rss(
-        db,
-        template_id=template_id,
+    normalized_template_id = (template_id or "").strip() or None
+    cache_key = article_rss_service.build_review_cache_key(
+        public_base_url,
+        template_id=normalized_template_id,
     )
-    basic_settings = build_basic_settings(get_admin_settings(db))
-    content = review_service.render_reviews_rss(
-        reviews=reviews,
-        public_base_url=public_base_url,
-        site_name=basic_settings["site_name"],
-        site_description=basic_settings["site_description"],
-        template_id=template_id,
-    )
+
+    def load_feed() -> str:
+        article_rss_service.assert_rss_enabled(db)
+        reviews = review_service.get_reviews_for_rss(
+            db,
+            template_id=normalized_template_id,
+        )
+        basic_settings = build_basic_settings(get_admin_settings(db))
+        return review_service.render_reviews_rss(
+            reviews=reviews,
+            public_base_url=public_base_url,
+            site_name=basic_settings["site_name"],
+            site_description=basic_settings["site_description"],
+            template_id=normalized_template_id,
+        )
+
+    content = get_public_cached(cache_key, load_feed)
     response = article_rss_service.build_response(content)
     apply_public_cache_headers(response)
     return response

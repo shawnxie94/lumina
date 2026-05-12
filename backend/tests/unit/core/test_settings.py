@@ -56,6 +56,9 @@ def test_validate_startup_settings_reports_multiple_errors_together():
     settings = make_settings(
         INTERNAL_API_TOKEN="",
         SQLITE_BUSY_TIMEOUT_MS=0,
+        DB_POOL_SIZE=0,
+        DB_MAX_OVERFLOW=-1,
+        DB_POOL_TIMEOUT_SECONDS=0,
         AI_TASK_LOCK_TIMEOUT=10,
         AI_TASK_TIMEOUT=5,
     )
@@ -65,6 +68,9 @@ def test_validate_startup_settings_reports_multiple_errors_together():
     message = str(exc_info.value)
     assert "INTERNAL_API_TOKEN 不能为空" in message
     assert "SQLITE_BUSY_TIMEOUT_MS 必须大于 0" in message
+    assert "DB_POOL_SIZE 必须大于 0" in message
+    assert "DB_MAX_OVERFLOW 不能小于 0" in message
+    assert "DB_POOL_TIMEOUT_SECONDS 必须大于 0" in message
     assert "AI_TASK_TIMEOUT 不能小于 AI_TASK_LOCK_TIMEOUT" in message
 
 

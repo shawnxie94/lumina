@@ -30,7 +30,14 @@ if IS_SQLITE:
         "timeout": max(settings.sqlite_busy_timeout_ms, 1000) / 1000,
     }
 
-engine = create_engine(DATABASE_URL, connect_args=engine_connect_args)
+engine_options = {
+    "connect_args": engine_connect_args,
+    "pool_size": settings.db_pool_size,
+    "max_overflow": settings.db_max_overflow,
+    "pool_timeout": settings.db_pool_timeout_seconds,
+}
+
+engine = create_engine(DATABASE_URL, **engine_options)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
