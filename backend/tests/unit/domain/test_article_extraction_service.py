@@ -144,3 +144,63 @@ def test_extract_with_jina_html_posts_html_and_reference_url(monkeypatch):
     assert result.provider == "jina_html"
     assert result.title == "Selected Title"
     assert result.content_md == "Reader cleaned content with enough words to be valid."
+
+
+def test_parse_jina_response_repairs_utf8_mojibake_from_html_cleaning():
+    expected_content = "欢迎来到人类溢价时代。王焕超腾讯研究院高级研究员。"
+    expected_author = "王焕超"
+
+    class FakeResponse:
+        headers = {"content-type": "application/json; charset=utf-8"}
+
+        def json(self):
+            return {
+                "data": {
+                    "title": "Reader Title",
+                    "content": expected_content.encode("utf-8").decode("latin-1"),
+                    "author": expected_author.encode("utf-8").decode("cp1252"),
+                    "url": "https://example.com/article",
+                }
+            }
+
+    parsed = ArticleExtractionService()._parse_jina_response(FakeResponse())
+
+    assert parsed["title"] == "Reader Title"
+    assert parsed["content_md"] == expected_content
+    assert parsed["author"] == expected_author
+
+
+def test_parse_jina_response_keeps_normal_text_unchanged():
+    expected_content = "Cafe teams use facade patterns when the context is clear enough."
+
+    class FakeResponse:
+        headers = {"content-type": "application/json"}
+
+        def json(self):
+            return {"data": {"content": expected_content, "author": "Andre"}}
+
+    parsed = ArticleExtractionService()._parse_jina_response(FakeResponse())
+
+    assert parsed["content_md"] == expected_content
+    assert parsed["author"] == "Andre"
+
+
+def test_parse_jina_response_repairs_dropped_nbsp_inside_mojibake():
+    expected_content = (
+        "![Image 1: 图片](https://example.com/path95Vg/640)"
+        "王焕超腾讯研究院高级研究员。价格是300拉里。"
+    )
+    broken_content = expected_content.encode("utf-8").decode("latin-1").replace(
+        "\xa0",
+        "",
+    )
+
+    class FakeResponse:
+        headers = {"content-type": "application/json"}
+
+        def json(self):
+            return {"data": {"content": broken_content}}
+
+    parsed = ArticleExtractionService()._parse_jina_response(FakeResponse())
+
+    assert parsed["content_md"] == expected_content

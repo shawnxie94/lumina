@@ -12,6 +12,7 @@ from media_service import (
     _find_existing_media_asset,
     _normalize_media_kind,
     _validate_book_content,
+    maybe_ingest_article_images_with_stats,
     save_upload_image,
 )
 from models import AdminSettings, Article, MediaAsset
@@ -204,3 +205,114 @@ def test_extract_media_paths_from_markdown_includes_links_and_images():
     assert "2026/02/cover.webp" in paths
     assert "2026/02/book.pdf" in paths
     assert len(paths) == 2
+
+
+@pytest.mark.anyio
+async def test_ingest_article_images_handles_jina_markdown_image_inside_html(
+    db_session,
+    monkeypatch,
+):
+    import media_service
+
+    captured_urls = []
+
+    async def fake_ingest_external_image(_db, article_id, url, kind="image", **_kwargs):
+        captured_urls.append((article_id, url, kind))
+        asset = MediaAsset(
+            article_id=article_id,
+            storage_path="2026/06/body.webp",
+            content_type="image/webp",
+            size=10,
+            original_url=url,
+        )
+        _db.add(asset)
+        _db.commit()
+        _db.refresh(asset)
+        return asset, "/media/2026/06/body.webp"
+
+    monkeypatch.setattr(
+        media_service,
+        "ingest_external_image",
+        fake_ingest_external_image,
+    )
+    db_session.add(
+        AdminSettings(
+            password_hash="hash",
+            jwt_secret="secret",
+            media_storage_enabled=True,
+        )
+    )
+    article = Article(
+        title="Jina HTML",
+        slug="jina-html",
+        content_html=(
+            "<p>![Image](https://cdn.example.com/body.png?x=1&amp;y=2)"
+            "正文</p>"
+        ),
+        content_md="正文",
+    )
+    db_session.add(article)
+    db_session.commit()
+    db_session.refresh(article)
+
+    stats = await maybe_ingest_article_images_with_stats(db_session, article)
+
+    assert stats == {"total": 1, "success": 1, "failed": 0, "updated": True}
+    assert captured_urls == [
+        (article.id, "https://cdn.example.com/body.png?x=1&y=2", "image")
+    ]
+    assert article.content_html == "<p>![Image](/media/2026/06/body.webp)正文</p>"
+
+
+@pytest.mark.anyio
+async def test_ingest_article_images_unescapes_html_image_urls(
+    db_session,
+    monkeypatch,
+):
+    import media_service
+
+    captured_urls = []
+
+    async def fake_ingest_external_image(_db, article_id, url, kind="image", **_kwargs):
+        captured_urls.append((article_id, url, kind))
+        asset = MediaAsset(
+            article_id=article_id,
+            storage_path="2026/06/html-body.webp",
+            content_type="image/webp",
+            size=10,
+            original_url=url,
+        )
+        _db.add(asset)
+        _db.commit()
+        _db.refresh(asset)
+        return asset, "/media/2026/06/html-body.webp"
+
+    monkeypatch.setattr(
+        media_service,
+        "ingest_external_image",
+        fake_ingest_external_image,
+    )
+    db_session.add(
+        AdminSettings(
+            password_hash="hash",
+            jwt_secret="secret",
+            media_storage_enabled=True,
+        )
+    )
+    article = Article(
+        title="HTML image",
+        slug="html-image",
+        content_html='<p><img src="https://cdn.example.com/body.png?x=1&amp;y=2"></p>',
+        content_md="正文",
+    )
+    db_session.add(article)
+    db_session.commit()
+    db_session.refresh(article)
+
+    stats = await maybe_ingest_article_images_with_stats(db_session, article)
+
+    assert stats == {"total": 1, "success": 1, "failed": 0, "updated": True}
+    assert captured_urls == [
+        (article.id, "https://cdn.example.com/body.png?x=1&y=2", "image")
+    ]
+    assert article.content_html == '<p><img src="/media/2026/06/html-body.webp"></p>'

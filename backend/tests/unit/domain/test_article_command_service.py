@@ -2,6 +2,7 @@ import asyncio
 
 import pytest
 
+import app.domain.article_command_service as article_command_service_module
 from app.domain.article_command_service import ArticleCommandService
 from app.domain.article_extraction_service import (
     ArticleExtractionBadGatewayError,
@@ -161,6 +162,44 @@ def test_create_article_falls_back_to_markdown_image_when_html_has_no_image(db_s
     assert article.top_image == "https://cdn.example.com/cover.png"
 
 
+def test_create_article_ingests_body_images_after_create(db_session, monkeypatch):
+    captured = {}
+
+    async def fake_ingest_body_images(_db, article):
+        captured["article_id"] = article.id
+        captured["content_md"] = article.content_md
+        article.content_md = article.content_md.replace(
+            "https://cdn.example.com/body.png",
+            "/media/2026/06/body.webp",
+        )
+        _db.commit()
+        return {"total": 1, "success": 1, "failed": 0, "updated": True}
+
+    monkeypatch.setattr(
+        article_command_service_module,
+        "maybe_ingest_article_images_with_stats",
+        fake_ingest_body_images,
+    )
+    service = ArticleCommandService(ai_task_service=StubAITaskService())
+
+    article_id = asyncio.run(
+        service.create_article(
+            {
+                "title": "body image ingest",
+                "content_md": "正文\n\n![图](https://cdn.example.com/body.png)",
+                "skip_ai_processing": True,
+            },
+            db_session,
+        )
+    )
+
+    article = db_session.query(Article).filter(Article.id == article_id).first()
+    assert captured["article_id"] == article_id
+    assert "https://cdn.example.com/body.png" in captured["content_md"]
+    assert article is not None
+    assert article.content_md == "正文\n\n![图](/media/2026/06/body.webp)"
+
+
 def test_create_article_keeps_explicit_top_image(db_session):
     service = ArticleCommandService(ai_task_service=StubAITaskService())
 
@@ -219,6 +258,18 @@ def test_create_article_cleans_direct_html_with_jina_when_enabled(
         )
 
     monkeypatch.setattr(extraction_service, "extract_html", fake_extract_html)
+    ingest_captured = {}
+
+    async def fake_ingest_body_images(_db, article):
+        ingest_captured["provider"] = article.extraction_provider
+        ingest_captured["content_md"] = article.content_md
+        return {"total": 1, "success": 1, "failed": 0, "updated": False}
+
+    monkeypatch.setattr(
+        article_command_service_module,
+        "maybe_ingest_article_images_with_stats",
+        fake_ingest_body_images,
+    )
     service = ArticleCommandService(
         ai_task_service=StubAITaskService(),
         article_extraction_service=extraction_service,
@@ -248,6 +299,10 @@ def test_create_article_cleans_direct_html_with_jina_when_enabled(
     assert article.extraction_provider == "jina_html"
     assert article.extraction_status == "completed"
     assert article.extraction_error is None
+    assert ingest_captured == {
+        "provider": "jina_html",
+        "content_md": "Cleaned content from Jina Reader.",
+    }
 
 
 def test_create_article_keeps_direct_html_when_jina_html_cleaning_fails(

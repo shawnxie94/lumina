@@ -4,6 +4,7 @@ import os
 import re
 import uuid
 from datetime import datetime
+from html import unescape
 from io import BytesIO
 from pathlib import Path
 from typing import Literal, cast
@@ -576,6 +577,10 @@ async def maybe_ingest_article_images_with_stats(db: Session, article) -> dict:
             db, article.id, article.content_html
         )
         _merge_ingest_stats(stats, html_stats)
+        updated_html, html_markdown_stats = await _ingest_images_in_markdown(
+            db, article.id, updated_html
+        )
+        _merge_ingest_stats(stats, html_markdown_stats)
         if updated_html != article.content_html:
             article.content_html = updated_html
             updated = True
@@ -614,7 +619,7 @@ async def _ingest_images_in_markdown(
             return match.group(0)
         stats["total"] += 1
         try:
-            _, new_url = await ingest_external_image(db, article_id, url)
+            _, new_url = await ingest_external_image(db, article_id, unescape(url))
         except Exception as exc:
             logger.warning("markdown_image_ingest_failed: %s", str(exc))
             stats["failed"] += 1
@@ -652,7 +657,7 @@ async def _ingest_images_in_html(
             return match.group(0)
         stats["total"] += 1
         try:
-            _, new_url = await ingest_external_image(db, article_id, url)
+            _, new_url = await ingest_external_image(db, article_id, unescape(url))
         except Exception as exc:
             logger.warning("html_image_ingest_failed: %s", str(exc))
             stats["failed"] += 1

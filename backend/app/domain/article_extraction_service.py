@@ -48,6 +48,39 @@ _LIST_ITEM_RE = re.compile(r"<li\b[^>]*>", re.IGNORECASE)
 _MULTI_SPACE_RE = re.compile(r"[ \t\r\f\v]+")
 _MULTI_NEWLINE_RE = re.compile(r"\n{3,}")
 _MARKDOWN_HEADING_RE = re.compile(r"^\s*#\s+(.+?)\s*$", re.MULTILINE)
+_CJK_RE = re.compile(r"[\u3400-\u9fff]")
+_C1_CONTROL_RE = re.compile(r"[\u0080-\u009f]")
+_MOJIBAKE_MARKER_RE = re.compile(r"[ÂÃ]|â[\u0080-\uffff]|[åæçèéäöüœž]")
+
+_CP1252_ENCODE_OVERRIDES = {
+    0x20AC: 0x80,
+    0x201A: 0x82,
+    0x0192: 0x83,
+    0x201E: 0x84,
+    0x2026: 0x85,
+    0x2020: 0x86,
+    0x2021: 0x87,
+    0x02C6: 0x88,
+    0x2030: 0x89,
+    0x0160: 0x8A,
+    0x2039: 0x8B,
+    0x0152: 0x8C,
+    0x017D: 0x8E,
+    0x2018: 0x91,
+    0x2019: 0x92,
+    0x201C: 0x93,
+    0x201D: 0x94,
+    0x2022: 0x95,
+    0x2013: 0x96,
+    0x2014: 0x97,
+    0x02DC: 0x98,
+    0x2122: 0x99,
+    0x0161: 0x9A,
+    0x203A: 0x9B,
+    0x0153: 0x9C,
+    0x017E: 0x9E,
+    0x0178: 0x9F,
+}
 
 
 class ArticleExtractionError(Exception):
@@ -70,6 +103,129 @@ class ArticleExtractionBadGatewayError(ArticleExtractionError):
 
 class ArticleExtractionGatewayTimeoutError(ArticleExtractionError):
     pass
+
+
+def _count_cjk(value: str) -> int:
+    return len(_CJK_RE.findall(value or ""))
+
+
+def _mojibake_marker_score(value: str) -> int:
+    text = value or ""
+    return len(_C1_CONTROL_RE.findall(text)) + len(_MOJIBAKE_MARKER_RE.findall(text))
+
+
+def _is_mojibake_byte_like(char: str | None) -> bool:
+    if not char:
+        return False
+    codepoint = ord(char)
+    return codepoint >= 0x80 or codepoint in _CP1252_ENCODE_OVERRIDES
+
+
+def _encode_mojibake_as_bytes(value: str) -> bytes:
+    payload = bytearray()
+    for index, char in enumerate(value):
+        if (
+            char == " "
+            and _is_mojibake_byte_like(value[index - 1] if index > 0 else None)
+            and _is_mojibake_byte_like(
+                value[index + 1] if index + 1 < len(value) else None
+            )
+        ):
+            payload.append(0xA0)
+            continue
+
+        codepoint = ord(char)
+        if codepoint <= 0xFF:
+            payload.append(codepoint)
+            continue
+        override = _CP1252_ENCODE_OVERRIDES.get(codepoint)
+        if override is None:
+            raise UnicodeEncodeError(
+                "cp1252-or-latin1",
+                char,
+                0,
+                1,
+                "character cannot be mapped back to one byte",
+            )
+        payload.append(override)
+    return bytes(payload)
+
+
+def _is_utf8_continuation_byte(value: int) -> bool:
+    return 0x80 <= value <= 0xBF
+
+
+def _decode_mojibake_bytes(payload: bytes) -> str:
+    try:
+        return payload.decode("utf-8")
+    except UnicodeDecodeError:
+        repaired = bytearray()
+        index = 0
+        while index < len(payload):
+            current = payload[index]
+            next_byte = payload[index + 1] if index + 1 < len(payload) else None
+            third_byte = payload[index + 2] if index + 2 < len(payload) else None
+
+            if 0xE0 <= current <= 0xEF and next_byte is not None:
+                if (
+                    next_byte == 0x20
+                    and third_byte is not None
+                    and _is_utf8_continuation_byte(third_byte)
+                ):
+                    repaired.extend((current, 0xA0, third_byte))
+                    index += 3
+                    continue
+
+                if _is_utf8_continuation_byte(next_byte) and (
+                    third_byte is None or not _is_utf8_continuation_byte(third_byte)
+                ):
+                    repaired.extend((current, 0xA0, next_byte))
+                    index += 2
+                    continue
+
+            repaired.append(current)
+            index += 1
+
+        repaired_payload = bytes(repaired)
+        try:
+            return repaired_payload.decode("utf-8")
+        except UnicodeDecodeError:
+            return repaired_payload.decode("utf-8", errors="replace")
+
+
+def _repair_utf8_mojibake(value: str) -> str:
+    if not value:
+        return value
+
+    original_marker_score = _mojibake_marker_score(value)
+    if original_marker_score < 3:
+        return value
+
+    try:
+        candidate = _decode_mojibake_bytes(_encode_mojibake_as_bytes(value))
+    except (UnicodeDecodeError, UnicodeEncodeError):
+        return value
+
+    if candidate == value:
+        return value
+
+    original_cjk_count = _count_cjk(value)
+    candidate_cjk_count = _count_cjk(candidate)
+    candidate_marker_score = _mojibake_marker_score(candidate)
+
+    if (
+        candidate_cjk_count >= max(3, original_cjk_count + 3)
+        and candidate_marker_score < original_marker_score
+    ):
+        return candidate
+
+    if (
+        candidate_marker_score * 2 < original_marker_score
+        and len(candidate) <= len(value)
+    ):
+        return candidate
+
+    return value
 
 
 @dataclass(frozen=True)
@@ -373,14 +529,18 @@ class ArticleExtractionService:
             elif isinstance(images, dict) and images:
                 top_image = next(iter(images.values()))
             return {
-                "title": data.get("title") or data.get("name") or "",
-                "content_md": data.get("content") or data.get("markdown") or "",
+                "title": _repair_utf8_mojibake(
+                    data.get("title") or data.get("name") or ""
+                ),
+                "content_md": _repair_utf8_mojibake(
+                    data.get("content") or data.get("markdown") or ""
+                ),
                 "source_url": data.get("url") or data.get("source_url") or "",
                 "top_image": data.get("image") or top_image,
-                "author": data.get("author") or "",
+                "author": _repair_utf8_mojibake(data.get("author") or ""),
                 "published_at": data.get("publishedTime") or data.get("published_at") or "",
             }
-        return {"content_md": response.text or ""}
+        return {"content_md": _repair_utf8_mojibake(response.text or "")}
 
     async def _extract_with_local_html(self, source_url: str) -> ExtractedArticle:
         fetch_result = await self._fetch_html_from_url(source_url)

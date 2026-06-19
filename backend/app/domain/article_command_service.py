@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 from ai_client import is_english_content
-from media_service import maybe_ingest_top_image
+from media_service import maybe_ingest_article_images_with_stats, maybe_ingest_top_image
 from models import AIAnalysis, AITask, Article, Category, generate_uuid, now_str
 from slug_utils import generate_article_slug
 from sqlalchemy.exc import IntegrityError
@@ -404,6 +404,11 @@ class ArticleCommandService:
             await maybe_ingest_top_image(db, article)
         except Exception as exc:
             logger.warning("top_image_ingest_error: %s", str(exc))
+
+        try:
+            await maybe_ingest_article_images_with_stats(db, article)
+        except Exception as exc:
+            logger.warning("article_images_ingest_error: %s", str(exc))
 
         if self._has_post_process_work(post_process_options):
             self._enqueue_configured_post_process(
