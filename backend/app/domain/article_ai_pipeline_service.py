@@ -237,6 +237,82 @@ class ArticleAIPipelineService:
 
         return AITaskService().enqueue_task(db, **kwargs)
 
+    def _normalize_post_process_options(self, options: dict | None) -> dict:
+        if not isinstance(options, dict):
+            return {
+                "classification": True,
+                "summary": True,
+                "tagging": True,
+                "translation": True,
+            }
+        return {
+            "classification": bool(options.get("classification")),
+            "summary": bool(options.get("summary")),
+            "tagging": bool(options.get("tagging")),
+            "translation": bool(options.get("translation")),
+        }
+
+    def _enqueue_post_validation_tasks(
+        self,
+        db,
+        article: Article,
+        category_id: str | None,
+        post_process_options: dict | None,
+    ) -> None:
+        options = self._normalize_post_process_options(post_process_options)
+        article.status = "completed"
+        article.updated_at = now_str()
+        db.commit()
+
+        if options.get("classification"):
+            self._enqueue_task(
+                db,
+                task_type="process_article_classification",
+                article_id=article.id,
+                content_type="classification",
+                payload={
+                    "category_id": category_id,
+                    "post_process_options": options,
+                },
+            )
+            return
+
+        if options.get("tagging"):
+            self._enqueue_task(
+                db,
+                task_type="process_article_tagging",
+                article_id=article.id,
+                content_type="tagging",
+                payload={"category_id": category_id},
+            )
+        if options.get("summary"):
+            self._enqueue_task(
+                db,
+                task_type="process_ai_content",
+                article_id=article.id,
+                content_type="summary",
+                payload={"category_id": category_id},
+            )
+        if options.get("translation") and article.content_md and is_english_content(
+            article.content_md
+        ):
+            article.translation_status = "pending"
+            article.translation_error = None
+            article.updated_at = now_str()
+            db.commit()
+            self._enqueue_task(
+                db,
+                task_type="process_article_translation",
+                article_id=article.id,
+                content_type="translation",
+                payload={"category_id": category_id},
+            )
+        else:
+            article.translation_status = "skipped"
+            article.translation_error = None
+            article.updated_at = now_str()
+            db.commit()
+
     def _prompt_ordering(self, query):
         return query.order_by(
             PromptConfig.is_default.desc(),
@@ -2045,6 +2121,7 @@ class ArticleAIPipelineService:
         source_format: str | None = None,
         strategy: str | None = None,
         chunk_cursor: int | None = None,
+        post_process_options: dict | None = None,
     ):
         db = SessionLocal()
         try:
@@ -2398,6 +2475,7 @@ class ArticleAIPipelineService:
                     "source_format": resolved_source_format,
                     "strategy": strategy_value if advanced_options else "single",
                     "chunk_cursor": 0,
+                    "post_process_options": post_process_options,
                 },
             )
         except Exception as exc:
@@ -2432,6 +2510,7 @@ class ArticleAIPipelineService:
         cleaned_md: str | None = None,
         model_config_id: str | None = None,
         prompt_config_id: str | None = None,
+        post_process_options: dict | None = None,
     ):
         db = SessionLocal()
         try:
@@ -2538,12 +2617,11 @@ class ArticleAIPipelineService:
                         stage="validation_fallback_error",
                     )
 
-                self._enqueue_task(
+                self._enqueue_post_validation_tasks(
                     db,
-                    task_type="process_article_classification",
-                    article_id=article_id,
-                    content_type="classification",
-                    payload={"category_id": category_id},
+                    article,
+                    category_id,
+                    post_process_options,
                 )
                 return
 
@@ -2572,12 +2650,11 @@ class ArticleAIPipelineService:
                         {"total": 0, "success": 0, "failed": 0, "updated": False},
                         stage="validation_skip_error",
                     )
-                self._enqueue_task(
+                self._enqueue_post_validation_tasks(
                     db,
-                    task_type="process_article_classification",
-                    article_id=article_id,
-                    content_type="classification",
-                    payload={"category_id": category_id},
+                    article,
+                    category_id,
+                    post_process_options,
                 )
                 return
 
@@ -2689,12 +2766,11 @@ class ArticleAIPipelineService:
                     stage="validation_passed_error",
                 )
 
-            self._enqueue_task(
+            self._enqueue_post_validation_tasks(
                 db,
-                task_type="process_article_classification",
-                article_id=article_id,
-                content_type="classification",
-                payload={"category_id": category_id},
+                article,
+                category_id,
+                post_process_options,
             )
         except Exception as exc:
             error_message = str(exc)
@@ -2727,6 +2803,7 @@ class ArticleAIPipelineService:
         category_id: str | None,
         model_config_id: str | None = None,
         prompt_config_id: str | None = None,
+        post_process_options: dict | None = None,
     ):
         db = SessionLocal()
         try:
@@ -2945,7 +3022,9 @@ class ArticleAIPipelineService:
                     classification_task_error = TaskExternalError(str(exc))
 
             effective_category_id = article.category_id or category_id
-            if not analysis.tagging_manual_override:
+            options = self._normalize_post_process_options(post_process_options)
+
+            if options.get("tagging") and not analysis.tagging_manual_override:
                 analysis.tagging_status = "pending"
                 analysis.updated_at = now_str()
                 db.commit()
@@ -2957,15 +3036,20 @@ class ArticleAIPipelineService:
                     payload={"category_id": effective_category_id},
                 )
 
-            self._enqueue_task(
-                db,
-                task_type="process_ai_content",
-                article_id=article_id,
-                content_type="summary",
-                payload={"category_id": effective_category_id},
-            )
+            if options.get("summary"):
+                self._enqueue_task(
+                    db,
+                    task_type="process_ai_content",
+                    article_id=article_id,
+                    content_type="summary",
+                    payload={"category_id": effective_category_id},
+                )
 
-            if article.content_md and is_english_content(article.content_md):
+            if (
+                options.get("translation")
+                and article.content_md
+                and is_english_content(article.content_md)
+            ):
                 article.translation_status = "pending"
                 article.translation_error = None
                 article.updated_at = now_str()
@@ -2980,6 +3064,11 @@ class ArticleAIPipelineService:
             else:
                 article.translation_status = "skipped"
                 article.translation_error = None
+                db.commit()
+
+            if not options.get("summary") and not options.get("translation"):
+                article.status = "completed"
+                article.updated_at = now_str()
                 db.commit()
 
             if classification_task_error is not None:

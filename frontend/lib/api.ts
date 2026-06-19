@@ -515,6 +515,19 @@ export interface RecommendationSettings {
 	recommendation_model_config_id: string;
 }
 
+export interface ExtractionSettings {
+	jina_reader_enabled: boolean;
+	jina_reader_base_url: string;
+	jina_reader_api_key: string;
+	jina_reader_timeout_seconds: number;
+	jina_reader_token_budget: number | null;
+	jina_reader_prefer_mode: "jina_first" | "local_first" | "local_only";
+	auto_ai_classification_enabled: boolean;
+	auto_ai_summary_enabled: boolean;
+	auto_ai_tagging_enabled: boolean;
+	auto_translation_enabled: boolean;
+}
+
 export interface RecommendationEmbeddingRefreshResult {
 	success: boolean;
 	scope_limit: number;
@@ -1589,6 +1602,17 @@ export const recommendationSettingsApi = {
 			"/api/settings/recommendations/rebuild-embeddings",
 		);
 		return response.data as RecommendationEmbeddingRefreshResult;
+	},
+};
+
+export const extractionSettingsApi = {
+	getSettings: async (): Promise<ExtractionSettings> => {
+		const response = await api.get("/api/settings/extraction");
+		return response.data as ExtractionSettings;
+	},
+	updateSettings: async (payload: Partial<ExtractionSettings>) => {
+		const response = await api.put("/api/settings/extraction", payload);
+		return response.data;
 	},
 };
 

@@ -4,11 +4,28 @@ import pytest
 
 import app.domain.article_command_service as article_command_service_module
 from app.domain.article_command_service import ArticleCommandService
-from models import AIAnalysis, AIAnalysisVersion, AITask, AIUsageLog, Article, now_str
+from app.domain.article_extraction_service import (
+    ArticleExtractionBadGatewayError,
+    ArticleExtractionService,
+    ExtractedArticle,
+)
+from models import (
+    AIAnalysis,
+    AIAnalysisVersion,
+    AITask,
+    AIUsageLog,
+    AdminSettings,
+    Article,
+    now_str,
+)
 
 
 class StubAITaskService:
+    def __init__(self):
+        self.tasks = []
+
     def enqueue_task(self, *args, **kwargs) -> str:
+        self.tasks.append(kwargs)
         return "task-id"
 
 
@@ -54,7 +71,8 @@ def make_article_with_analysis(db_session):
 
 
 def test_create_article_uses_first_html_image_when_top_image_missing(db_session):
-    service = ArticleCommandService(ai_task_service=StubAITaskService())
+    task_service = StubAITaskService()
+    service = ArticleCommandService(ai_task_service=task_service)
 
     article_id = asyncio.run(
         service.create_article(
@@ -79,6 +97,43 @@ def test_create_article_uses_first_html_image_when_top_image_missing(db_session)
     article = db_session.query(Article).filter(Article.id == article_id).first()
     assert article is not None
     assert article.top_image == "https://example.com/images/first.jpg"
+    assert article.status == "completed"
+    assert task_service.tasks == []
+
+
+def test_create_article_queues_only_enabled_post_processing(db_session):
+    db_session.add(
+        AdminSettings(
+            password_hash="hash",
+            jwt_secret="secret",
+            auto_ai_cleaning_enabled=True,
+            auto_ai_classification_enabled=False,
+            auto_ai_summary_enabled=True,
+            auto_ai_tagging_enabled=False,
+            auto_translation_enabled=False,
+        )
+    )
+    db_session.commit()
+    task_service = StubAITaskService()
+    service = ArticleCommandService(ai_task_service=task_service)
+
+    article_id = asyncio.run(
+        service.create_article(
+            {
+                "title": "summary only",
+                "content_md": "这是一篇足够长的正文，用来验证默认只触发摘要任务。",
+                "source_url": "https://example.com/article/summary-only",
+            },
+            db_session,
+        )
+    )
+
+    article = db_session.query(Article).filter(Article.id == article_id).first()
+    assert article is not None
+    assert article.status == "completed"
+    assert len(task_service.tasks) == 1
+    assert task_service.tasks[0]["task_type"] == "process_ai_content"
+    assert task_service.tasks[0]["content_type"] == "summary"
 
 
 def test_create_article_falls_back_to_markdown_image_when_html_has_no_image(db_session):
@@ -131,6 +186,185 @@ def test_create_article_keeps_explicit_top_image(db_session):
     article = db_session.query(Article).filter(Article.id == article_id).first()
     assert article is not None
     assert article.top_image == "https://cdn.example.com/from-input.png"
+
+
+def test_create_article_cleans_direct_html_with_jina_when_enabled(
+    db_session,
+    monkeypatch,
+):
+    db_session.add(
+        AdminSettings(
+            password_hash="hash",
+            jwt_secret="secret",
+            jina_reader_enabled=True,
+            jina_reader_prefer_mode="jina_first",
+        )
+    )
+    db_session.commit()
+    extraction_service = ArticleExtractionService()
+    captured = {}
+
+    async def fake_extract_html(_db, **kwargs):
+        captured.update(kwargs)
+        return ExtractedArticle(
+            title="Cleaned Title",
+            content_html="<p>Cleaned content from Jina Reader.</p>",
+            content_md="Cleaned content from Jina Reader.",
+            source_url="https://example.com/cleaned",
+            top_image="https://example.com/cleaned.png",
+            author="Clean Author",
+            published_at="2026-04-13",
+            source_domain="example.com",
+            provider="jina_html",
+            metadata={"content_length": 33},
+        )
+
+    monkeypatch.setattr(extraction_service, "extract_html", fake_extract_html)
+    service = ArticleCommandService(
+        ai_task_service=StubAITaskService(),
+        article_extraction_service=extraction_service,
+    )
+
+    article_id = asyncio.run(
+        service.create_article(
+            {
+                "title": "Original Title",
+                "content_html": "<article><p>Original selected HTML content.</p></article>",
+                "content_md": "Original selected HTML content.",
+                "content_structured": {"blocks": []},
+                "source_url": "https://example.com/original",
+                "skip_ai_processing": True,
+            },
+            db_session,
+        )
+    )
+
+    article = db_session.query(Article).filter(Article.id == article_id).first()
+    assert captured["html"] == "<article><p>Original selected HTML content.</p></article>"
+    assert article is not None
+    assert article.title == "Cleaned Title"
+    assert article.content_html == "<p>Cleaned content from Jina Reader.</p>"
+    assert article.content_md == "Cleaned content from Jina Reader."
+    assert article.content_structured is None
+    assert article.extraction_provider == "jina_html"
+    assert article.extraction_status == "completed"
+    assert article.extraction_error is None
+
+
+def test_create_article_keeps_direct_html_when_jina_html_cleaning_fails(
+    db_session,
+    monkeypatch,
+):
+    db_session.add(
+        AdminSettings(
+            password_hash="hash",
+            jwt_secret="secret",
+            jina_reader_enabled=True,
+            jina_reader_prefer_mode="jina_first",
+        )
+    )
+    db_session.commit()
+    extraction_service = ArticleExtractionService()
+
+    async def fake_extract_html(_db, **_kwargs):
+        raise ArticleExtractionBadGatewayError("Jina HTML unavailable")
+
+    monkeypatch.setattr(extraction_service, "extract_html", fake_extract_html)
+    service = ArticleCommandService(
+        ai_task_service=StubAITaskService(),
+        article_extraction_service=extraction_service,
+    )
+
+    article_id = asyncio.run(
+        service.create_article(
+            {
+                "title": "Original Title",
+                "content_html": "<article><p>Original selected HTML content.</p></article>",
+                "content_md": "Original selected HTML content.",
+                "source_url": "https://example.com/original",
+                "skip_ai_processing": True,
+            },
+            db_session,
+        )
+    )
+
+    article = db_session.query(Article).filter(Article.id == article_id).first()
+    assert article is not None
+    assert article.content_html == "<article><p>Original selected HTML content.</p></article>"
+    assert article.content_md == "Original selected HTML content."
+    assert article.extraction_provider == "direct"
+    assert article.extraction_status == "fallback_used"
+    assert article.extraction_error == "Jina HTML unavailable"
+
+
+def test_retry_article_ai_refetches_html_when_article_has_only_markdown(
+    db_session,
+    monkeypatch,
+):
+    task_service = StubAITaskService()
+    extraction_service = ArticleExtractionService()
+
+    async def fake_extract_url(_db, source_url, *, ensure_public_url):
+        ensure_public_url(source_url)
+        return ExtractedArticle(
+            title="Refetched Title",
+            content_html="<article><p>Refetched HTML content.</p></article>",
+            content_md="Refetched HTML content.",
+            source_url=source_url,
+            top_image="https://example.com/image.png",
+            author="Refetched Author",
+            published_at="2026-04-13",
+            source_domain="example.com",
+            provider="local_html",
+            metadata={"content_length": 23},
+        )
+
+    monkeypatch.setattr(extraction_service, "extract_url", fake_extract_url)
+    service = ArticleCommandService(
+        ai_task_service=task_service,
+        article_extraction_service=extraction_service,
+    )
+    article = Article(
+        title="Markdown only",
+        slug="markdown-only",
+        content_html=None,
+        content_md="Only markdown content.",
+        source_url="https://93.184.216.34/article",
+        status="completed",
+    )
+    db_session.add(article)
+    db_session.commit()
+    db_session.refresh(article)
+
+    article_id = asyncio.run(service.retry_article_ai(db_session, article.id))
+
+    db_session.refresh(article)
+    assert article_id == article.id
+    assert article.content_html == "<article><p>Refetched HTML content.</p></article>"
+    assert article.content_md == "Refetched HTML content."
+    assert article.extraction_provider == "local_html"
+    assert article.status == "pending"
+    assert len(task_service.tasks) == 1
+    assert task_service.tasks[0]["task_type"] == "process_article_cleaning"
+    assert task_service.tasks[0]["payload"]["source_format"] == "html"
+
+
+def test_retry_article_ai_rejects_markdown_only_article_without_source_url(db_session):
+    service = ArticleCommandService(ai_task_service=StubAITaskService())
+    article = Article(
+        title="Markdown only",
+        slug="markdown-only-no-url",
+        content_html=None,
+        content_md="Only markdown content.",
+        source_url=None,
+        status="completed",
+    )
+    db_session.add(article)
+    db_session.commit()
+    db_session.refresh(article)
+
+    with pytest.raises(ValueError, match="缺少HTML正文和来源URL"):
+        asyncio.run(service.retry_article_ai(db_session, article.id))
 
 
 def test_delete_ai_content_clears_only_requested_content_type(db_session):

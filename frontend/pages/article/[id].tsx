@@ -2593,6 +2593,7 @@ export default function ArticleDetailPage({
 		article?.status === "failed"
 			? article.status
 			: null);
+	const isCleaningBusy = isPendingJobStatus(cleaningTaskStatus);
 	const translationTaskStatus =
 		translationTask?.status || article?.translation_status || null;
 	const contentTaskStatusItems = [
@@ -3277,37 +3278,48 @@ export default function ArticleDetailPage({
 			showToast(t("操作失败"), "error");
 		}
 	};
-	const moreActionItems = isAdmin && article
+	const moreActionItems = article
 		? [
 				{
-					key: "note",
-					label: t("编辑批注"),
+					key: "export",
+					label: t("导出文章"),
 					danger: false,
-					icon: <IconNote className="h-4 w-4" />,
-					onClick: () => {
-						setNoteDraft(noteContent);
-						setNoteRecommendationDraftLevel(noteRecommendationLevel);
-						setShowNoteModal(true);
-					},
+					icon: <IconArrowDown className="h-4 w-4" />,
+					onClick: handleExportMarkdown,
 				},
-				{
-					key: "visibility",
-					label: article.is_visible ? t("设为隐藏") : t("设为显示"),
-					danger: false,
-					icon: article.is_visible ? (
-						<IconEyeOff className="h-4 w-4" />
-					) : (
-						<IconEye className="h-4 w-4" />
-					),
-					onClick: handleToggleVisibility,
-				},
-				{
-					key: "delete",
-					label: t("删除文章"),
-					danger: true,
-					icon: <IconTrash className="h-4 w-4" />,
-					onClick: () => setShowDeleteModal(true),
-				},
+				...(isAdmin
+					? [
+							{
+								key: "note",
+								label: t("编辑批注"),
+								danger: false,
+								icon: <IconNote className="h-4 w-4" />,
+								onClick: () => {
+									setNoteDraft(noteContent);
+									setNoteRecommendationDraftLevel(noteRecommendationLevel);
+									setShowNoteModal(true);
+								},
+							},
+							{
+								key: "visibility",
+								label: article.is_visible ? t("设为隐藏") : t("设为显示"),
+								danger: false,
+								icon: article.is_visible ? (
+									<IconEyeOff className="h-4 w-4" />
+								) : (
+									<IconEye className="h-4 w-4" />
+								),
+								onClick: handleToggleVisibility,
+							},
+							{
+								key: "delete",
+								label: t("删除文章"),
+								danger: true,
+								icon: <IconTrash className="h-4 w-4" />,
+								onClick: () => setShowDeleteModal(true),
+							},
+						]
+					: []),
 			]
 		: [];
 
@@ -4275,20 +4287,6 @@ export default function ArticleDetailPage({
 												<span key={item.key}>{badgeNode}</span>
 											);
 										})}
-									{isAdmin && article.status === "failed" && (
-										<button
-											type="button"
-											onClick={handleRetryCleaning}
-											className="flex items-center gap-1 px-2 py-0.5 rounded text-xs text-danger-ink bg-danger-soft hover:bg-danger-soft transition"
-											title={
-												article.ai_analysis?.error_message || t("重新清洗")
-											}
-											aria-label={t("重试清洗")}
-										>
-											<IconRefresh className="h-3.5 w-3.5" />
-											{t("重试清洗")}
-										</button>
-									)}
 									{isAdmin && article.translation_status === "failed" && (
 										<button
 											type="button"
@@ -4302,144 +4300,154 @@ export default function ArticleDetailPage({
 										</button>
 									)}
 								</div>
-								<div className="flex flex-wrap items-center gap-2">
-									<IconButton
-										onClick={handleExportMarkdown}
-										variant="ghost"
-										size="md"
-										title={t("导出 Markdown")}
-										className="rounded-sm"
-									>
-										<IconArrowDown className="h-4 w-4" />
-									</IconButton>
-									{article.content_trans && (
+									<div className="flex flex-wrap items-center gap-2">
+										{isAdmin && (
+											<IconButton
+												onClick={handleRetryCleaning}
+												disabled={isCleaningBusy}
+												loading={isCleaningBusy}
+												variant="ghost"
+												size="md"
+												title={
+													isCleaningBusy
+														? t("优化中")
+														: article.ai_analysis?.error_message ||
+															t("AI 优化正文")
+												}
+												aria-label={t("AI 优化正文")}
+												className="rounded-sm"
+											>
+												<IconBolt className="h-4 w-4" />
+											</IconButton>
+										)}
+										{article.content_trans && (
+											<button
+												type="button"
+												onClick={() => setShowTranslation(!showTranslation)}
+												className="flex items-center justify-center w-8 h-8 rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
+												title={showTranslation ? t("显示原文") : t("显示译文")}
+												aria-label={
+													showTranslation ? t("显示原文") : t("显示译文")
+												}
+											>
+												<IconGlobe className="h-4 w-4" />
+											</button>
+										)}
 										<button
 											type="button"
-											onClick={() => setShowTranslation(!showTranslation)}
+											onClick={() => setImmersiveMode(!immersiveMode)}
 											className="flex items-center justify-center w-8 h-8 rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
-											title={showTranslation ? t("显示原文") : t("显示译文")}
+											title={
+												immersiveMode ? t("退出沉浸模式") : t("进入沉浸模式")
+											}
 											aria-label={
-												showTranslation ? t("显示原文") : t("显示译文")
+												immersiveMode ? t("退出沉浸模式") : t("进入沉浸模式")
 											}
 										>
-											<IconGlobe className="h-4 w-4" />
+											<IconBook className="h-4 w-4" />
 										</button>
-									)}
-									<button
-										type="button"
-										onClick={() => setImmersiveMode(!immersiveMode)}
-										className="flex items-center justify-center w-8 h-8 rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
-										title={
-											immersiveMode ? t("退出沉浸模式") : t("进入沉浸模式")
-										}
-										aria-label={
-											immersiveMode ? t("退出沉浸模式") : t("进入沉浸模式")
-										}
-									>
-										<IconBook className="h-4 w-4" />
-									</button>
-									{immersiveMode && hasPdfEmbed && (
-										<div className="inline-flex h-8 items-center rounded-sm border border-border bg-muted text-text-2">
-											<button
-												type="button"
-												onClick={decreasePdfHeight}
-												disabled={pdfHeightScale <= PDF_HEIGHT_SCALE_MIN}
-												className="h-full px-2 text-sm hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50 transition"
-												title={t("缩短PDF高度")}
-												aria-label={t("缩短PDF高度")}
-											>
-												−
-											</button>
-											<span className="min-w-[52px] px-1 text-center text-xs tabular-nums">
-												{Math.round(pdfHeightScale * 100)}%
-											</span>
-											<button
-												type="button"
-												onClick={increasePdfHeight}
-												disabled={pdfHeightScale >= PDF_HEIGHT_SCALE_MAX}
-												className="h-full px-2 text-sm hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50 transition"
-												title={t("拉长PDF高度")}
-												aria-label={t("拉长PDF高度")}
-											>
-												+
-											</button>
-											<button
-												type="button"
-												onClick={resetPdfHeight}
-												className="h-full border-l border-border px-2 text-xs hover:bg-surface transition"
-												title={t("重置PDF高度")}
-												aria-label={t("重置PDF高度")}
-											>
-												{t("重置")}
-											</button>
-										</div>
-									)}
-									{isAdmin && (
-										<button
-											type="button"
-											onClick={() => {
-												setShowMoreActions(false);
-												openEditModal(
-													showTranslation && article.content_trans
-														? "translation"
-														: "original",
-												);
-											}}
-											className="flex items-center justify-center w-8 h-8 rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
-											title={t("编辑文章")}
-											aria-label={t("编辑文章")}
-										>
-											<IconEdit className="h-4 w-4" />
-										</button>
-									)}
-									{isAdmin && (
-										<div className="relative" ref={moreActionsRef}>
-											<button
-												type="button"
-												onClick={() => setShowMoreActions((prev) => !prev)}
-												className="inline-flex items-center gap-1 h-8 px-2 rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
-												aria-haspopup="menu"
-												aria-expanded={showMoreActions}
-												aria-label={t("更多")}
-												title={t("更多")}
-											>
-												<span className="text-xs">{t("更多")}</span>
-												<IconChevronDown
-													className={`h-3.5 w-3.5 transition-transform ${
-														showMoreActions ? "rotate-180" : ""
-													}`}
-												/>
-											</button>
-											{showMoreActions && (
-												<div
-													role="menu"
-													className="absolute right-0 top-10 min-w-[156px] rounded-sm border border-border bg-surface shadow-md p-1 z-20"
+										{immersiveMode && hasPdfEmbed && (
+											<div className="inline-flex h-8 items-center rounded-sm border border-border bg-muted text-text-2">
+												<button
+													type="button"
+													onClick={decreasePdfHeight}
+													disabled={pdfHeightScale <= PDF_HEIGHT_SCALE_MIN}
+													className="h-full px-2 text-sm hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50 transition"
+													title={t("缩短PDF高度")}
+													aria-label={t("缩短PDF高度")}
 												>
-													{moreActionItems.map((item) => (
-														<button
-															key={item.key}
-															type="button"
-															role="menuitem"
-															onClick={() => {
-																setShowMoreActions(false);
-																item.onClick();
-															}}
-															className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-sm text-sm transition ${
-																item.danger
-																	? "text-danger-ink hover:bg-danger-soft"
-																	: "text-text-2 hover:text-text-1 hover:bg-muted"
-															}`}
-														>
-															{item.icon}
-															<span>{item.label}</span>
-														</button>
-													))}
-												</div>
-											)}
-										</div>
-									)}
+													−
+												</button>
+												<span className="min-w-[52px] px-1 text-center text-xs tabular-nums">
+													{Math.round(pdfHeightScale * 100)}%
+												</span>
+												<button
+													type="button"
+													onClick={increasePdfHeight}
+													disabled={pdfHeightScale >= PDF_HEIGHT_SCALE_MAX}
+													className="h-full px-2 text-sm hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50 transition"
+													title={t("拉长PDF高度")}
+													aria-label={t("拉长PDF高度")}
+												>
+													+
+												</button>
+												<button
+													type="button"
+													onClick={resetPdfHeight}
+													className="h-full border-l border-border px-2 text-xs hover:bg-surface transition"
+													title={t("重置PDF高度")}
+													aria-label={t("重置PDF高度")}
+												>
+													{t("重置")}
+												</button>
+											</div>
+										)}
+										{isAdmin && (
+											<button
+												type="button"
+												onClick={() => {
+													setShowMoreActions(false);
+													openEditModal(
+														showTranslation && article.content_trans
+															? "translation"
+															: "original",
+													);
+												}}
+												className="flex items-center justify-center w-8 h-8 rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
+												title={t("编辑文章")}
+												aria-label={t("编辑文章")}
+											>
+												<IconEdit className="h-4 w-4" />
+											</button>
+										)}
+										{article && moreActionItems.length > 0 && (
+											<div className="relative" ref={moreActionsRef}>
+												<button
+													type="button"
+													onClick={() => setShowMoreActions((prev) => !prev)}
+													className="inline-flex items-center gap-1 h-8 px-2 rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
+													aria-haspopup="menu"
+													aria-expanded={showMoreActions}
+													aria-label={t("更多")}
+													title={t("更多")}
+												>
+													<span className="text-xs">{t("更多")}</span>
+													<IconChevronDown
+														className={`h-3.5 w-3.5 transition-transform ${
+															showMoreActions ? "rotate-180" : ""
+														}`}
+													/>
+												</button>
+												{showMoreActions && (
+													<div
+														role="menu"
+														className="absolute right-0 top-10 min-w-[156px] rounded-sm border border-border bg-surface shadow-md p-1 z-20"
+													>
+														{moreActionItems.map((item) => (
+															<button
+																key={item.key}
+																type="button"
+																role="menuitem"
+																onClick={() => {
+																	setShowMoreActions(false);
+																	item.onClick();
+																}}
+																className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-sm text-sm transition ${
+																	item.danger
+																		? "text-danger-ink hover:bg-danger-soft"
+																		: "text-text-2 hover:text-text-1 hover:bg-muted"
+																}`}
+															>
+																{item.icon}
+																<span>{item.label}</span>
+															</button>
+														))}
+													</div>
+												)}
+											</div>
+										)}
+									</div>
 								</div>
-							</div>
 						)}
 						{noteContent && !immersiveMode && (
 							<div className="note-panel mb-4 rounded-sm p-4 text-sm text-text-2">

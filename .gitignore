@@ -22,3 +22,4 @@ frontend/public/fallback-*.js
 docker-compose.yml
 .worktrees/
 docker-compose.dockerhub.yml
+graphify-out/

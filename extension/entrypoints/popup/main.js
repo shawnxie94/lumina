@@ -342,6 +342,45 @@ class PopupController {
 				console.log("X article check failed:", err);
 			}
 
+			if (!hasSelection) {
+				try {
+					const currentTab = await chrome.tabs.get(tab.id);
+					const targetUrl = currentTab?.url || tab.url;
+					this.updateStatus("loading", this.t("正在解析链接..."));
+					const result = await this.#apiClient.reportArticleByUrl({
+						url: targetUrl,
+					});
+					const existing = result?.code === "source_url_exists" ? result.existing : null;
+					const articleSlug = existing?.slug || result?.slug || result?.id;
+					const title = existing?.title || currentTab?.title || tab.title || this.t("(无标题)");
+					await addToHistory({
+						articleId: result?.id ? String(result.id) : String(existing?.id || articleSlug || ""),
+						slug: articleSlug ? String(articleSlug) : undefined,
+						title,
+						url: targetUrl,
+						domain: new URL(targetUrl).hostname,
+						topImage: undefined,
+					});
+					await this.loadHistory();
+					this.updateStatus(
+						"success",
+						existing ? this.t("文章已存在") : this.t("采集成功"),
+					);
+					if (articleSlug) {
+						const articleUrl = this.buildAdminPreviewArticleUrl(articleSlug);
+						chrome.tabs.create({ url: articleUrl });
+						window.close();
+					}
+					return;
+				} catch (error) {
+					console.warn("Backend URL extraction failed, falling back to DOM extraction:", error);
+					logError("popup", error, {
+						action: "reportArticleByUrlFallback",
+						url: this.#currentTab?.url,
+					});
+				}
+			}
+
 			this.updateStatus(
 				"loading",
 				hasSelection ? this.t("正在提取选区...") : this.t("正在提取全文..."),

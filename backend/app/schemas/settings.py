@@ -26,6 +26,22 @@ class RecommendationSettingsUpdate(BaseModel):
     recommendation_model_config_id: Optional[str] = None
 
 
+class ExtractionSettingsUpdate(BaseModel):
+    jina_reader_enabled: Optional[bool] = None
+    jina_reader_base_url: Optional[str] = None
+    jina_reader_api_key: Optional[str] = None
+    jina_reader_timeout_seconds: Optional[int] = None
+    jina_reader_token_budget: Optional[int] = None
+    jina_reader_prefer_mode: Optional[
+        Literal["jina_first", "local_first", "local_only"]
+    ] = None
+    auto_ai_cleaning_enabled: Optional[bool] = None
+    auto_ai_classification_enabled: Optional[bool] = None
+    auto_ai_summary_enabled: Optional[bool] = None
+    auto_ai_tagging_enabled: Optional[bool] = None
+    auto_translation_enabled: Optional[bool] = None
+
+
 class BasicSettingsUpdate(BaseModel):
     default_language: Optional[str] = None
     site_name: Optional[str] = None

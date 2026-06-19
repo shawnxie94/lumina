@@ -178,6 +178,10 @@ class Article(Base):
         default=DEFAULT_NOTE_RECOMMENDATION_LEVEL,
     )
     original_language = Column(String, nullable=True)  # 原文语言：zh, en, ja, etc.
+    extraction_provider = Column(String, nullable=True)
+    extraction_status = Column(String, nullable=True)
+    extraction_error = Column(Text, nullable=True)
+    extraction_metadata = Column(Text, nullable=True)
 
     category = relationship("Category", back_populates="articles")
     ai_analysis = relationship("AIAnalysis", back_populates="article", uselist=False)
@@ -663,6 +667,17 @@ class AdminSettings(Base):
     media_webp_quality = Column(Integer, default=80)
     recommendations_enabled = Column(Boolean, default=False)
     recommendation_model_config_id = Column(String, nullable=True)
+    jina_reader_enabled = Column(Boolean, default=False)
+    jina_reader_base_url = Column(String, default="https://r.jina.ai")
+    jina_reader_api_key = Column(String, nullable=True)
+    jina_reader_timeout_seconds = Column(Integer, default=15)
+    jina_reader_token_budget = Column(Integer, nullable=True)
+    jina_reader_prefer_mode = Column(String, default="local_only")
+    auto_ai_cleaning_enabled = Column(Boolean, default=False)
+    auto_ai_classification_enabled = Column(Boolean, default=True)
+    auto_ai_summary_enabled = Column(Boolean, default=True)
+    auto_ai_tagging_enabled = Column(Boolean, default=True)
+    auto_translation_enabled = Column(Boolean, default=True)
     default_language = Column(String, default="zh-CN")
     site_name = Column(String, default="Lumina")
     site_description = Column(Text, default="信息灯塔")

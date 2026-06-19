@@ -44,6 +44,7 @@ app/domain/article_ai_pipeline_service.py
 app/domain/article_ai_version_service.py
 app/domain/article_command_service.py
 app/domain/article_embedding_service.py
+app/domain/article_extraction_service.py
 app/domain/article_query_service.py
 app/domain/article_rss_service.py
 app/domain/article_tag_service.py

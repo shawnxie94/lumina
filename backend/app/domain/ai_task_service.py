@@ -252,6 +252,7 @@ class AITaskService:
             source_format=payload.get("source_format"),
             strategy=payload.get("strategy"),
             chunk_cursor=payload.get("chunk_cursor"),
+            post_process_options=payload.get("post_process_options"),
         )
 
     async def _handle_process_article_validation(
@@ -267,6 +268,7 @@ class AITaskService:
             cleaned_md=payload.get("cleaned_md"),
             model_config_id=payload.get("model_config_id"),
             prompt_config_id=payload.get("prompt_config_id"),
+            post_process_options=payload.get("post_process_options"),
         )
 
     async def _handle_process_article_classification(
@@ -281,6 +283,7 @@ class AITaskService:
             category_id,
             model_config_id=payload.get("model_config_id"),
             prompt_config_id=payload.get("prompt_config_id"),
+            post_process_options=payload.get("post_process_options"),
         )
 
     async def _handle_process_article_tagging(

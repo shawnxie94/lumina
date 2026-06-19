@@ -25,6 +25,7 @@ from app.schemas.comment import CommentCreate, CommentUpdate, CommentVisibilityU
 from app.schemas.settings import (
     BasicSettingsUpdate,
     CommentSettingsUpdate,
+    ExtractionSettingsUpdate,
     MediaIngestRequest,
     RecommendationSettingsUpdate,
     StorageSettingsUpdate,
@@ -60,6 +61,7 @@ __all__ = [
     "CommentUpdate",
     "CommentVisibilityUpdate",
     "ExportRequest",
+    "ExtractionSettingsUpdate",
     "MediaIngestRequest",
     "ModelAPIConfigBase",
     "ModelAPIModelsRequest",

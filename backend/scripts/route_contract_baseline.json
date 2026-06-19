@@ -162,6 +162,12 @@
     ]
   },
   {
+    "path": "/api/articles/{article_slug}/export.md",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
     "path": "/api/articles/{article_slug}/generate/{content_type}",
     "methods": [
       "POST"
@@ -612,6 +618,12 @@
     ]
   },
   {
+    "path": "/api/reviews/{review_slug}/export.md",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
     "path": "/api/reviews/{review_slug}/view",
     "methods": [
       "POST"
@@ -651,6 +663,18 @@
     "path": "/api/settings/comments/public",
     "methods": [
       "GET"
+    ]
+  },
+  {
+    "path": "/api/settings/extraction",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/settings/extraction",
+    "methods": [
+      "PUT"
     ]
   },
   {

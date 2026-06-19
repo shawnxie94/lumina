@@ -11,7 +11,7 @@ from app.core.db_migrations import (
     resolve_database_url,
     sqlite_database_path,
 )
-from models import Base, PromptConfig, now_str
+from models import AdminSettings, Base, PromptConfig, now_str
 
 
 def test_resolve_database_url_prefers_explicit_override():
@@ -88,6 +88,61 @@ def test_ai_continuation_migration_is_ordered_and_explicit():
     assert [path.name for path in ai_continuation_migrations] == [
         "20260412_0019_ai_continuation_and_task_chain.py",
     ]
+
+
+def test_default_ai_strategy_migration_enables_default_toggles(tmp_path):
+    db_path = tmp_path / "migration-default-ai-strategy.db"
+    engine = create_engine(
+        f"sqlite:///{db_path}",
+        connect_args={"check_same_thread": False},
+    )
+    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    Base.metadata.create_all(bind=engine)
+    session = SessionLocal()
+    try:
+        session.add(
+            AdminSettings(
+                password_hash="hash",
+                jwt_secret="secret",
+                auto_ai_cleaning_enabled=True,
+                auto_ai_classification_enabled=False,
+                auto_ai_summary_enabled=False,
+                auto_ai_tagging_enabled=False,
+                auto_translation_enabled=False,
+            )
+        )
+        session.commit()
+
+        backend_dir = Path(__file__).resolve().parents[3]
+        config = Config(str(backend_dir / "alembic.ini"))
+        config.set_main_option("sqlalchemy.url", f"sqlite:///{db_path}")
+        config.attributes["database_url_override"] = f"sqlite:///{db_path}"
+        command.stamp(config, "20260413_0020")
+        command.upgrade(config, "head")
+
+        row = session.execute(
+            text(
+                """
+                SELECT
+                  auto_ai_cleaning_enabled,
+                  auto_ai_classification_enabled,
+                  auto_ai_summary_enabled,
+                  auto_ai_tagging_enabled,
+                  auto_translation_enabled
+                FROM admin_settings
+                """
+            )
+        ).one()
+
+        assert row.auto_ai_cleaning_enabled == 0
+        assert row.auto_ai_classification_enabled == 1
+        assert row.auto_ai_summary_enabled == 1
+        assert row.auto_ai_tagging_enabled == 1
+        assert row.auto_translation_enabled == 1
+    finally:
+        session.close()
+        Base.metadata.drop_all(bind=engine)
+        engine.dispose()
 
 
 def test_prompt_protocol_text_migration_updates_existing_builtin_prompts(tmp_path):

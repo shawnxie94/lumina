@@ -21,6 +21,7 @@ from app.core.public_cache import (
 from app.schemas import (
     BasicSettingsUpdate,
     CommentSettingsUpdate,
+    ExtractionSettingsUpdate,
     RecommendationSettingsUpdate,
     StorageSettingsUpdate,
 )
@@ -30,6 +31,8 @@ from models import ModelAPIConfig, get_db, now_str
 router = APIRouter()
 ai_task_service = AITaskService()
 RECOMMENDATION_EMBEDDING_REFRESH_LIMIT = 500
+DEFAULT_JINA_READER_BASE_URL = "https://r.jina.ai"
+EXTRACTION_PREFER_MODES = {"jina_first", "local_first", "local_only"}
 
 
 def validate_recommendation_model_config(db: Session, config_id: str) -> ModelAPIConfig:
@@ -51,6 +54,60 @@ def build_comment_settings_public_payload(db: Session) -> dict:
             "github": bool(admin.github_client_id) if admin else False,
             "google": bool(admin.google_client_id) if admin else False,
         },
+    }
+
+
+def normalize_jina_reader_base_url(value: str | None) -> str:
+    normalized = (value or "").strip().rstrip("/")
+    if not normalized:
+        return DEFAULT_JINA_READER_BASE_URL
+    if not normalized.startswith(("http://", "https://")):
+        raise HTTPException(
+            status_code=400, detail="Jina Reader 地址必须以 http:// 或 https:// 开头"
+        )
+    return normalized
+
+
+def normalize_jina_reader_prefer_mode(value: str | None) -> str:
+    prefer_mode = value or "jina_first"
+    if prefer_mode not in EXTRACTION_PREFER_MODES:
+        return "jina_first"
+    return prefer_mode
+
+
+def resolve_jina_reader_prefer_mode(admin) -> str:
+    prefer_mode = normalize_jina_reader_prefer_mode(
+        getattr(admin, "jina_reader_prefer_mode", None)
+    )
+    if not bool(getattr(admin, "jina_reader_enabled", False)):
+        return "local_only"
+    return prefer_mode
+
+
+def serialize_extraction_settings(admin) -> dict:
+    def enabled_by_default(name: str) -> bool:
+        return getattr(admin, name, True) is not False
+
+    prefer_mode = resolve_jina_reader_prefer_mode(admin)
+
+    return {
+        "jina_reader_enabled": prefer_mode != "local_only",
+        "jina_reader_base_url": (
+            getattr(admin, "jina_reader_base_url", None) or DEFAULT_JINA_READER_BASE_URL
+        ),
+        "jina_reader_api_key": getattr(admin, "jina_reader_api_key", None) or "",
+        "jina_reader_timeout_seconds": int(
+            getattr(admin, "jina_reader_timeout_seconds", None) or 15
+        ),
+        "jina_reader_token_budget": getattr(admin, "jina_reader_token_budget", None),
+        "jina_reader_prefer_mode": prefer_mode,
+        "auto_ai_cleaning_enabled": False,
+        "auto_ai_classification_enabled": enabled_by_default(
+            "auto_ai_classification_enabled"
+        ),
+        "auto_ai_summary_enabled": enabled_by_default("auto_ai_summary_enabled"),
+        "auto_ai_tagging_enabled": enabled_by_default("auto_ai_tagging_enabled"),
+        "auto_translation_enabled": enabled_by_default("auto_translation_enabled"),
     }
 
 
@@ -232,6 +289,80 @@ async def update_storage_settings(
         admin.media_max_dim = max(600, payload.media_max_dim)
     if payload.media_webp_quality is not None:
         admin.media_webp_quality = min(95, max(30, payload.media_webp_quality))
+    admin.updated_at = now_str()
+    db.commit()
+    db.refresh(admin)
+    return {"success": True}
+
+
+@router.get("/api/settings/extraction")
+async def get_extraction_settings(
+    _: bool = Depends(get_admin_or_internal),
+    db: Session = Depends(get_db),
+):
+    admin = get_admin_settings(db)
+    if admin is None:
+        raise HTTPException(status_code=404, detail="未初始化管理员设置")
+    return serialize_extraction_settings(admin)
+
+
+@router.put("/api/settings/extraction")
+async def update_extraction_settings(
+    payload: ExtractionSettingsUpdate,
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
+    admin = get_admin_settings(db)
+    if admin is None:
+        raise HTTPException(status_code=404, detail="未初始化管理员设置")
+
+    if payload.jina_reader_base_url is not None:
+        admin.jina_reader_base_url = normalize_jina_reader_base_url(
+            payload.jina_reader_base_url
+        )
+    if payload.jina_reader_api_key is not None:
+        admin.jina_reader_api_key = payload.jina_reader_api_key.strip()
+    if payload.jina_reader_timeout_seconds is not None:
+        admin.jina_reader_timeout_seconds = min(
+            60, max(3, int(payload.jina_reader_timeout_seconds))
+        )
+    if payload.jina_reader_token_budget is not None:
+        budget = int(payload.jina_reader_token_budget)
+        admin.jina_reader_token_budget = budget if budget > 0 else None
+    if payload.jina_reader_prefer_mode is not None:
+        if payload.jina_reader_prefer_mode not in EXTRACTION_PREFER_MODES:
+            raise HTTPException(status_code=400, detail="解析优先级配置无效")
+        admin.jina_reader_prefer_mode = payload.jina_reader_prefer_mode
+    elif payload.jina_reader_enabled is not None:
+        if bool(payload.jina_reader_enabled):
+            current_mode = normalize_jina_reader_prefer_mode(
+                getattr(admin, "jina_reader_prefer_mode", None)
+            )
+            admin.jina_reader_prefer_mode = (
+                "jina_first" if current_mode == "local_only" else current_mode
+            )
+        else:
+            admin.jina_reader_prefer_mode = "local_only"
+    else:
+        admin.jina_reader_prefer_mode = resolve_jina_reader_prefer_mode(admin)
+    admin.jina_reader_enabled = admin.jina_reader_prefer_mode != "local_only"
+    admin.auto_ai_cleaning_enabled = False
+    if payload.auto_ai_classification_enabled is not None:
+        admin.auto_ai_classification_enabled = bool(
+            payload.auto_ai_classification_enabled
+        )
+    if payload.auto_ai_summary_enabled is not None:
+        admin.auto_ai_summary_enabled = bool(payload.auto_ai_summary_enabled)
+    if payload.auto_ai_tagging_enabled is not None:
+        admin.auto_ai_tagging_enabled = bool(payload.auto_ai_tagging_enabled)
+    if payload.auto_translation_enabled is not None:
+        admin.auto_translation_enabled = bool(payload.auto_translation_enabled)
+
+    if bool(admin.jina_reader_enabled):
+        admin.jina_reader_base_url = normalize_jina_reader_base_url(
+            admin.jina_reader_base_url
+        )
+
     admin.updated_at = now_str()
     db.commit()
     db.refresh(admin)

@@ -10,7 +10,13 @@ from app.domain.article_url_ingest_service import (
     ArticleUrlIngestDuplicateError,
     ArticleUrlIngestGatewayTimeoutError,
     ArticleUrlIngestService,
-    URLFetchResult,
+)
+from app.domain.article_extraction_service import (
+    ArticleExtractionBadGatewayError,
+    ArticleExtractionBadRequestError,
+    ArticleExtractionContentTypeError,
+    ArticleExtractionGatewayTimeoutError,
+    ExtractedArticle,
 )
 from models import Article, now_str
 
@@ -38,6 +44,10 @@ class StubArticleCommandService:
             status="pending",
             is_visible=False,
             category_id=article_data.get("category_id"),
+            extraction_provider=article_data.get("extraction_provider"),
+            extraction_status=article_data.get("extraction_status"),
+            extraction_error=article_data.get("extraction_error"),
+            extraction_metadata=article_data.get("extraction_metadata"),
             created_at=now_str(),
             updated_at=now_str(),
         )
@@ -45,6 +55,34 @@ class StubArticleCommandService:
         db.commit()
         db.refresh(article)
         return article.id
+
+
+class StubExtractionService:
+    def __init__(self, result: ExtractedArticle | None = None, error: Exception | None = None):
+        self.result = result
+        self.error = error
+        self.last_url = None
+
+    async def extract_url(self, _db, url: str, *, ensure_public_url):
+        self.last_url = url
+        ensure_public_url(url)
+        if self.error:
+            raise self.error
+        return self.result or ExtractedArticle(
+            title="Test Title",
+            content_html="<article><p>Hello world content.</p></article>",
+            content_md="Hello world content.",
+            source_url="https://example.com/final-path",
+            top_image="https://example.com/cover.jpg",
+            author="Lumina Bot",
+            published_at="2026-02-24T00:00:00Z",
+            source_domain="example.com",
+            provider="jina",
+            metadata={"content_length": 20},
+        )
+
+    def metadata_to_json(self, metadata):
+        return "{}" if metadata else None
 
 
 def make_existing_article(db_session, source_url: str) -> Article:
@@ -68,28 +106,11 @@ def make_existing_article(db_session, source_url: str) -> Article:
 
 def test_report_by_url_creates_article_and_uses_redirect_url(db_session, monkeypatch):
     command = StubArticleCommandService()
-    service = ArticleUrlIngestService(article_command_service=command)
+    service = ArticleUrlIngestService(
+        article_command_service=command,
+        article_extraction_service=StubExtractionService(),
+    )
     monkeypatch.setattr(service, "_hostname_resolves_to_private", lambda hostname: False)
-
-    async def fake_fetch(_url: str) -> URLFetchResult:
-        return URLFetchResult(
-            final_url="https://example.com/final-path",
-            html="""
-            <html>
-              <head>
-                <title>Test Title</title>
-                <meta property="og:image" content="/cover.jpg" />
-                <meta name="author" content="Lumina Bot" />
-                <meta property="article:published_time" content="2026-02-24T00:00:00Z" />
-              </head>
-              <body>
-                <article><h1>Article</h1><p>Hello world content.</p></article>
-              </body>
-            </html>
-            """,
-        )
-
-    monkeypatch.setattr(service, "_fetch_html_from_url", fake_fetch)
 
     result = asyncio.run(
         service.report_by_url(
@@ -108,6 +129,7 @@ def test_report_by_url_creates_article_and_uses_redirect_url(db_session, monkeyp
     assert command.last_payload is not None
     assert command.last_payload["source_domain"] == "example.com"
     assert command.last_payload["skip_ai_processing"] is True
+    assert command.last_payload["extraction_provider"] == "jina"
 
 
 def test_report_by_url_uses_first_image_in_primary_content_when_meta_missing(
@@ -115,30 +137,23 @@ def test_report_by_url_uses_first_image_in_primary_content_when_meta_missing(
     monkeypatch,
 ):
     command = StubArticleCommandService()
-    service = ArticleUrlIngestService(article_command_service=command)
+    service = ArticleUrlIngestService(
+        article_command_service=command,
+        article_extraction_service=StubExtractionService(
+            ExtractedArticle(
+                title="Test Title",
+                content_html="<article><p>Hello world content.</p><img src=\"https://example.com/content-cover.jpg\" /></article>",
+                content_md="Hello world content.",
+                source_url="https://example.com/body-first-image",
+                top_image="https://example.com/content-cover.jpg",
+                author=None,
+                published_at=None,
+                source_domain="example.com",
+                provider="local_html",
+            )
+        ),
+    )
     monkeypatch.setattr(service, "_hostname_resolves_to_private", lambda hostname: False)
-
-    async def fake_fetch(_url: str) -> URLFetchResult:
-        return URLFetchResult(
-            final_url="https://example.com/body-first-image",
-            html="""
-            <html>
-              <head>
-                <title>Test Title</title>
-              </head>
-              <body>
-                <header><img src="/logo.png" /></header>
-                <article>
-                  <h1>Article</h1>
-                  <p>Hello world content, enough words to pass primary content detection.</p>
-                  <img src="/content-cover.jpg" />
-                </article>
-              </body>
-            </html>
-            """,
-        )
-
-    monkeypatch.setattr(service, "_fetch_html_from_url", fake_fetch)
 
     asyncio.run(
         service.report_by_url(
@@ -154,7 +169,10 @@ def test_report_by_url_uses_first_image_in_primary_content_when_meta_missing(
 
 def test_report_by_url_returns_duplicate_when_source_url_exists(db_session, monkeypatch):
     existing = make_existing_article(db_session, "https://example.com/existing")
-    service = ArticleUrlIngestService(article_command_service=StubArticleCommandService())
+    service = ArticleUrlIngestService(
+        article_command_service=StubArticleCommandService(),
+        article_extraction_service=StubExtractionService(),
+    )
     monkeypatch.setattr(service, "_hostname_resolves_to_private", lambda hostname: False)
 
     with pytest.raises(ArticleUrlIngestDuplicateError) as exc_info:
@@ -184,7 +202,10 @@ def test_report_by_url_rejects_invalid_and_private_urls(
     url,
     expected_detail,
 ):
-    service = ArticleUrlIngestService(article_command_service=StubArticleCommandService())
+    service = ArticleUrlIngestService(
+        article_command_service=StubArticleCommandService(),
+        article_extraction_service=StubExtractionService(),
+    )
     monkeypatch.setattr(service, "_hostname_resolves_to_private", lambda hostname: False)
 
     with pytest.raises(ArticleUrlIngestBadRequestError) as exc_info:
@@ -199,13 +220,13 @@ def test_report_by_url_rejects_invalid_and_private_urls(
 
 
 def test_report_by_url_rejects_non_html_content(db_session, monkeypatch):
-    service = ArticleUrlIngestService(article_command_service=StubArticleCommandService())
+    service = ArticleUrlIngestService(
+        article_command_service=StubArticleCommandService(),
+        article_extraction_service=StubExtractionService(
+            error=ArticleExtractionContentTypeError("目标URL不是HTML页面")
+        ),
+    )
     monkeypatch.setattr(service, "_hostname_resolves_to_private", lambda hostname: False)
-
-    async def fake_fetch(_url: str) -> URLFetchResult:
-        raise ArticleUrlIngestContentTypeError("目标URL不是HTML页面")
-
-    monkeypatch.setattr(service, "_fetch_html_from_url", fake_fetch)
 
     with pytest.raises(ArticleUrlIngestContentTypeError):
         asyncio.run(
@@ -219,20 +240,23 @@ def test_report_by_url_rejects_non_html_content(db_session, monkeypatch):
 @pytest.mark.parametrize(
     "error",
     [
-        ArticleUrlIngestGatewayTimeoutError("抓取超时，请稍后重试"),
-        ArticleUrlIngestBadGatewayError("抓取失败: network"),
+        ArticleExtractionGatewayTimeoutError("抓取超时，请稍后重试"),
+        ArticleExtractionBadGatewayError("抓取失败: network"),
     ],
 )
 def test_report_by_url_propagates_timeout_and_network_errors(db_session, monkeypatch, error):
-    service = ArticleUrlIngestService(article_command_service=StubArticleCommandService())
+    service = ArticleUrlIngestService(
+        article_command_service=StubArticleCommandService(),
+        article_extraction_service=StubExtractionService(error=error),
+    )
     monkeypatch.setattr(service, "_hostname_resolves_to_private", lambda hostname: False)
 
-    async def fake_fetch(_url: str) -> URLFetchResult:
-        raise error
-
-    monkeypatch.setattr(service, "_fetch_html_from_url", fake_fetch)
-
-    with pytest.raises(type(error)):
+    expected_type = (
+        ArticleUrlIngestGatewayTimeoutError
+        if isinstance(error, ArticleExtractionGatewayTimeoutError)
+        else ArticleUrlIngestBadGatewayError
+    )
+    with pytest.raises(expected_type):
         asyncio.run(
             service.report_by_url(
                 db_session,
@@ -242,16 +266,13 @@ def test_report_by_url_propagates_timeout_and_network_errors(db_session, monkeyp
 
 
 def test_report_by_url_rejects_empty_content(db_session, monkeypatch):
-    service = ArticleUrlIngestService(article_command_service=StubArticleCommandService())
+    service = ArticleUrlIngestService(
+        article_command_service=StubArticleCommandService(),
+        article_extraction_service=StubExtractionService(
+            error=ArticleExtractionBadRequestError("文章内容为空")
+        ),
+    )
     monkeypatch.setattr(service, "_hostname_resolves_to_private", lambda hostname: False)
-
-    async def fake_fetch(_url: str) -> URLFetchResult:
-        return URLFetchResult(
-            final_url="https://example.com/empty",
-            html="<html><body><script>1</script><style>p{}</style></body></html>",
-        )
-
-    monkeypatch.setattr(service, "_fetch_html_from_url", fake_fetch)
 
     with pytest.raises(ArticleUrlIngestBadRequestError) as exc_info:
         asyncio.run(

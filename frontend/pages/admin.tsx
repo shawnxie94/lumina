@@ -94,10 +94,12 @@ import {
 	commentAdminApi,
 	commentApi,
 	commentSettingsApi,
+	extractionSettingsApi,
 	mediaApi,
 	recommendationSettingsApi,
 	reviewCommentApi,
 	storageSettingsApi,
+	type ExtractionSettings,
 	type RecommendationSettings,
 	type CommentListResponse,
 	type CommentSettings,
@@ -112,6 +114,7 @@ type SettingSection =
 	| "categories"
 	| "monitoring"
 	| "comments"
+	| "extraction"
 	| "storage";
 type AISubSection =
 	| "model-api"
@@ -120,12 +123,14 @@ type AISubSection =
 	| "recommendations";
 type MonitoringSubSection = "tasks" | "ai-usage" | "comments";
 type CommentSubSection = "keys" | "filters";
+type ExtractionSubSection = "parser" | "post-processing";
 
 type AdminRouteState = {
 	section: SettingSection;
 	aiSubSection: AISubSection;
 	monitoringSubSection: MonitoringSubSection;
 	commentSubSection: CommentSubSection;
+	extractionSubSection: ExtractionSubSection;
 };
 
 const AI_SUB_SECTIONS: AISubSection[] = [
@@ -141,6 +146,10 @@ const MONITORING_SUB_SECTIONS: MonitoringSubSection[] = [
 ];
 
 const COMMENT_SUB_SECTIONS: CommentSubSection[] = ["keys", "filters"];
+const EXTRACTION_SUB_SECTIONS: ExtractionSubSection[] = [
+	"parser",
+	"post-processing",
+];
 
 const isAISubSection = (value: string): value is AISubSection =>
 	AI_SUB_SECTIONS.includes(value as AISubSection);
@@ -148,6 +157,17 @@ const isMonitoringSubSection = (value: string): value is MonitoringSubSection =>
 	MONITORING_SUB_SECTIONS.includes(value as MonitoringSubSection);
 const isCommentSubSection = (value: string): value is CommentSubSection =>
 	COMMENT_SUB_SECTIONS.includes(value as CommentSubSection);
+const isExtractionSubSection = (
+	value: string,
+): value is ExtractionSubSection =>
+	EXTRACTION_SUB_SECTIONS.includes(value as ExtractionSubSection);
+
+const normalizeExtractionSettings = (
+	settings: ExtractionSettings,
+): ExtractionSettings => ({
+	...settings,
+	jina_reader_enabled: settings.jina_reader_prefer_mode !== "local_only",
+});
 
 const normalizePathname = (asPath: string) => {
 	const pathname = asPath.split("?")[0]?.split("#")[0] || "/";
@@ -190,6 +210,7 @@ const parseAdminRouteState = (
 	let aiSubSection: AISubSection = "model-api";
 	let monitoringSubSection: MonitoringSubSection = "ai-usage";
 	let commentSubSection: CommentSubSection = "keys";
+	let extractionSubSection: ExtractionSubSection = "parser";
 
 	if (segments[0] === "monitoring") {
 		section = "monitoring";
@@ -197,7 +218,13 @@ const parseAdminRouteState = (
 		if (isMonitoringSubSection(monitoringCandidate)) {
 			monitoringSubSection = monitoringCandidate;
 		}
-		return { section, aiSubSection, monitoringSubSection, commentSubSection };
+		return {
+			section,
+			aiSubSection,
+			monitoringSubSection,
+			commentSubSection,
+			extractionSubSection,
+		};
 	}
 
 	if (segments[0] === "settings") {
@@ -208,6 +235,17 @@ const parseAdminRouteState = (
 			section = "categories";
 		} else if (settingsSection === "storage") {
 			section = "storage";
+		} else if (settingsSection === "extraction") {
+			section = "extraction";
+			const extractionCandidate = segments[2] || "";
+			if (isExtractionSubSection(extractionCandidate)) {
+				extractionSubSection = extractionCandidate;
+			} else if (
+				extractionCandidate === "parse-strategy" ||
+				extractionCandidate === "ai-strategy"
+			) {
+				extractionSubSection = "post-processing";
+			}
 		} else if (settingsSection === "ai") {
 			section = "ai";
 			const aiCandidate = segments[2] || "";
@@ -221,10 +259,22 @@ const parseAdminRouteState = (
 				commentSubSection = commentCandidate;
 			}
 		}
-		return { section, aiSubSection, monitoringSubSection, commentSubSection };
+		return {
+			section,
+			aiSubSection,
+			monitoringSubSection,
+			commentSubSection,
+			extractionSubSection,
+		};
 	}
 
-	return { section, aiSubSection, monitoringSubSection, commentSubSection };
+	return {
+		section,
+		aiSubSection,
+		monitoringSubSection,
+		commentSubSection,
+		extractionSubSection,
+	};
 };
 
 const buildAdminPath = (
@@ -232,6 +282,7 @@ const buildAdminPath = (
 	aiSubSection: AISubSection,
 	monitoringSubSection: MonitoringSubSection,
 	commentSubSection: CommentSubSection,
+	extractionSubSection: ExtractionSubSection,
 ) => {
 	if (section === "monitoring") {
 		return `/admin/monitoring/${monitoringSubSection}`;
@@ -247,6 +298,9 @@ const buildAdminPath = (
 	}
 	if (section === "storage") {
 		return "/admin/settings/storage";
+	}
+	if (section === "extraction") {
+		return `/admin/settings/extraction/${extractionSubSection}`;
 	}
 	return "/admin/settings/basic";
 };
@@ -671,6 +725,7 @@ export default function AdminPage() {
 				"categories",
 				"ai",
 				"comments",
+				"extraction",
 				"storage",
 			]),
 		[],
@@ -682,6 +737,8 @@ export default function AdminPage() {
 		useState<MonitoringSubSection>("ai-usage");
 	const [commentSubSection, setCommentSubSection] =
 		useState<CommentSubSection>("keys");
+	const [extractionSubSection, setExtractionSubSection] =
+		useState<ExtractionSubSection>("parser");
 	const [routeInitialized, setRouteInitialized] = useState(false);
 	const [modelAPIConfigs, setModelAPIConfigs] = useState<ModelAPIConfig[]>([]);
 	const [promptConfigs, setPromptConfigs] = useState<PromptConfig[]>([]);
@@ -779,12 +836,26 @@ export default function AdminPage() {
 	const prevActiveSectionRef = useRef<SettingSection | null>(null);
 	const prevMonitoringSubSectionRef = useRef<MonitoringSubSection | null>(null);
 	const [collapsedSettings, setCollapsedSettings] = useState<{
+		extraction: boolean;
 		ai: boolean;
 		comments: boolean;
 	}>({
+		extraction: true,
 		ai: true,
 		comments: true,
 	});
+
+	const handleToggleExtractionSection = useCallback(() => {
+		const nextCollapsed = !collapsedSettings.extraction;
+		setCollapsedSettings((prev) => ({
+			...prev,
+			extraction: nextCollapsed,
+		}));
+		if (!nextCollapsed) {
+			setActiveSection("extraction");
+			setExtractionSubSection("parser");
+		}
+	}, [collapsedSettings.extraction]);
 
 	const handleToggleAISection = useCallback(() => {
 		const nextCollapsed = !collapsedSettings.ai;
@@ -845,6 +916,19 @@ export default function AdminPage() {
 		media_max_dim: 2000,
 		media_webp_quality: 80,
 	});
+	const [extractionSettings, setExtractionSettings] =
+		useState<ExtractionSettings>({
+			jina_reader_enabled: false,
+			jina_reader_base_url: "https://r.jina.ai",
+			jina_reader_api_key: "",
+			jina_reader_timeout_seconds: 15,
+			jina_reader_token_budget: null,
+			jina_reader_prefer_mode: "local_only",
+			auto_ai_classification_enabled: true,
+			auto_ai_summary_enabled: true,
+			auto_ai_tagging_enabled: true,
+			auto_translation_enabled: true,
+		});
 	const [recommendationSettings, setRecommendationSettings] =
 		useState<RecommendationSettings>({
 			recommendations_enabled: false,
@@ -856,6 +940,10 @@ export default function AdminPage() {
 	const [basicSettingsSaving, setBasicSettingsSaving] = useState(false);
 	const [storageSettingsLoading, setStorageSettingsLoading] = useState(false);
 	const [storageSettingsSaving, setStorageSettingsSaving] = useState(false);
+	const [extractionSettingsLoading, setExtractionSettingsLoading] =
+		useState(false);
+	const [extractionSettingsSaving, setExtractionSettingsSaving] =
+		useState(false);
 	const [storageStatsLoading, setStorageStatsLoading] = useState(false);
 	const [storageStats, setStorageStats] = useState<{
 		asset_count: number;
@@ -1022,6 +1110,13 @@ export default function AdminPage() {
 		setAISubSection(routeState.aiSubSection);
 		setMonitoringSubSection(routeState.monitoringSubSection);
 		setCommentSubSection(routeState.commentSubSection);
+		setExtractionSubSection(routeState.extractionSubSection);
+		setCollapsedSettings((prev) => ({
+			...prev,
+			ai: routeState.section === "ai" ? false : prev.ai,
+			comments: routeState.section === "comments" ? false : prev.comments,
+			extraction: routeState.section === "extraction" ? false : prev.extraction,
+		}));
 		setPrimaryTab(
 			routeState.section === "monitoring" ? "monitoring" : "settings",
 		);
@@ -1102,6 +1197,7 @@ export default function AdminPage() {
 			aiSubSection,
 			monitoringSubSection,
 			commentSubSection,
+			extractionSubSection,
 		);
 		const currentPath = resolveAdminRoutePath(router.asPath, router.query.path);
 		if (currentPath === nextPath) {
@@ -1112,6 +1208,7 @@ export default function AdminPage() {
 			activeSection,
 			aiSubSection,
 			commentSubSection,
+			extractionSubSection,
 			monitoringSubSection,
 			routeInitialized,
 			router,
@@ -1570,6 +1667,37 @@ export default function AdminPage() {
 		}
 	};
 
+	const fetchExtractionSettings = async () => {
+		setExtractionSettingsLoading(true);
+		try {
+			const data = await extractionSettingsApi.getSettings();
+			setExtractionSettings(normalizeExtractionSettings(data));
+		} catch (error) {
+			console.error("Failed to fetch extraction settings:", error);
+			showToast(t("内容解析配置加载失败"), "error");
+		} finally {
+			setExtractionSettingsLoading(false);
+		}
+	};
+
+	const handleSaveExtractionSettings = async () => {
+		setExtractionSettingsSaving(true);
+		try {
+			await extractionSettingsApi.updateSettings(
+				normalizeExtractionSettings(extractionSettings),
+			);
+			showToast(t("内容解析配置已保存"));
+		} catch (error: any) {
+			console.error("Failed to save extraction settings:", error);
+			showToast(
+				error?.response?.data?.detail || t("内容解析配置保存失败"),
+				"error",
+			);
+		} finally {
+			setExtractionSettingsSaving(false);
+		}
+	};
+
 	const fetchRecommendationSettings = async () => {
 		setRecommendationSettingsLoading(true);
 		try {
@@ -1850,10 +1978,14 @@ export default function AdminPage() {
 			fetchCommentSettings();
 			return;
 		}
-			if (activeSection === "storage") {
-				fetchStorageSettings();
-				return;
-			}
+		if (activeSection === "extraction") {
+			fetchExtractionSettings();
+			return;
+		}
+		if (activeSection === "storage") {
+			fetchStorageSettings();
+			return;
+		}
 	}, [
 		activeSection,
 		aiSubSection,
@@ -3569,6 +3701,7 @@ export default function AdminPage() {
 						fetchStorageSettings(),
 						fetchBasicSettings(),
 						fetchCommentSettings(),
+						fetchExtractionSettings(),
 						fetchRecommendationSettings(),
 					]);
 				} catch (importError) {
@@ -3812,6 +3945,59 @@ export default function AdminPage() {
 											</SelectableButton>
 
 											<SectionToggleButton
+												label={t("内容解析")}
+												active={activeSection === "extraction"}
+												expanded={!collapsedSettings.extraction}
+												onMainClick={handleToggleExtractionSection}
+												onToggle={handleToggleExtractionSection}
+												toggleAriaLabel={
+													collapsedSettings.extraction ? t("展开") : t("收起")
+												}
+												icon={<IconSearch className="h-4 w-4" />}
+												expandedIndicator={<IconArrowUp className="h-4 w-4" />}
+												collapsedIndicator={
+													<IconArrowDown className="h-4 w-4" />
+												}
+											/>
+
+											{!collapsedSettings.extraction && (
+												<>
+													<SelectableButton
+														onClick={() => {
+															setActiveSection("extraction");
+															setExtractionSubSection("parser");
+														}}
+														active={
+															activeSection === "extraction" &&
+															extractionSubSection === "parser"
+														}
+														variant="submenu"
+													>
+														<span className="inline-flex items-center gap-2">
+															<IconSearch className="h-4 w-4" />
+															<span>{t("解析器")}</span>
+														</span>
+													</SelectableButton>
+													<SelectableButton
+														onClick={() => {
+															setActiveSection("extraction");
+															setExtractionSubSection("post-processing");
+														}}
+														active={
+															activeSection === "extraction" &&
+															extractionSubSection === "post-processing"
+														}
+														variant="submenu"
+													>
+														<span className="inline-flex items-center gap-2">
+															<IconRobot className="h-4 w-4" />
+															<span>{t("后处理")}</span>
+														</span>
+													</SelectableButton>
+												</>
+											)}
+
+											<SectionToggleButton
 												label={t("AI配置")}
 												active={activeSection === "ai"}
 												expanded={!collapsedSettings.ai}
@@ -3946,8 +4132,8 @@ export default function AdminPage() {
 															<span>{t("过滤规则")}</span>
 														</span>
 													</SelectableButton>
-												</>
-											)}
+													</>
+												)}
 
 											<SelectableButton
 												onClick={() => setActiveSection("storage")}
@@ -5395,6 +5581,175 @@ export default function AdminPage() {
 													{t(
 														"保存后立即生效，如登录异常请检查 OAuth 回调地址配置。",
 													)}
+												</div>
+											)}
+										</div>
+									)}
+								</div>
+							)}
+
+							{activeSection === "extraction" && (
+								<div className="bg-surface rounded-sm shadow-sm border border-border p-6 w-full min-w-0">
+									<div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+										<div className="space-y-1">
+											<h2 className="text-lg font-semibold text-text-1">
+												{extractionSubSection === "parser"
+													? t("解析器配置")
+													: t("后处理")}
+											</h2>
+											<p className="text-sm text-text-3">
+												{extractionSubSection === "parser"
+													? t("配置正文解析优先级和 Jina Reader 调用参数")
+													: t("配置文章解析完成后默认触发的自动处理任务")}
+											</p>
+										</div>
+										<Button
+											onClick={handleSaveExtractionSettings}
+											disabled={extractionSettingsSaving}
+											variant="primary"
+										>
+											{extractionSettingsSaving ? t("保存中") : t("保存配置")}
+										</Button>
+									</div>
+
+									{extractionSettingsLoading ? (
+										<div className="rounded-sm border border-border bg-muted px-4 py-8 text-center text-sm text-text-3">
+											{t("加载中")}
+										</div>
+									) : (
+										<div className="space-y-5">
+											{extractionSubSection === "parser" && (
+												<div className="space-y-5">
+													<div>
+														<label className="block text-sm text-text-2 mb-1">
+															{t("解析优先级")}
+														</label>
+														<SelectField
+															value={extractionSettings.jina_reader_prefer_mode}
+															onChange={(value) => {
+																const preferMode =
+																	value as ExtractionSettings["jina_reader_prefer_mode"];
+																setExtractionSettings((prev) => ({
+																	...prev,
+																	jina_reader_prefer_mode: preferMode,
+																	jina_reader_enabled:
+																		preferMode !== "local_only",
+																}));
+															}}
+															className="w-full"
+															popupClassName="select-modern-dropdown"
+															options={[
+																{ value: "jina_first", label: t("Jina 优先") },
+																{ value: "local_first", label: t("本地优先") },
+																{ value: "local_only", label: t("仅本地解析") },
+															]}
+														/>
+													</div>
+
+													<div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+														<div>
+															<label className="block text-sm text-text-2 mb-1">
+																{t("Jina Reader 地址")}
+															</label>
+															<TextInput
+																value={extractionSettings.jina_reader_base_url}
+																onChange={(e) =>
+																	setExtractionSettings((prev) => ({
+																		...prev,
+																		jina_reader_base_url: e.target.value,
+																	}))
+																}
+																placeholder="https://r.jina.ai"
+															/>
+														</div>
+														<div>
+															<label className="block text-sm text-text-2 mb-1">
+																{t("Jina API Key")}
+															</label>
+															<TextInput
+																type="password"
+																value={extractionSettings.jina_reader_api_key}
+																onChange={(e) =>
+																	setExtractionSettings((prev) => ({
+																		...prev,
+																		jina_reader_api_key: e.target.value,
+																	}))
+																}
+																placeholder={t("可选")}
+															/>
+														</div>
+														<div>
+															<label className="block text-sm text-text-2 mb-1">
+																{t("超时秒数")}
+															</label>
+															<TextInput
+																type="number"
+																min={3}
+																max={60}
+																value={extractionSettings.jina_reader_timeout_seconds}
+																onChange={(e) =>
+																	setExtractionSettings((prev) => ({
+																		...prev,
+																		jina_reader_timeout_seconds: Math.min(
+																			60,
+																			Math.max(3, Number(e.target.value || 15)),
+																		),
+																	}))
+																}
+															/>
+														</div>
+														<div>
+															<label className="block text-sm text-text-2 mb-1">
+																{t("Token 上限")}
+															</label>
+															<TextInput
+																type="number"
+																min={0}
+																value={extractionSettings.jina_reader_token_budget ?? ""}
+																onChange={(e) => {
+																	const value = Number(e.target.value || 0);
+																	setExtractionSettings((prev) => ({
+																		...prev,
+																		jina_reader_token_budget:
+																			value > 0 ? value : null,
+																	}));
+																}}
+																placeholder={t("不限制")}
+															/>
+														</div>
+													</div>
+												</div>
+											)}
+
+											{extractionSubSection === "post-processing" && (
+												<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+													{[
+														["auto_ai_classification_enabled", t("自动分类")],
+														["auto_ai_summary_enabled", t("自动摘要")],
+														["auto_ai_tagging_enabled", t("自动标签")],
+														["auto_translation_enabled", t("自动翻译")],
+													].map(([key, label]) => (
+														<label
+															key={key}
+															className="flex items-center justify-between rounded-sm border border-border bg-surface px-3 py-2 text-sm text-text-2"
+														>
+															<span>{label}</span>
+															<CheckboxInput
+																checked={Boolean(
+																	extractionSettings[
+																		key as keyof ExtractionSettings
+																	],
+																)}
+																onChange={(e) =>
+																	setExtractionSettings((prev) => ({
+																		...prev,
+																		[key]: e.target.checked,
+																	}))
+																}
+																className="h-4 w-4"
+															/>
+														</label>
+													))}
 												</div>
 											)}
 										</div>

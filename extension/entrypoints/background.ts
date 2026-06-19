@@ -167,66 +167,95 @@ export default defineBackground(() => {
 				apiClient.setToken(token);
 			}
 
+			const hasSelection =
+				info.selectionText && info.selectionText.trim().length > 0;
 			const runtimeLinkUrl = await getContextLinkUrlFromContent(tab.id);
 			const linkUrl = resolveHttpUrl(
 				info.linkUrl || runtimeLinkUrl,
 				tab.url || "",
 			);
 			const selectedUrl = extractSelectedUrl(info.selectionText);
-			const reportUrl = linkUrl || selectedUrl || "";
+			const currentPageUrl = !hasSelection ? resolveHttpUrl(tab.url, "") : "";
+			const reportUrl = linkUrl || selectedUrl || currentPageUrl;
+			const canFallbackToDom = Boolean(
+				currentPageUrl && reportUrl === currentPageUrl,
+			);
 			reportUrlForError = reportUrl;
 
 			if (reportUrl) {
-				const luminaSlug = extractLuminaArticleSlug(
-					reportUrl,
-					apiClient.frontendUrl,
-				);
-				if (luminaSlug) {
-					const articleUrl = buildAdminPreviewArticleUrl(
+				try {
+					const luminaSlug = extractLuminaArticleSlug(
+						reportUrl,
 						apiClient.frontendUrl,
-						luminaSlug,
 					);
+					if (luminaSlug) {
+						const articleUrl = buildAdminPreviewArticleUrl(
+							apiClient.frontendUrl,
+							luminaSlug,
+						);
+						await addToHistory({
+							articleId: luminaSlug,
+							slug: luminaSlug,
+							title: tab.title || t("未命名"),
+							url: reportUrl,
+							domain: getDomainFromUrl(reportUrl),
+						});
+						chrome.tabs.create({ url: articleUrl });
+						return;
+					}
+
+					const reportResult = await apiClient.reportArticleByUrl({
+						url: reportUrl,
+					});
+					const isDuplicate =
+						"code" in reportResult && reportResult.code === "source_url_exists";
+					const articleSlug = isDuplicate
+						? reportResult.existing?.slug || reportResult.existing?.id
+						: reportResult.slug || reportResult.id;
+					const articleId = isDuplicate
+						? reportResult.existing?.id
+						: reportResult.id;
+					const articleTitle =
+						(isDuplicate ? reportResult.existing?.title : "") ||
+						tab.title ||
+						t("未命名");
+
 					await addToHistory({
-						articleId: luminaSlug,
-						slug: luminaSlug,
-						title: tab.title || t("未命名"),
+						articleId: articleId ? String(articleId) : String(articleSlug || ""),
+						slug: articleSlug ? String(articleSlug) : undefined,
+						title: articleTitle,
 						url: reportUrl,
 						domain: getDomainFromUrl(reportUrl),
 					});
-					chrome.tabs.create({ url: articleUrl });
+
+					if (articleSlug) {
+						const articleUrl = buildAdminPreviewArticleUrl(
+							apiClient.frontendUrl,
+							String(articleSlug),
+						);
+						chrome.tabs.create({ url: articleUrl });
+					}
 					return;
-				}
-
-				const reportResult = await apiClient.reportArticleByUrl({ url: reportUrl });
-				const isDuplicate =
-					"code" in reportResult && reportResult.code === "source_url_exists";
-				const articleSlug = isDuplicate
-					? reportResult.existing?.slug || reportResult.existing?.id
-					: reportResult.slug || reportResult.id;
-				const articleId = isDuplicate
-					? reportResult.existing?.id
-					: reportResult.id;
-				const articleTitle =
-					(isDuplicate ? reportResult.existing?.title : "") ||
-					tab.title ||
-					t("未命名");
-
-				await addToHistory({
-					articleId: articleId ? String(articleId) : String(articleSlug || ""),
-					slug: articleSlug ? String(articleSlug) : undefined,
-					title: articleTitle,
-					url: reportUrl,
-					domain: getDomainFromUrl(reportUrl),
-				});
-
-				if (articleSlug) {
-					const articleUrl = buildAdminPreviewArticleUrl(
-						apiClient.frontendUrl,
-						String(articleSlug),
+				} catch (error) {
+					if (
+						!canFallbackToDom ||
+						(error instanceof Error && error.message === "UNAUTHORIZED")
+					) {
+						throw error;
+					}
+					console.warn(
+						"Backend URL extraction failed, falling back to DOM extraction:",
+						error,
 					);
-					chrome.tabs.create({ url: articleUrl });
+					logError(
+						"background",
+						error instanceof Error ? error : new Error(String(error)),
+						{
+							action: "reportArticleByUrlFallback",
+							url: reportUrl,
+						},
+					);
 				}
-				return;
 			}
 
 			const scriptLoaded = await ensureContentScriptLoaded(tab.id, {
@@ -247,8 +276,6 @@ export default defineBackground(() => {
 			}
 
 			let extractedData: { content_html?: string } | null = null;
-			const hasSelection =
-				info.selectionText && info.selectionText.trim().length > 0;
 
 			if (hasSelection) {
 				try {
