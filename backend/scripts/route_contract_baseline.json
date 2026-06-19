@@ -48,12 +48,6 @@
     ]
   },
   {
-    "path": "/api/ai-usage/{usage_id}/continue",
-    "methods": [
-      "POST"
-    ]
-  },
-  {
     "path": "/api/articles",
     "methods": [
       "GET"
@@ -174,21 +168,9 @@
     ]
   },
   {
-    "path": "/api/articles/{article_slug}/infographic-image",
-    "methods": [
-      "POST"
-    ]
-  },
-  {
     "path": "/api/articles/{article_slug}/notes",
     "methods": [
       "PUT"
-    ]
-  },
-  {
-    "path": "/api/articles/{article_slug}/repair-infographic",
-    "methods": [
-      "POST"
     ]
   },
   {

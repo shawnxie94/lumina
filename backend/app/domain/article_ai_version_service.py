@@ -6,24 +6,18 @@ from sqlalchemy.orm import Session
 
 from models import AIAnalysis, AIAnalysisVersion, Article, now_str
 
-TEXT_CONTENT_TYPES = {"summary", "key_points", "outline", "quotes"}
-VISUAL_CONTENT_TYPES = {"infographic"}
-SUPPORTED_CONTENT_TYPES = TEXT_CONTENT_TYPES | VISUAL_CONTENT_TYPES
+SUPPORTED_CONTENT_TYPES = {"summary", "outline", "quotes"}
 
 CONTENT_FIELD_MAP: dict[str, tuple[str, ...]] = {
     "summary": ("summary",),
-    "key_points": ("key_points",),
     "outline": ("outline",),
     "quotes": ("quotes",),
-    "infographic": ("infographic_html", "infographic_image_url"),
 }
 
 CURRENT_VERSION_FIELD_MAP = {
     "summary": "current_summary_version_id",
-    "key_points": "current_key_points_version_id",
     "outline": "current_outline_version_id",
     "quotes": "current_quotes_version_id",
-    "infographic": "current_infographic_version_id",
 }
 
 
@@ -155,13 +149,8 @@ class ArticleAIVersionService:
     ) -> None:
         self._validate_content_type(content_type)
         analysis = self.ensure_analysis(db, article_id)
-        if content_type == "infographic":
-            analysis.infographic_html = None
-            analysis.infographic_image_url = None
-            analysis.infographic_status = None
-        else:
-            setattr(analysis, content_type, None)
-            setattr(analysis, f"{content_type}_status", None)
+        setattr(analysis, content_type, None)
+        setattr(analysis, f"{content_type}_status", None)
         setattr(analysis, CURRENT_VERSION_FIELD_MAP[content_type], None)
         analysis.error_message = None
         analysis.updated_at = now_str()
@@ -190,16 +179,10 @@ class ArticleAIVersionService:
         analysis: AIAnalysis,
         content_type: str,
     ) -> dict[str, str | None]:
-        if content_type in TEXT_CONTENT_TYPES:
-            return {
-                "content_text": getattr(analysis, content_type),
-                "content_html": None,
-                "content_image_url": None,
-            }
         return {
-            "content_text": None,
-            "content_html": analysis.infographic_html,
-            "content_image_url": analysis.infographic_image_url,
+            "content_text": getattr(analysis, content_type),
+            "content_html": None,
+            "content_image_url": None,
         }
 
     def _has_content(self, payload: dict[str, str | None]) -> bool:
@@ -211,13 +194,8 @@ class ArticleAIVersionService:
         content_type: str,
         version: AIAnalysisVersion,
     ) -> None:
-        if content_type in TEXT_CONTENT_TYPES:
-            setattr(analysis, content_type, version.content_text)
-            setattr(analysis, f"{content_type}_status", "completed")
-            return
-        analysis.infographic_html = version.content_html
-        analysis.infographic_image_url = version.content_image_url
-        analysis.infographic_status = "completed"
+        setattr(analysis, content_type, version.content_text)
+        setattr(analysis, f"{content_type}_status", "completed")
 
     def _serialize_version(self, version: AIAnalysisVersion) -> dict[str, Any]:
         return {

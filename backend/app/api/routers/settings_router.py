@@ -106,6 +106,12 @@ def serialize_extraction_settings(admin) -> dict:
             "auto_ai_classification_enabled"
         ),
         "auto_ai_summary_enabled": enabled_by_default("auto_ai_summary_enabled"),
+        "auto_ai_outline_enabled": bool(
+            getattr(admin, "auto_ai_outline_enabled", False)
+        ),
+        "auto_ai_quotes_enabled": bool(
+            getattr(admin, "auto_ai_quotes_enabled", False)
+        ),
         "auto_ai_tagging_enabled": enabled_by_default("auto_ai_tagging_enabled"),
         "auto_translation_enabled": enabled_by_default("auto_translation_enabled"),
     }
@@ -353,6 +359,10 @@ async def update_extraction_settings(
         )
     if payload.auto_ai_summary_enabled is not None:
         admin.auto_ai_summary_enabled = bool(payload.auto_ai_summary_enabled)
+    if payload.auto_ai_outline_enabled is not None:
+        admin.auto_ai_outline_enabled = bool(payload.auto_ai_outline_enabled)
+    if payload.auto_ai_quotes_enabled is not None:
+        admin.auto_ai_quotes_enabled = bool(payload.auto_ai_quotes_enabled)
     if payload.auto_ai_tagging_enabled is not None:
         admin.auto_ai_tagging_enabled = bool(payload.auto_ai_tagging_enabled)
     if payload.auto_translation_enabled is not None:

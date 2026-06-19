@@ -134,7 +134,7 @@ curl -s "http://localhost:8000/backend/api/articles/<article-slug>"
 返回文章基础信息 + 正文 + AI 解读：
 
 - 正文字段：`content_html`、`content_md`、`content_trans`
-- AI 字段：`ai_analysis.summary`、`key_points`、`outline`、`quotes` 及各自状态
+- AI 字段：`ai_analysis.summary`、`outline`、`quotes` 及各自状态
 - 导航字段：`prev_article`、`next_article`
 - 批注字段：`note_content`、`note_annotations`、`note_recommendation_level`
 

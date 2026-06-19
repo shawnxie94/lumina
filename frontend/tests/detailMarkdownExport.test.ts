@@ -123,7 +123,7 @@ test("article detail page wires markdown export into the content toolbar", () =>
 	assert.match(source, /downloadMarkdownFile/);
 	assert.match(source, /origin: siteOrigin/);
 	assert.match(source, /<IconArrowDown className="h-4 w-4" \/>/);
-	assert.match(source, /title=\{t\("导出 Markdown"\)\}/);
+	assert.match(source, /label: t\("导出文章"\)/);
 	assert.match(source, /showToast\(t\("导出成功"\)/);
 	assert.match(source, /showToast\(t\("导出失败"\), "error"\)/);
 });

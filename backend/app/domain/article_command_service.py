@@ -8,7 +8,7 @@ from urllib.parse import urlparse
 
 from ai_client import is_english_content
 from media_service import maybe_ingest_top_image
-from models import AIAnalysis, AITask, AIUsageLog, Article, Category, generate_uuid, now_str
+from models import AIAnalysis, AITask, Article, Category, generate_uuid, now_str
 from slug_utils import generate_article_slug
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -25,14 +25,8 @@ from auth import get_admin_settings
 logger = logging.getLogger("article_service")
 
 DELETABLE_AI_CONTENT_FIELDS: dict[str, tuple[str, ...]] = {
-    "key_points": ("key_points", "key_points_status"),
     "outline": ("outline", "outline_status"),
     "quotes": ("quotes", "quotes_status"),
-    "infographic": (
-        "infographic_html",
-        "infographic_image_url",
-        "infographic_status",
-    ),
 }
 
 
@@ -74,6 +68,8 @@ class ArticleCommandService:
                 "cleaning": False,
                 "classification": False,
                 "summary": False,
+                "outline": False,
+                "quotes": False,
                 "tagging": False,
                 "translation": False,
             }
@@ -83,6 +79,8 @@ class ArticleCommandService:
                 "cleaning": False,
                 "classification": bool(requested.get("classification")),
                 "summary": bool(requested.get("summary")),
+                "outline": bool(requested.get("outline")),
+                "quotes": bool(requested.get("quotes")),
                 "tagging": bool(requested.get("tagging")),
                 "translation": bool(requested.get("translation")),
             }
@@ -95,6 +93,8 @@ class ArticleCommandService:
             "cleaning": False,
             "classification": enabled_by_default("auto_ai_classification_enabled"),
             "summary": enabled_by_default("auto_ai_summary_enabled"),
+            "outline": bool(getattr(admin, "auto_ai_outline_enabled", False)),
+            "quotes": bool(getattr(admin, "auto_ai_quotes_enabled", False)),
             "tagging": enabled_by_default("auto_ai_tagging_enabled"),
             "translation": enabled_by_default("auto_translation_enabled"),
         }
@@ -260,6 +260,15 @@ class ArticleCommandService:
                 content_type="summary",
                 payload={"category_id": category_id},
             )
+        for content_type in ("outline", "quotes"):
+            if options.get(content_type):
+                self.ai_task_service.enqueue_task(
+                    db,
+                    task_type="process_ai_content",
+                    article_id=article.id,
+                    content_type=content_type,
+                    payload={"category_id": category_id},
+                )
         if options.get("translation") and article.content_md and is_english_content(
             article.content_md
         ):
@@ -484,6 +493,9 @@ class ArticleCommandService:
         model_config_id: str | None = None,
         prompt_config_id: str | None = None,
     ) -> None:
+        if content_type not in ("summary", "outline", "quotes"):
+            raise ValueError("不支持生成该类型的 AI 解读")
+
         article = db.query(Article).filter(Article.id == article_id).first()
         if not article:
             raise ValueError("文章不存在")
@@ -513,106 +525,6 @@ class ArticleCommandService:
             },
         )
 
-    async def repair_infographic_html(
-        self,
-        db: Session,
-        article_id: str,
-        error_message: str,
-        model_config_id: str | None = None,
-    ) -> None:
-        article = db.query(Article).filter(Article.id == article_id).first()
-        if not article:
-            raise ValueError("文章不存在")
-        if not article.ai_analysis:
-            raise ValueError("信息图尚未生成，暂无可修复内容")
-
-        normalized_error = (error_message or "").strip()
-        if not normalized_error:
-            raise ValueError("请填写修复说明")
-
-        self.enqueue_ai_continuation(
-            db,
-            usage_id=self._require_latest_usage_id(db, article_id, "infographic"),
-            feedback=normalized_error,
-            model_config_id=model_config_id,
-        )
-
-    def enqueue_ai_continuation(
-        self,
-        db: Session,
-        usage_id: str,
-        feedback: str,
-        model_config_id: str | None = None,
-    ) -> tuple[str, str]:
-        usage = db.query(AIUsageLog).filter(AIUsageLog.id == usage_id).first()
-        if not usage:
-            raise ValueError("AI 调用记录不存在")
-        if usage.task_type != "process_ai_content":
-            raise ValueError("当前 AI 调用不支持继续生成")
-        if not usage.article_id:
-            raise ValueError("当前 AI 调用缺少文章信息")
-        if not usage.content_type:
-            raise ValueError("当前 AI 调用缺少内容类型")
-
-        normalized_feedback = (feedback or "").strip()
-        if not normalized_feedback:
-            raise ValueError("请填写修改意见")
-        if not usage.task_id:
-            raise ValueError("当前 AI 调用缺少来源任务")
-
-        source_task = db.query(AITask).filter(AITask.id == usage.task_id).first()
-        if not source_task:
-            raise ValueError("来源任务不存在")
-
-        root_task_id = source_task.root_task_id or source_task.id
-
-        article = db.query(Article).filter(Article.id == usage.article_id).first()
-        if not article:
-            raise ValueError("文章不存在")
-        if not article.ai_analysis:
-            raise ValueError("AI解读不存在")
-
-        setattr(article.ai_analysis, f"{usage.content_type}_status", "pending")
-        article.ai_analysis.error_message = None
-        article.ai_analysis.updated_at = now_str()
-        db.commit()
-
-        task_id = self.ai_task_service.enqueue_task(
-            db,
-            task_type="process_ai_content",
-            article_id=usage.article_id,
-            content_type=usage.content_type,
-            payload={
-                "category_id": article.category_id,
-                "model_config_id": model_config_id,
-                "continuation_feedback": normalized_feedback,
-                "continuation_source_usage_id": usage.id,
-            },
-            parent_task_id=source_task.id,
-            root_task_id=root_task_id,
-        )
-        return task_id, root_task_id
-
-    def _require_latest_usage_id(
-        self,
-        db: Session,
-        article_id: str,
-        content_type: str,
-    ) -> str:
-        usage = (
-            db.query(AIUsageLog.id)
-            .filter(
-                AIUsageLog.article_id == article_id,
-                AIUsageLog.task_type == "process_ai_content",
-                AIUsageLog.content_type == content_type,
-            )
-            .order_by(AIUsageLog.created_at.desc(), AIUsageLog.id.desc())
-            .first()
-        )
-        if not usage:
-            raise ValueError("缺少可继续生成的 AI 调用记录")
-        return usage.id
-
     def delete_ai_content(self, db: Session, article_id: str, content_type: str) -> None:
         article = db.query(Article).filter(Article.id == article_id).first()
         if not article:
@@ -641,7 +553,7 @@ class ArticleCommandService:
         article = db.query(Article).filter(Article.id == article_id).first()
         if not article:
             raise ValueError("文章不存在")
-        if content_type not in ("summary", "key_points", "outline", "quotes"):
+        if content_type not in ("summary", "outline", "quotes"):
             raise ValueError("不支持更新该类型的 AI 解读")
         if not article.ai_analysis:
             raise ValueError("AI解读不存在")

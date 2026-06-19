@@ -12,14 +12,6 @@ import { useRouter } from "next/router";
 import Link from "next/link";
 
 import {
-	InfographicExportCanvas,
-	InfographicLightbox,
-	InfographicPreviewCard,
-	copyInfographicNodeAsImage,
-	normalizeInfographicHtmlForCanvas,
-	renderInfographicNodeToBlob,
-} from "@/components/article/ArticleInfographic";
-import {
 	articleApi,
 	categoryApi,
 	commentApi,
@@ -124,16 +116,12 @@ const PENDING_JOB_STATUSES = ["pending", "processing"] as const;
 type PendingJobStatus = (typeof PENDING_JOB_STATUSES)[number];
 type AIContentType =
 	| "summary"
-	| "key_points"
 	| "outline"
-	| "quotes"
-	| "infographic";
+	| "quotes";
 type AITabKey = Exclude<AIContentType, "summary">;
 const DELETABLE_AI_CONTENT_TYPES: readonly AIContentType[] = [
-	"key_points",
 	"outline",
 	"quotes",
-	"infographic",
 ];
 type NoteRecommendationLevel =
 	| "strongly_recommended"
@@ -169,12 +157,10 @@ const hasPendingArticleJob = (article: ArticleDetail | null): boolean => {
 
 	const statuses = article.ai_analysis
 		? [
-				article.ai_analysis.summary_status,
-				article.ai_analysis.key_points_status,
-				article.ai_analysis.outline_status,
-				article.ai_analysis.quotes_status,
-				article.ai_analysis.infographic_status,
-				article.ai_analysis.tagging_status,
+					article.ai_analysis.summary_status,
+					article.ai_analysis.outline_status,
+					article.ai_analysis.quotes_status,
+					article.ai_analysis.tagging_status,
 			]
 		: [];
 
@@ -226,18 +212,6 @@ interface AITabConfig {
 	renderMindMap?: boolean;
 	onMindMapOpen?: () => void;
 	customContent?: ReactNode;
-}
-
-interface CreateInfographicTabConfigOptions {
-	t: (key: string) => string;
-	enabled: boolean;
-	html: string;
-	imageUrl?: string;
-	status: string | null | undefined;
-	onGenerate: () => void;
-	onCopy: () => void;
-	onOpen: () => void;
-	onOpenImage?: () => void;
 }
 
 interface MindMapNode {
@@ -293,54 +267,6 @@ function getTaggingStatusMeta(
 	return null;
 }
 
-function createInfographicTabConfig({
-	t,
-	enabled,
-	html,
-	imageUrl,
-	status,
-	onGenerate,
-	onCopy,
-	onOpen,
-	onOpenImage,
-}: CreateInfographicTabConfigOptions): AITabConfig {
-	const resolvedContent = html || imageUrl || "";
-
-	return {
-		key: "infographic",
-		label: t("信息图"),
-		enabled,
-		content: resolvedContent,
-		status,
-		onGenerate,
-		onCopy,
-		copyTitle: t("复制为图片"),
-		canCopy: Boolean(html),
-		renderMarkdown: false,
-		renderMindMap: false,
-		customContent: html ? (
-			<InfographicPreviewCard
-				html={html}
-				onOpen={onOpen}
-				previewLabel={t("预览")}
-			/>
-		) : imageUrl ? (
-			<button
-				type="button"
-				onClick={onOpenImage}
-				className="group block w-full text-left"
-				aria-label={t("预览")}
-			>
-				<img
-					src={resolveMediaUrl(imageUrl)}
-					alt={t("信息图")}
-					className="w-full rounded-[24px] border border-border bg-surface transition duration-200 group-hover:opacity-95"
-				/>
-			</button>
-		) : null,
-	};
-}
-
 function normalizeMindMapNode(input: unknown): MindMapNode | null {
 	if (typeof input === "string") {
 		return { title: input };
@@ -382,12 +308,7 @@ function createEmptyAiAnalysis(): NonNullable<ArticleDetail["ai_analysis"]> {
 		summary_current_version_id: null,
 		summary_current_version_number: null,
 		summary_has_history: false,
-		key_points: null,
-		key_points_status: null,
-		key_points_current_version_id: null,
-		key_points_current_version_number: null,
-		key_points_has_history: false,
-		outline: null,
+			outline: null,
 		outline_status: null,
 		outline_current_version_id: null,
 		outline_current_version_number: null,
@@ -397,13 +318,7 @@ function createEmptyAiAnalysis(): NonNullable<ArticleDetail["ai_analysis"]> {
 		quotes_current_version_id: null,
 		quotes_current_version_number: null,
 		quotes_has_history: false,
-		infographic_status: null,
-		infographic_image_url: null,
-		infographic_html: null,
-		infographic_current_version_id: null,
-		infographic_current_version_number: null,
-		infographic_has_history: false,
-		tagging_status: null,
+			tagging_status: null,
 		tagging_manual_override: false,
 		error_message: null,
 		updated_at: null,
@@ -414,19 +329,15 @@ function getAiContentLabel(
 	contentType: AIContentType,
 	t: (key: string) => string,
 ): string {
-	switch (contentType) {
-		case "summary":
-			return t("摘要");
-		case "key_points":
-			return t("总结");
-		case "outline":
-			return t("大纲");
-		case "quotes":
-			return t("金句");
-		case "infographic":
-			return t("信息图");
+		switch (contentType) {
+			case "summary":
+				return t("摘要");
+			case "outline":
+				return t("大纲");
+			case "quotes":
+				return t("金句");
+		}
 	}
-}
 
 function formatVersionSourceLabel(
 	value: AIContentVersion["created_by_mode"],
@@ -1175,14 +1086,14 @@ export default function ArticleDetailPage({
 	const [loading, setLoading] = useState(false);
 	const [showTranslation, setShowTranslation] = useState(true);
 	const [analysisCollapsed, setAnalysisCollapsed] = useState(false);
-	const [activeAiTab, setActiveAiTab] = useState<AITabKey>("key_points");
+	const [activeAiTab, setActiveAiTab] = useState<AITabKey>("outline");
 	const hasManuallySelectedAiTabRef = useRef(false);
 
 	const [showConfigModal, setShowConfigModal] = useState(false);
 	const [configModalMode, setConfigModalMode] =
 		useState<ConfigModalMode>("generate");
 	const [configModalContentType, setConfigModalContentType] =
-		useState<string>("");
+		useState<AIContentType | "">("");
 	const [modelConfigs, setModelConfigs] = useState<ModelAPIConfig[]>([]);
 	const [promptConfigs, setPromptConfigs] = useState<PromptConfig[]>([]);
 	const [selectedModelConfigId, setSelectedModelConfigId] =
@@ -1262,7 +1173,7 @@ export default function ArticleDetailPage({
 		useState(false);
 	const [showEditAIContentModal, setShowEditAIContentModal] = useState(false);
 	const [editAIContentType, setEditAIContentType] = useState<
-		"summary" | "key_points" | "outline" | "quotes" | null
+		"summary" | "outline" | "quotes" | null
 	>(null);
 	const [editAIContentDraft, setEditAIContentDraft] = useState("");
 	const [showVersionHistoryModal, setShowVersionHistoryModal] = useState(false);
@@ -1297,10 +1208,6 @@ export default function ArticleDetailPage({
 	const trackedViewSlugRef = useRef<string | null>(null);
 	const [lightboxImages, setLightboxImages] = useState<string[]>([]);
 	const [lightboxIndex, setLightboxIndex] = useState(0);
-	const [showInfographicLightbox, setShowInfographicLightbox] = useState(false);
-	const infographicExportRef = useRef<HTMLDivElement | null>(null);
-	const infographicUploadSignatureRef = useRef("");
-	const infographicUploadingRef = useRef(false);
 	const [mindMapOpen, setMindMapOpen] = useState(false);
 	const [prevArticle, setPrevArticle] = useState<ArticleNeighbor | null>(
 		(initialArticle?.prev_article as ArticleNeighbor | null) || null,
@@ -1326,10 +1233,6 @@ export default function ArticleDetailPage({
 	const closeLightbox = useCallback(() => {
 		setLightboxImages([]);
 		setLightboxIndex(0);
-	}, []);
-
-	const closeInfographicLightbox = useCallback(() => {
-		setShowInfographicLightbox(false);
 	}, []);
 
 	const shiftLightbox = useCallback(
@@ -1969,13 +1872,11 @@ export default function ArticleDetailPage({
 	}, [tocItems]);
 
 	useEffect(() => {
-		if (!lightboxImage && !showInfographicLightbox) return;
+		if (!lightboxImage) return;
 		const handleKeyDown = (event: KeyboardEvent) => {
 			if (event.key === "Escape") {
 				if (lightboxImage) {
 					closeLightbox();
-				} else if (showInfographicLightbox) {
-					closeInfographicLightbox();
 				}
 				return;
 			}
@@ -1994,14 +1895,12 @@ export default function ArticleDetailPage({
 		return () => window.removeEventListener("keydown", handleKeyDown);
 	}, [
 		lightboxImage,
-		showInfographicLightbox,
 		closeLightbox,
-		closeInfographicLightbox,
 		shiftLightbox,
 	]);
 
 	useEffect(() => {
-		if ((!lightboxImage && !showInfographicLightbox) || typeof document === "undefined")
+		if (!lightboxImage || typeof document === "undefined")
 			return;
 		const body = document.body;
 		const previousOverflow = body.style.overflow;
@@ -2009,7 +1908,7 @@ export default function ArticleDetailPage({
 		return () => {
 			body.style.overflow = previousOverflow;
 		};
-	}, [lightboxImage, showInfographicLightbox]);
+	}, [lightboxImage]);
 
 	const fetchArticleTasks = useCallback(
 		async (articleId: string) => {
@@ -2337,22 +2236,8 @@ export default function ArticleDetailPage({
 	};
 
 	const showSummarySection = isAdmin || Boolean(article?.ai_analysis?.summary);
-	const showKeyPointsSection =
-		isAdmin || Boolean(article?.ai_analysis?.key_points);
 	const showOutlineSection = isAdmin || Boolean(article?.ai_analysis?.outline);
 	const showQuotesSection = isAdmin || Boolean(article?.ai_analysis?.quotes);
-	const showInfographicSection =
-		isAdmin ||
-		Boolean(
-			article?.ai_analysis?.infographic_html ||
-				article?.ai_analysis?.infographic_image_url,
-		);
-	const infographicHtml = article?.ai_analysis?.infographic_html || "";
-	const infographicImageUrl = article?.ai_analysis?.infographic_image_url || "";
-	const normalizedInfographicHtml = useMemo(
-		() => normalizeMediaHtml(normalizeInfographicHtmlForCanvas(infographicHtml)),
-		[infographicHtml],
-	);
 	const aiUpdatedAt =
 		isAdmin && article?.ai_analysis?.updated_at
 			? new Date(article.ai_analysis.updated_at).toLocaleString(
@@ -2361,18 +2246,6 @@ export default function ArticleDetailPage({
 			: "";
 
 	const aiTabConfigs: AITabConfig[] = [
-		{
-			key: "key_points" as const,
-			label: t("总结"),
-			enabled: showKeyPointsSection,
-			content: article?.ai_analysis?.key_points,
-			status: article?.ai_analysis?.key_points_status,
-			renderMarkdown: true,
-			renderMindMap: false,
-			onMindMapOpen: undefined,
-			onGenerate: () => handleGenerateContent("key_points"),
-			onCopy: () => handleCopyContent(article?.ai_analysis?.key_points),
-		},
 		{
 			key: "outline" as const,
 			label: t("大纲"),
@@ -2397,96 +2270,10 @@ export default function ArticleDetailPage({
 			onGenerate: () => handleGenerateContent("quotes"),
 			onCopy: () => handleCopyContent(article?.ai_analysis?.quotes),
 		},
-		createInfographicTabConfig({
-			t,
-			enabled: showInfographicSection,
-			html: normalizedInfographicHtml,
-			imageUrl: infographicImageUrl,
-			status: article?.ai_analysis?.infographic_status,
-			onGenerate: () => handleGenerateContent("infographic"),
-			onCopy: () => {
-				void handleCopyInfographicAsImage();
-			},
-			onOpen: () => setShowInfographicLightbox(true),
-			onOpenImage: () => {
-				const resolvedUrl = resolveMediaUrl(infographicImageUrl);
-				if (!resolvedUrl) return;
-				setLightboxImages([resolvedUrl]);
-				setLightboxIndex(0);
-			},
-		}),
 	];
 	const visibleAiTabs = sortAiTabsByContent(
 		aiTabConfigs.filter((tab) => tab.enabled),
 	);
-
-	useEffect(() => {
-		if (
-			!isAdmin ||
-			!article?.slug ||
-			!normalizedInfographicHtml ||
-			infographicImageUrl ||
-			!infographicExportRef.current
-		) {
-			return;
-		}
-
-		const signature = [
-			article.slug,
-			article.ai_analysis?.updated_at || "",
-			normalizedInfographicHtml,
-		].join("::");
-		if (
-			infographicUploadingRef.current ||
-			infographicUploadSignatureRef.current === signature
-		) {
-			return;
-		}
-
-		infographicUploadingRef.current = true;
-		infographicUploadSignatureRef.current = signature;
-		let cancelled = false;
-
-		void (async () => {
-			try {
-				const blob = await renderInfographicNodeToBlob(infographicExportRef.current!);
-				if (cancelled) return;
-				const file = new File([blob], `${article.slug}-infographic.png`, {
-					type: blob.type || "image/png",
-				});
-				const uploaded = await articleApi.uploadInfographicImage(article.slug, file);
-				if (cancelled) return;
-				setArticle((prev) =>
-					prev?.slug === article.slug
-						? {
-								...prev,
-								ai_analysis: prev.ai_analysis
-									? {
-											...prev.ai_analysis,
-											infographic_image_url: uploaded.url,
-										}
-									: prev.ai_analysis,
-							}
-						: prev,
-				);
-			} catch (error) {
-				console.error("Failed to upload infographic image:", error);
-				infographicUploadSignatureRef.current = "";
-			} finally {
-				infographicUploadingRef.current = false;
-			}
-		})();
-
-		return () => {
-			cancelled = true;
-		};
-	}, [
-		article?.ai_analysis?.updated_at,
-		article?.slug,
-		infographicImageUrl,
-		isAdmin,
-		normalizedInfographicHtml,
-	]);
 
 	const activeTabConfig =
 		visibleAiTabs.find((tab) => tab.key === activeAiTab) ?? visibleAiTabs[0];
@@ -2648,34 +2435,6 @@ export default function ArticleDetailPage({
 		version: AIContentVersion | null,
 	) => {
 		if (!version) return null;
-		if (contentType === "infographic") {
-			const normalizedVersionHtml = normalizeMediaHtml(
-				normalizeInfographicHtmlForCanvas(version.content_html || ""),
-			);
-			if (normalizedVersionHtml) {
-				return (
-					<div className="mx-auto max-w-[360px]">
-						<InfographicPreviewCard
-							html={normalizedVersionHtml}
-							onOpen={() => {}}
-							previewLabel={t("预览")}
-							interactive={false}
-						/>
-					</div>
-				);
-			}
-			if (version.content_image_url) {
-				return (
-					<img
-						src={resolveMediaUrl(version.content_image_url)}
-						alt={`v${version.version_number}`}
-						className="w-full rounded-lg border border-border bg-surface"
-					/>
-				);
-			}
-			return <p className="text-sm text-text-3">{t("暂无预览")}</p>;
-		}
-
 		if (contentType === "outline") {
 			const tree = parseMindMapOutline(version.content_text || "");
 			if (!tree) {
@@ -2798,12 +2557,7 @@ export default function ArticleDetailPage({
 					/>
 				)}
 
-				{(
-					showKeyPointsSection ||
-					showOutlineSection ||
-					showQuotesSection ||
-					showInfographicSection
-				) && (
+				{(showOutlineSection || showQuotesSection) && (
 					<div className="space-y-4">
 						<div className="flex flex-wrap items-center justify-between gap-2">
 							<div className="relative min-w-0 flex-1">
@@ -3071,8 +2825,7 @@ export default function ArticleDetailPage({
 			return;
 		}
 
-		// 只在手动选择后才保持当前选中，否则默认保持key_points（总结/信息流）
-		// 不自动切换，让用户始终看到默认的"总结"tab
+		// 不自动切换，让用户始终看到默认的“大纲”tab
 	}, [activeAiTab, visibleAiTabs]);
 
 	const handleSelectAiTab = useCallback((tabKey: AITabKey) => {
@@ -3119,6 +2872,7 @@ export default function ArticleDetailPage({
 				configModalMode === "generate" ||
 				configModalMode === "retry_ai_content"
 			) {
+				if (!configModalContentType) return;
 				await articleApi.generateAIContent(
 					id as string,
 					configModalContentType,
@@ -3207,17 +2961,13 @@ export default function ArticleDetailPage({
 		const aiAnalysis = article.ai_analysis;
 		const statusMap: Record<AIContentType, string | null | undefined> = {
 			summary: aiAnalysis?.summary_status,
-			key_points: aiAnalysis?.key_points_status,
 			outline: aiAnalysis?.outline_status,
 			quotes: aiAnalysis?.quotes_status,
-			infographic: aiAnalysis?.infographic_status,
 		};
 		const contentMap: Record<AIContentType, string | null | undefined> = {
 			summary: aiAnalysis?.summary,
-			key_points: aiAnalysis?.key_points,
 			outline: aiAnalysis?.outline,
 			quotes: aiAnalysis?.quotes,
-			infographic: aiAnalysis?.infographic_html,
 		};
 		const status = statusMap[contentType];
 		const hasContent = Boolean(contentMap[contentType]);
@@ -3335,7 +3085,7 @@ export default function ArticleDetailPage({
 	};
 
 	const handleUpdateAIContent = async (
-		contentType: "summary" | "key_points" | "outline" | "quotes",
+		contentType: "summary" | "outline" | "quotes",
 		content: string,
 	) => {
 		if (!id || !article) return;
@@ -3377,54 +3127,21 @@ export default function ArticleDetailPage({
 					error_message: null,
 					updated_at: updatedAt,
 				};
-					if (contentType === "infographic") {
-						nextAnalysis.infographic_html = null;
-						nextAnalysis.infographic_image_url = null;
-						nextAnalysis.infographic_status = null;
-						nextAnalysis.infographic_current_version_id = null;
-						nextAnalysis.infographic_current_version_number = null;
-						nextAnalysis.infographic_has_history = true;
-					} else {
-						nextAnalysis[contentType] = null;
-						nextAnalysis[`${contentType}_status`] = null;
-						nextAnalysis[`${contentType}_current_version_id`] = null;
-						nextAnalysis[`${contentType}_current_version_number`] = null;
-						nextAnalysis[`${contentType}_has_history`] = true;
-					}
+					nextAnalysis[contentType] = null;
+					nextAnalysis[`${contentType}_status`] = null;
+					nextAnalysis[`${contentType}_current_version_id`] = null;
+					nextAnalysis[`${contentType}_current_version_number`] = null;
+					nextAnalysis[`${contentType}_has_history`] = true;
 				return {
 					...prev,
 					ai_analysis: nextAnalysis,
 				};
 			});
 			await loadVersionHistory(contentType, true);
-			if (contentType === "infographic") {
-				setShowInfographicLightbox(false);
-			}
 			showToast(t("AI解读已删除"));
 		} catch (error) {
 			console.error("Failed to delete AI content:", error);
 			showToast(t("删除AI解读失败"), "error");
-		}
-	};
-
-	const handleCopyInfographicAsImage = async () => {
-		if (!infographicExportRef.current || !infographicHtml) {
-			showToast(t("信息图未生成"), "info");
-			return;
-		}
-		try {
-			const exportResult = await copyInfographicNodeAsImage(
-				infographicExportRef.current,
-				`${article?.slug || "infographic"}.png`,
-			);
-			if (exportResult === "clipboard") {
-				showToast(t("已复制为图片"));
-				return;
-			}
-			showToast(t("当前浏览器不支持直接复制图片，已为你下载 PNG"), "info");
-		} catch (error) {
-			console.error("Failed to copy infographic as image:", error);
-			showToast(t("复制图片失败"), "error");
 		}
 	};
 
@@ -5263,23 +4980,6 @@ export default function ArticleDetailPage({
 				}}
 				onCancel={() => setShowDeleteModal(false)}
 			/>
-
-			{normalizedInfographicHtml && (
-				<InfographicExportCanvas
-					html={normalizedInfographicHtml}
-					exportRef={infographicExportRef}
-				/>
-			)}
-
-			{showInfographicLightbox && normalizedInfographicHtml && (
-				<InfographicLightbox
-					html={normalizedInfographicHtml}
-					title={t("信息图")}
-					previewLabel={t("预览")}
-					closeLabel={t("关闭")}
-					onClose={closeInfographicLightbox}
-				/>
-			)}
 
 			{lightboxImage && (
 				<div

@@ -1,9 +1,8 @@
 import json
-import os
 from collections import defaultdict
 from typing import Optional
 
-from fastapi import APIRouter, Body, Depends, File, HTTPException, Request, Response, UploadFile
+from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from sqlalchemy import func
 from sqlalchemy.orm import Session, load_only
@@ -13,7 +12,6 @@ from app.schemas import (
     ArticleBatchDelete,
     ArticleBatchVisibility,
     ArticleCreate,
-    ArticleInfographicRepairRequest,
     ArticleNotesUpdate,
     ArticleReportByUrlRequest,
     ArticleUpdate,
@@ -58,7 +56,7 @@ from app.core.public_cache import (
 )
 from app.core.note_recommendation import normalize_note_recommendation_level
 from auth import check_is_admin, get_admin_settings, get_current_admin
-from media_service import cleanup_media_assets, delete_media_asset_by_url, save_upload_image
+from media_service import cleanup_media_assets
 from models import (
     Article,
     ArticleComment,
@@ -402,23 +400,6 @@ async def get_article(
                 "summary",
                 article.ai_analysis.current_summary_version_id if article.ai_analysis else None,
             ),
-            "key_points": article.ai_analysis.key_points if article.ai_analysis else None,
-            "key_points_status": article.ai_analysis.key_points_status
-            if article.ai_analysis
-            else None,
-            "key_points_current_version_id": article.ai_analysis.current_key_points_version_id
-            if article.ai_analysis
-            else None,
-            "key_points_current_version_number": resolve_current_version_number(
-                db,
-                article.ai_analysis.current_key_points_version_id if article.ai_analysis else None,
-            ),
-            "key_points_has_history": resolve_has_version_history(
-                db,
-                article.id,
-                "key_points",
-                article.ai_analysis.current_key_points_version_id if article.ai_analysis else None,
-            ),
             "outline": article.ai_analysis.outline if article.ai_analysis else None,
             "outline_status": article.ai_analysis.outline_status
             if article.ai_analysis
@@ -452,30 +433,6 @@ async def get_article(
                 article.id,
                 "quotes",
                 article.ai_analysis.current_quotes_version_id if article.ai_analysis else None,
-            ),
-            "infographic_status": article.ai_analysis.infographic_status
-            if article.ai_analysis
-            else None,
-            "infographic_image_url": article.ai_analysis.infographic_image_url
-            if article.ai_analysis
-            else None,
-            "infographic_html": article.ai_analysis.infographic_html
-            if article.ai_analysis
-            else None,
-            "infographic_current_version_id": article.ai_analysis.current_infographic_version_id
-            if article.ai_analysis
-            else None,
-            "infographic_current_version_number": resolve_current_version_number(
-                db,
-                article.ai_analysis.current_infographic_version_id
-                if article.ai_analysis
-                else None,
-            ),
-            "infographic_has_history": resolve_has_version_history(
-                db,
-                article.id,
-                "infographic",
-                article.ai_analysis.current_infographic_version_id if article.ai_analysis else None,
             ),
             "classification_status": article.ai_analysis.classification_status
             if article.ai_analysis
@@ -1005,7 +962,7 @@ async def generate_ai_content(
     db: Session = Depends(get_db),
     _: bool = Depends(get_current_admin),
 ):
-    valid_types = ["summary", "key_points", "outline", "quotes", "infographic"]
+    valid_types = ["summary", "outline", "quotes"]
     if content_type not in valid_types:
         raise HTTPException(
             status_code=400, detail=f"无效的内容类型，支持: {', '.join(valid_types)}"
@@ -1037,7 +994,7 @@ async def update_ai_content(
     db: Session = Depends(get_db),
     _: bool = Depends(get_current_admin),
 ):
-    valid_types = ["summary", "key_points", "outline", "quotes"]
+    valid_types = ["summary", "outline", "quotes"]
     if content_type not in valid_types:
         raise HTTPException(
             status_code=400, detail=f"无效的内容类型，支持: {', '.join(valid_types)}"
@@ -1063,7 +1020,7 @@ async def delete_ai_content(
     db: Session = Depends(get_db),
     _: bool = Depends(get_current_admin),
 ):
-    valid_types = ["key_points", "outline", "quotes", "infographic"]
+    valid_types = ["outline", "quotes"]
     if content_type not in valid_types:
         raise HTTPException(
             status_code=400, detail=f"无效的内容类型，支持: {', '.join(valid_types)}"
@@ -1089,7 +1046,7 @@ async def get_ai_content_versions(
     db: Session = Depends(get_db),
     _: bool = Depends(get_current_admin),
 ):
-    valid_types = ["summary", "key_points", "outline", "quotes", "infographic"]
+    valid_types = ["summary", "outline", "quotes"]
     if content_type not in valid_types:
         raise HTTPException(
             status_code=400, detail=f"无效的内容类型，支持: {', '.join(valid_types)}"
@@ -1144,63 +1101,6 @@ async def rollback_ai_content_version(
         }
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-
-
-@router.post("/api/articles/{article_slug}/repair-infographic")
-async def repair_infographic_html(
-    article_slug: str,
-    payload: ArticleInfographicRepairRequest,
-    db: Session = Depends(get_db),
-    _: bool = Depends(get_current_admin),
-):
-    try:
-        article = article_query_service.get_article_by_slug(db, article_slug)
-        if not article:
-            raise HTTPException(status_code=404, detail="文章不存在")
-        await article_command_service.repair_infographic_html(
-            db,
-            article.id,
-            error_message=payload.error_message,
-            model_config_id=payload.model_config_id,
-        )
-        return {"id": article.id, "content_type": "infographic", "status": "processing"}
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@router.post("/api/articles/{article_slug}/infographic-image")
-async def upload_infographic_image(
-    article_slug: str,
-    file: UploadFile = File(...),
-    db: Session = Depends(get_db),
-    _: bool = Depends(get_current_admin),
-):
-    article = article_query_service.get_article_by_slug(db, article_slug)
-    if not article:
-        raise HTTPException(status_code=404, detail="文章不存在")
-    if not article.ai_analysis or not (article.ai_analysis.infographic_html or "").strip():
-        raise HTTPException(status_code=400, detail="信息图尚未生成")
-
-    old_image_url = article.ai_analysis.infographic_image_url
-    asset, url = await save_upload_image(db, article.id, file, kind="image")
-    article.ai_analysis.infographic_image_url = url
-    article.ai_analysis.updated_at = now_str()
-    db.commit()
-    db.refresh(article.ai_analysis)
-    invalidate_public_article_derived_cache()
-
-    if old_image_url and old_image_url != url:
-        delete_media_asset_by_url(db, old_image_url)
-
-    return {
-        "asset_id": asset.id,
-        "url": url,
-        "filename": os.path.basename(asset.storage_path),
-        "size": asset.size,
-        "content_type": asset.content_type,
-    }
 
 
 def _author_display_preference(name: str, count: int) -> tuple[int, int, int, int, str, str]:

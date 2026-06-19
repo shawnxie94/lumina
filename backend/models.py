@@ -676,6 +676,8 @@ class AdminSettings(Base):
     auto_ai_cleaning_enabled = Column(Boolean, default=False)
     auto_ai_classification_enabled = Column(Boolean, default=True)
     auto_ai_summary_enabled = Column(Boolean, default=True)
+    auto_ai_outline_enabled = Column(Boolean, default=False)
+    auto_ai_quotes_enabled = Column(Boolean, default=False)
     auto_ai_tagging_enabled = Column(Boolean, default=True)
     auto_translation_enabled = Column(Boolean, default=True)
     default_language = Column(String, default="zh-CN")

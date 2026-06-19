@@ -4,7 +4,13 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-COMPOSE_CMD="${COMPOSE_CMD:-docker-compose}"
+if [[ -n "${COMPOSE_CMD:-}" ]]; then
+  read -r -a COMPOSE_ARGS <<< "$COMPOSE_CMD"
+elif command -v docker-compose >/dev/null 2>&1; then
+  COMPOSE_ARGS=(docker-compose)
+else
+  COMPOSE_ARGS=(docker compose)
+fi
 API_URL="${API_URL:-http://localhost:8000/backend}"
 WEB_URL="${WEB_URL:-http://localhost:3000}"
 WAIT_TIMEOUT="${WAIT_TIMEOUT:-90}"
@@ -33,10 +39,10 @@ wait_for_http() {
 }
 
 log "启动 docker-compose 服务"
-"$COMPOSE_CMD" up -d
+"${COMPOSE_ARGS[@]}" up -d
 
 log "检查服务状态"
-"$COMPOSE_CMD" ps
+"${COMPOSE_ARGS[@]}" ps
 
 wait_for_http "API" "$API_URL/api/auth/status" "$WAIT_TIMEOUT"
 wait_for_http "Web" "$WEB_URL" "$WAIT_TIMEOUT"
@@ -46,9 +52,9 @@ curl -fsS "$API_URL/api/sources" >/dev/null
 curl -fsS "$API_URL/api/authors" >/dev/null
 
 log "执行路由覆盖检查（modular vs baseline）"
-"$COMPOSE_CMD" exec -T api python /app/scripts/check_route_coverage.py --verbose
+"${COMPOSE_ARGS[@]}" exec -T api python /app/scripts/check_route_coverage.py --verbose
 
 log "执行关键接口响应契约检查"
-"$COMPOSE_CMD" exec -T api python /app/scripts/check_response_contract.py --verbose
+"${COMPOSE_ARGS[@]}" exec -T api python /app/scripts/check_response_contract.py --verbose
 
 log "健康检查通过"

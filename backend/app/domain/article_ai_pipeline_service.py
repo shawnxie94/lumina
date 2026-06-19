@@ -19,14 +19,6 @@ from app.core.public_cache import (
 from app.domain.article_embedding_service import ArticleEmbeddingService
 from app.domain.ai_call_session_service import AICallSessionService
 from app.domain.ai_invocation_service import AIInvocationService
-from app.domain.infographic_pipeline_support import (
-    DEFAULT_INFOGRAPHIC_LAYOUT_BRIEF,
-    LEGACY_INFOGRAPHIC_PROMPT_PREFIX,
-    LEGACY_INFOGRAPHIC_SYSTEM_PROMPT,
-    MAX_INFOGRAPHIC_REPAIR_ATTEMPTS,
-    InfographicPipelineSupport,
-)
-from app.domain.infographic_render_service import InfographicRenderService
 from app.domain.article_tag_service import ArticleTagService
 from app.domain.article_ai_version_service import ArticleAIVersionService
 from models import (
@@ -102,21 +94,16 @@ def build_parameters(model) -> dict:
 class ArticleAIPipelineService:
     DEFAULT_SAFETY_MARGIN_TOKENS = 1000
     DEFAULT_CLEANING_MAX_TOKENS = 16000
-    MAX_INFOGRAPHIC_REPAIR_ATTEMPTS = MAX_INFOGRAPHIC_REPAIR_ATTEMPTS
-    LEGACY_INFOGRAPHIC_PROMPT_PREFIX = LEGACY_INFOGRAPHIC_PROMPT_PREFIX
-    LEGACY_INFOGRAPHIC_SYSTEM_PROMPT = LEGACY_INFOGRAPHIC_SYSTEM_PROMPT
-    DEFAULT_INFOGRAPHIC_LAYOUT_BRIEF = DEFAULT_INFOGRAPHIC_LAYOUT_BRIEF
+    SUPPORTED_AI_CONTENT_TYPES = {"summary", "outline", "quotes"}
     DEFAULT_AI_CONTENT_MAX_TOKENS = {
-        "key_points": 1000,
+        "summary": 500,
         "outline": 1000,
-        "infographic": 2200,
+        "quotes": 800,
     }
     STRUCTURED_OUTPUT_CONTRACTS = {
         "summary": PromptOutputContract(mode="text", response_format=None),
         "translation": PromptOutputContract(mode="text", response_format=None),
-        "key_points": PromptOutputContract(mode="text", response_format=None),
         "quotes": PromptOutputContract(mode="text", response_format=None),
-        "infographic": PromptOutputContract(mode="html_text", response_format="text"),
         "content_cleaning": PromptOutputContract(
             mode="markdown_text",
             response_format=None,
@@ -179,29 +166,6 @@ class ArticleAIPipelineService:
                 "tags 必须是字符串数组；禁止输出解释、Markdown 代码块或额外字段。"
             ),
         ),
-        "content_validation": PromptOutputContract(
-            mode="structured_json",
-            response_format={
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "content_validation_result",
-                    "schema": {
-                        "type": "object",
-                        "properties": {
-                            "is_valid": {"type": "boolean"},
-                            "error": {"type": "string"},
-                        },
-                        "required": ["is_valid", "error"],
-                        "additionalProperties": False,
-                    },
-                },
-            },
-            system_instruction=(
-                "固定输出协议：必须返回单个 JSON 对象，且只包含 is_valid 和 error 字段。\n"
-                "示例：{\"is_valid\": true, \"error\": \"\"} 或 {\"is_valid\": false, \"error\": \"内容不合规原因\"}\n"
-                "is_valid 必须是布尔值；error 必须是字符串；合规时 error 为空字符串；禁止输出额外字段。"
-            ),
-        ),
     }
 
     def __init__(
@@ -214,21 +178,6 @@ class ArticleAIPipelineService:
         self.article_ai_version_service = ArticleAIVersionService()
         self.ai_invocation_service = AIInvocationService()
         self.ai_call_session_service = AICallSessionService()
-        self.infographic_support = InfographicPipelineSupport(
-            get_prompt_config=lambda *args, **kwargs: self._get_prompt_config(
-                *args, **kwargs
-            ),
-            get_ai_config=lambda *args, **kwargs: self.get_ai_config(*args, **kwargs),
-            assert_general_model=lambda *args, **kwargs: self._assert_general_model(
-                *args, **kwargs
-            ),
-            create_render_service=lambda: self.create_infographic_render_service(),
-            log_ai_usage=lambda *args, **kwargs: self._log_ai_usage(*args, **kwargs),
-            merge_protocol_parameters=lambda *args, **kwargs: self._merge_protocol_parameters(
-                *args, **kwargs
-            ),
-            max_tokens=self.DEFAULT_AI_CONTENT_MAX_TOKENS["infographic"],
-        )
 
     def _enqueue_task(self, db, **kwargs):
         if self.enqueue_task_func:
@@ -242,12 +191,16 @@ class ArticleAIPipelineService:
             return {
                 "classification": True,
                 "summary": True,
+                "outline": False,
+                "quotes": False,
                 "tagging": True,
                 "translation": True,
             }
         return {
             "classification": bool(options.get("classification")),
             "summary": bool(options.get("summary")),
+            "outline": bool(options.get("outline")),
+            "quotes": bool(options.get("quotes")),
             "tagging": bool(options.get("tagging")),
             "translation": bool(options.get("translation")),
         }
@@ -293,6 +246,15 @@ class ArticleAIPipelineService:
                 content_type="summary",
                 payload={"category_id": category_id},
             )
+        for content_type in ("outline", "quotes"):
+            if options.get(content_type):
+                self._enqueue_task(
+                    db,
+                    task_type="process_ai_content",
+                    article_id=article.id,
+                    content_type=content_type,
+                    payload={"category_id": category_id},
+                )
         if options.get("translation") and article.content_md and is_english_content(
             article.content_md
         ):
@@ -312,6 +274,41 @@ class ArticleAIPipelineService:
             article.translation_error = None
             article.updated_at = now_str()
             db.commit()
+
+    async def _accept_cleaned_article_content(
+        self,
+        db,
+        article: Article,
+        ai_analysis: AIAnalysis,
+        cleaned_md: str,
+        category_id: str | None,
+        post_process_options: dict | None,
+    ) -> None:
+        article.content_md = cleaned_md
+        article.updated_at = now_str()
+        ai_analysis.error_message = None
+        ai_analysis.cleaned_md_draft = None
+        ai_analysis.updated_at = now_str()
+        db.commit()
+        try:
+            ingest_stats = await maybe_ingest_article_images_with_stats(db, article)
+            self._append_media_ingest_event(
+                db, ingest_stats, stage="cleaning_completed"
+            )
+        except Exception as exc:
+            logger.warning("article_images_ingest_failed: %s", str(exc))
+            self._append_media_ingest_event(
+                db,
+                {"total": 0, "success": 0, "failed": 0, "updated": False},
+                stage="cleaning_completed_error",
+            )
+
+        self._enqueue_post_validation_tasks(
+            db,
+            article,
+            category_id,
+            post_process_options,
+        )
 
     def _prompt_ordering(self, query):
         return query.order_by(
@@ -417,9 +414,6 @@ class ArticleAIPipelineService:
             api_type=config.get("api_type") or "chat_completions",
         )
 
-    def create_infographic_render_service(self) -> InfographicRenderService:
-        return InfographicRenderService()
-
     def _get_prompt_output_contract(self, prompt_type: str) -> PromptOutputContract:
         return self.STRUCTURED_OUTPUT_CONTRACTS.get(
             prompt_type,
@@ -484,15 +478,6 @@ class ArticleAIPipelineService:
                 raise TaskDataError("tagging.tags 必须是字符串数组")
             return {"tags": tags}
 
-        if prompt_type == "content_validation":
-            is_valid = parsed.get("is_valid")
-            error = parsed.get("error")
-            if not isinstance(is_valid, bool):
-                raise TaskDataError("content_validation.is_valid 必须是布尔值")
-            if not isinstance(error, str):
-                raise TaskDataError("content_validation.error 必须是字符串")
-            return {"is_valid": is_valid, "error": error}
-
         return parsed
 
     def _normalize_outline_node(self, raw_node: Any) -> dict[str, Any]:
@@ -554,126 +539,6 @@ class ArticleAIPipelineService:
         if not normalized["title"] and not normalized["children"]:
             raise TaskDataError("outline 输出不能为空")
         return json.dumps(normalized, ensure_ascii=False)
-
-    def _build_infographic_generation_prompt(
-        self,
-        custom_prompt: str | None,
-        custom_system_prompt: str | None = None,
-    ) -> str:
-        return self.infographic_support.build_generation_prompt(
-            custom_prompt,
-            custom_system_prompt,
-        )
-
-    def _build_infographic_generation_parameters(
-        self,
-        parameters: dict | None,
-    ) -> dict:
-        return self.infographic_support.build_generation_parameters(parameters)
-
-    def _resolve_infographic_layout_brief(
-        self,
-        prompt_text: str | None,
-        system_prompt_text: str | None = None,
-    ) -> str:
-        return self.infographic_support.resolve_layout_brief(
-            prompt_text,
-            system_prompt_text,
-        )
-
-    def _build_infographic_repair_prompt(self, validation_error: str) -> str:
-        return self.infographic_support.build_repair_prompt(validation_error)
-
-    async def _sanitize_infographic_html_with_repair(
-        self,
-        db,
-        ai_client,
-        article_id: str,
-        raw_html: str,
-        parameters: dict | None,
-        pricing: dict,
-    ) -> str:
-        return await self.infographic_support.sanitize_html_with_repair(
-            db=db,
-            ai_client=ai_client,
-            article_id=article_id,
-            raw_html=raw_html,
-            parameters=parameters,
-            pricing=pricing,
-        )
-
-    async def repair_infographic_html(
-        self,
-        article_id: str,
-        category_id: str | None,
-        validation_error: str,
-        model_config_id: str | None = None,
-    ):
-        db = SessionLocal()
-        try:
-            article = db.query(Article).filter(Article.id == article_id).first()
-            if not article or not article.ai_analysis:
-                return
-
-            article.ai_analysis.infographic_status = "processing"
-            article.ai_analysis.updated_at = now_str()
-            db.commit()
-
-            candidate_html = self.infographic_support.resolve_repair_source_html(
-                db, article
-            )
-            normalized_validation_error = (validation_error or "").strip()
-            if not normalized_validation_error:
-                raise TaskDataError("请填写修复说明")
-
-            ai_config, parameters = self.infographic_support.resolve_repair_ai_config(
-                db,
-                category_id,
-                model_config_id,
-            )
-            ai_client = self.create_ai_client(ai_config)
-            pricing = {
-                "model_api_config_id": ai_config.get("model_api_config_id"),
-                "price_input_per_1k": ai_config.get("price_input_per_1k"),
-                "price_output_per_1k": ai_config.get("price_output_per_1k"),
-                "currency": ai_config.get("currency"),
-            }
-
-            repaired_html = await self.infographic_support.repair_html(
-                db=db,
-                ai_client=ai_client,
-                article_id=article_id,
-                raw_html=candidate_html,
-                validation_error=normalized_validation_error,
-                parameters=parameters,
-                pricing=pricing,
-            )
-            sanitized_html = await self._sanitize_infographic_html_with_repair(
-                db=db,
-                ai_client=ai_client,
-                article_id=article_id,
-                raw_html=repaired_html,
-                parameters=parameters,
-                pricing=pricing,
-            )
-
-            article.ai_analysis.infographic_html = sanitized_html
-            article.ai_analysis.infographic_image_url = None
-            article.ai_analysis.infographic_status = "completed"
-            article.ai_analysis.error_message = None
-            article.ai_analysis.updated_at = now_str()
-            db.commit()
-        except Exception as exc:
-            logger.exception("infographic_manual_repair_failed: article_id=%s", article_id)
-            article = db.query(Article).filter(Article.id == article_id).first()
-            if article and article.ai_analysis:
-                article.ai_analysis.infographic_status = "failed"
-                article.ai_analysis.error_message = str(exc)
-                article.ai_analysis.updated_at = now_str()
-                db.commit()
-            raise
-        finally:
-            db.close()
 
     def _assert_general_model(self, model_config: ModelAPIConfig) -> None:
         if (model_config.model_type or "general") == "vector":
@@ -2458,320 +2323,16 @@ class ArticleAIPipelineService:
                 if not cleaned_md:
                     raise TaskDataError("内容清洗失败：输出为空")
 
-            ai_analysis.cleaned_md_draft = cleaned_md
-            ai_analysis.error_message = None
-            ai_analysis.updated_at = now_str()
-            db.commit()
-            if advanced_options:
-                self._update_current_task_payload(db, chunk_cursor=0)
-
-            self._enqueue_task(
-                db,
-                task_type="process_article_validation",
-                article_id=article_id,
-                content_type="content_validation",
-                payload={
-                    "category_id": category_id,
-                    "source_format": resolved_source_format,
-                    "strategy": strategy_value if advanced_options else "single",
-                    "chunk_cursor": 0,
-                    "post_process_options": post_process_options,
-                },
-            )
-        except Exception as exc:
-            error_message = str(exc)
-            article = db.query(Article).filter(Article.id == article_id).first()
-            if article:
-                article.status = "failed"
-                ai_analysis = (
-                    db.query(AIAnalysis)
-                    .filter(AIAnalysis.article_id == article_id)
-                    .first()
-                )
-                if ai_analysis:
-                    ai_analysis.error_message = error_message
-                    ai_analysis.updated_at = now_str()
-                else:
-                    ai_analysis = AIAnalysis(
-                        article_id=article_id,
-                        error_message=error_message,
-                        updated_at=now_str(),
-                    )
-                    db.add(ai_analysis)
-                db.commit()
-            raise
-        finally:
-            db.close()
-
-    async def process_article_validation(
-        self,
-        article_id: str,
-        category_id: str | None,
-        cleaned_md: str | None = None,
-        model_config_id: str | None = None,
-        prompt_config_id: str | None = None,
-        post_process_options: dict | None = None,
-    ):
-        db = SessionLocal()
-        try:
-            article = db.query(Article).filter(Article.id == article_id).first()
-            if not article:
-                return
-
-            ai_analysis = (
-                db.query(AIAnalysis).filter(AIAnalysis.article_id == article_id).first()
-            )
-            if not ai_analysis:
-                ai_analysis = AIAnalysis(
-                    article_id=article.id,
-                    error_message=None,
-                    updated_at=now_str(),
-                )
-                db.add(ai_analysis)
-                db.commit()
-
-            cleaned_md_candidate = (cleaned_md or "").strip()
-            if not cleaned_md_candidate and ai_analysis.cleaned_md_draft:
-                cleaned_md_candidate = (ai_analysis.cleaned_md_draft or "").strip()
-            if not cleaned_md_candidate:
-                raise TaskDataError("缺少待校验内容，请先执行内容清洗")
-
-            validation_config = None
-            prompt_config = None
-
-            if model_config_id:
-                model_config = (
-                    db.query(ModelAPIConfig)
-                    .filter(
-                        ModelAPIConfig.id == model_config_id,
-                        ModelAPIConfig.is_enabled == True,
-                    )
-                    .first()
-                )
-                if not model_config:
-                    raise TaskConfigError("指定模型配置不存在或已禁用")
-                self._assert_general_model(model_config)
-                validation_config = {
-                    "base_url": model_config.base_url,
-                    "api_key": model_config.api_key,
-                    "model_name": model_config.model_name,
-                    "model_api_config_id": model_config.id,
-                    "price_input_per_1k": model_config.price_input_per_1k,
-                    "price_output_per_1k": model_config.price_output_per_1k,
-                    "currency": model_config.currency,
-                    "context_window_tokens": model_config.context_window_tokens,
-                    "reserve_output_tokens": model_config.reserve_output_tokens,
-                }
-                # 当指定模型但未指定提示词时，获取默认验证提示词
-                if not prompt_config_id:
-                    prompt_config = self._get_prompt_config(
-                        db,
-                        category_id=category_id,
-                        prompt_type="content_validation",
-                    )
-            elif prompt_config_id:
-                prompt_config = (
-                    db.query(PromptConfig)
-                    .filter(
-                        PromptConfig.id == prompt_config_id,
-                        PromptConfig.is_enabled == True,
-                        PromptConfig.type == "content_validation",
-                    )
-                    .first()
-                )
-                if not prompt_config:
-                    raise TaskConfigError("指定校验提示词不存在、已禁用或类型不匹配")
-                validation_config = self.get_ai_config(
-                    db, category_id, prompt_type="content_validation"
-                )
-            else:
-                validation_config = self.get_ai_config(
-                    db, category_id, prompt_type="content_validation"
-                )
-                if validation_config:
-                    prompt_config = self._get_prompt_config(
-                        db,
-                        category_id=category_id,
-                        prompt_type="content_validation",
-                    )
-
-            if not validation_config:
-                article.content_md = cleaned_md_candidate
-                article.updated_at = now_str()
-                ai_analysis.error_message = None
-                ai_analysis.cleaned_md_draft = None
-                ai_analysis.updated_at = now_str()
-                db.commit()
-                try:
-                    ingest_stats = await maybe_ingest_article_images_with_stats(
-                        db, article
-                    )
-                    self._append_media_ingest_event(
-                        db, ingest_stats, stage="validation_fallback"
-                    )
-                except Exception as exc:
-                    logger.warning("article_images_ingest_failed: %s", str(exc))
-                    self._append_media_ingest_event(
-                        db,
-                        {"total": 0, "success": 0, "failed": 0, "updated": False},
-                        stage="validation_fallback_error",
-                    )
-
-                self._enqueue_post_validation_tasks(
-                    db,
-                    article,
-                    category_id,
-                    post_process_options,
-                )
-                return
-
-            prompt = (prompt_config.prompt if prompt_config and hasattr(prompt_config, 'prompt')
-                      else validation_config.get("prompt_template"))
-
-            # 如果没有提示词配置，跳过 AI 调用但继续后续流程
-            if not prompt:
-                ai_analysis.error_message = "未配置校验提示词，跳过校验"
-                ai_analysis.updated_at = now_str()
-                # 使用原始清洗后的内容继续后续流程
-                article.content_md = cleaned_md_candidate
-                article.updated_at = now_str()
-                db.commit()
-                try:
-                    ingest_stats = await maybe_ingest_article_images_with_stats(
-                        db, article
-                    )
-                    self._append_media_ingest_event(
-                        db, ingest_stats, stage="validation_skip"
-                    )
-                except Exception as exc:
-                    logger.warning("article_images_ingest_failed: %s", str(exc))
-                    self._append_media_ingest_event(
-                        db,
-                        {"total": 0, "success": 0, "failed": 0, "updated": False},
-                        stage="validation_skip_error",
-                    )
-                self._enqueue_post_validation_tasks(
-                    db,
-                    article,
-                    category_id,
-                    post_process_options,
-                )
-                return
-
-            validation_client = self.create_ai_client(validation_config)
-            parameters = self._merge_protocol_parameters(
-                "content_validation",
-                validation_config.get("parameters"),
-            )
-            pricing = {
-                "model_api_config_id": validation_config.get("model_api_config_id"),
-                "price_input_per_1k": validation_config.get("price_input_per_1k"),
-                "price_output_per_1k": validation_config.get("price_output_per_1k"),
-                "currency": validation_config.get("currency"),
-            }
-
-            try:
-                result = await validation_client.generate_summary(
-                    cleaned_md_candidate, prompt=prompt, parameters=parameters
-                )
-                if isinstance(result, dict):
-                    self._log_ai_usage(
-                        db,
-                        model_config_id=pricing.get("model_api_config_id"),
-                        article_id=article_id,
-                        task_type="process_article_validation",
-                        content_type="content_validation",
-                        usage=result.get("usage"),
-                        latency_ms=result.get("latency_ms"),
-                        status="completed",
-                        error_message=None,
-                        price_input_per_1k=pricing.get("price_input_per_1k"),
-                        price_output_per_1k=pricing.get("price_output_per_1k"),
-                        currency=pricing.get("currency"),
-                        request_payload=result.get("request_payload"),
-                        response_payload=result.get("response_payload"),
-                    )
-                    result = result.get("content")
-                validation_result = self._parse_structured_task_result(
-                    "content_validation",
-                    result,
-                )
-            except asyncio.TimeoutError:
-                self._log_ai_usage(
-                    db,
-                    model_config_id=pricing.get("model_api_config_id"),
-                    article_id=article_id,
-                    task_type="process_article_validation",
-                    content_type="content_validation",
-                    usage=None,
-                    latency_ms=None,
-                    status="failed",
-                    error_message="AI生成超时，请稍后重试",
-                    price_input_per_1k=pricing.get("price_input_per_1k"),
-                    price_output_per_1k=pricing.get("price_output_per_1k"),
-                    currency=pricing.get("currency"),
-                )
-                raise TaskTimeoutError("内容校验超时，请稍后重试")
-            except Exception as exc:
-                self._log_ai_usage(
-                    db,
-                    model_config_id=pricing.get("model_api_config_id"),
-                    article_id=article_id,
-                    task_type="process_article_validation",
-                    content_type="content_validation",
-                    usage=None,
-                    latency_ms=None,
-                    status="failed",
-                    error_message=str(exc),
-                    price_input_per_1k=pricing.get("price_input_per_1k"),
-                    price_output_per_1k=pricing.get("price_output_per_1k"),
-                    currency=pricing.get("currency"),
-                )
-                raise
-
-            is_valid = bool(validation_result.get("is_valid"))
-            if not is_valid:
-                article.status = "failed"
-                ai_analysis.error_message = (
-                    validation_result.get("error") or "内容校验未通过"
-                )
-                ai_analysis.updated_at = now_str()
-                db.commit()
-                raise TaskDataError(ai_analysis.error_message or "内容校验未通过")
-
-            final_md = cleaned_md_candidate
-            if not final_md:
-                article.status = "failed"
-                ai_analysis.error_message = "内容校验未通过：内容为空"
-                ai_analysis.updated_at = now_str()
-                db.commit()
-                raise TaskDataError("内容校验未通过：内容为空")
-
-            article.content_md = final_md
-            article.updated_at = now_str()
-            ai_analysis.error_message = None
-            ai_analysis.cleaned_md_draft = None
-            ai_analysis.updated_at = now_str()
-            db.commit()
-            try:
-                ingest_stats = await maybe_ingest_article_images_with_stats(db, article)
-                self._append_media_ingest_event(
-                    db, ingest_stats, stage="validation_passed"
-                )
-            except Exception as exc:
-                logger.warning("article_images_ingest_failed: %s", str(exc))
-                self._append_media_ingest_event(
-                    db,
-                    {"total": 0, "success": 0, "failed": 0, "updated": False},
-                    stage="validation_passed_error",
-                )
-
-            self._enqueue_post_validation_tasks(
+            await self._accept_cleaned_article_content(
                 db,
                 article,
+                ai_analysis,
+                cleaned_md,
                 category_id,
                 post_process_options,
             )
+            if advanced_options:
+                self._update_current_task_payload(db, chunk_cursor=0)
         except Exception as exc:
             error_message = str(exc)
             article = db.query(Article).filter(Article.id == article_id).first()
@@ -3044,6 +2605,15 @@ class ArticleAIPipelineService:
                     content_type="summary",
                     payload={"category_id": effective_category_id},
                 )
+            for content_type in ("outline", "quotes"):
+                if options.get(content_type):
+                    self._enqueue_task(
+                        db,
+                        task_type="process_ai_content",
+                        article_id=article_id,
+                        content_type=content_type,
+                        payload={"category_id": effective_category_id},
+                    )
 
             if (
                 options.get("translation")
@@ -3066,7 +2636,10 @@ class ArticleAIPipelineService:
                 article.translation_error = None
                 db.commit()
 
-            if not options.get("summary") and not options.get("translation"):
+            if not any(
+                options.get(content_type)
+                for content_type in ("summary", "outline", "quotes", "translation")
+            ):
                 article.status = "completed"
                 article.updated_at = now_str()
                 db.commit()
@@ -3670,33 +3243,14 @@ class ArticleAIPipelineService:
         content_type: str,
         model_config_id: str | None = None,
         prompt_config_id: str | None = None,
-        continuation_source_usage_id: str | None = None,
-        continuation_feedback: str | None = None,
     ):
         db = SessionLocal()
         try:
             article = db.query(Article).filter(Article.id == article_id).first()
             if not article or not article.ai_analysis:
                 return
-
-            source_usage = None
-            normalized_continuation_feedback = (continuation_feedback or "").strip()
-            if continuation_source_usage_id:
-                source_usage = (
-                    db.query(AIUsageLog)
-                    .filter(AIUsageLog.id == continuation_source_usage_id)
-                    .first()
-                )
-                if not source_usage:
-                    raise TaskDataError("原始 AI 调用记录不存在")
-                if source_usage.task_type != "process_ai_content":
-                    raise TaskDataError("当前 AI 调用不支持继续生成")
-                if source_usage.content_type != content_type:
-                    raise TaskDataError("续写目标类型与原始调用类型不一致")
-                if not normalized_continuation_feedback:
-                    raise TaskDataError("请填写修改意见")
-                if not model_config_id and source_usage.model_api_config_id:
-                    model_config_id = source_usage.model_api_config_id
+            if content_type not in self.SUPPORTED_AI_CONTENT_TYPES:
+                raise TaskDataError("不支持的 AI 内容类型")
 
             setattr(article.ai_analysis, f"{content_type}_status", "processing")
             article.ai_analysis.updated_at = now_str()
@@ -3790,14 +3344,7 @@ class ArticleAIPipelineService:
                 parameters = {**parameters, **prompt_parameters}
             elif not parameters and default_config:
                 parameters = default_config.get("parameters") or {}
-            if content_type == "infographic":
-                prompt = self._build_infographic_generation_prompt(
-                    prompt,
-                    parameters.get("system_prompt"),
-                )
-                parameters = self._build_infographic_generation_parameters(parameters)
-            # 如果没有提示词配置且不是 infographic 类型，跳过 AI 调用
-            if not prompt and content_type != "infographic":
+            if not prompt:
                 setattr(article.ai_analysis, f"{content_type}_status", "failed")
                 article.ai_analysis.error_message = (
                     f"未配置{content_type}提示词，请先在配置页面设置"
@@ -3818,51 +3365,30 @@ class ArticleAIPipelineService:
                 default_max_tokens = self.DEFAULT_AI_CONTENT_MAX_TOKENS.get(
                     content_type, 500
                 )
-                if source_usage and normalized_continuation_feedback:
-                    session_info = self.ai_call_session_service.resolve_session_info(
-                        db,
-                        source_usage,
-                    )
-                    if not session_info:
-                        raise TaskDataError("原始 AI 调用缺少可继续生成的上下文")
-                    session_info["source_usage_log_id"] = source_usage.id
-                    if self.current_task_id:
-                        session_info["continuation_task_id"] = self.current_task_id
-                    result = await self.ai_invocation_service.invoke_continuation(
-                        db=db,
-                        session_info=session_info,
-                        feedback=normalized_continuation_feedback,
-                        model_config={
-                            "base_url": ai_config["base_url"],
-                            "api_key": ai_config["api_key"],
-                            "model_name": ai_config["model_name"],
-                        },
-                    )
-                else:
-                    result = await self.ai_invocation_service.invoke_generation(
-                        db=db,
-                        api_type=ai_config.get("api_type") or "chat_completions",
-                        model_name=ai_config["model_name"],
-                        base_url=ai_config["base_url"],
-                        api_key=ai_config["api_key"],
-                        system_prompt=parameters.get("system_prompt"),
-                        user_prompt=prompt.replace("{content}", article.content_md)
-                        if "{content}" in (prompt or "")
-                        else f"{prompt}\n\n{article.content_md}",
-                        article_id=article_id,
-                        task_type="process_ai_content",
-                        content_type=content_type,
-                        task_id=self.current_task_id,
-                        client=ai_client,
-                        content=article.content_md,
-                        prompt=prompt,
-                        parameters=parameters,
-                        max_tokens=default_max_tokens,
-                        request_context={
-                            "parameters": parameters,
-                            "max_tokens": default_max_tokens,
-                        },
-                    )
+                result = await self.ai_invocation_service.invoke_generation(
+                    db=db,
+                    api_type=ai_config.get("api_type") or "chat_completions",
+                    model_name=ai_config["model_name"],
+                    base_url=ai_config["base_url"],
+                    api_key=ai_config["api_key"],
+                    system_prompt=parameters.get("system_prompt"),
+                    user_prompt=prompt.replace("{content}", article.content_md)
+                    if "{content}" in (prompt or "")
+                    else f"{prompt}\n\n{article.content_md}",
+                    article_id=article_id,
+                    task_type="process_ai_content",
+                    content_type=content_type,
+                    task_id=self.current_task_id,
+                    client=ai_client,
+                    content=article.content_md,
+                    prompt=prompt,
+                    parameters=parameters,
+                    max_tokens=default_max_tokens,
+                    request_context={
+                        "parameters": parameters,
+                        "max_tokens": default_max_tokens,
+                    },
+                )
                 if isinstance(result, dict):
                     usage_log = self._log_ai_usage(
                         db,
@@ -3891,24 +3417,7 @@ class ArticleAIPipelineService:
                     )
                     result = result.get("content")
 
-                if content_type == "infographic":
-                    sanitized_html = await self._sanitize_infographic_html_with_repair(
-                        db=db,
-                        ai_client=ai_client,
-                        article_id=article_id,
-                        raw_html=result or "",
-                        parameters=parameters,
-                        pricing=pricing,
-                    )
-                    article.ai_analysis.infographic_html = sanitized_html
-                    article.ai_analysis.infographic_image_url = None
-                    article.ai_analysis.infographic_status = "completed"
-                    result = sanitized_html
-                    logger.info(
-                        "infographic_generated: %s",
-                        article.title,
-                    )
-                elif content_type == "outline":
+                if content_type == "outline":
                     article.ai_analysis.outline = self._parse_outline_task_result(
                         result
                     )
@@ -3918,7 +3427,7 @@ class ArticleAIPipelineService:
                     setattr(article.ai_analysis, f"{content_type}_status", "completed")
                 article.ai_analysis.error_message = None
                 article.ai_analysis.updated_at = now_str()
-                if content_type in ("summary", "key_points", "outline", "quotes", "infographic"):
+                if content_type in self.SUPPORTED_AI_CONTENT_TYPES:
                     self.article_ai_version_service.record_version(
                         db,
                         article_id=article_id,
@@ -3927,8 +3436,7 @@ class ArticleAIPipelineService:
                         source_model_config_id=ai_config.get("model_api_config_id"),
                         source_prompt_config_id=prompt_config_id,
                     )
-                if content_type != "infographic":
-                    print(f"{content_type} 生成完成: {article.title}")
+                print(f"{content_type} 生成完成: {article.title}")
                 if content_type == "summary":
                     summary_text = (result or "").strip()
                     if summary_text:

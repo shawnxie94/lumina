@@ -127,6 +127,8 @@ def test_default_ai_strategy_migration_enables_default_toggles(tmp_path):
                   auto_ai_cleaning_enabled,
                   auto_ai_classification_enabled,
                   auto_ai_summary_enabled,
+                  auto_ai_outline_enabled,
+                  auto_ai_quotes_enabled,
                   auto_ai_tagging_enabled,
                   auto_translation_enabled
                 FROM admin_settings
@@ -137,6 +139,8 @@ def test_default_ai_strategy_migration_enables_default_toggles(tmp_path):
         assert row.auto_ai_cleaning_enabled == 0
         assert row.auto_ai_classification_enabled == 1
         assert row.auto_ai_summary_enabled == 1
+        assert row.auto_ai_outline_enabled == 0
+        assert row.auto_ai_quotes_enabled == 0
         assert row.auto_ai_tagging_enabled == 1
         assert row.auto_translation_enabled == 1
     finally:

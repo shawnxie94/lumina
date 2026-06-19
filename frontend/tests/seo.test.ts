@@ -127,7 +127,7 @@ test("review list SEO marks search, visibility, and date filters as noindex", ()
 test("review list template name falls back when filtered template list no longer includes the selected template", () => {
   const resolved = resolveReviewListTemplateName({
     selectedTemplateId: "weekly-review",
-    templateFilters: [{ id: "", name: "全部回顾", slug: "", count: 0 }],
+    templateFilters: [{ id: "", name: "全部回顾" }],
     fallbackTemplateName: "Weekly Review",
   });
 

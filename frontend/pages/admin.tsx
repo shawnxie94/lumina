@@ -70,11 +70,6 @@ import {
 	getRetryPromptTypeForTask,
 	parseAITaskFilterValue,
 } from "@/lib/aiTaskMeta";
-import {
-	getAIContinuationCopy,
-	isAIContinuationSupported,
-	resolveAIContinuationModelConfigId,
-} from "@/lib/aiContinuation";
 import { useI18n } from "@/lib/i18n";
 import { useLatestBackupExportJob } from "@/lib/useLatestBackupExportJob";
 import {
@@ -167,6 +162,8 @@ const normalizeExtractionSettings = (
 ): ExtractionSettings => ({
 	...settings,
 	jina_reader_enabled: settings.jina_reader_prefer_mode !== "local_only",
+	auto_ai_outline_enabled: Boolean(settings.auto_ai_outline_enabled),
+	auto_ai_quotes_enabled: Boolean(settings.auto_ai_quotes_enabled),
 });
 
 const normalizePathname = (asPath: string) => {
@@ -308,12 +305,9 @@ const buildAdminPath = (
 type PromptType =
 	| "summary"
 	| "translation"
-	| "key_points"
 	| "outline"
 	| "quotes"
-	| "infographic"
 	| "content_cleaning"
-	| "content_validation"
 	| "classification"
 	| "tagging";
 
@@ -353,15 +347,12 @@ const createEmptyPromptFormData = (
 
 const PROMPT_TYPES = [
 	{ value: "content_cleaning" as PromptType, labelKey: "清洗" },
-	{ value: "content_validation" as PromptType, labelKey: "校验" },
 	{ value: "classification" as PromptType, labelKey: "分类" },
 	{ value: "tagging" as PromptType, labelKey: "标签" },
 	{ value: "summary" as PromptType, labelKey: "摘要" },
 	{ value: "translation" as PromptType, labelKey: "翻译" },
-	{ value: "key_points" as PromptType, labelKey: "总结" },
 	{ value: "outline" as PromptType, labelKey: "大纲" },
 	{ value: "quotes" as PromptType, labelKey: "金句" },
-	{ value: "infographic" as PromptType, labelKey: "信息图" },
 ];
 
 const supportsChunkOptionsForPromptType = (
@@ -790,20 +781,6 @@ export default function AdminPage() {
 	>([]);
 	const [retryTaskOptionsLoading, setRetryTaskOptionsLoading] = useState(false);
 	const [retryTaskSubmitting, setRetryTaskSubmitting] = useState(false);
-	const [showAIContinuationModal, setShowAIContinuationModal] = useState(false);
-	const [aiContinuationOptionsLoading, setAIContinuationOptionsLoading] =
-		useState(false);
-	const [aiContinuationSubmitting, setAIContinuationSubmitting] =
-		useState(false);
-	const [aiContinuationFeedback, setAIContinuationFeedback] = useState("");
-	const [aiContinuationModelConfigId, setAIContinuationModelConfigId] =
-		useState("");
-	const [aiContinuationModelOptions, setAIContinuationModelOptions] =
-		useState<ModelAPIConfig[]>([]);
-	const [aiContinuationUsageId, setAIContinuationUsageId] = useState("");
-	const [aiContinuationContentType, setAIContinuationContentType] = useState<
-		string | null
-	>(null);
 
 	const [usageLogs, setUsageLogs] = useState<AIUsageLogItem[]>([]);
 	const [usageSummary, setUsageSummary] = useState<
@@ -926,6 +903,8 @@ export default function AdminPage() {
 			jina_reader_prefer_mode: "local_only",
 			auto_ai_classification_enabled: true,
 			auto_ai_summary_enabled: true,
+			auto_ai_outline_enabled: false,
+			auto_ai_quotes_enabled: false,
 			auto_ai_tagging_enabled: true,
 			auto_translation_enabled: true,
 		});
@@ -1068,25 +1047,6 @@ export default function AdminPage() {
 		selectedTaskTimelineNode?.kind === "usage"
 			? selectedTaskTimelineNode.usage || null
 			: null;
-	const selectedTaskTimelineUsageContentType =
-		selectedTaskTimelineUsageNode?.content_type ||
-		selectedTaskTimeline?.task.content_type ||
-		null;
-	const selectedTaskTimelineUsageSupportsContinuation =
-		selectedTaskTimelineNode?.kind === "usage" &&
-		isAIContinuationSupported({
-			taskType:
-				selectedTaskTimelineUsageNode?.task_type ||
-				selectedTaskTimeline?.task.task_type,
-			contentType: selectedTaskTimelineUsageContentType,
-			requestPayload: selectedTaskTimelineUsageNode?.request_payload,
-			sessionInfo: selectedTaskTimelineUsageNode?.session_info,
-		});
-	const aiContinuationCopy = useMemo(
-		() => getAIContinuationCopy(aiContinuationContentType, t),
-		[aiContinuationContentType, t],
-	);
-
 	const [editingModelAPIConfig, setEditingModelAPIConfig] =
 		useState<ModelAPIConfig | null>(null);
 	const [editingPromptConfig, setEditingPromptConfig] =
@@ -1250,17 +1210,6 @@ export default function AdminPage() {
 				setShowModelAPIModal(false);
 				return;
 			}
-			if (showAIContinuationModal) {
-				setShowAIContinuationModal(false);
-				setAIContinuationOptionsLoading(false);
-				setAIContinuationSubmitting(false);
-				setAIContinuationFeedback("");
-				setAIContinuationModelConfigId("");
-				setAIContinuationModelOptions([]);
-				setAIContinuationUsageId("");
-				setAIContinuationContentType(null);
-				return;
-			}
 			if (showCategoryModal) {
 				setShowCategoryModal(false);
 				return;
@@ -1280,7 +1229,6 @@ export default function AdminPage() {
 			showPromptPreview,
 			showPromptModal,
 			showModelAPIModal,
-			showAIContinuationModal,
 			showCategoryModal,
 			confirmState,
 		]);
@@ -2759,92 +2707,6 @@ export default function AdminPage() {
 		}
 	};
 
-	const closeAIContinuationModal = () => {
-		setShowAIContinuationModal(false);
-		setAIContinuationOptionsLoading(false);
-		setAIContinuationSubmitting(false);
-		setAIContinuationFeedback("");
-		setAIContinuationModelConfigId("");
-		setAIContinuationModelOptions([]);
-		setAIContinuationUsageId("");
-		setAIContinuationContentType(null);
-	};
-
-	const handleOpenAIContinuationModal = async () => {
-		const usage = selectedTaskTimelineUsageNode;
-		const contentType = selectedTaskTimelineUsageContentType;
-		if (
-			selectedTaskTimelineNode?.kind !== "usage" ||
-			!usage ||
-			!isAIContinuationSupported({
-				taskType: usage.task_type || selectedTaskTimeline?.task.task_type,
-				contentType,
-				requestPayload: usage.request_payload,
-				sessionInfo: usage.session_info,
-			})
-		) {
-			showToast(t("当前调用暂不支持提交修改意见"), "error");
-			return;
-		}
-		setAIContinuationUsageId(usage.id);
-		setAIContinuationContentType(contentType);
-		setAIContinuationFeedback(
-			contentType === "infographic"
-				? usage.error_message || selectedTaskTimeline?.task.last_error || ""
-				: "",
-		);
-		setAIContinuationModelConfigId("");
-		setAIContinuationModelOptions([]);
-		setAIContinuationOptionsLoading(true);
-		setShowAIContinuationModal(true);
-		try {
-			const models = (await articleApi.getModelAPIConfigs()).filter(
-				(config: ModelAPIConfig) =>
-					config.is_enabled && config.model_type !== "vector",
-			);
-			setAIContinuationModelOptions(models);
-			setAIContinuationModelConfigId(
-				resolveAIContinuationModelConfigId(usage.model_api_config_id, models),
-			);
-		} catch (error) {
-			console.error("Failed to load ai continuation configs:", error);
-			showToast(t("加载模型配置失败"), "error");
-		} finally {
-			setAIContinuationOptionsLoading(false);
-		}
-	};
-
-	const handleSubmitAIContinuation = async () => {
-		if (!aiContinuationUsageId || aiContinuationSubmitting) return;
-		if (!aiContinuationFeedback.trim()) {
-			showToast(
-				aiContinuationContentType === "infographic"
-					? t("请填写修复说明")
-					: t("请填写修改意见"),
-				"error",
-			);
-			return;
-		}
-		setAIContinuationSubmitting(true);
-		try {
-			const result = await articleApi.continueAIUsage(aiContinuationUsageId, {
-				feedback: aiContinuationFeedback,
-				model_config_id: aiContinuationModelConfigId || undefined,
-			});
-			showToast(aiContinuationCopy.successMessage);
-			closeAIContinuationModal();
-			await handleOpenTaskTimeline(result.root_task_id || result.task_id);
-		} catch (error: any) {
-			console.error("Failed to submit ai continuation:", error);
-			showToast(
-				error?.response?.data?.detail || aiContinuationCopy.failureMessage,
-				"error",
-			);
-		} finally {
-			setAIContinuationSubmitting(false);
-		}
-	};
-
 	const handleOpenUsageRelatedTask = (taskId: string, usageId?: string) => {
 		setActiveSection("monitoring");
 		setMonitoringSubSection("tasks");
@@ -2859,7 +2721,6 @@ export default function AdminPage() {
 		setSelectedTaskEventId(null);
 		setTaskTimelineRefreshing(false);
 		setTaskTimelineError("");
-		closeAIContinuationModal();
 	};
 
 	const getTaskTargetHref = (
@@ -5722,12 +5583,14 @@ export default function AdminPage() {
 											)}
 
 											{extractionSubSection === "post-processing" && (
-												<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+												<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
 													{[
-														["auto_ai_classification_enabled", t("自动分类")],
-														["auto_ai_summary_enabled", t("自动摘要")],
-														["auto_ai_tagging_enabled", t("自动标签")],
 														["auto_translation_enabled", t("自动翻译")],
+														["auto_ai_classification_enabled", t("自动分类")],
+														["auto_ai_tagging_enabled", t("自动标签")],
+														["auto_ai_summary_enabled", t("自动摘要")],
+														["auto_ai_outline_enabled", t("自动大纲")],
+														["auto_ai_quotes_enabled", t("自动金句")],
 													].map(([key, label]) => (
 														<label
 															key={key}
@@ -7536,16 +7399,8 @@ export default function AdminPage() {
 														}
 														const usage =
 															selectedTaskTimelineNode.usage as AITaskTimelineUsage;
-														const usageContentType =
-															usage.content_type ||
-															selectedTaskTimeline?.task.content_type ||
-															null;
 														const usageDisplayStatus =
 															nodeDisplayStatus || usage.status;
-														const continuationCopy =
-															getAIContinuationCopy(usageContentType, t);
-														const showAIContinuationAction =
-															selectedTaskTimelineUsageSupportsContinuation;
 														const usageMeta = {
 															model: usage.model_api_config_name || t("未知模型"),
 															status: getUsageStatusLabel(usageDisplayStatus),
@@ -7581,18 +7436,6 @@ export default function AdminPage() {
 																		</div>
 																	</div>
 																	<div className="flex items-center gap-2">
-																		{showAIContinuationAction && (
-																			<IconButton
-																				type="button"
-																				variant="ghost"
-																				size="sm"
-																				onClick={handleOpenAIContinuationModal}
-																				title={continuationCopy.title}
-																				aria-label={continuationCopy.title}
-																			>
-																				<IconEdit className="h-4 w-4" />
-																			</IconButton>
-																		)}
 																		<IconButton
 																			type="button"
 																			onClick={handleCopyTaskEventDetails}
@@ -7673,65 +7516,6 @@ export default function AdminPage() {
 
 							</div>
 						) : null}
-					</ModalShell>
-				)}
-
-				{showAIContinuationModal && (
-					<ModalShell
-						isOpen={showAIContinuationModal}
-						onClose={closeAIContinuationModal}
-						title={aiContinuationCopy.title}
-						widthClassName="max-w-md"
-						footer={
-							<div className="flex justify-end gap-2">
-								<Button
-									type="button"
-									variant="secondary"
-									onClick={closeAIContinuationModal}
-									disabled={aiContinuationSubmitting}
-								>
-									{t("取消")}
-								</Button>
-								<Button
-									type="button"
-									variant="primary"
-									onClick={handleSubmitAIContinuation}
-									disabled={
-										aiContinuationSubmitting || aiContinuationOptionsLoading
-									}
-								>
-									{aiContinuationCopy.submitLabel}
-								</Button>
-							</div>
-						}
-					>
-						<div className="space-y-4">
-							<FormField label={t("模型配置")}>
-								<SelectField
-									value={aiContinuationModelConfigId}
-									onChange={(value) => setAIContinuationModelConfigId(value)}
-									className="w-full"
-									disabled={aiContinuationOptionsLoading}
-									options={[
-										{ value: "", label: t("使用默认配置") },
-										...aiContinuationModelOptions.map((config) => ({
-											value: config.id,
-											label: `${config.name} (${config.model_name})`,
-										})),
-									]}
-								/>
-							</FormField>
-
-							<FormField label={aiContinuationCopy.feedbackLabel}>
-								<TextArea
-									value={aiContinuationFeedback}
-									onChange={(e) => setAIContinuationFeedback(e.target.value)}
-									rows={6}
-									placeholder={aiContinuationCopy.placeholder}
-									disabled={aiContinuationSubmitting}
-								/>
-							</FormField>
-						</div>
 					</ModalShell>
 				)}
 

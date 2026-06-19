@@ -1088,9 +1088,6 @@ class ReviewService:
             return summary.strip() or "暂无摘要"
         if input_mode == REVIEW_INPUT_MODE_FULL_TEXT:
             return self._extract_article_full_text(article) or "暂无全文"
-        key_points = (article.ai_analysis.key_points if article.ai_analysis else "") or ""
-        if key_points.strip():
-            return key_points.strip()
         summary = (article.ai_analysis.summary if article.ai_analysis else "") or ""
         return summary.strip() or "暂无总结"
 

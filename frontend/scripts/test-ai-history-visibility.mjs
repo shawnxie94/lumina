@@ -59,15 +59,6 @@ assert.equal(
 );
 
 assert.equal(
-	shouldShowAiHistoryButton(true, "infographic", {
-		infographic_html: null,
-		infographic_image_url: "/backend/media/demo.webp",
-	}),
-	true,
-	"仅图片信息图也应展示历史按钮",
-);
-
-assert.equal(
 	shouldShowAiHistoryButton(false, "quotes", {
 		quotes: "访客不可见",
 	}),

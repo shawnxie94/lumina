@@ -115,7 +115,6 @@ def make_article(
     category_id: str | None,
     created_at: str,
     summary: str = "",
-    key_points: str = "",
     top_image: str = "",
     is_visible: bool = True,
 ) -> Article:
@@ -141,7 +140,6 @@ def make_article(
         id=str(uuid.uuid4()),
         article_id=article.id,
         summary=summary,
-        key_points=key_points,
     )
     db_session.add(analysis)
     db_session.commit()

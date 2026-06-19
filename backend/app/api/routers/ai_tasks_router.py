@@ -24,6 +24,11 @@ from task_state import append_task_event, ensure_task_status_transition
 
 router = APIRouter()
 ai_call_session_service = AICallSessionService()
+REMOVED_AI_TASK_TYPES = {
+    ("process_article_validation", "content_validation"),
+    ("process_ai_content", "key_points"),
+    ("process_ai_content", "infographic"),
+}
 TASK_LOAD_ONLY_FIELDS = (
     AITask.id,
     AITask.article_id,
@@ -503,8 +508,6 @@ async def retry_ai_tasks(
             return "content_cleaning"
         if task.task_type == "process_article_translation":
             return "translation"
-        if task.task_type == "process_article_validation":
-            return "content_validation"
         if task.task_type == "process_article_classification":
             return "classification"
         if task.task_type == "process_article_tagging":
@@ -559,6 +562,8 @@ async def retry_ai_tasks(
         )
         if not prompt_config:
             raise HTTPException(status_code=400, detail="所选提示词不存在或未启用")
+        if prompt_config.type in {"content_validation", "key_points", "infographic"}:
+            raise HTTPException(status_code=400, detail="所选提示词类型已下线")
 
     updated_ids: list[str] = []
     skipped_ids: list[str] = []
@@ -592,6 +597,10 @@ async def retry_ai_tasks(
         if not task:
             skipped_ids.append(task_id)
             skipped_reasons[task_id] = "任务不存在"
+            continue
+        if (task.task_type, task.content_type) in REMOVED_AI_TASK_TYPES:
+            skipped_ids.append(task_id)
+            skipped_reasons[task_id] = "该 AI 能力已下线"
             continue
 
         payload = parse_task_payload(task)

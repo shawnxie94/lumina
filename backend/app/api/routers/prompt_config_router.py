@@ -8,6 +8,12 @@ from auth import get_current_admin
 from models import ModelAPIConfig, PromptConfig, get_db
 
 router = APIRouter()
+DISABLED_PROMPT_TYPES = {"content_validation", "key_points", "infographic"}
+
+
+def _ensure_prompt_type_enabled(prompt_type: str) -> None:
+    if prompt_type in DISABLED_PROMPT_TYPES:
+        raise HTTPException(status_code=400, detail="该提示词类型已下线")
 
 
 def serialize_prompt_config(config: PromptConfig) -> dict:
@@ -106,9 +112,12 @@ async def get_prompt_configs(
     _: bool = Depends(get_current_admin),
 ):
     query = db.query(PromptConfig)
+    query = query.filter(PromptConfig.type.notin_(DISABLED_PROMPT_TYPES))
     if category_id:
         query = query.filter(PromptConfig.category_id == category_id)
     if type:
+        if type in DISABLED_PROMPT_TYPES:
+            return []
         query = query.filter(PromptConfig.type == type)
 
     configs = query.order_by(PromptConfig.created_at.desc()).all()
@@ -124,6 +133,7 @@ async def get_prompt_config(
     config = db.query(PromptConfig).filter(PromptConfig.id == config_id).first()
     if not config:
         raise HTTPException(status_code=404, detail="提示词配置不存在")
+    _ensure_prompt_type_enabled(config.type)
     return serialize_prompt_config(config)
 
 
@@ -134,6 +144,7 @@ async def create_prompt_config(
     _: bool = Depends(get_current_admin),
 ):
     try:
+        _ensure_prompt_type_enabled(config.type)
         _validate_advanced_chunk_options(config, db)
 
         if config.is_default:
@@ -147,6 +158,9 @@ async def create_prompt_config(
         db.commit()
         db.refresh(new_config)
         return serialize_prompt_config(new_config)
+    except HTTPException:
+        db.rollback()
+        raise
     except Exception as exc:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(exc))
@@ -164,6 +178,8 @@ async def update_prompt_config(
         raise HTTPException(status_code=404, detail="提示词配置不存在")
 
     try:
+        _ensure_prompt_type_enabled(existing_config.type)
+        _ensure_prompt_type_enabled(config.type)
         _validate_advanced_chunk_options(config, db)
 
         if config.is_default:
@@ -191,6 +207,9 @@ async def update_prompt_config(
         db.commit()
         db.refresh(existing_config)
         return serialize_prompt_config(existing_config)
+    except HTTPException:
+        db.rollback()
+        raise
     except Exception as exc:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(exc))
@@ -205,6 +224,7 @@ async def delete_prompt_config(
     config = db.query(PromptConfig).filter(PromptConfig.id == config_id).first()
     if not config:
         raise HTTPException(status_code=404, detail="提示词配置不存在")
+    _ensure_prompt_type_enabled(config.type)
 
     db.delete(config)
     db.commit()

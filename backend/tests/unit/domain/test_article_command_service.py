@@ -2,7 +2,6 @@ import asyncio
 
 import pytest
 
-import app.domain.article_command_service as article_command_service_module
 from app.domain.article_command_service import ArticleCommandService
 from app.domain.article_extraction_service import (
     ArticleExtractionBadGatewayError,
@@ -13,7 +12,6 @@ from models import (
     AIAnalysis,
     AIAnalysisVersion,
     AITask,
-    AIUsageLog,
     AdminSettings,
     Article,
     now_str,
@@ -52,15 +50,10 @@ def make_article_with_analysis(db_session):
         article_id=article.id,
         summary="summary stays",
         summary_status="completed",
-        key_points="key points",
-        key_points_status="completed",
         outline="outline",
         outline_status="completed",
         quotes="quotes",
         quotes_status="completed",
-        infographic_html="<section>infographic</section>",
-        infographic_image_url="/media/infographic.png",
-        infographic_status="completed",
         updated_at="2026-03-27 10:00:00",
     )
     db_session.add(analysis)
@@ -109,6 +102,8 @@ def test_create_article_queues_only_enabled_post_processing(db_session):
             auto_ai_cleaning_enabled=True,
             auto_ai_classification_enabled=False,
             auto_ai_summary_enabled=True,
+            auto_ai_outline_enabled=True,
+            auto_ai_quotes_enabled=True,
             auto_ai_tagging_enabled=False,
             auto_translation_enabled=False,
         )
@@ -131,9 +126,13 @@ def test_create_article_queues_only_enabled_post_processing(db_session):
     article = db_session.query(Article).filter(Article.id == article_id).first()
     assert article is not None
     assert article.status == "completed"
-    assert len(task_service.tasks) == 1
-    assert task_service.tasks[0]["task_type"] == "process_ai_content"
-    assert task_service.tasks[0]["content_type"] == "summary"
+    assert [
+        (task["task_type"], task["content_type"]) for task in task_service.tasks
+    ] == [
+        ("process_ai_content", "summary"),
+        ("process_ai_content", "outline"),
+        ("process_ai_content", "quotes"),
+    ]
 
 
 def test_create_article_falls_back_to_markdown_image_when_html_has_no_image(db_session):
@@ -379,22 +378,15 @@ def test_delete_ai_content_clears_only_requested_content_type(db_session):
     assert article.ai_analysis.summary_status == "completed"
     assert article.ai_analysis.quotes is None
     assert article.ai_analysis.quotes_status is None
-    assert article.ai_analysis.key_points == "key points"
     assert article.ai_analysis.outline == "outline"
 
 
-def test_delete_ai_content_clears_infographic_html_and_image(db_session):
+def test_delete_ai_content_rejects_removed_content_type(db_session):
     service = ArticleCommandService(ai_task_service=StubAITaskService())
     article = make_article_with_analysis(db_session)
-    assert not hasattr(article_command_service_module, "delete_media_asset_by_url")
 
-    service.delete_ai_content(db_session, article.id, "infographic")
-
-    db_session.refresh(article)
-    assert article.ai_analysis is not None
-    assert article.ai_analysis.infographic_html is None
-    assert article.ai_analysis.infographic_image_url is None
-    assert article.ai_analysis.infographic_status is None
+    with pytest.raises(ValueError, match="不支持删除该类型的 AI 解读"):
+        service.delete_ai_content(db_session, article.id, "infographic")
 
 
 def test_delete_ai_content_rejects_summary(db_session):
@@ -452,60 +444,3 @@ def test_delete_ai_content_rejects_inflight_ai_task(db_session):
         assert str(exc) == "当前类型的 AI 解读正在生成中，请稍后再试"
     else:
         raise AssertionError("expected delete_ai_content to reject inflight task")
-
-
-def test_enqueue_ai_continuation_links_new_task_to_source_chain(db_session):
-    service = ArticleCommandService()
-    article = Article(
-        title="Continuation Chain Article",
-        slug="continuation-chain-article",
-        content_md="content",
-        created_at="2026-04-13T10:00:00",
-        updated_at="2026-04-13T10:00:00",
-    )
-    db_session.add(article)
-    db_session.commit()
-    db_session.add(
-        AIAnalysis(
-            article_id=article.id,
-            summary_status="completed",
-            updated_at="2026-04-13T10:00:00",
-        )
-    )
-    source_task = AITask(
-        id="task-source",
-        article_id=article.id,
-        root_task_id="task-root",
-        task_type="process_ai_content",
-        content_type="summary",
-        status="completed",
-        payload="{}",
-        attempts=1,
-        max_attempts=1,
-        run_at="2026-04-13T10:00:00",
-        created_at="2026-04-13T10:00:00",
-        updated_at="2026-04-13T10:00:00",
-    )
-    usage = AIUsageLog(
-        task_id=source_task.id,
-        article_id=article.id,
-        task_type="process_ai_content",
-        content_type="summary",
-        status="completed",
-        request_payload="{}",
-        response_payload="{}",
-        created_at="2026-04-13T10:01:00",
-    )
-    db_session.add_all([source_task, usage])
-    db_session.commit()
-
-    task_id, root_task_id = service.enqueue_ai_continuation(
-        db_session,
-        usage_id=usage.id,
-        feedback="请更短",
-    )
-
-    created = db_session.query(AITask).filter(AITask.id == task_id).one()
-    assert root_task_id == "task-root"
-    assert created.parent_task_id == "task-source"
-    assert created.root_task_id == "task-root"

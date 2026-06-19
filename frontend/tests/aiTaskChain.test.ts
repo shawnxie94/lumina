@@ -34,15 +34,13 @@ test("ai task list item supports chain metadata", () => {
 	assert.equal(item.latest_task_id, "task-cont-1");
 });
 
-test("admin continuation flow refreshes current chain instead of opening a new standalone task", async () => {
+test("admin task timeline no longer exposes continuation actions", async () => {
 	const source = await readFile(
 		new URL("../pages/admin.tsx", import.meta.url),
 		"utf8",
 	);
 
-	assert.match(
-		source,
-		/await handleOpenTaskTimeline\(result\.root_task_id \|\| result\.task_id\)/,
-	);
-	assert.doesNotMatch(source, /await handleOpenTaskTimeline\(result\.task_id\);/);
+	assert.doesNotMatch(source, /continueAIUsage/);
+	assert.doesNotMatch(source, /Continuation/);
+	assert.doesNotMatch(source, /handleSubmitAIContinuation/);
 });

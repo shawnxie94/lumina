@@ -420,32 +420,21 @@ export interface ArticleDetail extends Article {
 		| null;
 	ai_analysis: {
 		summary: string | null;
-		summary_status: string | null;
-		summary_current_version_id?: string | null;
-		summary_current_version_number?: number | null;
-		summary_has_history?: boolean;
-		key_points: string | null;
-		key_points_status: string | null;
-		key_points_current_version_id?: string | null;
-		key_points_current_version_number?: number | null;
-		key_points_has_history?: boolean;
-		outline: string | null;
-		outline_status: string | null;
+			summary_status: string | null;
+			summary_current_version_id?: string | null;
+			summary_current_version_number?: number | null;
+			summary_has_history?: boolean;
+			outline: string | null;
+			outline_status: string | null;
 		outline_current_version_id?: string | null;
 		outline_current_version_number?: number | null;
 		outline_has_history?: boolean;
 		quotes: string | null;
-		quotes_status: string | null;
-		quotes_current_version_id?: string | null;
-		quotes_current_version_number?: number | null;
-		quotes_has_history?: boolean;
-		infographic_status: string | null;
-		infographic_image_url?: string | null;
-		infographic_html?: string | null;
-		infographic_current_version_id?: string | null;
-		infographic_current_version_number?: number | null;
-		infographic_has_history?: boolean;
-		tagging_status: string | null;
+			quotes_status: string | null;
+			quotes_current_version_id?: string | null;
+			quotes_current_version_number?: number | null;
+			quotes_has_history?: boolean;
+			tagging_status: string | null;
 		tagging_manual_override?: boolean | null;
 		error_message?: string | null;
 		updated_at?: string | null;
@@ -483,10 +472,8 @@ export interface SimilarArticleResponse {
 
 export type VersionedAIContentType =
 	| "summary"
-	| "key_points"
 	| "outline"
-	| "quotes"
-	| "infographic";
+	| "quotes";
 
 export interface AIContentVersion {
 	id: string;
@@ -524,6 +511,8 @@ export interface ExtractionSettings {
 	jina_reader_prefer_mode: "jina_first" | "local_first" | "local_only";
 	auto_ai_classification_enabled: boolean;
 	auto_ai_summary_enabled: boolean;
+	auto_ai_outline_enabled: boolean;
+	auto_ai_quotes_enabled: boolean;
 	auto_ai_tagging_enabled: boolean;
 	auto_translation_enabled: boolean;
 }
@@ -1143,7 +1132,7 @@ export const articleApi = {
 
 	updateAIContent: async (
 		articleSlug: string,
-		contentType: "summary" | "key_points" | "outline" | "quotes",
+		contentType: "summary" | "outline" | "quotes",
 		content: string,
 	): Promise<{
 		id: string;
@@ -1355,7 +1344,7 @@ export const articleApi = {
 
 	generateAIContent: async (
 		id: string,
-		contentType: string,
+		contentType: VersionedAIContentType,
 		modelConfigId?: string,
 		promptConfigId?: string,
 	) => {
@@ -1366,47 +1355,6 @@ export const articleApi = {
 		const url = `/api/articles/${id}/generate/${contentType}${queryString ? `?${queryString}` : ""}`;
 		const response = await api.post(url);
 		return response.data;
-	},
-
-	repairInfographic: async (
-		id: string,
-		errorMessage: string,
-		modelConfigId?: string,
-	) => {
-		const response = await api.post(`/api/articles/${id}/repair-infographic`, {
-			error_message: errorMessage,
-			model_config_id: modelConfigId,
-		});
-		return response.data;
-	},
-
-	continueAIUsage: async (
-		usageId: string,
-		data: {
-			feedback: string;
-			model_config_id?: string;
-		},
-	) => {
-		const response = await api.post(`/api/ai-usage/${usageId}/continue`, data);
-		return response.data as {
-			usage_id: string;
-			task_id: string;
-			root_task_id?: string | null;
-			status: "pending";
-		};
-	},
-
-	uploadInfographicImage: async (id: string, file: File) => {
-		const formData = new FormData();
-		formData.append("file", file);
-		const response = await api.post(`/api/articles/${id}/infographic-image`, formData);
-		return response.data as {
-			asset_id: string;
-			url: string;
-			filename: string;
-			size: number;
-			content_type: string;
-		};
 	},
 
 	getAuthors: async () => {

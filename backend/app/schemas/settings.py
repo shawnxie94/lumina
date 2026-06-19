@@ -38,6 +38,8 @@ class ExtractionSettingsUpdate(BaseModel):
     auto_ai_cleaning_enabled: Optional[bool] = None
     auto_ai_classification_enabled: Optional[bool] = None
     auto_ai_summary_enabled: Optional[bool] = None
+    auto_ai_outline_enabled: Optional[bool] = None
+    auto_ai_quotes_enabled: Optional[bool] = None
     auto_ai_tagging_enabled: Optional[bool] = None
     auto_translation_enabled: Optional[bool] = None
 

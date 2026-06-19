@@ -15,21 +15,6 @@ class AITaskCancelRequest(BaseModel):
     task_ids: list[str]
 
 
-class AIUsageContinuationRequest(BaseModel):
-    model_config = ConfigDict(protected_namespaces=())
-
-    feedback: str
-    model_config_id: Optional[str] = None
-
-    @field_validator("feedback")
-    @classmethod
-    def validate_feedback(cls, value: str) -> str:
-        trimmed = (value or "").strip()
-        if not trimmed:
-            raise ValueError("请填写修改意见")
-        return trimmed
-
-
 class ModelAPITestRequest(BaseModel):
     prompt: Optional[str] = None
     max_tokens: Optional[int] = None

@@ -1,12 +1,9 @@
 export type AITaskPromptType =
   | "summary"
   | "translation"
-  | "key_points"
   | "outline"
   | "quotes"
-  | "infographic"
   | "content_cleaning"
-  | "content_validation"
   | "classification"
   | "tagging";
 
@@ -27,13 +24,6 @@ const AI_TASK_META: AITaskMeta[] = [
     labelKey: "清洗",
     filterValue: "process_article_cleaning:content_cleaning",
     promptType: "content_cleaning",
-  },
-  {
-    taskType: "process_article_validation",
-    contentType: "content_validation",
-    labelKey: "校验",
-    filterValue: "process_article_validation:content_validation",
-    promptType: "content_validation",
   },
   {
     taskType: "process_article_classification",
@@ -79,13 +69,6 @@ const AI_TASK_META: AITaskMeta[] = [
   },
   {
     taskType: "process_ai_content",
-    contentType: "key_points",
-    labelKey: "总结",
-    filterValue: "process_ai_content:key_points",
-    promptType: "key_points",
-  },
-  {
-    taskType: "process_ai_content",
     contentType: "outline",
     labelKey: "大纲",
     filterValue: "process_ai_content:outline",
@@ -99,13 +82,6 @@ const AI_TASK_META: AITaskMeta[] = [
     promptType: "quotes",
   },
   {
-    taskType: "process_ai_content",
-    contentType: "infographic",
-    labelKey: "信息图",
-    filterValue: "process_ai_content:infographic",
-    promptType: "infographic",
-  },
-  {
     taskType: "generate_review_issue",
     labelKey: "回顾",
     filterValue: "generate_review_issue",
@@ -115,7 +91,6 @@ const AI_TASK_META: AITaskMeta[] = [
 
 const TASK_TYPE_FALLBACK_LABELS: Record<string, string> = {
   process_article_cleaning: "清洗",
-  process_article_validation: "校验",
   process_article_classification: "分类",
   process_article_tagging: "标签",
   process_article_translation: "翻译",

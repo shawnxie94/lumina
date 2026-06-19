@@ -255,22 +255,6 @@ class AITaskService:
             post_process_options=payload.get("post_process_options"),
         )
 
-    async def _handle_process_article_validation(
-        self,
-        pipeline,
-        article_id: str,
-        category_id,
-        payload: dict,
-    ):
-        await pipeline.process_article_validation(
-            article_id,
-            category_id,
-            cleaned_md=payload.get("cleaned_md"),
-            model_config_id=payload.get("model_config_id"),
-            prompt_config_id=payload.get("prompt_config_id"),
-            post_process_options=payload.get("post_process_options"),
-        )
-
     async def _handle_process_article_classification(
         self,
         pipeline,
@@ -334,8 +318,6 @@ class AITaskService:
             content_type,
             model_config_id=payload.get("model_config_id"),
             prompt_config_id=payload.get("prompt_config_id"),
-            continuation_source_usage_id=payload.get("continuation_source_usage_id"),
-            continuation_feedback=payload.get("continuation_feedback"),
         )
 
     async def _handle_process_article_embedding(self, task_id: str, article_id: str):
@@ -376,12 +358,6 @@ class AITaskService:
 
         handlers = {
             "process_article_cleaning": lambda: self._handle_process_article_cleaning(
-                pipeline,
-                self._require_article_id(article_id),
-                category_id,
-                payload,
-            ),
-            "process_article_validation": lambda: self._handle_process_article_validation(
                 pipeline,
                 self._require_article_id(article_id),
                 category_id,

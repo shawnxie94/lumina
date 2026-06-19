@@ -415,19 +415,12 @@ class ArticleQueryService:
                     AIAnalysis.summary,
                     AIAnalysis.summary_status,
                     AIAnalysis.current_summary_version_id,
-                    AIAnalysis.key_points,
-                    AIAnalysis.key_points_status,
-                    AIAnalysis.current_key_points_version_id,
                     AIAnalysis.outline,
                     AIAnalysis.outline_status,
                     AIAnalysis.current_outline_version_id,
                     AIAnalysis.quotes,
                     AIAnalysis.quotes_status,
                     AIAnalysis.current_quotes_version_id,
-                    AIAnalysis.infographic_status,
-                    AIAnalysis.infographic_image_url,
-                    AIAnalysis.infographic_html,
-                    AIAnalysis.current_infographic_version_id,
                     AIAnalysis.classification_status,
                     AIAnalysis.tagging_status,
                     AIAnalysis.tagging_manual_override,
@@ -626,7 +619,6 @@ class ArticleQueryService:
             joinedload(Article.ai_analysis).load_only(
                 AIAnalysis.summary,
                 AIAnalysis.quotes,
-                AIAnalysis.infographic_image_url,
             ),
         )
         articles = query.all()
@@ -691,14 +683,7 @@ class ArticleQueryService:
             ]
             summary = article.ai_analysis.summary if article.ai_analysis else ""
             quotes = article.ai_analysis.quotes if article.ai_analysis else ""
-            infographic_image_url = (
-                article.ai_analysis.infographic_image_url if article.ai_analysis else ""
-            )
             top_image_url = _normalize_public_asset_url(base_url, article.top_image)
-            infographic_image_url = _normalize_public_asset_url(
-                base_url,
-                infographic_image_url,
-            )
             description_parts: list[str] = []
             if (summary or "").strip():
                 description_parts.append(f"<p>{escape(summary.strip())}</p>")
@@ -710,12 +695,6 @@ class ArticleQueryService:
                 )
                 description_parts.append(f"<h3>金句</h3><ul>{quotes_html}</ul>")
 
-            if infographic_image_url:
-                description_parts.append(
-                    "<h3>信息图</h3>"
-                    f'<p><img src="{escape(infographic_image_url)}" '
-                    f'alt="{escape(display_title)} 信息图" /></p>'
-                )
             lines.extend(
                 [
                     "<item>",

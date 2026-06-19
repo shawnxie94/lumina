@@ -1,6 +1,6 @@
 from typing import Literal, Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
 
 
 class ArticleCreate(BaseModel):
@@ -67,13 +67,6 @@ class ArticleNotesUpdate(BaseModel):
             "not_recommended",
         ]
     ] = None
-
-
-class ArticleInfographicRepairRequest(BaseModel):
-    model_config = ConfigDict(protected_namespaces=())
-
-    error_message: str
-    model_config_id: Optional[str] = None
 
 
 class ExportRequest(BaseModel):

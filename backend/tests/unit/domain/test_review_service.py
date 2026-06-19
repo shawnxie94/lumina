@@ -49,7 +49,6 @@ def make_article(
     created_at: str,
     category_id: str | None = None,
     summary: str = "",
-    key_points: str = "",
     content_md: str | None = None,
     content_trans: str = "",
     is_visible: bool = True,
@@ -82,8 +81,6 @@ def make_article(
                 article_id=article.id,
                 summary=summary,
                 summary_status="completed",
-                key_points=key_points or None,
-                key_points_status="completed" if key_points else None,
                 updated_at=created_at,
             )
         )
@@ -1520,7 +1517,6 @@ def test_generate_issue_markdown_uses_requested_review_input_mode_and_advanced_p
         created_at="2026-04-02T08:00:00+08:00",
         category_id=category.id,
         summary="这是一段 AI 摘要",
-        key_points="这是一段 AI 总结",
         content_md="第一段全文内容。\n\n第二段全文内容。",
     )
 
@@ -1586,7 +1582,6 @@ def test_generate_issue_markdown_uses_ai_summary_for_abstract_mode(
         created_at="2026-04-02T08:00:00+08:00",
         category_id=category.id,
         summary="这是 AI 摘要内容",
-        key_points="这是 AI 总结内容",
         content_md="这是全文内容",
     )
 
@@ -1602,7 +1597,6 @@ def test_generate_issue_markdown_uses_ai_summary_for_abstract_mode(
     class FakeClient:
         async def generate_summary(self, content, **kwargs):
             assert "这是 AI 摘要内容" in content
-            assert "这是 AI 总结内容" not in content
             assert "这是全文内容" not in content
             return {
                 "content": "# 回顾\n\n摘要模式输出。\n\n{{review_article_sections}}",

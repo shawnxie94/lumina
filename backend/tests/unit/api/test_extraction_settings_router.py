@@ -20,6 +20,8 @@ def test_serialize_extraction_settings_maps_disabled_jina_to_local_only():
 
     assert settings["jina_reader_enabled"] is False
     assert settings["jina_reader_prefer_mode"] == "local_only"
+    assert settings["auto_ai_outline_enabled"] is False
+    assert settings["auto_ai_quotes_enabled"] is False
 
 
 def test_update_extraction_settings_syncs_jina_enabled_from_prefer_mode(db_session):
@@ -55,6 +57,34 @@ def test_update_extraction_settings_syncs_jina_enabled_from_prefer_mode(db_sessi
 
     assert admin.jina_reader_enabled is False
     assert admin.jina_reader_prefer_mode == "local_only"
+
+
+def test_update_extraction_settings_saves_outline_and_quotes_toggles(db_session):
+    admin = AdminSettings(
+        password_hash="hash",
+        jwt_secret="secret",
+        jina_reader_enabled=False,
+        jina_reader_prefer_mode="local_only",
+        auto_ai_outline_enabled=False,
+        auto_ai_quotes_enabled=False,
+    )
+    db_session.add(admin)
+    db_session.commit()
+
+    asyncio.run(
+        update_extraction_settings(
+            ExtractionSettingsUpdate(
+                auto_ai_outline_enabled=True,
+                auto_ai_quotes_enabled=True,
+            ),
+            db_session,
+            True,
+        )
+    )
+    db_session.refresh(admin)
+
+    assert admin.auto_ai_outline_enabled is True
+    assert admin.auto_ai_quotes_enabled is True
 
 
 def test_update_extraction_settings_keeps_old_jina_enabled_payload_compatible(

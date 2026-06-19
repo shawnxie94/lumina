@@ -22,11 +22,10 @@ def make_article_with_analysis(db_session):
         article_id=article.id,
         summary="当前摘要 v1",
         summary_status="completed",
-        key_points="当前总结",
-        key_points_status="completed",
-        infographic_html="<section>当前信息图</section>",
-        infographic_image_url="/media/current.png",
-        infographic_status="completed",
+        outline="当前大纲",
+        outline_status="completed",
+        quotes="当前金句",
+        quotes_status="completed",
         updated_at=now_str(),
     )
     db_session.add(analysis)
@@ -110,3 +109,20 @@ def test_rollback_to_version_creates_new_version_and_restores_current_content(db
     assert rolled_back.content_text == "当前摘要 v1"
     assert analysis.summary == "当前摘要 v1"
     assert analysis.current_summary_version_id == rolled_back.id
+
+
+def test_removed_content_types_are_rejected(db_session):
+    service = ArticleAIVersionService()
+    article, _ = make_article_with_analysis(db_session)
+
+    for content_type in ("key_points", "infographic"):
+        try:
+            service.record_version(
+                db_session,
+                article_id=article.id,
+                content_type=content_type,
+            )
+        except ValueError as exc:
+            assert str(exc) == "不支持的 AI 内容类型"
+        else:
+            raise AssertionError(f"expected {content_type} to be rejected")

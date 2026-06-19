@@ -78,7 +78,6 @@ def make_analysis(
     *,
     summary: str,
     quotes: str | None = None,
-    infographic_image_url: str | None = None,
 ) -> AIAnalysis:
     analysis = AIAnalysis(
         id=str(uuid.uuid4()),
@@ -87,7 +86,6 @@ def make_analysis(
         summary_status="completed",
         quotes=quotes,
         quotes_status="completed" if quotes else None,
-        infographic_image_url=infographic_image_url,
     )
     db_session.add(analysis)
     db_session.commit()
@@ -658,7 +656,7 @@ def test_render_articles_rss_uses_filtered_links_and_escapes_xml(db_session):
     assert "<pubDate>Wed, 11 Feb 2026 00:00:00 GMT</pubDate>" in rss
 
 
-def test_render_articles_rss_includes_top_image_quotes_and_infographic_image(
+def test_render_articles_rss_includes_top_image_and_quotes(
     db_session,
 ):
     service = ArticleQueryService()
@@ -676,7 +674,6 @@ def test_render_articles_rss_includes_top_image_quotes_and_infographic_image(
         article,
         summary="摘要内容",
         quotes="第一句金句\n第二句金句",
-        infographic_image_url="/media/infographic-image.png",
     )
 
     rss = service.render_articles_rss(
@@ -693,8 +690,7 @@ def test_render_articles_rss_includes_top_image_quotes_and_infographic_image(
     assert "<h3>金句</h3>" in rss
     assert "<li>第一句金句</li>" in rss
     assert "<li>第二句金句</li>" in rss
-    assert "<h3>信息图</h3>" in rss
-    assert 'src="https://lumina.example.com/media/infographic-image.png"' in rss
+    assert "<h3>信息图</h3>" not in rss
 
 
 def test_render_articles_rss_prefers_translated_title(db_session):
