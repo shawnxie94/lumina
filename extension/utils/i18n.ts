@@ -25,6 +25,11 @@ const translations: Record<ExtensionLanguage, Record<string, string>> = {
 		错误记录: "Error log",
 		配置: "Configuration",
 		"Lumina API 地址": "Lumina API URL",
+		"默认全文抓取地址": "Default full-text extraction URLs",
+		"每行一个域名或 URL，命中后全文采集将跳过 URL 抓取":
+			"One domain or URL per line. Full-page collection skips URL fetching when matched.",
+		"用于 Jina 无法从 URL 读取正文但页面 DOM 可提取的站点":
+			"For sites where Jina cannot read the article from the URL but the page DOM can be extracted.",
 		保存: "Save",
 		取消: "Cancel",
 		初始化失败: "Initialization failed",
@@ -45,10 +50,14 @@ const translations: Record<ExtensionLanguage, Record<string, string>> = {
 			"Long X article detected, opening reader view...",
 		"正在提取选区...": "Extracting selection...",
 		"正在提取全文...": "Extracting full article...",
+		"当前地址已配置为默认全文抓取，正在提取全文...":
+			"This URL is configured for default full-text extraction. Extracting full article...",
 		"未能提取到文章内容，请确认页面已加载完成":
 			"Failed to extract content. Make sure the page is fully loaded.",
 		"正在上传内容...": "Uploading content...",
+		"正在解析链接...": "Parsing URL...",
 		采集成功: "Collected",
+		文章已存在: "Article already exists",
 		"(无标题)": "(Untitled)",
 		"登录已过期，请重新登录": "Login expired. Please sign in again.",
 		"采集失败，请重试": "Collection failed. Please retry.",

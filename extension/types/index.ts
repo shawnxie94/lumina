@@ -39,6 +39,7 @@ export interface ReportArticleByUrlDuplicateResponse {
 
 export interface StorageData {
 	apiHost: string;
+	htmlCleaningUrlPatterns?: string;
 }
 
 export type StatusType = "idle" | "loading" | "success" | "error";

@@ -3,6 +3,7 @@ import { logError } from "../utils/errorLogger";
 import { addToHistory } from "../utils/history";
 import { htmlToMarkdown } from "../utils/markdownConverter";
 import { ensureContentScriptLoaded } from "../utils/contentScript";
+import { shouldUseHtmlCleaningForUrl } from "../utils/htmlCleaningRules";
 import { resolveLanguage, translate } from "../utils/i18n";
 
 const normalizeUrlCandidate = (value: string): string =>
@@ -204,38 +205,45 @@ export default defineBackground(() => {
 						return;
 					}
 
-					const reportResult = await apiClient.reportArticleByUrl({
-						url: reportUrl,
-					});
-					const isDuplicate =
-						"code" in reportResult && reportResult.code === "source_url_exists";
-					const articleSlug = isDuplicate
-						? reportResult.existing?.slug || reportResult.existing?.id
-						: reportResult.slug || reportResult.id;
-					const articleId = isDuplicate
-						? reportResult.existing?.id
-						: reportResult.id;
-					const articleTitle =
-						(isDuplicate ? reportResult.existing?.title : "") ||
-						tab.title ||
-						t("未命名");
+					const forceHtmlCleaning =
+						canFallbackToDom && (await shouldUseHtmlCleaningForUrl(reportUrl));
+					if (!forceHtmlCleaning) {
+						const reportResult = await apiClient.reportArticleByUrl({
+							url: reportUrl,
+						});
+						const isDuplicate =
+							"code" in reportResult &&
+							reportResult.code === "source_url_exists";
+						const articleSlug = isDuplicate
+							? reportResult.existing?.slug || reportResult.existing?.id
+							: reportResult.slug || reportResult.id;
+						const articleId = isDuplicate
+							? reportResult.existing?.id
+							: reportResult.id;
+						const articleTitle =
+							(isDuplicate ? reportResult.existing?.title : "") ||
+							tab.title ||
+							t("未命名");
 
-					await addToHistory({
-						articleId: articleId ? String(articleId) : String(articleSlug || ""),
-						slug: articleSlug ? String(articleSlug) : undefined,
-						title: articleTitle,
-						url: reportUrl,
-						domain: getDomainFromUrl(reportUrl),
-					});
+						await addToHistory({
+							articleId: articleId
+								? String(articleId)
+								: String(articleSlug || ""),
+							slug: articleSlug ? String(articleSlug) : undefined,
+							title: articleTitle,
+							url: reportUrl,
+							domain: getDomainFromUrl(reportUrl),
+						});
 
-					if (articleSlug) {
-						const articleUrl = buildAdminPreviewArticleUrl(
-							apiClient.frontendUrl,
-							String(articleSlug),
-						);
-						chrome.tabs.create({ url: articleUrl });
+						if (articleSlug) {
+							const articleUrl = buildAdminPreviewArticleUrl(
+								apiClient.frontendUrl,
+								String(articleSlug),
+							);
+							chrome.tabs.create({ url: articleUrl });
+						}
+						return;
 					}
-					return;
 				} catch (error) {
 					if (
 						!canFallbackToDom ||

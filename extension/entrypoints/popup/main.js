@@ -16,6 +16,11 @@ import {
 import { htmlToMarkdown } from "../../utils/markdownConverter";
 import { ensureContentScriptLoaded } from "../../utils/contentScript";
 import {
+	loadHtmlCleaningUrlPatterns,
+	matchesHtmlCleaningUrl,
+	saveHtmlCleaningUrlPatterns,
+} from "../../utils/htmlCleaningRules";
+import {
 	resolveLanguage,
 	setStoredLanguage,
 	translate,
@@ -103,6 +108,12 @@ class PopupController {
 		const apiHostInput = document.getElementById("apiHostInput");
 		if (apiHostInput) {
 			apiHostInput.value = apiHost;
+		}
+		const htmlCleaningPatternsInput = document.getElementById(
+			"htmlCleaningPatternsInput",
+		);
+		if (htmlCleaningPatternsInput) {
+			htmlCleaningPatternsInput.value = await loadHtmlCleaningUrlPatterns();
 		}
 	}
 
@@ -346,34 +357,55 @@ class PopupController {
 				try {
 					const currentTab = await chrome.tabs.get(tab.id);
 					const targetUrl = currentTab?.url || tab.url;
-					this.updateStatus("loading", this.t("正在解析链接..."));
-					const result = await this.#apiClient.reportArticleByUrl({
-						url: targetUrl,
-					});
-					const existing = result?.code === "source_url_exists" ? result.existing : null;
-					const articleSlug = existing?.slug || result?.slug || result?.id;
-					const title = existing?.title || currentTab?.title || tab.title || this.t("(无标题)");
-					await addToHistory({
-						articleId: result?.id ? String(result.id) : String(existing?.id || articleSlug || ""),
-						slug: articleSlug ? String(articleSlug) : undefined,
-						title,
-						url: targetUrl,
-						domain: new URL(targetUrl).hostname,
-						topImage: undefined,
-					});
-					await this.loadHistory();
-					this.updateStatus(
-						"success",
-						existing ? this.t("文章已存在") : this.t("采集成功"),
+					const forceHtmlCleaning = matchesHtmlCleaningUrl(
+						targetUrl,
+						await loadHtmlCleaningUrlPatterns(),
 					);
-					if (articleSlug) {
-						const articleUrl = this.buildAdminPreviewArticleUrl(articleSlug);
-						chrome.tabs.create({ url: articleUrl });
-						window.close();
+					if (forceHtmlCleaning) {
+						this.updateStatus(
+							"loading",
+							this.t("当前地址已配置为默认全文抓取，正在提取全文..."),
+						);
+					} else {
+						this.updateStatus("loading", this.t("正在解析链接..."));
+						const result = await this.#apiClient.reportArticleByUrl({
+							url: targetUrl,
+						});
+						const existing =
+							result?.code === "source_url_exists" ? result.existing : null;
+						const articleSlug = existing?.slug || result?.slug || result?.id;
+						const title =
+							existing?.title ||
+							currentTab?.title ||
+							tab.title ||
+							this.t("(无标题)");
+						await addToHistory({
+							articleId: result?.id
+								? String(result.id)
+								: String(existing?.id || articleSlug || ""),
+							slug: articleSlug ? String(articleSlug) : undefined,
+							title,
+							url: targetUrl,
+							domain: new URL(targetUrl).hostname,
+							topImage: undefined,
+						});
+						await this.loadHistory();
+						this.updateStatus(
+							"success",
+							existing ? this.t("文章已存在") : this.t("采集成功"),
+						);
+						if (articleSlug) {
+							const articleUrl = this.buildAdminPreviewArticleUrl(articleSlug);
+							chrome.tabs.create({ url: articleUrl });
+							window.close();
+						}
+						return;
 					}
-					return;
 				} catch (error) {
-					console.warn("Backend URL extraction failed, falling back to DOM extraction:", error);
+					console.warn(
+						"Backend URL extraction failed, falling back to DOM extraction:",
+						error,
+					);
 					logError("popup", error, {
 						action: "reportArticleByUrlFallback",
 						url: this.#currentTab?.url,
@@ -508,6 +540,9 @@ class PopupController {
 
 	async saveConfig() {
 		const apiHostInput = document.getElementById("apiHostInput");
+		const htmlCleaningPatternsInput = document.getElementById(
+			"htmlCleaningPatternsInput",
+		);
 		const newApiHost = apiHostInput?.value.trim();
 
 		if (!newApiHost) {
@@ -517,6 +552,7 @@ class PopupController {
 
 		try {
 			await ApiClient.saveApiHost(newApiHost);
+			await saveHtmlCleaningUrlPatterns(htmlCleaningPatternsInput?.value || "");
 			this.showToast(this.t("配置已保存，页面将重新加载"), "success");
 			this.closeConfigModal();
 			setTimeout(() => location.reload(), 600);

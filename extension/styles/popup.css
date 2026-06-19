@@ -252,13 +252,29 @@ body {
   margin-bottom: 6px;
 }
 
-.form-group input {
+.form-group input,
+.form-group textarea {
   width: 100%;
   padding: 8px 12px;
   border: 1px solid var(--border-strong);
   border-radius: 6px;
   font-size: 14px;
   background: var(--bg-surface);
+  color: var(--text-1);
+  font-family: var(--font-sans);
+}
+
+.form-group textarea {
+  min-height: 88px;
+  resize: vertical;
+  line-height: 1.45;
+}
+
+.form-hint {
+  margin-top: 6px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-3);
 }
 
 .config-modal {
@@ -282,7 +298,9 @@ body {
   background: var(--bg-surface);
   padding: 24px;
   border-radius: 12px;
-  width: 320px;
+  width: 360px;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
   box-shadow: var(--shadow-md);
 }
 
