@@ -4,6 +4,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from html import escape, unescape
 from urllib.parse import quote, urlparse
 
@@ -27,6 +28,10 @@ _ATTR_RE = re.compile(
 _TITLE_RE = re.compile(r"<title\b[^>]*>(.*?)</title>", re.IGNORECASE | re.DOTALL)
 _H1_RE = re.compile(r"<h1\b[^>]*>(.*?)</h1>", re.IGNORECASE | re.DOTALL)
 _META_RE = re.compile(r"<meta\b[^>]*>", re.IGNORECASE)
+_JSON_LD_SCRIPT_RE = re.compile(
+    r"<script\b(?=[^>]*\btype\s*=\s*['\"]application/ld\+json(?:;[^'\"]*)?['\"])[^>]*>(.*?)</script>",
+    re.IGNORECASE | re.DOTALL,
+)
 _TIME_RE = re.compile(
     r"<time\b[^>]*datetime=(\"[^\"]+\"|'[^']+')[^>]*>",
     re.IGNORECASE,
@@ -48,6 +53,7 @@ _LIST_ITEM_RE = re.compile(r"<li\b[^>]*>", re.IGNORECASE)
 _MULTI_SPACE_RE = re.compile(r"[ \t\r\f\v]+")
 _MULTI_NEWLINE_RE = re.compile(r"\n{3,}")
 _MARKDOWN_HEADING_RE = re.compile(r"^\s*#\s+(.+?)\s*$", re.MULTILINE)
+_WEIXIN_CT_RE = re.compile(r"\bvar\s+ct\s*=\s*['\"](\d{9,13})['\"]")
 _CJK_RE = re.compile(r"[\u3400-\u9fff]")
 _C1_CONTROL_RE = re.compile(r"[\u0080-\u009f]")
 _MOJIBAKE_MARKER_RE = re.compile(r"[ÂÃ]|â[\u0080-\uffff]|[åæçèéäöüœž]")
@@ -80,6 +86,15 @@ _CP1252_ENCODE_OVERRIDES = {
     0x0153: 0x9C,
     0x017E: 0x9E,
     0x0178: 0x9F,
+}
+_JSON_LD_ARTICLE_TYPES = {
+    "article",
+    "blogposting",
+    "newsarticle",
+    "report",
+    "scholarlyarticle",
+    "socialmediaposting",
+    "techarticle",
 }
 
 
@@ -473,6 +488,8 @@ class ArticleExtractionService:
             )
 
         parsed = self._parse_jina_response(response)
+        html_author = self._extract_author(html)
+        html_published_at = self._extract_published_at(html)
         content_md = (parsed.get("content_md") or "").strip()
         if not self._is_valid_markdown(content_md):
             raise ArticleExtractionBadRequestError("Jina Reader HTML清洗结果为空或过短")
@@ -491,8 +508,8 @@ class ArticleExtractionService:
             content_md=content_md,
             source_url=final_url,
             top_image=top_image or parsed.get("top_image"),
-            author=author or parsed.get("author"),
-            published_at=published_at or parsed.get("published_at"),
+            author=author or html_author or parsed.get("author"),
+            published_at=published_at or html_published_at or parsed.get("published_at"),
             source_domain=final_domain,
             provider="jina_html",
             metadata={
@@ -707,6 +724,25 @@ class ArticleExtractionService:
             properties={"article:author", "author"},
             names={"author"},
         )
+        if author:
+            return author
+
+        json_ld = self._extract_json_ld_metadata(html)
+        if json_ld.get("author"):
+            return json_ld["author"]
+
+        author = self._extract_element_text(
+            html,
+            ids=("js_author_name", "js_name"),
+            classes=(
+                "author",
+                "byline",
+                "post-author",
+                "entry-author",
+                "nickname",
+                "author-name",
+            ),
+        )
         return author or None
 
     def _extract_published_at(self, html: str) -> str | None:
@@ -718,11 +754,184 @@ class ArticleExtractionService:
         if published:
             return published
 
+        json_ld = self._extract_json_ld_metadata(html)
+        if json_ld.get("published_at"):
+            return json_ld["published_at"]
+
         time_match = _TIME_RE.search(html)
         if time_match:
             value = time_match.group(1).strip().strip("'\"")
             return value or None
+
+        published = self._extract_element_text(
+            html,
+            ids=("publish_time",),
+            classes=(
+                "publish-time",
+                "published-time",
+                "date",
+                "post-date",
+                "entry-date",
+            ),
+        )
+        if published:
+            return published
+
+        ct_match = _WEIXIN_CT_RE.search(html or "")
+        if ct_match:
+            timestamp = ct_match.group(1)
+            try:
+                seconds = int(timestamp[:10])
+                return datetime.fromtimestamp(seconds, tz=timezone.utc).isoformat()
+            except (ValueError, OSError):
+                return None
         return None
+
+    def _extract_json_ld_metadata(self, html: str) -> dict[str, str]:
+        for match in _JSON_LD_SCRIPT_RE.finditer(html or ""):
+            raw = unescape(match.group(1) or "").strip()
+            if not raw:
+                continue
+            try:
+                payload = json.loads(raw)
+            except ValueError:
+                continue
+
+            article = self._find_json_ld_article(payload)
+            if not isinstance(article, dict):
+                continue
+
+            author = self._extract_json_ld_author(
+                article.get("author") or article.get("creator")
+            )
+            published_at = self._extract_json_ld_text(
+                article.get("datePublished")
+                or article.get("dateCreated")
+                or article.get("dateModified")
+            )
+            return {
+                "author": author,
+                "published_at": published_at,
+            }
+        return {}
+
+    def _find_json_ld_article(self, value):
+        if isinstance(value, list):
+            for item in value:
+                found = self._find_json_ld_article(item)
+                if found:
+                    return found
+            return None
+
+        if not isinstance(value, dict):
+            return None
+
+        graph = value.get("@graph")
+        if graph is not None:
+            found = self._find_json_ld_article(graph)
+            if found:
+                return found
+
+        if self._is_json_ld_article(value):
+            return value
+
+        for nested in value.values():
+            if isinstance(nested, (dict, list)):
+                found = self._find_json_ld_article(nested)
+                if found:
+                    return found
+        return None
+
+    def _is_json_ld_article(self, value: dict) -> bool:
+        raw_type = value.get("@type") or value.get("type")
+        raw_types = raw_type if isinstance(raw_type, list) else [raw_type]
+        types = {
+            str(item).strip().rsplit("/", 1)[-1].lower()
+            for item in raw_types
+            if item
+        }
+        if types & _JSON_LD_ARTICLE_TYPES:
+            return True
+        return bool(
+            (value.get("headline") or value.get("name"))
+            and (value.get("author") or value.get("creator"))
+            and (
+                value.get("datePublished")
+                or value.get("dateCreated")
+                or value.get("dateModified")
+            )
+        )
+
+    def _extract_json_ld_author(self, value) -> str:
+        if isinstance(value, list):
+            names = [self._extract_json_ld_author(item) for item in value]
+            return ", ".join(name for name in names if name)
+        if isinstance(value, dict):
+            return self._extract_json_ld_text(
+                value.get("name") or value.get("alternateName") or value.get("@id")
+            )
+        return self._extract_json_ld_text(value)
+
+    def _extract_json_ld_text(self, value) -> str:
+        if isinstance(value, list):
+            for item in value:
+                text = self._extract_json_ld_text(item)
+                if text:
+                    return text
+            return ""
+        if isinstance(value, dict):
+            return self._extract_json_ld_text(value.get("@value") or value.get("value"))
+        return str(value).strip() if value is not None else ""
+
+    def _extract_element_text(
+        self,
+        html: str,
+        *,
+        ids: tuple[str, ...] = (),
+        classes: tuple[str, ...] = (),
+    ) -> str:
+        for element_id in ids:
+            text = self._extract_element_text_by_id(html, element_id)
+            if text:
+                return text
+        for class_name in classes:
+            text = self._extract_element_text_by_class(html, class_name)
+            if text:
+                return text
+        return ""
+
+    def _extract_element_text_by_id(self, html: str, element_id: str) -> str:
+        pattern = re.compile(
+            r"<(?P<tag>[A-Za-z][A-Za-z0-9]*)\b"
+            r"(?=[^>]*\bid\s*=\s*['\"]"
+            + re.escape(element_id)
+            + r"['\"])[^>]*>(?P<body>.*?)</(?P=tag)>",
+            re.IGNORECASE | re.DOTALL,
+        )
+        match = pattern.search(html or "")
+        if not match:
+            return ""
+        return self._html_to_text(match.group("body") or "")
+
+    def _extract_element_text_by_class(self, html: str, class_name: str) -> str:
+        pattern = re.compile(
+            r"<(?P<tag>[A-Za-z][A-Za-z0-9]*)\b"
+            r"(?=[^>]*\bclass\s*=\s*['\"][^'\"]*"
+            + re.escape(class_name)
+            + r"[^'\"]*['\"])(?P<attrs>[^>]*)>(?P<body>.*?)</(?P=tag)>",
+            re.IGNORECASE | re.DOTALL,
+        )
+        for match in pattern.finditer(html or ""):
+            attrs = self._parse_tag_attrs(
+                f"<{match.group('tag')}{match.group('attrs')}>"
+            )
+            class_names = set((attrs.get("class") or "").split())
+            if class_name not in class_names:
+                continue
+            text = self._html_to_text(match.group("body") or "")
+            if text:
+                return text
+        return ""
 
     def _extract_meta_content(
         self,

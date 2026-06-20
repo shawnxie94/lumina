@@ -146,6 +146,101 @@ def test_extract_with_jina_html_posts_html_and_reference_url(monkeypatch):
     assert result.content_md == "Reader cleaned content with enough words to be valid."
 
 
+def test_extract_with_jina_html_fills_metadata_from_source_html(monkeypatch):
+    class FakeResponse:
+        status_code = 200
+        headers = {"content-type": "application/json"}
+        url = "https://r.jina.ai/"
+
+        def json(self):
+            return {
+                "data": {
+                    "title": "Reader Title",
+                    "content": "Reader cleaned content with enough words to be valid.",
+                    "url": "https://example.com/article",
+                }
+            }
+
+    class FakeAsyncClient:
+        def __init__(self, **_kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+        async def post(self, _url, *, headers, json):
+            return FakeResponse()
+
+    monkeypatch.setattr(
+        article_extraction_service_module.httpx,
+        "AsyncClient",
+        FakeAsyncClient,
+    )
+
+    html = """
+    <html>
+      <head>
+        <script type="application/ld+json">
+          {
+            "@type": "NewsArticle",
+            "headline": "Original Title",
+            "author": {"name": "Source Author"},
+            "datePublished": "2026-06-20T10:30:00+08:00"
+          }
+        </script>
+      </head>
+      <body>
+        <article><p>Original selected HTML content.</p></article>
+      </body>
+    </html>
+    """
+
+    service = ArticleExtractionService()
+    result = asyncio.run(
+        service._extract_with_jina_html(
+            html=html,
+            source_url="https://example.com/article",
+            title=None,
+            top_image=None,
+            author=None,
+            published_at=None,
+            source_domain="example.com",
+            settings=ExtractionSettings(
+                jina_reader_enabled=True,
+                jina_reader_base_url="https://r.jina.ai",
+                jina_reader_api_key="",
+                jina_reader_timeout_seconds=12,
+                jina_reader_token_budget=None,
+                jina_reader_prefer_mode="jina_first",
+            ),
+        )
+    )
+
+    assert result.provider == "jina_html"
+    assert result.author == "Source Author"
+    assert result.published_at == "2026-06-20T10:30:00+08:00"
+
+
+def test_extract_source_html_metadata_supports_weixin_dom_fields():
+    html = """
+    <html>
+      <body>
+        <span id="js_name">Lumina Research</span>
+        <span id="publish_time">2026-06-20</span>
+        <article><p>Original selected HTML content.</p></article>
+      </body>
+    </html>
+    """
+
+    service = ArticleExtractionService()
+
+    assert service._extract_author(html) == "Lumina Research"
+    assert service._extract_published_at(html) == "2026-06-20"
+
+
 def test_parse_jina_response_repairs_utf8_mojibake_from_html_cleaning():
     expected_content = "欢迎来到人类溢价时代。王焕超腾讯研究院高级研究员。"
     expected_author = "王焕超"
