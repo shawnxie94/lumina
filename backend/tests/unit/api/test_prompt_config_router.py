@@ -109,5 +109,60 @@ async def test_update_prompt_config_rejects_existing_disabled_prompt_type(db_ses
     assert exc_info.value.detail == "该提示词类型已下线"
 
 
+@pytest.mark.anyio
+async def test_prompt_config_list_hides_interpretation_type(db_session):
+    db_session.add_all(
+        [
+            PromptConfig(
+                name="默认-文章解读包",
+                type="interpretation",
+                prompt="旧编排模板",
+                system_prompt="旧 system",
+                is_enabled=True,
+                is_default=True,
+                created_at=now_str(),
+                updated_at=now_str(),
+            ),
+            PromptConfig(
+                name="默认-摘要",
+                type="summary",
+                prompt="摘要任务要求",
+                system_prompt="摘要 system",
+                is_enabled=True,
+                is_default=True,
+                created_at=now_str(),
+                updated_at=now_str(),
+            ),
+        ]
+    )
+    db_session.commit()
+
+    response = await prompt_config_router.get_prompt_configs(db=db_session, _=True)
+
+    assert {item["type"] for item in response} == {"summary"}
+
+
+@pytest.mark.anyio
+async def test_create_prompt_config_rejects_interpretation_type(db_session):
+    payload = PromptConfigBase(
+        name="文章解读包",
+        type="interpretation",
+        prompt="编排模板",
+        system_prompt="system",
+        is_enabled=True,
+        is_default=False,
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await prompt_config_router.create_prompt_config(
+            config=payload,
+            db=db_session,
+            _=True,
+        )
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "该提示词类型已下线"
+
+
 def test_prompt_config_model_no_longer_exposes_response_format_column():
     assert "response_format" not in PromptConfig.__table__.columns

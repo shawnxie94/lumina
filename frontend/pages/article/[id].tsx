@@ -130,6 +130,7 @@ type NoteRecommendationLevel =
 	| "not_recommended";
 type ConfigModalMode =
 	| "generate"
+	| "regenerate_interpretation"
 	| "retry_ai_content"
 	| "retry_cleaning"
 	| "retry_translation";
@@ -157,10 +158,11 @@ const hasPendingArticleJob = (article: ArticleDetail | null): boolean => {
 
 	const statuses = article.ai_analysis
 		? [
-					article.ai_analysis.summary_status,
-					article.ai_analysis.outline_status,
-					article.ai_analysis.quotes_status,
-					article.ai_analysis.tagging_status,
+				article.ai_analysis.interpretation_status,
+				article.ai_analysis.summary_status,
+				article.ai_analysis.outline_status,
+				article.ai_analysis.quotes_status,
+				article.ai_analysis.tagging_status,
 			]
 		: [];
 
@@ -169,6 +171,20 @@ const hasPendingArticleJob = (article: ArticleDetail | null): boolean => {
 
 const hasAiTabContent = (content: string | null | undefined): boolean =>
 	Boolean(content?.trim());
+
+const normalizeQuotesMarkdown = (
+	content: string | null | undefined,
+): string | null | undefined => {
+	if (!content) return content;
+	const lines = content
+		.split(/\r?\n/)
+		.map((line) => line.trim())
+		.filter(Boolean)
+		.map((line) => line.replace(/^\s*(?:[-*+]\s+|\d+[.)]\s*)/, "").trim())
+		.filter(Boolean);
+	if (lines.length === 0) return content;
+	return lines.map((line) => `- ${line}`).join("\n");
+};
 
 const sortAiTabsByContent = (tabs: AITabConfig[]): AITabConfig[] =>
 	[...tabs].sort(
@@ -308,7 +324,7 @@ function createEmptyAiAnalysis(): NonNullable<ArticleDetail["ai_analysis"]> {
 		summary_current_version_id: null,
 		summary_current_version_number: null,
 		summary_has_history: false,
-			outline: null,
+		outline: null,
 		outline_status: null,
 		outline_current_version_id: null,
 		outline_current_version_number: null,
@@ -318,7 +334,9 @@ function createEmptyAiAnalysis(): NonNullable<ArticleDetail["ai_analysis"]> {
 		quotes_current_version_id: null,
 		quotes_current_version_number: null,
 		quotes_has_history: false,
-			tagging_status: null,
+		interpretation_status: null,
+		interpretation_error: null,
+		tagging_status: null,
 		tagging_manual_override: false,
 		error_message: null,
 		updated_at: null,
@@ -643,6 +661,16 @@ function AIContentSection({
 				bg: "bg-success-soft",
 				text: "text-success-ink",
 				label: t("已完成"),
+			},
+			partial_completed: {
+				bg: "bg-warning-soft",
+				text: "text-warning-ink",
+				label: t("部分完成"),
+			},
+			skipped: {
+				bg: "bg-muted",
+				text: "text-text-3",
+				label: t("已跳过"),
 			},
 			failed: {
 				bg: "bg-danger-soft",
@@ -1118,6 +1146,8 @@ export default function ArticleDetailPage({
 	const [editContent, setEditContent] = useState("");
 	const [saving, setSaving] = useState(false);
 	const [tagRegenerating, setTagRegenerating] = useState(false);
+	const [interpretationRegenerating, setInterpretationRegenerating] =
+		useState(false);
 	const [mediaStorageEnabled, setMediaStorageEnabled] = useState(false);
 	const [mediaStorageLoading, setMediaStorageLoading] = useState(false);
 	const [mediaUploading, setMediaUploading] = useState(false);
@@ -2262,7 +2292,7 @@ export default function ArticleDetailPage({
 			key: "quotes" as const,
 			label: t("金句"),
 			enabled: showQuotesSection,
-			content: article?.ai_analysis?.quotes,
+			content: normalizeQuotesMarkdown(article?.ai_analysis?.quotes),
 			status: article?.ai_analysis?.quotes_status,
 			renderMarkdown: true,
 			renderMindMap: false,
@@ -2340,10 +2370,31 @@ export default function ArticleDetailPage({
 		() => getLatestTask("process_ai_content", "summary"),
 		[getLatestTask],
 	);
+	const interpretationTask = useMemo(
+		() => getLatestTask("process_article_interpretation", "interpretation"),
+		[getLatestTask],
+	);
+	const resolveAiContentSourceTask = useCallback(
+		(contentType: AIContentType): ArticleTaskListItem | null => {
+			const singleTask = getLatestTask("process_ai_content", contentType);
+			if (!interpretationTask) return singleTask;
+			if (!singleTask) return interpretationTask;
+			const interpretationTime = new Date(
+				interpretationTask.created_at,
+			).getTime();
+			const singleTime = new Date(singleTask.created_at).getTime();
+			return interpretationTime >= singleTime ? interpretationTask : singleTask;
+		},
+		[getLatestTask, interpretationTask],
+	);
+	const summarySourceTask = useMemo(
+		() => resolveAiContentSourceTask("summary"),
+		[resolveAiContentSourceTask],
+	);
 	const activeTabTask = useMemo(() => {
 		if (!activeTabConfig) return null;
-		return getLatestTask("process_ai_content", activeTabConfig.key);
-	}, [activeTabConfig, getLatestTask]);
+		return resolveAiContentSourceTask(activeTabConfig.key);
+	}, [activeTabConfig, resolveAiContentSourceTask]);
 
 	const summaryStatusValue =
 		summaryTask?.status ||
@@ -2360,7 +2411,7 @@ export default function ArticleDetailPage({
 				taskType: "process_ai_content",
 				contentType: "summary",
 				status: summaryStatusValue,
-				task: summaryTask,
+				task: summarySourceTask,
 			})
 		: "";
 	const activeStatusLink =
@@ -2383,6 +2434,18 @@ export default function ArticleDetailPage({
 	const isCleaningBusy = isPendingJobStatus(cleaningTaskStatus);
 	const translationTaskStatus =
 		translationTask?.status || article?.translation_status || null;
+	const interpretationStatus =
+		interpretationTask?.status ||
+		article?.ai_analysis?.interpretation_status ||
+		null;
+	const interpretationStatusLink = isAdmin
+		? buildTaskDetailLink({
+				taskType: "process_article_interpretation",
+				contentType: "interpretation",
+				status: interpretationStatus,
+				task: interpretationTask,
+			})
+		: "";
 	const contentTaskStatusItems = [
 		{
 			key: "cleaning",
@@ -2393,6 +2456,12 @@ export default function ArticleDetailPage({
 				status: cleaningTaskStatus,
 				task: cleaningTask,
 			}),
+		},
+		{
+			key: "interpretation",
+			label: t("文章解读"),
+			status: interpretationStatus,
+			link: interpretationStatusLink,
 		},
 		{
 			key: "translation",
@@ -2519,19 +2588,54 @@ export default function ArticleDetailPage({
 							<IconRobot className="h-4 w-4" />
 							<span>{t("AI解读")}</span>
 						</h2>
-						{aiUpdatedAt && (
-							<span className="text-xs text-text-3">{aiUpdatedAt}</span>
-						)}
+						<div className="flex items-center gap-2">
+							{isAdmin &&
+								(interpretationStatusLink && getAiTabStatusBadge(interpretationStatus) ? (
+									<Link
+										href={interpretationStatusLink}
+										className="hover:opacity-80 transition"
+									>
+										{getAiTabStatusBadge(interpretationStatus)}
+									</Link>
+								) : (
+									getAiTabStatusBadge(interpretationStatus)
+								))}
+							{aiUpdatedAt && (
+								<span className="text-xs text-text-3">{aiUpdatedAt}</span>
+							)}
+							{isAdmin && (
+								<button
+									type="button"
+									onClick={handleRegenerateInterpretation}
+									disabled={
+										interpretationRegenerating ||
+										isPendingJobStatus(interpretationStatus)
+									}
+									className="text-text-3 hover:text-primary transition disabled:opacity-50"
+									title={t("重新生成 AI 解读")}
+									aria-label={t("重新生成 AI 解读")}
+								>
+									<IconRefresh
+										className={`h-4 w-4 ${
+											interpretationRegenerating ? "animate-spin" : ""
+										}`}
+									/>
+								</button>
+							)}
+						</div>
 					</div>
 				</div>
 
-				{isAdmin && article?.ai_analysis?.error_message && (
-					<div className="p-3 bg-danger-soft border border-danger-soft rounded-lg">
-						<p className="text-danger-ink text-sm whitespace-pre-wrap break-words">
-							{article.ai_analysis.error_message}
-						</p>
-					</div>
-				)}
+				{isAdmin &&
+					(article?.ai_analysis?.interpretation_error ||
+						article?.ai_analysis?.error_message) && (
+						<div className="p-3 bg-danger-soft border border-danger-soft rounded-lg">
+							<p className="text-danger-ink text-sm whitespace-pre-wrap break-words">
+								{article.ai_analysis.interpretation_error ||
+									article.ai_analysis.error_message}
+							</p>
+						</div>
+					)}
 
 				{showSummarySection && (
 					<AIContentSection
@@ -2791,6 +2895,16 @@ export default function ArticleDetailPage({
 				text: "text-success-ink",
 				label: t("已完成"),
 			},
+			partial_completed: {
+				bg: "bg-warning-soft",
+				text: "text-warning-ink",
+				label: t("部分完成"),
+			},
+			skipped: {
+				bg: "bg-muted",
+				text: "text-text-3",
+				label: t("已跳过"),
+			},
 			failed: {
 				bg: "bg-danger-soft",
 				text: "text-danger-ink",
@@ -2833,7 +2947,7 @@ export default function ArticleDetailPage({
 		setActiveAiTab(tabKey);
 	}, []);
 
-	const fetchConfigs = async (promptType: string) => {
+	const fetchConfigs = async (promptType?: string) => {
 		try {
 			const [models, prompts] = await Promise.all([
 				articleApi.getModelAPIConfigs(),
@@ -2841,9 +2955,11 @@ export default function ArticleDetailPage({
 			]);
 			setModelConfigs(models.filter((m: ModelAPIConfig) => m.is_enabled));
 			setPromptConfigs(
-				prompts.filter(
-					(p: PromptConfig) => p.is_enabled && p.type === promptType,
-				),
+				promptType
+					? prompts.filter(
+							(p: PromptConfig) => p.is_enabled && p.type === promptType,
+						)
+					: [],
 			);
 		} catch (error) {
 			console.error("Failed to fetch configs:", error);
@@ -2852,7 +2968,7 @@ export default function ArticleDetailPage({
 
 	const openConfigModal = (options: {
 		mode: ConfigModalMode;
-		promptType: string;
+		promptType?: string;
 		contentType?: AIContentType;
 	}) => {
 		setConfigModalMode(options.mode);
@@ -2898,6 +3014,34 @@ export default function ArticleDetailPage({
 				return;
 			}
 
+			if (configModalMode === "regenerate_interpretation") {
+				setInterpretationRegenerating(true);
+				await articleApi.regenerateArticleInterpretation(
+					id as string,
+					selectedModelConfigId || undefined,
+				);
+				const nextAiAnalysis = article.ai_analysis
+					? { ...article.ai_analysis }
+					: createEmptyAiAnalysis();
+				setArticle({
+					...article,
+					ai_analysis: {
+						...nextAiAnalysis,
+						interpretation_status: "pending",
+						interpretation_error: null,
+						classification_status: "pending",
+						tagging_status: "pending",
+						summary_status: "pending",
+						outline_status: "pending",
+						quotes_status: "pending",
+						error_message: null,
+					},
+				});
+				showToast(t("已提交文章解读任务"));
+				setInterpretationRegenerating(false);
+				return;
+			}
+
 			if (configModalMode === "retry_cleaning") {
 				await articleApi.retryArticleWithConfig(
 					id as string,
@@ -2933,10 +3077,13 @@ export default function ArticleDetailPage({
 					? t("生成失败")
 					: configModalMode === "retry_ai_content"
 						? t("重试失败")
+						: configModalMode === "regenerate_interpretation"
+							? t("文章解读提交失败")
 						: configModalMode === "retry_cleaning"
 							? t("重试清洗失败")
 							: t("重试翻译失败");
 			showToast(error.response?.data?.detail || fallbackError, "error");
+			setInterpretationRegenerating(false);
 		}
 	};
 
@@ -2955,6 +3102,13 @@ export default function ArticleDetailPage({
 			promptType: "content_cleaning",
 		});
 	};
+
+	function handleRegenerateInterpretation() {
+		if (!id || !article) return;
+		openConfigModal({
+			mode: "regenerate_interpretation",
+		});
+	}
 
 	const handleGenerateContent = (contentType: AIContentType) => {
 		if (!id || !article) return;
@@ -4428,20 +4582,22 @@ export default function ArticleDetailPage({
 								? t("选择生成配置")
 								: configModalMode === "retry_ai_content"
 									? t("选择重试配置")
-								: configModalMode === "retry_cleaning"
-									? t("选择清洗重试配置")
-									: t("选择翻译重试配置")
+									: configModalMode === "regenerate_interpretation"
+										? t("选择文章解读配置")
+										: configModalMode === "retry_cleaning"
+											? t("选择清洗重试配置")
+											: t("选择翻译重试配置")
 						}
 						widthClassName="max-w-md"
 						footer={
 							<div className="flex justify-end gap-2">
-							<Button
-								type="button"
-								variant="secondary"
-								onClick={() => setShowConfigModal(false)}
-							>
-								{t("取消")}
-							</Button>
+								<Button
+									type="button"
+									variant="secondary"
+									onClick={() => setShowConfigModal(false)}
+								>
+									{t("取消")}
+								</Button>
 								<Button
 									type="button"
 									variant="primary"
@@ -4449,7 +4605,9 @@ export default function ArticleDetailPage({
 								>
 									{configModalMode === "generate"
 										? t("生成")
-										: t("提交重试")}
+										: configModalMode === "regenerate_interpretation"
+											? t("重新生成")
+											: t("提交重试")}
 								</Button>
 							</div>
 						}
@@ -4472,20 +4630,22 @@ export default function ArticleDetailPage({
 								/>
 							</FormField>
 
-						<FormField label={t("提示词配置")}>
-							<SelectField
-								value={selectedPromptConfigId}
-								onChange={(value) => setSelectedPromptConfigId(value)}
-								className="w-full"
-								options={[
-									{ value: "", label: t("使用默认配置") },
-									...promptConfigs.map((config) => ({
-										value: config.id,
-										label: config.name,
-									})),
-								]}
-							/>
-						</FormField>
+						{configModalMode !== "regenerate_interpretation" && (
+							<FormField label={t("提示词配置")}>
+								<SelectField
+									value={selectedPromptConfigId}
+									onChange={(value) => setSelectedPromptConfigId(value)}
+									className="w-full"
+									options={[
+										{ value: "", label: t("使用默认配置") },
+										...promptConfigs.map((config) => ({
+											value: config.id,
+											label: config.name,
+										})),
+									]}
+								/>
+							</FormField>
+						)}
 					</div>
 				</ModalShell>
 			)}

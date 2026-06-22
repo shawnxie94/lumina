@@ -8,7 +8,12 @@ from auth import get_current_admin
 from models import ModelAPIConfig, PromptConfig, get_db
 
 router = APIRouter()
-DISABLED_PROMPT_TYPES = {"content_validation", "key_points", "infographic"}
+DISABLED_PROMPT_TYPES = {
+    "content_validation",
+    "key_points",
+    "infographic",
+    "interpretation",
+}
 
 
 def _ensure_prompt_type_enabled(prompt_type: str) -> None:

@@ -259,6 +259,8 @@ class AIAnalysis(Base):
     key_points_status = Column(String, default=None)
     quotes = Column(Text)
     quotes_status = Column(String, default=None)
+    interpretation_status = Column(String, default=None)
+    interpretation_error = Column(Text, nullable=True)
     infographic_html = Column(Text, nullable=True)
     infographic_image_url = Column(String, nullable=True)
     infographic_status = Column(String, default=None)

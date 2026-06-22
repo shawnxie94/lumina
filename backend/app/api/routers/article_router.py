@@ -434,6 +434,12 @@ async def get_article(
                 "quotes",
                 article.ai_analysis.current_quotes_version_id if article.ai_analysis else None,
             ),
+            "interpretation_status": article.ai_analysis.interpretation_status
+            if article.ai_analysis
+            else None,
+            "interpretation_error": article.ai_analysis.interpretation_error
+            if article.ai_analysis
+            else None,
             "classification_status": article.ai_analysis.classification_status
             if article.ai_analysis
             else None,
@@ -926,6 +932,69 @@ async def retry_article_ai(
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/api/articles/{article_slug}/interpretation/regenerate")
+async def regenerate_article_interpretation(
+    article_slug: str,
+    model_config_id: Optional[str] = None,
+    prompt_config_id: Optional[str] = None,
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
+    article = article_query_service.get_article_by_slug(
+        db,
+        article_slug,
+        include_relations=True,
+    )
+    if not article:
+        raise HTTPException(status_code=404, detail="文章不存在")
+    if not article.content_md or not article.content_md.strip():
+        raise HTTPException(status_code=409, detail="文章内容为空，无法生成 AI 解读")
+
+    admin = get_admin_settings(db)
+
+    def enabled_by_default(name: str) -> bool:
+        return getattr(admin, name, True) is not False
+
+    options = {
+        "classification": enabled_by_default("auto_ai_classification_enabled"),
+        "summary": enabled_by_default("auto_ai_summary_enabled"),
+        "outline": bool(getattr(admin, "auto_ai_outline_enabled", False)),
+        "quotes": bool(getattr(admin, "auto_ai_quotes_enabled", False)),
+        "tagging": enabled_by_default("auto_ai_tagging_enabled"),
+        "translation": enabled_by_default("auto_translation_enabled"),
+    }
+    if not any(
+        options.get(field)
+        for field in ("classification", "summary", "outline", "quotes", "tagging")
+    ):
+        raise HTTPException(status_code=409, detail="未启用任何文章 AI 解读字段")
+
+    analysis = article_tag_service.ensure_analysis(db, article)
+    analysis.interpretation_status = "pending"
+    analysis.interpretation_error = None
+    analysis.updated_at = now_str()
+    db.commit()
+
+    task_id = ai_task_service.enqueue_task(
+        db,
+        task_type="process_article_interpretation",
+        article_id=article.id,
+        content_type="interpretation",
+        payload={
+            "category_id": article.category_id,
+            "model_config_id": model_config_id,
+            "post_process_options": options,
+            "force_tagging": True,
+        },
+    )
+    return {
+        "id": article.id,
+        "content_type": "interpretation",
+        "status": "processing",
+        "task_id": task_id,
+    }
 
 
 @router.post("/api/articles/{article_slug}/retry-translation")

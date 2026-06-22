@@ -91,18 +91,13 @@ def _seed_default_tagging_prompt() -> None:
             "id": str(uuid.uuid4()),
             "name": "默认-标签",
             "type": "tagging",
-            "prompt": """请根据以下文章内容生成 3-5 个中文标签。
+            "prompt": """生成 3-5 个中文标签。
 
 硬性要求：
 1) 标签要具体、可检索、信息密度高，避免“文章/内容/思考”等空泛词。
 2) 尽量避免与参考分类完全重复，除非它本身就是最关键标签。
 3) 优先提炼主题、对象、方法、场景、领域等高区分度信息。
-4) 每个标签不超过 5 个字。
-
-参考分类：{category_name}
-
-文章内容：
-{content}""",
+4) 每个标签不超过 5 个字。""",
             "system_prompt": "你是内容标签助手，擅长提炼具体、稳定、可复用的高价值标签。",
             "response_format": "text",
             "temperature": 0.2,

@@ -100,7 +100,7 @@ def test_create_article_queues_only_enabled_post_processing(db_session):
         AdminSettings(
             password_hash="hash",
             jwt_secret="secret",
-            auto_ai_cleaning_enabled=True,
+            auto_ai_cleaning_enabled=False,
             auto_ai_classification_enabled=False,
             auto_ai_summary_enabled=True,
             auto_ai_outline_enabled=True,
@@ -130,9 +130,52 @@ def test_create_article_queues_only_enabled_post_processing(db_session):
     assert [
         (task["task_type"], task["content_type"]) for task in task_service.tasks
     ] == [
-        ("process_ai_content", "summary"),
-        ("process_ai_content", "outline"),
-        ("process_ai_content", "quotes"),
+        ("process_article_interpretation", "interpretation"),
+    ]
+    assert "interpretation_bundle" not in task_service.tasks[0]["payload"][
+        "post_process_options"
+    ]
+
+
+def test_create_article_uses_bundle_for_enabled_interpretation_fields(db_session):
+    db_session.add(
+        AdminSettings(
+            password_hash="hash",
+            jwt_secret="secret",
+            auto_ai_cleaning_enabled=False,
+            auto_ai_classification_enabled=False,
+            auto_ai_summary_enabled=True,
+            auto_ai_outline_enabled=True,
+            auto_ai_quotes_enabled=True,
+            auto_ai_tagging_enabled=False,
+            auto_translation_enabled=False,
+        )
+    )
+    db_session.commit()
+    task_service = StubAITaskService()
+    service = ArticleCommandService(ai_task_service=task_service)
+
+    article_id = asyncio.run(
+        service.create_article(
+            {
+                "title": "legacy summary tasks",
+                "content_md": "这是一篇足够长的正文，用来验证历史整包设置不会关闭自动整包。",
+                "source_url": "https://example.com/article/legacy-summary-tasks",
+            },
+            db_session,
+        )
+    )
+
+    article = db_session.query(Article).filter(Article.id == article_id).first()
+    assert article is not None
+    assert article.status == "completed"
+    assert [
+        (task["task_type"], task["content_type"]) for task in task_service.tasks
+    ] == [
+        ("process_article_interpretation", "interpretation"),
+    ]
+    assert "interpretation_bundle" not in task_service.tasks[0]["payload"][
+        "post_process_options"
     ]
 
 

@@ -202,6 +202,73 @@ async def test_generate_ai_content_accepts_summary(monkeypatch, db_session):
 
 
 @pytest.mark.anyio
+async def test_regenerate_article_interpretation_creates_bundle_task(
+    monkeypatch,
+    db_session,
+):
+    article = Article(
+        title="Interpretation API Article",
+        slug="interpretation-api-article",
+        content_md="这是一篇用于测试整包 AI 解读接口的文章。",
+        category_id="cat-1",
+        created_at=now_str(),
+        updated_at=now_str(),
+    )
+    db_session.add(article)
+    db_session.commit()
+    captured = {}
+
+    def fake_enqueue_task(db, **kwargs):
+        captured["task"] = kwargs
+        return "task-interpretation"
+
+    monkeypatch.setattr(
+        article_router,
+        "get_admin_settings",
+        lambda db: SimpleNamespace(
+            auto_ai_classification_enabled=True,
+            auto_ai_summary_enabled=True,
+            auto_ai_outline_enabled=False,
+            auto_ai_quotes_enabled=False,
+            auto_ai_tagging_enabled=True,
+            auto_translation_enabled=False,
+        ),
+    )
+    monkeypatch.setattr(
+        article_router.ai_task_service,
+        "enqueue_task",
+        fake_enqueue_task,
+    )
+
+    response = await article_router.regenerate_article_interpretation(
+        article_slug=article.slug,
+        model_config_id="model-1",
+        prompt_config_id="prompt-1",
+        db=db_session,
+        _=True,
+    )
+
+    analysis = (
+        db_session.query(AIAnalysis).filter(AIAnalysis.article_id == article.id).one()
+    )
+    assert response == {
+        "id": article.id,
+        "content_type": "interpretation",
+        "status": "processing",
+        "task_id": "task-interpretation",
+    }
+    assert analysis.interpretation_status == "pending"
+    assert captured["task"]["task_type"] == "process_article_interpretation"
+    assert captured["task"]["content_type"] == "interpretation"
+    assert captured["task"]["payload"]["model_config_id"] == "model-1"
+    assert "prompt_config_id" not in captured["task"]["payload"]
+    assert captured["task"]["payload"]["force_tagging"] is True
+    assert "interpretation_bundle" not in captured["task"]["payload"][
+        "post_process_options"
+    ]
+
+
+@pytest.mark.anyio
 async def test_delete_ai_content_accepts_non_summary_types(monkeypatch, db_session):
     article = SimpleNamespace(id="article-1")
     captured: dict[str, str] = {}

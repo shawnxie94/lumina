@@ -119,21 +119,13 @@ process_article_interpretation
 
 ### 后处理排队策略
 
-新增配置开关：
-
-| 配置 | 默认 | 说明 |
-|---|---|---|
-| `auto_ai_interpretation_bundle_enabled` | `true` | 是否使用合并解读任务 |
-
-当启用合并任务时：
+新文章后处理默认使用合并解读任务。系统不提供“是否走合并”的用户配置；只有详情页的单项重试继续走旧单项任务。
 
 ```text
 article cleaning completed
   -> enqueue process_article_interpretation
   -> optional enqueue translation
 ```
-
-当关闭合并任务时，继续走现有细粒度任务链路，作为回滚路径。
 
 ### 结构化输出协议
 
@@ -157,17 +149,17 @@ article cleaning completed
 - `outline` 启用时沿用现有大纲 JSON 树协议，只允许 `title` 和 `children`；未启用时返回 `null`。
 - `quotes` 为字符串数组，落库时可转为当前前端兼容的换行文本。
 
-整包输出采用固定 schema。即使某个字段未启用，响应中也应保留该字段，并按以下规则返回空值：
+整包输出采用本次启用字段对应的固定 schema。未启用字段不拼接对应任务要求，也禁止出现在响应 JSON 中；后端直接将未启用字段标记为 `skipped`：
 
-| 字段 | 未启用时返回 | 状态 |
+| 字段 | 未启用时状态 |
 |---|---|---|
-| `category_id` | `""` | `classification_status=skipped` |
-| `tags` | `[]` | `tagging_status=skipped` |
-| `summary` | `""` | `summary_status=skipped` |
-| `outline` | `null` | `outline_status=skipped` |
-| `quotes` | `[]` | `quotes_status=skipped` |
+| `category_id` | `classification_status=skipped` |
+| `tags` | `tagging_status=skipped` |
+| `summary` | `summary_status=skipped` |
+| `outline` | `outline_status=skipped` |
+| `quotes` | `quotes_status=skipped` |
 
-固定 schema 可以降低解析复杂度，并避免开关组合变化导致 prompt 和解析器出现多套协议。
+按启用字段裁剪 schema 可以减少无关提示词对生成质量的干扰，并降低上下文占用。
 
 后端必须对输出做 schema 校验和局部容错。不能因为一个字段非法就丢弃所有合法字段。
 
@@ -282,7 +274,6 @@ async def process_article_interpretation(
 | API | 说明 |
 |---|---|
 | `POST /api/articles/{article_slug}/interpretation/regenerate` | 重新生成整包 AI 解读 |
-| `POST /api/articles/{article_slug}/retry` | 若 bundle 开关开启，可改为排队整包任务 |
 
 现有单项接口继续保留：
 
@@ -293,21 +284,7 @@ async def process_article_interpretation(
 
 ### Prompt 配置
 
-新增 prompt type：
-
-```text
-interpretation
-```
-
-默认 prompt 应包含：
-
-- 文章正文。
-- 可选分类列表，包含 ID 和名称。
-- 是否需要生成摘要、大纲、金句、标签、分类。
-- 固定 JSON schema。
-- 标签质量要求。
-- 大纲输出协议。
-- 金句数量和长度约束。
+不新增用户可配置的 `interpretation` prompt type。合并解读的编排模板由后端内置，运行时按启用字段拼接各单项 prompt 的任务要求，并注入文章正文、分类列表、参考分类和固定输出协议。
 
 旧 prompt type 继续保留：
 
@@ -319,13 +296,7 @@ interpretation
 
 ### Admin 设置
 
-新增字段：
-
-| 字段 | 默认 | 说明 |
-|---|---|---|
-| `auto_ai_interpretation_bundle_enabled` | `true` | 新文章后处理是否走整包任务 |
-
-保留现有细粒度开关：
+保留现有字段级开关：
 
 - `auto_ai_classification_enabled`
 - `auto_ai_summary_enabled`
@@ -333,18 +304,13 @@ interpretation
 - `auto_ai_quotes_enabled`
 - `auto_ai_tagging_enabled`
 
-整包任务应尊重这些开关。比如关闭 `auto_ai_quotes_enabled` 时，整包 prompt 不要求模型生成金句，但仍要求返回 `"quotes": []`，后端将 `quotes_status` 标记为 `skipped`，不算失败。关闭 `auto_ai_outline_enabled` 时同理，返回 `"outline": null`，并将 `outline_status` 标记为 `skipped`。
+整包任务应尊重这些开关。比如关闭 `auto_ai_quotes_enabled` 时，整包 prompt 不拼接金句任务要求，输出 schema 不包含 `quotes`，后端将 `quotes_status` 标记为 `skipped`，不算失败。关闭 `auto_ai_outline_enabled` 时同理。
 
 ## 数据和迁移
 
 ### 数据库迁移
 
 需要新增：
-
-- `admin_settings.auto_ai_interpretation_bundle_enabled`
-- 默认 `PromptConfig(type="interpretation")`
-
-可选新增：
 
 - `ai_analyses.interpretation_status`
 - `ai_analyses.interpretation_error`
@@ -391,9 +357,9 @@ skipped
 
 在 AI 后处理设置中新增：
 
-- “合并文章 AI 解读调用”开关。
-- 说明其会减少调用次数，但失败时可能影响多个字段。
-- interpretation prompt 配置入口。
+- 字段级开关继续控制分类、标签、摘要、大纲、金句是否进入整包任务。
+- 不展示“合并文章 AI 解读调用”开关。
+- 不展示 interpretation 编排 prompt 配置入口。
 
 ## 可靠性和失败处理
 
@@ -403,7 +369,7 @@ skipped
 - 标签手动覆盖时不覆盖标签，但其他字段仍可更新。
 - 大纲结构非法时可尝试规范化；仍失败则只标记大纲失败。
 - 部分字段失败后，用户可单项重试。
-- 旧细粒度流程作为 feature flag 回滚路径。
+- 旧细粒度流程仅作为详情页单项重试和历史任务兼容路径。
 
 ## 性能和成本
 
@@ -428,19 +394,16 @@ skipped
 
 ### 部署顺序
 
-1. 新增 DB 字段和默认 prompt。
+1. 新增 DB 字段。
 2. 新增 `process_article_interpretation` 服务方法和解析器。
-3. 新增任务 handler，但默认不开启。
+3. 新增任务 handler，并作为新文章后处理默认路径。
 4. 新增整包重跑 API。
-5. 后处理排队逻辑接入 feature flag。
+5. 后处理排队逻辑固定排队整包任务。
 6. 前端增加整体重跑入口和整体状态展示。
-7. 默认开启新文章整包解读。
-8. 观察稳定后再评估是否弱化旧细粒度自动链路。
 
 ### 回滚
 
-- 关闭 `auto_ai_interpretation_bundle_enabled` 即回到旧任务链路。
-- 旧单项任务和 API 保留，已生成数据仍使用现有字段。
+- 旧单项任务和 API 保留，已生成数据仍使用现有字段；如需紧急回滚自动路径，应通过代码回滚或临时补丁处理。
 - 新增 `interpretation_status` 可忽略，不影响旧前端字段。
 
 ## 测试和验证
@@ -453,13 +416,11 @@ skipped
 - 摘要成功后触发 embedding。
 - 整包成功后为 summary/outline/quotes 分别记录版本。
 - 整包失败时各启用字段状态正确。
-- 未启用大纲或金句时，固定 schema 空值能解析成功，并落为 `skipped`。
-- feature flag 关闭时仍走旧任务链路。
+- 未启用大纲或金句时，prompt/schema 不包含对应字段，并落为 `skipped`。
 
 ### API 测试
 
 - `POST /api/articles/{slug}/interpretation/regenerate` 创建任务。
-- `POST /api/articles/{slug}/retry` 在开关开启时创建整包任务。
 - 文章详情响应保持原字段兼容。
 
 ### 前端手动验证
@@ -496,7 +457,7 @@ uv run pytest tests/unit
 
 ### 完全删除细粒度任务
 
-短期不建议。前端单项重试、历史版本、手动修复和旧任务兼容都会受影响。应先新增整包任务作为主路径，旧任务作为 fallback 和手动修复路径。
+短期不建议。前端单项重试、历史版本、手动修复和旧任务兼容都会受影响。应先新增整包任务作为主路径，旧任务作为手动修复和历史兼容路径。
 
 ### 将知识图谱抽取并入整包任务
 
@@ -507,17 +468,16 @@ uv run pytest tests/unit
 - `interpretation_status` 是否必须落表，还是只通过任务状态和单项状态推导。
 - 默认是否启用大纲和金句，还是继续尊重当前默认关闭策略。
 - 长文整包任务是否需要先做 chunk 压缩，还是沿用当前 prompt token 限制。
-- `retry` API 在 bundle 开启时是否默认整包重跑，还是新增独立按钮避免改变旧语义。
 - 单项重跑后是否需要更新 `interpretation_status`。
 
 ## Execution Plan Inputs
 
 建议后续执行计划按以下切片展开：
 
-1. 增加 migration：`auto_ai_interpretation_bundle_enabled`、`interpretation_status`、默认 `interpretation` prompt。
+1. 增加 migration：`interpretation_status`、`interpretation_error`。
 2. 增加 interpretation 输出 schema、解析器和部分成功落库逻辑。
 3. 增加 `process_article_interpretation` 任务 handler。
-4. 调整 `_enqueue_post_validation_tasks`，在 feature flag 开启时排队整包任务。
+4. 调整 `_enqueue_post_validation_tasks`，默认排队整包任务。
 5. 抽出摘要完成 hook，统一触发文章 embedding。
 6. 增加整包重跑 API，并保留旧单项 API。
 7. 前端增加整体状态和整包重跑入口。

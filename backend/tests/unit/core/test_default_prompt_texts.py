@@ -23,10 +23,38 @@ def test_structured_default_prompts_focus_on_content_strategy_not_output_format(
         item["type"]: item for item in default_prompt_module.DEFAULT_PROMPT_CONFIGS
     }
 
+    for prompt_type in (
+        "summary",
+        "key_points",
+        "translation",
+        "summary_long",
+        "content_validation",
+        "content_cleaning",
+    ):
+        assert "{content}" not in prompts_by_type[prompt_type]["prompt"]
+
     classification_prompt = prompts_by_type["classification"]["prompt"]
     classification_system = prompts_by_type["classification"]["system_prompt"]
     assert "仅输出分类 ID" not in classification_prompt
     assert "只输出分类 ID" not in classification_system
+
+    summary_prompt = prompts_by_type["summary"]["prompt"]
+    summary_system = prompts_by_type["summary"]["system_prompt"]
+    assert "输出必须为中文、客观、单段长句" in summary_prompt
+    assert "禁止任何列表符号" in summary_prompt
+    assert "输出必须为中文" not in summary_system
+
+    translation_prompt = prompts_by_type["translation"]["prompt"]
+    translation_system = prompts_by_type["translation"]["system_prompt"]
+    assert "必须仅输出中文译文" in translation_prompt
+    assert "必须仅输出中文译文" not in translation_system
+
+    quotes_prompt = prompts_by_type["quotes"]["prompt"]
+    quotes_system = prompts_by_type["quotes"]["system_prompt"]
+    assert "输出格式" not in quotes_prompt
+    assert "单条生成" not in quotes_prompt
+    assert "合并生成" not in quotes_prompt
+    assert "仅输出金句列表" not in quotes_system
 
     outline_prompt = prompts_by_type["outline"]["prompt"]
     outline_system = prompts_by_type["outline"]["system_prompt"]

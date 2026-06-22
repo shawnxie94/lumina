@@ -20,6 +20,7 @@ from models import (
     Category,
     ModelAPIConfig,
     PromptConfig,
+    Tag,
     now_str,
 )
 
@@ -744,6 +745,26 @@ def test_build_continue_prompt_adds_boundary_dedup_instruction():
     assert "禁止复述上一段最后一句" in prompt
 
 
+def test_build_cleaning_and_translation_prompts_append_runtime_content_block():
+    service = ArticleAIPipelineService()
+
+    cleaning_prompt = service._build_cleaning_prompt("清洗为 GFM Markdown。", "html")
+    translation_prompt = service._build_translation_prompt("翻译为中文。")
+
+    assert cleaning_prompt == "清洗为 GFM Markdown。\n\n待清洗 HTML 内容：\n{content}"
+    assert translation_prompt == "翻译为中文。\n\n待翻译内容：\n{content}"
+    assert service._build_translation_prompt("翻译：{content}") == "翻译：{content}"
+
+
+def test_normalize_quotes_markdown_outputs_unordered_list():
+    service = ArticleAIPipelineService()
+
+    assert service._format_quotes_markdown(["第一句", "- 第二句", "3. 第三句"]) == (
+        "- 第一句\n- 第二句\n- 第三句"
+    )
+    assert service._normalize_quotes_markdown("第一句\n第二句") == "- 第一句\n- 第二句"
+
+
 def test_extract_title_text_handles_markdown_heading_and_quotes():
     service = ArticleAIPipelineService()
 
@@ -771,13 +792,16 @@ def test_process_article_translation_also_updates_translated_title(
     class FakeClient:
         def __init__(self):
             self.calls = 0
+            self.prompts = []
 
         async def translate_to_chinese(self, content, **kwargs):
             self.calls += 1
+            self.prompts.append(kwargs.get("prompt"))
             if self.calls == 1:
                 return {"content": "# 你好，世界"}
             return {"content": "这是一篇测试文章。"}
 
+    fake_client = FakeClient()
     monkeypatch.setattr(article_ai_pipeline_module, "SessionLocal", lambda: db_session)
     monkeypatch.setattr(
         service,
@@ -790,11 +814,11 @@ def test_process_article_translation_also_updates_translated_title(
             "price_input_per_1k": None,
             "price_output_per_1k": None,
             "currency": None,
-            "prompt_template": "翻译为中文：{content}",
+            "prompt_template": "翻译为中文。",
             "parameters": None,
         },
     )
-    monkeypatch.setattr(service, "create_ai_client", lambda config: FakeClient())
+    monkeypatch.setattr(service, "create_ai_client", lambda config: fake_client)
 
     asyncio.run(
         service.process_article_translation(
@@ -808,6 +832,10 @@ def test_process_article_translation_also_updates_translated_title(
     assert persisted_article.title_trans == "你好，世界"
     assert persisted_article.content_trans == "这是一篇测试文章。"
     assert persisted_article.translation_status == "completed"
+    assert fake_client.prompts == [
+        "翻译为中文。\n\n待翻译内容：\n{content}",
+        "翻译为中文。\n\n待翻译内容：\n{content}",
+    ]
 
 
 def test_get_prompt_output_contract_returns_structured_contracts():
@@ -825,6 +853,22 @@ def test_get_prompt_output_contract_returns_structured_contracts():
     assert tagging.mode == "structured_json"
     assert tagging.response_format["type"] == "json_schema"
     assert "tags" in (tagging.system_instruction or "")
+
+
+def test_quotes_output_format_is_fixed_by_backend_protocols():
+    service = ArticleAIPipelineService()
+
+    single_protocol = service.SINGLE_OUTPUT_PROTOCOLS["quotes"]
+    bundle_contract = service._build_interpretation_output_contract(["quotes"])
+    bundle_schema = bundle_contract.response_format["json_schema"]["schema"]
+
+    assert "Markdown 无序列表" in single_protocol
+    assert "不要在字符串内添加列表符号" in bundle_schema["properties"][
+        "quotes"
+    ]["description"]
+    assert "禁止在字符串内添加列表符号或编号" in (
+        bundle_contract.system_instruction or ""
+    )
 
 
 def test_process_ai_content_outline_normalizes_json_payload(
@@ -1623,3 +1667,552 @@ def test_process_ai_content_preserves_responses_api_type_for_explicit_model_conf
     assert session.api_type == "responses"
     assert session.continuation_mode == "provider"
     assert session.provider_response_id == "resp-1"
+
+
+def _install_interpretation_test_config(
+    service: ArticleAIPipelineService,
+    db_session,
+    monkeypatch,
+    content,
+    captured=None,
+):
+    async def fake_generation(**kwargs):
+        if captured is not None:
+            captured["kwargs"] = kwargs
+        return {
+            "content": content,
+            "usage": {"prompt_tokens": 30, "completion_tokens": 20, "total_tokens": 50},
+            "latency_ms": 12,
+            "request_payload": {"messages": [{"role": "user", "content": "prompt"}]},
+            "response_payload": {"id": "resp-interpretation"},
+            "session_info": {
+                "api_type": "chat_completions",
+                "continuation_mode": "snapshot",
+                "input_snapshot": {"user_prompt": "prompt"},
+                "output_snapshot": {"content": content},
+            },
+        }
+
+    monkeypatch.setattr(article_ai_pipeline_module, "SessionLocal", lambda: db_session)
+    prompt_configs = {
+        "classification": SimpleNamespace(
+            id="prompt-classification",
+            prompt="分类要求：依据主题和核心意图选择分类。",
+            system_prompt="分类 system 不应进入合并任务",
+            temperature=0.1,
+            max_tokens=200,
+            top_p=None,
+            chunk_size_tokens=None,
+            chunk_overlap_tokens=None,
+            max_continue_rounds=None,
+        ),
+        "tagging": SimpleNamespace(
+            id="prompt-tagging",
+            prompt="标签要求：提炼具体、稳定、可检索的中文标签。",
+            system_prompt="标签 system 不应进入合并任务",
+            temperature=0.2,
+            max_tokens=300,
+            top_p=None,
+            chunk_size_tokens=None,
+            chunk_overlap_tokens=None,
+            max_continue_rounds=None,
+        ),
+        "summary": SimpleNamespace(
+            id="prompt-summary",
+            prompt="摘要要求：用高信息密度中文概括核心主体、关键动作和结论。",
+            system_prompt="摘要 system 不应进入合并任务",
+            temperature=0.3,
+            max_tokens=500,
+            top_p=None,
+            chunk_size_tokens=None,
+            chunk_overlap_tokens=None,
+            max_continue_rounds=None,
+        ),
+        "outline": SimpleNamespace(
+            id="prompt-outline",
+            prompt="大纲要求：提取适合思维导图展示的层级结构。",
+            system_prompt="大纲 system 不应进入合并任务",
+            temperature=0.3,
+            max_tokens=1000,
+            top_p=None,
+            chunk_size_tokens=None,
+            chunk_overlap_tokens=None,
+            max_continue_rounds=None,
+        ),
+        "quotes": SimpleNamespace(
+            id="prompt-quotes",
+            prompt="金句要求：筛选传播力强、精炼、有启发性的句子。",
+            system_prompt="金句 system 不应进入合并任务",
+            temperature=0.7,
+            max_tokens=800,
+            top_p=None,
+            chunk_size_tokens=None,
+            chunk_overlap_tokens=None,
+            max_continue_rounds=None,
+        ),
+    }
+    monkeypatch.setattr(
+        service,
+        "_get_prompt_config",
+        lambda db, category_id=None, prompt_type="summary": prompt_configs.get(
+            prompt_type
+        ),
+    )
+    monkeypatch.setattr(
+        service,
+        "get_ai_config",
+        lambda *args, **kwargs: {
+            "base_url": "https://example.com",
+            "api_key": "test-key",
+            "model_name": "test-model",
+            "model_api_config_id": None,
+            "price_input_per_1k": None,
+            "price_output_per_1k": None,
+            "currency": None,
+            "api_type": "chat_completions",
+            "prompt_template": prompt_configs[kwargs.get("prompt_type", "summary")].prompt
+            if kwargs.get("prompt_type", "summary") in prompt_configs
+            else None,
+            "parameters": None,
+        },
+    )
+    monkeypatch.setattr(service, "create_ai_client", lambda config: SimpleNamespace())
+    monkeypatch.setattr(
+        service.ai_invocation_service,
+        "invoke_generation",
+        fake_generation,
+    )
+
+
+def test_process_article_interpretation_persists_bundle_versions_and_embedding(
+    db_session,
+    monkeypatch,
+):
+    category = Category(
+        id="cat-ai",
+        name="AI",
+        color="#111111",
+        sort_order=1,
+        created_at=now_str(),
+    )
+    article = Article(
+        title="Interpretation Article",
+        slug="interpretation-article",
+        content_md="这是一篇关于 AI 产品和知识管理的中文文章。",
+        created_at=now_str(),
+        updated_at=now_str(),
+    )
+    db_session.add_all([category, article])
+    db_session.commit()
+    article_id = article.id
+
+    service = ArticleAIPipelineService(current_task_id="task-interpretation")
+    enqueued = []
+    content = json.dumps(
+        {
+            "category_id": "cat-ai",
+            "tags": ["AI 产品", "知识管理"],
+            "summary": "这是一篇整包摘要。",
+            "outline": {
+                "title": "文章大纲",
+                "children": [{"title": "要点", "children": []}],
+            },
+            "quotes": ["第一句金句", "第二句金句"],
+        },
+        ensure_ascii=False,
+    )
+    _install_interpretation_test_config(service, db_session, monkeypatch, content)
+    monkeypatch.setattr(
+        service,
+        "_enqueue_task",
+        lambda db, **kwargs: enqueued.append(kwargs),
+    )
+    monkeypatch.setattr(
+        article_ai_pipeline_module.ArticleEmbeddingService,
+        "has_available_remote_config",
+        lambda self, db: True,
+    )
+
+    asyncio.run(
+        service.process_article_interpretation(
+            article_id,
+            None,
+            post_process_options={
+                "classification": True,
+                "tagging": True,
+                "summary": True,
+                "outline": True,
+                "quotes": True,
+                "translation": False,
+            },
+        )
+    )
+
+    persisted_article = db_session.get(Article, article_id)
+    persisted_analysis = (
+        db_session.query(AIAnalysis).filter(AIAnalysis.article_id == article_id).one()
+    )
+    versions = (
+        db_session.query(AIAnalysisVersion)
+        .filter(AIAnalysisVersion.article_id == article_id)
+        .order_by(AIAnalysisVersion.content_type.asc())
+        .all()
+    )
+    usage_logs = (
+        db_session.query(AIUsageLog)
+        .filter(AIUsageLog.article_id == article_id)
+        .filter(AIUsageLog.content_type == "interpretation")
+        .all()
+    )
+
+    assert persisted_article.category_id == "cat-ai"
+    assert sorted(tag.name for tag in persisted_article.tags) == [
+        "AI 产品",
+        "知识管理",
+    ]
+    assert persisted_analysis.interpretation_status == "completed"
+    assert persisted_analysis.summary == "这是一篇整包摘要。"
+    assert persisted_analysis.summary_status == "completed"
+    assert persisted_analysis.outline_status == "completed"
+    assert persisted_analysis.quotes_status == "completed"
+    assert persisted_analysis.quotes == "- 第一句金句\n- 第二句金句"
+    assert {version.content_type for version in versions} == {
+        "summary",
+        "outline",
+        "quotes",
+    }
+    assert all(version.source_task_id == "task-interpretation" for version in versions)
+    assert len(usage_logs) == 1
+    assert usage_logs[0].status == "completed"
+    assert [(item["task_type"], item["content_type"]) for item in enqueued] == [
+        ("process_article_embedding", "embedding")
+    ]
+
+
+def test_process_article_interpretation_supports_partial_success(
+    db_session,
+    monkeypatch,
+):
+    article = Article(
+        title="Partial Interpretation Article",
+        slug="partial-interpretation-article",
+        content_md="这是一篇关于 AI 产品和知识管理的中文文章。",
+        created_at=now_str(),
+        updated_at=now_str(),
+    )
+    db_session.add(article)
+    db_session.commit()
+    article_id = article.id
+
+    service = ArticleAIPipelineService(current_task_id="task-interpretation-partial")
+    content = json.dumps(
+        {
+            "category_id": "missing-category",
+            "tags": ["AI 产品"],
+            "summary": "有效摘要",
+            "outline": None,
+            "quotes": [],
+        },
+        ensure_ascii=False,
+    )
+    _install_interpretation_test_config(service, db_session, monkeypatch, content)
+    monkeypatch.setattr(
+        article_ai_pipeline_module.ArticleEmbeddingService,
+        "has_available_remote_config",
+        lambda self, db: False,
+    )
+
+    asyncio.run(
+        service.process_article_interpretation(
+            article_id,
+            None,
+            post_process_options={
+                "classification": True,
+                "tagging": True,
+                "summary": True,
+                "outline": False,
+                "quotes": False,
+                "translation": False,
+            },
+        )
+    )
+
+    persisted_analysis = (
+        db_session.query(AIAnalysis).filter(AIAnalysis.article_id == article_id).one()
+    )
+    usage_logs = (
+        db_session.query(AIUsageLog)
+        .filter(AIUsageLog.article_id == article_id)
+        .filter(AIUsageLog.content_type == "interpretation")
+        .all()
+    )
+    assert persisted_analysis.classification_status == "failed"
+    assert persisted_analysis.tagging_status == "completed"
+    assert persisted_analysis.summary_status == "completed"
+    assert persisted_analysis.outline_status == "skipped"
+    assert persisted_analysis.quotes_status == "skipped"
+    assert persisted_analysis.interpretation_status == "partial_completed"
+    assert len(usage_logs) == 1
+    assert usage_logs[0].status == "completed"
+
+
+def test_process_article_interpretation_builds_prompt_for_enabled_fields_only(
+    db_session,
+    monkeypatch,
+):
+    article = Article(
+        title="Summary Only Interpretation Article",
+        slug="summary-only-interpretation-article",
+        content_md="这是一篇只需要摘要的中文文章。",
+        created_at=now_str(),
+        updated_at=now_str(),
+    )
+    db_session.add(article)
+    db_session.commit()
+    article_id = article.id
+
+    service = ArticleAIPipelineService(current_task_id="task-interpretation-summary")
+    captured = {}
+    content = json.dumps({"summary": "只生成摘要。"}, ensure_ascii=False)
+    _install_interpretation_test_config(
+        service,
+        db_session,
+        monkeypatch,
+        content,
+        captured=captured,
+    )
+    monkeypatch.setattr(
+        article_ai_pipeline_module.ArticleEmbeddingService,
+        "has_available_remote_config",
+        lambda self, db: False,
+    )
+
+    asyncio.run(
+        service.process_article_interpretation(
+            article_id,
+            None,
+            post_process_options={
+                "classification": False,
+                "tagging": False,
+                "summary": True,
+                "outline": False,
+                "quotes": False,
+                "translation": False,
+            },
+        )
+    )
+
+    kwargs = captured["kwargs"]
+    schema = kwargs["parameters"]["response_format"]["json_schema"]["schema"]
+    assert schema["required"] == ["summary"]
+    assert set(schema["properties"]) == {"summary"}
+    assert kwargs["max_tokens"] == 800
+    assert "摘要要求：用高信息密度中文概括核心主体、关键动作和结论。" in kwargs[
+        "user_prompt"
+    ]
+    assert "大纲要求" not in kwargs["user_prompt"]
+    assert "金句要求" not in kwargs["user_prompt"]
+    assert "标签要求" not in kwargs["user_prompt"]
+    assert "摘要 system 不应进入合并任务" not in (
+        kwargs["parameters"].get("system_prompt") or ""
+    )
+
+    persisted_analysis = (
+        db_session.query(AIAnalysis).filter(AIAnalysis.article_id == article_id).one()
+    )
+    assert persisted_analysis.summary_status == "completed"
+    assert persisted_analysis.outline_status == "skipped"
+    assert persisted_analysis.quotes_status == "skipped"
+
+
+def test_process_article_interpretation_preserves_manual_tags_without_force(
+    db_session,
+    monkeypatch,
+):
+    manual_tag = Tag(
+        name="手动标签",
+        normalized_name="手动标签",
+        created_at=now_str(),
+        updated_at=now_str(),
+    )
+    article = Article(
+        title="Manual Tag Interpretation Article",
+        slug="manual-tag-interpretation-article",
+        content_md="这是一篇关于 AI 产品和知识管理的中文文章。",
+        tags=[manual_tag],
+        created_at=now_str(),
+        updated_at=now_str(),
+    )
+    db_session.add(article)
+    db_session.commit()
+    article_id = article.id
+    db_session.add(
+        AIAnalysis(
+            article_id=article_id,
+            tagging_status="completed",
+            tagging_manual_override=True,
+            updated_at=now_str(),
+        )
+    )
+    db_session.commit()
+
+    service = ArticleAIPipelineService(current_task_id="task-interpretation-manual")
+    content = json.dumps(
+        {
+            "category_id": "",
+            "tags": ["模型标签"],
+            "summary": "有效摘要",
+            "outline": None,
+            "quotes": [],
+        },
+        ensure_ascii=False,
+    )
+    _install_interpretation_test_config(service, db_session, monkeypatch, content)
+    monkeypatch.setattr(
+        article_ai_pipeline_module.ArticleEmbeddingService,
+        "has_available_remote_config",
+        lambda self, db: False,
+    )
+
+    asyncio.run(
+        service.process_article_interpretation(
+            article_id,
+            None,
+            post_process_options={
+                "classification": False,
+                "tagging": True,
+                "summary": True,
+                "outline": False,
+                "quotes": False,
+                "translation": False,
+            },
+            force_tagging=False,
+        )
+    )
+
+    persisted_article = db_session.get(Article, article_id)
+    persisted_analysis = (
+        db_session.query(AIAnalysis).filter(AIAnalysis.article_id == article_id).one()
+    )
+    assert [tag.name for tag in persisted_article.tags] == ["手动标签"]
+    assert persisted_analysis.tagging_manual_override is True
+    assert persisted_analysis.tagging_status == "completed"
+    assert persisted_analysis.summary_status == "completed"
+    assert persisted_analysis.interpretation_status == "completed"
+
+
+def test_process_article_interpretation_failure_preserves_manual_tag_status(
+    db_session,
+    monkeypatch,
+):
+    manual_tag = Tag(
+        name="手动标签",
+        normalized_name="手动标签",
+        created_at=now_str(),
+        updated_at=now_str(),
+    )
+    article = Article(
+        title="Manual Tag Failed Interpretation Article",
+        slug="manual-tag-failed-interpretation-article",
+        content_md="这是一篇关于 AI 产品和知识管理的中文文章。",
+        tags=[manual_tag],
+        created_at=now_str(),
+        updated_at=now_str(),
+    )
+    db_session.add(article)
+    db_session.commit()
+    article_id = article.id
+    db_session.add(
+        AIAnalysis(
+            article_id=article_id,
+            tagging_status="completed",
+            tagging_manual_override=True,
+            updated_at=now_str(),
+        )
+    )
+    db_session.commit()
+
+    service = ArticleAIPipelineService(current_task_id="task-interpretation-failure")
+
+    async def fake_generation(**kwargs):
+        raise RuntimeError("provider down")
+
+    monkeypatch.setattr(article_ai_pipeline_module, "SessionLocal", lambda: db_session)
+    prompt_configs = {
+        "tagging": SimpleNamespace(
+            id="prompt-tagging",
+            prompt="标签要求",
+            system_prompt=None,
+            temperature=None,
+            max_tokens=None,
+            top_p=None,
+            chunk_size_tokens=None,
+            chunk_overlap_tokens=None,
+            max_continue_rounds=None,
+        ),
+        "summary": SimpleNamespace(
+            id="prompt-summary",
+            prompt="摘要要求",
+            system_prompt=None,
+            temperature=None,
+            max_tokens=None,
+            top_p=None,
+            chunk_size_tokens=None,
+            chunk_overlap_tokens=None,
+            max_continue_rounds=None,
+        ),
+    }
+    monkeypatch.setattr(
+        service,
+        "_get_prompt_config",
+        lambda db, category_id=None, prompt_type="summary": prompt_configs.get(
+            prompt_type
+        ),
+    )
+    monkeypatch.setattr(
+        service,
+        "get_ai_config",
+        lambda *args, **kwargs: {
+            "base_url": "https://example.com",
+            "api_key": "test-key",
+            "model_name": "test-model",
+            "model_api_config_id": None,
+            "price_input_per_1k": None,
+            "price_output_per_1k": None,
+            "currency": None,
+            "api_type": "chat_completions",
+            "prompt_template": "请生成文章解读：{content}",
+            "parameters": None,
+        },
+    )
+    monkeypatch.setattr(service, "create_ai_client", lambda config: SimpleNamespace())
+    monkeypatch.setattr(
+        service.ai_invocation_service,
+        "invoke_generation",
+        fake_generation,
+    )
+
+    with pytest.raises(TaskExternalError, match="provider down"):
+        asyncio.run(
+            service.process_article_interpretation(
+                article_id,
+                None,
+                post_process_options={
+                    "classification": False,
+                    "tagging": True,
+                    "summary": True,
+                    "outline": False,
+                    "quotes": False,
+                    "translation": False,
+                },
+                force_tagging=False,
+            )
+        )
+
+    persisted_analysis = (
+        db_session.query(AIAnalysis).filter(AIAnalysis.article_id == article_id).one()
+    )
+    assert persisted_analysis.tagging_status == "completed"
+    assert persisted_analysis.tagging_manual_override is True
+    assert persisted_analysis.summary_status == "failed"
+    assert persisted_analysis.interpretation_status == "failed"

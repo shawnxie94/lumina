@@ -2368,7 +2368,7 @@ export default function AdminPage() {
 			return;
 		}
 		if (!promptFormData.prompt.trim()) {
-			showToast(t("请填写提示词"), "error");
+			showToast(t("请填写任务要求"), "error");
 			return;
 		}
 		const hasAnyChunkOption =
@@ -4730,7 +4730,7 @@ export default function AdminPage() {
 																	)}
 																	<div>
 																		<span className="font-medium">
-																			{t("提示词")}：
+																			{t("任务要求")}：
 																		</span>
 																		<code className="px-2 py-1 bg-muted rounded text-xs block mt-1 max-h-20 overflow-y-auto">
 																			{config.prompt.slice(0, 100)}
@@ -7691,7 +7691,7 @@ export default function AdminPage() {
 										name: e.target.value,
 									})
 								}
-								placeholder={t("文章摘要提示词")}
+								placeholder={t("文章摘要任务要求")}
 								required
 							/>
 						</FormField>
@@ -7734,7 +7734,7 @@ export default function AdminPage() {
 							/>
 						</FormField>
 
-						<FormField label={t("提示词")} required>
+						<FormField label={t("任务要求")} required>
 							<TextArea
 								value={promptFormData.prompt}
 								onChange={(e) =>
@@ -7744,7 +7744,7 @@ export default function AdminPage() {
 									})
 								}
 								rows={6}
-								placeholder={t("请为以下文章生成摘要...")}
+								placeholder={t("请描述生成目标、质量标准和写作要求...")}
 								required
 							/>
 						</FormField>

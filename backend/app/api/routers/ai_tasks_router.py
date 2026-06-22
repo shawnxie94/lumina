@@ -512,6 +512,8 @@ async def retry_ai_tasks(
             return "classification"
         if task.task_type == "process_article_tagging":
             return "tagging"
+        if task.task_type == "process_article_interpretation":
+            return "interpretation"
         if task.task_type == "process_ai_content":
             return task.content_type
         return None

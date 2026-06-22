@@ -301,6 +301,22 @@ class AITaskService:
             chunk_cursor=payload.get("chunk_cursor"),
         )
 
+    async def _handle_process_article_interpretation(
+        self,
+        pipeline,
+        article_id: str,
+        category_id,
+        payload: dict,
+    ):
+        await pipeline.process_article_interpretation(
+            article_id,
+            category_id,
+            model_config_id=payload.get("model_config_id"),
+            prompt_config_id=payload.get("prompt_config_id"),
+            post_process_options=payload.get("post_process_options"),
+            force_tagging=bool(payload.get("force_tagging")),
+        )
+
     async def _handle_process_ai_content(
         self,
         pipeline,
@@ -376,6 +392,12 @@ class AITaskService:
                 payload,
             ),
             "process_article_translation": lambda: self._handle_process_article_translation(
+                pipeline,
+                self._require_article_id(article_id),
+                category_id,
+                payload,
+            ),
+            "process_article_interpretation": lambda: self._handle_process_article_interpretation(
                 pipeline,
                 self._require_article_id(article_id),
                 category_id,

@@ -4,6 +4,7 @@ export type AITaskPromptType =
   | "outline"
   | "quotes"
   | "content_cleaning"
+  | "interpretation"
   | "classification"
   | "tagging";
 
@@ -38,6 +39,13 @@ const AI_TASK_META: AITaskMeta[] = [
     labelKey: "标签",
     filterValue: "process_article_tagging:tagging",
     promptType: "tagging",
+  },
+  {
+    taskType: "process_article_interpretation",
+    contentType: "interpretation",
+    labelKey: "文章解读",
+    filterValue: "process_article_interpretation:interpretation",
+    promptType: "interpretation",
   },
   {
     taskType: "process_article_translation",
@@ -92,6 +100,7 @@ const AI_TASK_META: AITaskMeta[] = [
 const TASK_TYPE_FALLBACK_LABELS: Record<string, string> = {
   process_article_cleaning: "清洗",
   process_article_classification: "分类",
+  process_article_interpretation: "文章解读",
   process_article_tagging: "标签",
   process_article_translation: "翻译",
   process_article_embedding: "向量化",

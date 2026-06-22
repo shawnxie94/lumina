@@ -100,6 +100,49 @@ class ArticleAIPipelineService:
         "outline": 1000,
         "quotes": 800,
     }
+    INTERPRETATION_FIELD_MAX_TOKENS = {
+        "classification": 200,
+        "tagging": 300,
+        "summary": 500,
+        "outline": 1000,
+        "quotes": 800,
+    }
+    INTERPRETATION_BASE_MAX_TOKENS = 300
+    INTERPRETATION_FIELD_LABELS = {
+        "classification": "分类",
+        "tagging": "标签",
+        "summary": "摘要",
+        "outline": "大纲",
+        "quotes": "金句",
+    }
+    SINGLE_OUTPUT_PROTOCOLS = {
+        "summary": (
+            "输出协议：\n"
+            "1) 只输出摘要正文，不要输出标题、解释、Markdown 代码块或额外前后缀。\n"
+            "2) 摘要应为中文、客观、可直接展示给读者。"
+        ),
+        "outline": (
+            "输出协议：\n"
+            "1) 只输出一个 JSON 对象，禁止 Markdown 代码块、解释或额外文本。\n"
+            "2) 每个节点只允许 title 和 children；title 必须是字符串，children 必须是数组。\n"
+            "3) children 为空时返回空数组。"
+        ),
+        "quotes": (
+            "输出协议：\n"
+            "1) 使用 Markdown 无序列表（-），每行输出一条金句，数量 3-5 条。\n"
+            "2) 禁止输出解释、标题、编号、Markdown 代码块或额外前后缀。"
+        ),
+        "classification": (
+            "输出协议：\n"
+            "1) 只返回协议要求的分类结果，不要输出解释、Markdown 代码块或额外字段。\n"
+            "2) category_id 只能来自分类列表；无合适分类时返回空字符串。"
+        ),
+        "tagging": (
+            "输出协议：\n"
+            "1) 只返回协议要求的标签结果，不要输出解释、Markdown 代码块或额外字段。\n"
+            "2) tags 必须是 3-5 个具体、稳定、可检索的中文标签；无合适标签时返回空数组。"
+        ),
+    }
     STRUCTURED_OUTPUT_CONTRACTS = {
         "summary": PromptOutputContract(mode="text", response_format=None),
         "translation": PromptOutputContract(mode="text", response_format=None),
@@ -216,6 +259,31 @@ class ArticleAIPipelineService:
         article.status = "completed"
         article.updated_at = now_str()
         db.commit()
+
+        interpretation_fields = (
+            "classification",
+            "tagging",
+            "summary",
+            "outline",
+            "quotes",
+        )
+        if any(options.get(field) for field in interpretation_fields):
+            analysis = article_tag_service.ensure_analysis(db, article)
+            analysis.interpretation_status = "pending"
+            analysis.interpretation_error = None
+            analysis.updated_at = now_str()
+            db.commit()
+            self._enqueue_task(
+                db,
+                task_type="process_article_interpretation",
+                article_id=article.id,
+                content_type="interpretation",
+                payload={
+                    "category_id": category_id,
+                    "post_process_options": options,
+                },
+            )
+            return
 
         if options.get("classification"):
             self._enqueue_task(
@@ -425,8 +493,15 @@ class ArticleAIPipelineService:
         prompt_type: str,
         parameters: dict | None,
     ) -> dict:
-        merged = dict(parameters or {})
         contract = self._get_prompt_output_contract(prompt_type)
+        return self._merge_parameters_with_contract(parameters, contract)
+
+    def _merge_parameters_with_contract(
+        self,
+        parameters: dict | None,
+        contract: PromptOutputContract,
+    ) -> dict:
+        merged = dict(parameters or {})
         if contract.response_format is not None:
             merged["response_format"] = contract.response_format
         if contract.system_instruction:
@@ -442,6 +517,162 @@ class ArticleAIPipelineService:
             else:
                 merged["system_prompt"] = protocol_block
         return merged
+
+    def _enabled_interpretation_fields(self, options: dict) -> list[str]:
+        return [
+            field
+            for field in ("classification", "tagging", "summary", "outline", "quotes")
+            if options.get(field)
+        ]
+
+    def _build_interpretation_output_contract(
+        self,
+        enabled_fields: list[str],
+    ) -> PromptOutputContract:
+        properties: dict[str, Any] = {}
+        required: list[str] = []
+        if "classification" in enabled_fields:
+            properties["category_id"] = {"type": "string"}
+            required.append("category_id")
+        if "tagging" in enabled_fields:
+            properties["tags"] = {"type": "array", "items": {"type": "string"}}
+            required.append("tags")
+        if "summary" in enabled_fields:
+            properties["summary"] = {"type": "string"}
+            required.append("summary")
+        if "outline" in enabled_fields:
+            properties["outline"] = {
+                "anyOf": [
+                    {"type": "null"},
+                    {
+                        "type": "object",
+                        "properties": {
+                            "title": {"type": "string"},
+                            "children": {"type": "array"},
+                        },
+                        "required": ["title", "children"],
+                        "additionalProperties": False,
+                    },
+                ]
+            }
+            required.append("outline")
+        if "quotes" in enabled_fields:
+            properties["quotes"] = {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": (
+                    "3-5 条中文金句；每个数组元素是一条完整金句，"
+                    "不要在字符串内添加列表符号、编号或解释"
+                ),
+            }
+            required.append("quotes")
+
+        field_names = ", ".join(properties) if properties else "无"
+        return PromptOutputContract(
+            mode="structured_json",
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "article_interpretation_bundle",
+                    "schema": {
+                        "type": "object",
+                        "properties": properties,
+                        "required": required,
+                        "additionalProperties": False,
+                    },
+                },
+            },
+            system_instruction=(
+                "固定输出协议：必须返回单个 JSON 对象，且只包含本次启用字段对应的字段："
+                f"{field_names}。\n"
+                "未启用字段禁止出现在 JSON 中。禁止解释、Markdown 代码块或额外字段。"
+                "outline 启用时节点只允许 title 和 children。"
+                "quotes 启用时必须返回 3-5 个字符串数组元素；每个元素是一条完整金句，"
+                "禁止在字符串内添加列表符号或编号。"
+            ),
+        )
+
+    def _build_article_task_prompt(
+        self,
+        instruction: str,
+        content_type: str,
+        *,
+        article: Article,
+        categories_payload: str | None = None,
+        category_name: str | None = None,
+        content_placeholder: bool = False,
+    ) -> str:
+        blocks = [str(instruction or "").strip()]
+        if content_type == "classification" and categories_payload:
+            blocks.append(f"分类列表：\n{categories_payload}")
+        if content_type == "tagging" and category_name:
+            blocks.append(f"参考分类：{category_name}")
+        output_protocol = self.SINGLE_OUTPUT_PROTOCOLS.get(content_type)
+        if output_protocol:
+            blocks.append(output_protocol)
+        content_block = "{content}" if content_placeholder else (article.content_md or "")
+        blocks.append(f"文章正文：\n{content_block}")
+        return "\n\n".join(block for block in blocks if block)
+
+    def _build_runtime_content_prompt(
+        self,
+        instruction: str | None,
+        content_label: str,
+    ) -> str | None:
+        instruction_text = str(instruction or "").strip()
+        if not instruction_text:
+            return None
+        if "{content}" in instruction_text:
+            return instruction_text
+        return f"{instruction_text}\n\n{content_label}：\n{{content}}"
+
+    def _build_interpretation_prompt(
+        self,
+        *,
+        article: Article,
+        categories_payload: str,
+        category_name: str | None,
+        options: dict,
+        instructions: dict[str, str],
+    ) -> str:
+        enabled_fields = self._enabled_interpretation_fields(options)
+        blocks = [
+            "请阅读文章正文，并一次性完成本次启用的文章 AI 解读字段。",
+            "只处理启用字段；不要生成、提及或返回未启用字段。",
+            "启用字段："
+            + (
+                "、".join(
+                    self.INTERPRETATION_FIELD_LABELS.get(field, field)
+                    for field in enabled_fields
+                )
+                if enabled_fields
+                else "无"
+            ),
+        ]
+        for field in enabled_fields:
+            instruction = (instructions.get(field) or "").strip()
+            if not instruction:
+                continue
+            label = self.INTERPRETATION_FIELD_LABELS.get(field, field)
+            blocks.append(f"{label}任务要求：\n{instruction}")
+            if field == "classification":
+                blocks.append(f"分类列表：\n{categories_payload}")
+            elif field == "tagging" and category_name:
+                blocks.append(f"参考分类：{category_name}")
+
+        blocks.append("文章正文：\n{content}")
+        return "\n\n".join(block for block in blocks if block)
+
+    def _calculate_interpretation_max_tokens(
+        self,
+        options: dict,
+        parameters: dict | None,
+    ) -> int:
+        enabled_fields = self._enabled_interpretation_fields(options)
+        return self.INTERPRETATION_BASE_MAX_TOKENS + sum(
+            self.INTERPRETATION_FIELD_MAX_TOKENS.get(field, 300)
+            for field in enabled_fields
+        )
 
     def _parse_structured_task_result(
         self,
@@ -539,6 +770,372 @@ class ArticleAIPipelineService:
         if not normalized["title"] and not normalized["children"]:
             raise TaskDataError("outline 输出不能为空")
         return json.dumps(normalized, ensure_ascii=False)
+
+    def _parse_interpretation_result(
+        self,
+        raw_output: Any,
+        enabled_fields: list[str] | None = None,
+    ) -> dict[str, Any]:
+        parsed = self._parse_structured_task_result("interpretation", raw_output)
+        field_errors: dict[str, str] = {}
+        enabled = set(
+            enabled_fields
+            or ("classification", "tagging", "summary", "outline", "quotes")
+        )
+
+        category_id = parsed.get("category_id", "")
+        if category_id is None:
+            category_id = ""
+        if "classification" in enabled and not isinstance(category_id, str):
+            field_errors["classification"] = "interpretation.category_id 必须是字符串"
+            category_id = ""
+
+        tags = parsed.get("tags", [])
+        if "tagging" in enabled and (
+            not isinstance(tags, list) or any(not isinstance(item, str) for item in tags)
+        ):
+            field_errors["tagging"] = "interpretation.tags 必须是字符串数组"
+            tags = []
+
+        summary = parsed.get("summary", "")
+        if summary is None:
+            summary = ""
+        if "summary" in enabled and not isinstance(summary, str):
+            field_errors["summary"] = "interpretation.summary 必须是字符串"
+            summary = ""
+
+        outline = parsed.get("outline")
+        if (
+            "outline" in enabled
+            and outline is not None
+            and not isinstance(outline, (dict, list, str))
+        ):
+            field_errors["outline"] = (
+                "interpretation.outline 必须是对象、数组、字符串或 null"
+            )
+            outline = None
+
+        quotes = parsed.get("quotes", [])
+        if "quotes" in enabled and (
+            not isinstance(quotes, list)
+            or any(not isinstance(item, str) for item in quotes)
+        ):
+            field_errors["quotes"] = "interpretation.quotes 必须是字符串数组"
+            quotes = []
+
+        field_to_status = {
+            "category_id": "classification",
+            "tags": "tagging",
+            "summary": "summary",
+            "outline": "outline",
+            "quotes": "quotes",
+        }
+        for field_name, status_key in field_to_status.items():
+            if status_key in enabled and field_name not in parsed:
+                field_errors.setdefault(status_key, f"interpretation 缺少 {field_name}")
+
+        return {
+            "category_id": category_id,
+            "tags": tags,
+            "summary": summary,
+            "outline": outline,
+            "quotes": quotes,
+            "_field_errors": field_errors,
+        }
+
+    def _format_quotes_markdown(self, quotes: list[str]) -> str:
+        lines = []
+        for quote in quotes:
+            text = str(quote or "").strip()
+            if not text:
+                continue
+            text = re.sub(r"^\s*(?:[-*+]\s+|\d+[.)]\s*)", "", text).strip()
+            if text:
+                lines.append(f"- {text}")
+        return "\n".join(lines)
+
+    def _normalize_quotes_markdown(self, content: str | None) -> str:
+        lines = [
+            line.strip()
+            for line in self._normalize_line_breaks(content or "").split("\n")
+            if line.strip()
+        ]
+        return self._format_quotes_markdown(lines)
+
+    def _mark_interpretation_fields_processing(
+        self,
+        analysis: AIAnalysis,
+        options: dict,
+        *,
+        force_tagging: bool = False,
+    ) -> None:
+        status_fields = {
+            "classification": "classification_status",
+            "tagging": "tagging_status",
+            "summary": "summary_status",
+            "outline": "outline_status",
+            "quotes": "quotes_status",
+        }
+        for option_name, status_field in status_fields.items():
+            if (
+                option_name == "tagging"
+                and bool(analysis.tagging_manual_override)
+                and not force_tagging
+            ):
+                continue
+            setattr(
+                analysis,
+                status_field,
+                "processing" if options.get(option_name) else "skipped",
+            )
+        analysis.interpretation_status = "processing"
+        analysis.interpretation_error = None
+        analysis.error_message = None
+        analysis.updated_at = now_str()
+
+    def _mark_interpretation_fields_failed(
+        self,
+        analysis: AIAnalysis,
+        options: dict,
+        error_message: str,
+        *,
+        force_tagging: bool = False,
+    ) -> None:
+        for option_name, status_field in {
+            "classification": "classification_status",
+            "tagging": "tagging_status",
+            "summary": "summary_status",
+            "outline": "outline_status",
+            "quotes": "quotes_status",
+        }.items():
+            if (
+                option_name == "tagging"
+                and bool(analysis.tagging_manual_override)
+                and not force_tagging
+            ):
+                continue
+            setattr(
+                analysis,
+                status_field,
+                "failed" if options.get(option_name) else "skipped",
+            )
+        analysis.interpretation_status = "failed"
+        analysis.interpretation_error = error_message
+        analysis.error_message = error_message
+        analysis.updated_at = now_str()
+
+    def _enqueue_summary_completed_hooks(self, db, article_id: str) -> None:
+        if ArticleEmbeddingService().has_available_remote_config(db):
+            self._enqueue_task(
+                db,
+                task_type="process_article_embedding",
+                article_id=article_id,
+                content_type="embedding",
+            )
+
+    def _update_article_completed_if_ready(
+        self,
+        db,
+        article: Article,
+        analysis: AIAnalysis | None,
+    ) -> None:
+        summary_status = analysis.summary_status if analysis else None
+        translation_status = article.translation_status
+        if summary_status in ["completed", "failed", "skipped"] and (
+            translation_status in ["completed", "failed", "skipped"]
+        ):
+            article.status = "completed"
+            article.updated_at = now_str()
+
+    def _apply_interpretation_result(
+        self,
+        db,
+        article: Article,
+        analysis: AIAnalysis,
+        parsed_result: dict[str, Any],
+        options: dict,
+        *,
+        source_task_id: str | None,
+        source_model_config_id: str | None,
+        source_prompt_config_id: str | dict[str, str] | None,
+        force_tagging: bool = False,
+    ) -> dict[str, str]:
+        field_statuses: dict[str, str] = {}
+        field_errors = parsed_result.get("_field_errors") or {}
+
+        if options.get("classification"):
+            category_output = (parsed_result.get("category_id") or "").strip()
+            if field_errors.get("classification"):
+                analysis.classification_status = "failed"
+                field_statuses["classification"] = "failed"
+            elif category_output:
+                category = db.query(Category).filter(Category.id == category_output).first()
+                if category:
+                    article.category_id = category.id
+                    analysis.classification_status = "completed"
+                    field_statuses["classification"] = "completed"
+                else:
+                    analysis.classification_status = "failed"
+                    field_statuses["classification"] = "failed"
+            else:
+                analysis.classification_status = "failed"
+                field_statuses["classification"] = "failed"
+        else:
+            analysis.classification_status = "skipped"
+            field_statuses["classification"] = "skipped"
+
+        if options.get("tagging"):
+            if bool(analysis.tagging_manual_override) and not force_tagging:
+                field_statuses["tagging"] = (
+                    "completed"
+                    if analysis.tagging_status == "completed"
+                    else (analysis.tagging_status or "skipped")
+                )
+            elif field_errors.get("tagging"):
+                analysis.tagging_status = "failed"
+                field_statuses["tagging"] = "failed"
+            else:
+                tag_names = article_tag_service.parse_tag_names(parsed_result.get("tags"))
+                if tag_names:
+                    article_tag_service.set_article_tags(
+                        db,
+                        article,
+                        tag_names,
+                        manual_override=False,
+                        tagging_status="completed",
+                        source_hash=article_tag_service.get_tagging_source_hash(article),
+                    )
+                    invalidate_public_cache(CACHE_KEY_TAGS_PUBLIC)
+                    invalidate_public_rss_cache()
+                    field_statuses["tagging"] = "completed"
+                else:
+                    analysis.tagging_status = "failed"
+                    field_statuses["tagging"] = "failed"
+        else:
+            analysis.tagging_status = "skipped"
+            field_statuses["tagging"] = "skipped"
+
+        if options.get("summary"):
+            summary = (parsed_result.get("summary") or "").strip()
+            if field_errors.get("summary"):
+                analysis.summary_status = "failed"
+                field_statuses["summary"] = "failed"
+            elif summary:
+                analysis.summary = summary
+                analysis.summary_status = "completed"
+                self.article_ai_version_service.record_version(
+                    db,
+                    article_id=article.id,
+                    content_type="summary",
+                    source_task_id=source_task_id,
+                    source_model_config_id=source_model_config_id,
+                    source_prompt_config_id=(
+                        source_prompt_config_id.get("summary")
+                        if isinstance(source_prompt_config_id, dict)
+                        else source_prompt_config_id
+                    ),
+                )
+                field_statuses["summary"] = "completed"
+            else:
+                analysis.summary_status = "failed"
+                field_statuses["summary"] = "failed"
+        else:
+            analysis.summary_status = "skipped"
+            field_statuses["summary"] = "skipped"
+
+        if options.get("outline"):
+            outline = parsed_result.get("outline")
+            if field_errors.get("outline"):
+                analysis.outline_status = "failed"
+                field_statuses["outline"] = "failed"
+            elif outline is not None:
+                try:
+                    analysis.outline = self._parse_outline_task_result(outline)
+                    analysis.outline_status = "completed"
+                    self.article_ai_version_service.record_version(
+                        db,
+                        article_id=article.id,
+                        content_type="outline",
+                        source_task_id=source_task_id,
+                        source_model_config_id=source_model_config_id,
+                        source_prompt_config_id=(
+                            source_prompt_config_id.get("outline")
+                            if isinstance(source_prompt_config_id, dict)
+                            else source_prompt_config_id
+                        ),
+                    )
+                    field_statuses["outline"] = "completed"
+                except Exception:
+                    analysis.outline_status = "failed"
+                    field_statuses["outline"] = "failed"
+            else:
+                analysis.outline_status = "failed"
+                field_statuses["outline"] = "failed"
+        else:
+            analysis.outline_status = "skipped"
+            field_statuses["outline"] = "skipped"
+
+        if options.get("quotes"):
+            quotes = [
+                quote.strip()
+                for quote in (parsed_result.get("quotes") or [])
+                if isinstance(quote, str) and quote.strip()
+            ]
+            if field_errors.get("quotes"):
+                analysis.quotes_status = "failed"
+                field_statuses["quotes"] = "failed"
+            elif quotes:
+                analysis.quotes = self._format_quotes_markdown(quotes)
+                analysis.quotes_status = "completed"
+                self.article_ai_version_service.record_version(
+                    db,
+                    article_id=article.id,
+                    content_type="quotes",
+                    source_task_id=source_task_id,
+                    source_model_config_id=source_model_config_id,
+                    source_prompt_config_id=(
+                        source_prompt_config_id.get("quotes")
+                        if isinstance(source_prompt_config_id, dict)
+                        else source_prompt_config_id
+                    ),
+                )
+                field_statuses["quotes"] = "completed"
+            else:
+                analysis.quotes_status = "failed"
+                field_statuses["quotes"] = "failed"
+        else:
+            analysis.quotes_status = "skipped"
+            field_statuses["quotes"] = "skipped"
+
+        enabled_statuses = [
+            status
+            for field, status in field_statuses.items()
+            if options.get(field)
+        ]
+        if not enabled_statuses:
+            analysis.interpretation_status = "skipped"
+        elif all(status == "skipped" for status in enabled_statuses):
+            analysis.interpretation_status = "skipped"
+        elif all(status in {"completed", "skipped"} for status in enabled_statuses):
+            analysis.interpretation_status = "completed"
+        elif any(status == "completed" for status in enabled_statuses):
+            analysis.interpretation_status = "partial_completed"
+        else:
+            analysis.interpretation_status = "failed"
+        failed_messages = [
+            field_errors.get(field)
+            for field, status in field_statuses.items()
+            if status == "failed" and field_errors.get(field)
+        ]
+        if failed_messages:
+            analysis.interpretation_error = "; ".join(failed_messages)
+            analysis.error_message = analysis.interpretation_error
+        else:
+            analysis.interpretation_error = None
+            analysis.error_message = None
+        analysis.updated_at = now_str()
+        article.updated_at = now_str()
+        return field_statuses
 
     def _assert_general_model(self, model_config: ModelAPIConfig) -> None:
         if (model_config.model_type or "general") == "vector":
@@ -1645,14 +2242,18 @@ class ArticleAIPipelineService:
         if not base_prompt:
             return None
 
+        content_label = "待清洗 HTML 内容" if source_format == "html" else "待清洗 Markdown 内容"
         if source_format == "html":
-            return base_prompt
+            return self._build_runtime_content_prompt(base_prompt, content_label)
         adjusted = (
             base_prompt.replace("以下 HTML 内容", "以下 Markdown 内容")
             .replace("以下html内容", "以下markdown内容")
             .replace("HTML：", "Markdown：")
         )
-        return adjusted
+        return self._build_runtime_content_prompt(adjusted, content_label)
+
+    def _build_translation_prompt(self, base_prompt: str | None) -> str | None:
+        return self._build_runtime_content_prompt(base_prompt, "待翻译内容")
 
     def _build_continue_prompt(self, base_prompt: str | None, partial_output: str) -> str:
         instruction = (
@@ -2358,6 +2959,325 @@ class ArticleAIPipelineService:
         finally:
             db.close()
 
+    async def process_article_interpretation(
+        self,
+        article_id: str,
+        category_id: str | None,
+        model_config_id: str | None = None,
+        prompt_config_id: str | None = None,
+        post_process_options: dict | None = None,
+        force_tagging: bool = False,
+    ):
+        db = SessionLocal()
+        try:
+            article = db.query(Article).filter(Article.id == article_id).first()
+            if not article:
+                return
+
+            analysis = article_tag_service.ensure_analysis(db, article)
+            options = self._normalize_post_process_options(post_process_options)
+            self._mark_interpretation_fields_processing(
+                analysis,
+                options,
+                force_tagging=force_tagging,
+            )
+            db.commit()
+
+            source_content = self._normalize_markdown_whitespace(article.content_md or "")
+            if not source_content:
+                self._mark_interpretation_fields_failed(
+                    analysis,
+                    options,
+                    "文章内容为空，无法生成 AI 解读",
+                    force_tagging=force_tagging,
+                )
+                db.commit()
+                raise TaskDataError("文章内容为空，无法生成 AI 解读")
+
+            interpretation_config = None
+            enabled_fields = self._enabled_interpretation_fields(options)
+            prompt_type_priority = [
+                field
+                for field in ("summary", "outline", "quotes", "tagging", "classification")
+                if field in enabled_fields
+            ]
+            prompt_configs: dict[str, PromptConfig] = {}
+            missing_prompt_fields: list[str] = []
+            for field in enabled_fields:
+                prompt_config = self._get_prompt_config(
+                    db,
+                    category_id=category_id,
+                    prompt_type=field,
+                )
+                if not prompt_config or not (prompt_config.prompt or "").strip():
+                    missing_prompt_fields.append(
+                        self.INTERPRETATION_FIELD_LABELS.get(field, field)
+                    )
+                    continue
+                prompt_configs[field] = prompt_config
+
+            if missing_prompt_fields:
+                self._mark_interpretation_fields_failed(
+                    analysis,
+                    options,
+                    "未配置文章解读任务要求：" + "、".join(missing_prompt_fields),
+                    force_tagging=force_tagging,
+                )
+                db.commit()
+                raise TaskConfigError(
+                    "未配置文章解读任务要求：" + "、".join(missing_prompt_fields)
+                )
+
+            primary_prompt_type = prompt_type_priority[0] if prompt_type_priority else None
+            primary_prompt_config = (
+                prompt_configs.get(primary_prompt_type) if primary_prompt_type else None
+            )
+            default_config = (
+                self.get_ai_config(db, category_id, prompt_type=primary_prompt_type)
+                if primary_prompt_type
+                else None
+            )
+
+            if model_config_id:
+                model_config = (
+                    db.query(ModelAPIConfig)
+                    .filter(
+                        ModelAPIConfig.id == model_config_id,
+                        ModelAPIConfig.is_enabled == True,
+                    )
+                    .first()
+                )
+                if not model_config:
+                    raise TaskConfigError("指定模型配置不存在或已禁用")
+                self._assert_general_model(model_config)
+                interpretation_config = {
+                    "base_url": model_config.base_url,
+                    "api_key": model_config.api_key,
+                    "model_name": model_config.model_name,
+                    "model_api_config_id": model_config.id,
+                    "api_type": model_config.api_type or "chat_completions",
+                    "price_input_per_1k": model_config.price_input_per_1k,
+                    "price_output_per_1k": model_config.price_output_per_1k,
+                    "currency": model_config.currency,
+                    "parameters": build_parameters(primary_prompt_config)
+                    if primary_prompt_config
+                    else None,
+                }
+
+            if not interpretation_config:
+                interpretation_config = default_config
+
+            if not interpretation_config:
+                self._mark_interpretation_fields_failed(
+                    analysis,
+                    options,
+                    "未配置AI服务，请先在配置页面设置AI参数",
+                    force_tagging=force_tagging,
+                )
+                db.commit()
+                raise TaskConfigError("未配置AI服务，请先在配置页面设置AI参数")
+
+            categories = db.query(Category).order_by(Category.sort_order).all()
+            categories_payload = "\n".join(
+                [
+                    f"- {category.id} | {category.name} | {category.description or ''}".strip()
+                    for category in categories
+                ]
+            )
+            category_name = article.category.name if article.category else ""
+            prompt = self._build_interpretation_prompt(
+                article=article,
+                categories_payload=categories_payload,
+                category_name=category_name,
+                options=options,
+                instructions={
+                    field: prompt_config.prompt
+                    for field, prompt_config in prompt_configs.items()
+                },
+            )
+            parameters = interpretation_config.get("parameters") or {}
+            if not parameters and primary_prompt_config:
+                parameters = build_parameters(primary_prompt_config)
+            max_tokens = self._calculate_interpretation_max_tokens(options, parameters)
+            parameters.pop("max_tokens", None)
+            parameters.pop("system_prompt", None)
+            parameters = self._merge_parameters_with_contract(
+                parameters,
+                self._build_interpretation_output_contract(enabled_fields),
+            )
+            ai_client = self.create_ai_client(interpretation_config)
+            pricing = {
+                "model_api_config_id": interpretation_config.get("model_api_config_id"),
+                "price_input_per_1k": interpretation_config.get("price_input_per_1k"),
+                "price_output_per_1k": interpretation_config.get("price_output_per_1k"),
+                "currency": interpretation_config.get("currency"),
+            }
+
+            try:
+                result = await self.ai_invocation_service.invoke_generation(
+                    db=db,
+                    api_type=interpretation_config.get("api_type") or "chat_completions",
+                    model_name=interpretation_config["model_name"],
+                    base_url=interpretation_config["base_url"],
+                    api_key=interpretation_config["api_key"],
+                    system_prompt=parameters.get("system_prompt"),
+                    user_prompt=prompt.replace("{content}", source_content)
+                    if "{content}" in prompt
+                    else f"{prompt}\n\n{source_content}",
+                    article_id=article_id,
+                    task_type="process_article_interpretation",
+                    content_type="interpretation",
+                    task_id=self.current_task_id,
+                    client=ai_client,
+                    content=source_content,
+                    prompt=prompt,
+                    parameters=parameters,
+                    max_tokens=max_tokens,
+                    request_context={
+                        "parameters": parameters,
+                        "post_process_options": options,
+                        "max_tokens": max_tokens,
+                    },
+                )
+                raw_content = result.get("content") if isinstance(result, dict) else result
+                parsed_result = self._parse_interpretation_result(
+                    raw_content,
+                    enabled_fields=enabled_fields,
+                )
+                field_statuses = self._apply_interpretation_result(
+                    db,
+                    article,
+                    analysis,
+                    parsed_result,
+                    options,
+                    source_task_id=self.current_task_id,
+                    source_model_config_id=interpretation_config.get(
+                        "model_api_config_id"
+                    ),
+                    source_prompt_config_id={
+                        field: prompt_config.id
+                        for field, prompt_config in prompt_configs.items()
+                    },
+                    force_tagging=force_tagging,
+                )
+                response_payload = (
+                    result.get("response_payload") if isinstance(result, dict) else None
+                )
+                if isinstance(response_payload, dict):
+                    response_payload = {
+                        **response_payload,
+                        "field_statuses": field_statuses,
+                        "interpretation_status": analysis.interpretation_status,
+                    }
+                else:
+                    response_payload = {
+                        "raw_response_payload": response_payload,
+                        "field_statuses": field_statuses,
+                        "interpretation_status": analysis.interpretation_status,
+                    }
+                usage_log = self._log_ai_usage(
+                    db,
+                    model_config_id=pricing.get("model_api_config_id"),
+                    article_id=article_id,
+                    task_type="process_article_interpretation",
+                    content_type="interpretation",
+                    usage=result.get("usage") if isinstance(result, dict) else None,
+                    latency_ms=result.get("latency_ms") if isinstance(result, dict) else None,
+                    status="completed",
+                    error_message=None,
+                    price_input_per_1k=pricing.get("price_input_per_1k"),
+                    price_output_per_1k=pricing.get("price_output_per_1k"),
+                    currency=pricing.get("currency"),
+                    request_payload=result.get("request_payload")
+                    if isinstance(result, dict)
+                    else None,
+                    response_payload=response_payload,
+                )
+                self.ai_call_session_service.create_session(
+                    db,
+                    usage_log_id=usage_log.id,
+                    task_id=self.current_task_id,
+                    article_id=article_id,
+                    task_type="process_article_interpretation",
+                    content_type="interpretation",
+                    session_info=result.get("session_info") if isinstance(result, dict) else {},
+                )
+                if field_statuses.get("summary") == "completed":
+                    self._enqueue_summary_completed_hooks(db, article_id)
+            except asyncio.TimeoutError as exc:
+                self._log_ai_usage(
+                    db,
+                    model_config_id=pricing.get("model_api_config_id"),
+                    article_id=article_id,
+                    task_type="process_article_interpretation",
+                    content_type="interpretation",
+                    usage=None,
+                    latency_ms=None,
+                    status="failed",
+                    error_message="AI生成超时，请稍后重试",
+                    price_input_per_1k=pricing.get("price_input_per_1k"),
+                    price_output_per_1k=pricing.get("price_output_per_1k"),
+                    currency=pricing.get("currency"),
+                )
+                self._mark_interpretation_fields_failed(
+                    analysis,
+                    options,
+                    "AI生成超时，请稍后重试",
+                    force_tagging=force_tagging,
+                )
+                db.commit()
+                raise TaskTimeoutError("AI生成超时，请稍后重试") from exc
+            except Exception as exc:
+                self._log_ai_usage(
+                    db,
+                    model_config_id=pricing.get("model_api_config_id"),
+                    article_id=article_id,
+                    task_type="process_article_interpretation",
+                    content_type="interpretation",
+                    usage=None,
+                    latency_ms=None,
+                    status="failed",
+                    error_message=str(exc),
+                    price_input_per_1k=pricing.get("price_input_per_1k"),
+                    price_output_per_1k=pricing.get("price_output_per_1k"),
+                    currency=pricing.get("currency"),
+                )
+                self._mark_interpretation_fields_failed(
+                    analysis,
+                    options,
+                    str(exc),
+                    force_tagging=force_tagging,
+                )
+                db.commit()
+                if isinstance(exc, (TaskConfigError, TaskDataError, TaskExternalError)):
+                    raise
+                raise TaskExternalError(str(exc)) from exc
+
+            effective_category_id = article.category_id or category_id
+            if (
+                options.get("translation")
+                and article.content_md
+                and is_english_content(article.content_md)
+            ):
+                article.translation_status = "pending"
+                article.translation_error = None
+                article.updated_at = now_str()
+                db.commit()
+                self._enqueue_task(
+                    db,
+                    task_type="process_article_translation",
+                    article_id=article_id,
+                    content_type="translation",
+                    payload={"category_id": effective_category_id},
+                )
+            else:
+                article.translation_status = "skipped"
+                article.translation_error = None
+                self._update_article_completed_if_ready(db, article, analysis)
+                db.commit()
+        finally:
+            db.close()
+
     async def process_article_classification(
         self,
         article_id: str,
@@ -2473,10 +3393,13 @@ class ArticleAIPipelineService:
                         for category in categories
                     ]
                 )
-                if "{categories}" in prompt:
-                    prompt = prompt.replace("{categories}", categories_payload)
-                else:
-                    prompt = f"{prompt}\n\n分类列表：\n{categories_payload}"
+                prompt = self._build_article_task_prompt(
+                    prompt,
+                    "classification",
+                    article=article,
+                    categories_payload=categories_payload,
+                    content_placeholder=True,
+                )
                 parameters = self._merge_protocol_parameters(
                     "classification",
                     classification_config.get("parameters"),
@@ -2759,10 +3682,13 @@ class ArticleAIPipelineService:
                 return
 
             category_name = article.category.name if article.category else ""
-            if "{category_name}" in prompt:
-                prompt = prompt.replace("{category_name}", category_name)
-            elif category_name:
-                prompt = f"{prompt}\n\n参考分类：{category_name}"
+            prompt = self._build_article_task_prompt(
+                prompt,
+                "tagging",
+                article=article,
+                category_name=category_name,
+                content_placeholder=True,
+            )
             parameters = self._merge_protocol_parameters(
                 "tagging",
                 tagging_config.get("parameters"),
@@ -2989,6 +3915,7 @@ class ArticleAIPipelineService:
                 article.translation_error = "未配置翻译提示词，请先在配置页面设置"
                 db.commit()
                 return
+            trans_prompt = self._build_translation_prompt(trans_prompt)
 
             trans_client = self.create_ai_client(ai_config)
             parameters = ai_config.get("parameters") or {}
@@ -3352,6 +4279,11 @@ class ArticleAIPipelineService:
                 article.ai_analysis.updated_at = now_str()
                 db.commit()
                 return
+            prompt = self._build_article_task_prompt(
+                prompt,
+                content_type,
+                article=article,
+            )
             parameters = self._merge_protocol_parameters(content_type, parameters)
             pricing = {
                 "model_api_config_id": ai_config.get("model_api_config_id"),
@@ -3372,9 +4304,7 @@ class ArticleAIPipelineService:
                     base_url=ai_config["base_url"],
                     api_key=ai_config["api_key"],
                     system_prompt=parameters.get("system_prompt"),
-                    user_prompt=prompt.replace("{content}", article.content_md)
-                    if "{content}" in (prompt or "")
-                    else f"{prompt}\n\n{article.content_md}",
+                    user_prompt=prompt,
                     article_id=article_id,
                     task_type="process_ai_content",
                     content_type=content_type,
@@ -3422,6 +4352,9 @@ class ArticleAIPipelineService:
                         result
                     )
                     article.ai_analysis.outline_status = "completed"
+                elif content_type == "quotes":
+                    article.ai_analysis.quotes = self._normalize_quotes_markdown(result)
+                    article.ai_analysis.quotes_status = "completed"
                 else:
                     setattr(article.ai_analysis, content_type, result)
                     setattr(article.ai_analysis, f"{content_type}_status", "completed")
@@ -3440,13 +4373,7 @@ class ArticleAIPipelineService:
                 if content_type == "summary":
                     summary_text = (result or "").strip()
                     if summary_text:
-                        if ArticleEmbeddingService().has_available_remote_config(db):
-                            self._enqueue_task(
-                                db,
-                                task_type="process_article_embedding",
-                                article_id=article_id,
-                                content_type="embedding",
-                            )
+                        self._enqueue_summary_completed_hooks(db, article_id)
             except asyncio.TimeoutError as exc:
                 self._log_ai_usage(
                     db,

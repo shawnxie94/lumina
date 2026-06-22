@@ -72,7 +72,7 @@ class ArticleCommandService:
                 "quotes": False,
                 "tagging": False,
                 "translation": False,
-            }
+        }
         requested = article_data.get("post_process_options")
         if isinstance(requested, dict):
             return {
@@ -231,6 +231,23 @@ class ArticleCommandService:
                     "strategy": "auto",
                     "chunk_cursor": 0,
                 },
+            )
+            return
+
+        interpretation_fields = (
+            "classification",
+            "tagging",
+            "summary",
+            "outline",
+            "quotes",
+        )
+        if any(options.get(field) for field in interpretation_fields):
+            self.ai_task_service.enqueue_task(
+                db,
+                task_type="process_article_interpretation",
+                article_id=article.id,
+                content_type="interpretation",
+                payload=payload,
             )
             return
 

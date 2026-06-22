@@ -434,6 +434,9 @@ export interface ArticleDetail extends Article {
 			quotes_current_version_id?: string | null;
 			quotes_current_version_number?: number | null;
 			quotes_has_history?: boolean;
+			interpretation_status?: string | null;
+			interpretation_error?: string | null;
+			classification_status?: string | null;
 			tagging_status: string | null;
 		tagging_manual_override?: boolean | null;
 		error_message?: string | null;
@@ -1199,6 +1202,24 @@ export const articleApi = {
 
 	regenerateArticleTags: async (id: string) => {
 		const response = await api.post(`/api/articles/${id}/tags/regenerate`);
+		return response.data;
+	},
+
+	regenerateArticleInterpretation: async (
+		id: string,
+		modelConfigId?: string,
+		promptConfigId?: string,
+	) => {
+		const response = await api.post(
+			`/api/articles/${id}/interpretation/regenerate`,
+			null,
+			{
+				params: {
+					model_config_id: modelConfigId || undefined,
+					prompt_config_id: promptConfigId || undefined,
+				},
+			},
+		);
 		return response.data;
 	},
 

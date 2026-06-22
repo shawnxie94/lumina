@@ -149,6 +149,100 @@ def test_default_ai_strategy_migration_enables_default_toggles(tmp_path):
         engine.dispose()
 
 
+def test_article_interpretation_bundle_migration_adds_columns_without_user_prompt(
+    tmp_path,
+):
+    db_path = tmp_path / "migration-article-interpretation.db"
+    engine = create_engine(
+        f"sqlite:///{db_path}",
+        connect_args={"check_same_thread": False},
+    )
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                CREATE TABLE admin_settings (
+                    id INTEGER NOT NULL PRIMARY KEY,
+                    password_hash VARCHAR,
+                    jwt_secret VARCHAR
+                )
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                INSERT INTO admin_settings (id, password_hash, jwt_secret)
+                VALUES (1, 'hash', 'secret')
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                CREATE TABLE ai_analyses (
+                    id VARCHAR NOT NULL PRIMARY KEY,
+                    article_id VARCHAR NOT NULL,
+                    summary TEXT,
+                    summary_status VARCHAR,
+                    updated_at VARCHAR
+                )
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                CREATE TABLE prompt_configs (
+                    id VARCHAR NOT NULL PRIMARY KEY,
+                    name VARCHAR NOT NULL,
+                    category_id VARCHAR,
+                    type VARCHAR NOT NULL,
+                    prompt TEXT NOT NULL,
+                    system_prompt TEXT,
+                    temperature FLOAT,
+                    max_tokens INTEGER,
+                    top_p FLOAT,
+                    chunk_size_tokens INTEGER,
+                    chunk_overlap_tokens INTEGER,
+                    max_continue_rounds INTEGER,
+                    model_api_config_id VARCHAR,
+                    is_enabled BOOLEAN,
+                    is_default BOOLEAN,
+                    created_at VARCHAR,
+                    updated_at VARCHAR
+                )
+                """
+            )
+        )
+
+    backend_dir = Path(__file__).resolve().parents[3]
+    config = Config(str(backend_dir / "alembic.ini"))
+    config.set_main_option("sqlalchemy.url", f"sqlite:///{db_path}")
+    config.attributes["database_url_override"] = f"sqlite:///{db_path}"
+    command.stamp(config, "20260413_0023")
+    command.upgrade(config, "head")
+
+    with engine.begin() as conn:
+        ai_columns = {
+            row[1]
+            for row in conn.execute(text("PRAGMA table_info(ai_analyses)")).all()
+        }
+        interpretation_prompt_count = conn.execute(
+            text(
+                """
+                SELECT COUNT(*)
+                FROM prompt_configs
+                WHERE type = 'interpretation'
+                """
+            )
+        ).scalar_one()
+
+    assert {"interpretation_status", "interpretation_error"}.issubset(ai_columns)
+    assert interpretation_prompt_count == 0
+    engine.dispose()
+
+
 def test_prompt_protocol_text_migration_updates_existing_builtin_prompts(tmp_path):
     db_path = tmp_path / "migration-prompts.db"
     engine = create_engine(
@@ -289,6 +383,162 @@ def test_prompt_protocol_text_migration_keeps_user_modified_builtin_prompts(tmp_
 
         assert row.prompt == custom_prompt
         assert row.system_prompt == custom_system_prompt
+    finally:
+        session.close()
+        Base.metadata.drop_all(bind=engine)
+        engine.dispose()
+
+
+def test_prompt_task_instruction_migration_updates_only_unchanged_defaults(tmp_path):
+    db_path = tmp_path / "migration-task-instruction-prompts.db"
+    engine = create_engine(
+        f"sqlite:///{db_path}",
+        connect_args={"check_same_thread": False},
+    )
+    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    Base.metadata.create_all(bind=engine)
+    session = SessionLocal()
+    try:
+        custom_prompt = "用户已经改过的摘要提示词，不能覆盖。"
+        session.add_all(
+            [
+                PromptConfig(
+                    id=str(uuid.uuid4()),
+                    name="默认-快读摘要",
+                    type="summary",
+                    prompt="""为提供的文本创作一份“快读摘要”，旨在让读者在30秒内掌握核心情报。
+
+要求：
+1) 极简主义：剔除背景铺垫、案例细节、营销话术及修饰性词汇，直奔主题。
+2) 内容密度：必须包含核心主体、关键动作/事件、最终影响/结论。
+3) 篇幅：严格控制在50-150字之间。
+
+待摘要内容：
+{content}""",
+                    system_prompt="你是一名资深内容分析师，擅长用最极简的语言精准捕捉文章灵魂。输出必须为中文、客观、单段长句（可用逗号、句号，禁止分段/换行），禁止任何列表符号（- * 1.等），禁止出现“这篇文章讲了/摘要如下”等前置废话。",
+                    is_enabled=True,
+                    is_default=True,
+                    created_at=now_str(),
+                    updated_at=now_str(),
+                ),
+                PromptConfig(
+                    id=str(uuid.uuid4()),
+                    name="默认-金句",
+                    type="quotes",
+                    prompt="""请阅读提供的文本内容，从中筛选并提炼出最具有传播力、深度或启发性的金句。
+
+要求：
+1) 标准：深刻性、共鸣感、精炼性。
+2) 拒绝平庸：不要事实陈述句，选择观点句/结论句/修辞优美的句子。
+3) 允许润色：可在不改变原意下微调，使其更像独立名言。
+4) 多样化：覆盖不同维度（趋势判断/价值坚守/行动号召等）。
+
+输出格式：
+- 使用无序列表（-），每句单独一行
+- 数量 3-5 条
+- 仅输出金句列表，不要解释
+
+待提炼内容：
+{content}""",
+                    system_prompt="你是一名资深文案金句捕手，擅长从长篇内容中提炼传播力强的金句。输出必须为中文，仅输出金句列表，不要任何解释或前后缀。",
+                    is_enabled=True,
+                    is_default=True,
+                    created_at=now_str(),
+                    updated_at=now_str(),
+                ),
+                PromptConfig(
+                    id=str(uuid.uuid4()),
+                    name="默认-中英翻译",
+                    type="translation",
+                    prompt="""将输入的英文文章翻译成中文。
+
+要求：
+1) 严格保留原始 Markdown 格式（标题、列表、链接、代码块、换行等）。
+2) 专业术语使用业界通用中文表达，必要时可在中文后保留英文原词。
+3) 语言风格地道、通顺，避免翻译腔。
+4) 只输出译文，不要前后缀。
+
+请直接开始翻译：
+{content}""",
+                    system_prompt="你是一位精通中英文互译的专业翻译官，擅长科技、文化及商业领域的信达雅翻译。必须仅输出中文译文，禁止任何额外话语。",
+                    is_enabled=True,
+                    is_default=True,
+                    created_at=now_str(),
+                    updated_at=now_str(),
+                ),
+                PromptConfig(
+                    id=str(uuid.uuid4()),
+                    name="默认-内容清洗",
+                    type="content_cleaning",
+                    prompt="""请将以下 HTML 内容清洗为结构化的 GFM Markdown。
+
+硬性要求：
+1) 仅输出 Markdown 正文，禁止任何解释/前后缀。
+2) 必须保留：标题层级、列表、引用、表格、链接、图片、代码块、段落换行。
+3) 必须去除：导航、广告、版权声明、推荐阅读、分享按钮、评论区、相关链接、页脚。
+4) 不要改写内容，只做结构化与去噪。
+5) 链接使用标准 Markdown 形式，图片使用 ![]()。
+6) 若内容中包含视频/音频，必须保留其链接；视频使用 [▶ 标题](URL)，音频使用 [🎧 标题](URL)。
+7) 若内容中包含数学公式，必须完整保留，不得改写；行内公式使用 $...$，独立公式使用 $$...$$。
+
+HTML：
+{content}""",
+                    system_prompt="你是严谨的内容清洗专家，专注输出稳定、结构化的 GFM Markdown。",
+                    is_enabled=True,
+                    is_default=True,
+                    created_at=now_str(),
+                    updated_at=now_str(),
+                ),
+                PromptConfig(
+                    id=str(uuid.uuid4()),
+                    name="默认-快读摘要",
+                    type="summary",
+                    prompt=custom_prompt,
+                    system_prompt="用户 system",
+                    is_enabled=True,
+                    is_default=False,
+                    created_at=now_str(),
+                    updated_at=now_str(),
+                ),
+            ]
+        )
+        session.commit()
+
+        backend_dir = Path(__file__).resolve().parents[3]
+        config = Config(str(backend_dir / "alembic.ini"))
+        config.set_main_option("sqlalchemy.url", f"sqlite:///{db_path}")
+        config.attributes["database_url_override"] = f"sqlite:///{db_path}"
+        command.stamp(config, "20260413_0023")
+        command.upgrade(config, "head")
+
+        rows = session.execute(
+            text(
+                """
+                SELECT name, type, prompt, system_prompt, is_default
+                FROM prompt_configs
+                WHERE type IN ('summary', 'quotes', 'translation', 'content_cleaning')
+                ORDER BY is_default DESC, type ASC
+                """
+            )
+        ).fetchall()
+        default_rows = [row for row in rows if row.is_default]
+        defaults_by_type = {row.type: row for row in default_rows}
+        custom_row = [row for row in rows if not row.is_default][0]
+
+        assert all("{content}" not in row.prompt for row in default_rows)
+        assert "输出必须为中文、客观、单段长句" in defaults_by_type["summary"].prompt
+        assert "输出必须为中文" not in defaults_by_type["summary"].system_prompt
+        assert "输出格式" not in defaults_by_type["quotes"].prompt
+        assert "单条生成" not in defaults_by_type["quotes"].prompt
+        assert "合并生成" not in defaults_by_type["quotes"].prompt
+        assert "仅输出金句列表" not in defaults_by_type["quotes"].system_prompt
+        assert "必须仅输出中文译文" in defaults_by_type["translation"].prompt
+        assert "必须仅输出中文译文" not in defaults_by_type["translation"].system_prompt
+        assert "HTML：" not in defaults_by_type["content_cleaning"].prompt
+        assert "运行时提供的 HTML 或 Markdown 内容" in defaults_by_type[
+            "content_cleaning"
+        ].prompt
+        assert custom_row.prompt == custom_prompt
     finally:
         session.close()
         Base.metadata.drop_all(bind=engine)
