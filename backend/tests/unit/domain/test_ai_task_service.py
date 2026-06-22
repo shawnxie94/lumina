@@ -6,7 +6,7 @@ import pytest
 
 import app.domain.ai_task_service as ai_task_module
 from app.domain.ai_task_service import AITaskService
-from models import AITask, AITaskEvent
+from models import AITask, AITaskEvent, Article, now_str
 from task_errors import TaskDataError
 
 
@@ -170,6 +170,50 @@ def test_finish_task_marks_failed_and_preserves_error_metadata(db_session, make_
     assert json.loads(event.details)["retryable"] is False
 
 
+def test_finish_translation_task_failure_updates_article_translation_status(
+    db_session,
+    make_task,
+    monkeypatch,
+):
+    service = AITaskService(worker_id="worker-test")
+    article = Article(
+        title="Long Article",
+        slug="long-article",
+        content_md="source",
+        content_trans="partial translation",
+        translation_status="processing",
+        translation_error=None,
+        created_at=now_str(),
+        updated_at=now_str(),
+    )
+    db_session.add(article)
+    db_session.commit()
+    db_session.refresh(article)
+    task = make_task(
+        article_id=article.id,
+        task_type="process_article_translation",
+        content_type="translation",
+        status="processing",
+        locked_by="worker-test",
+        locked_at="2026-01-01T00:00:00+00:00",
+    )
+    monkeypatch.setattr(ai_task_module, "get_now_iso", lambda: "2026-01-03T00:00:00+00:00")
+
+    service.finish_task(
+        db_session,
+        task,
+        success=False,
+        error="",
+        error_type="timeout",
+    )
+
+    db_session.refresh(article)
+    assert article.content_trans == "partial translation"
+    assert article.translation_status == "failed"
+    assert article.translation_error == "翻译超时，请稍后重试"
+    assert article.updated_at == "2026-01-03T00:00:00+00:00"
+
+
 def test_finish_task_ignores_processing_task_owned_by_other_worker(db_session, make_task):
     service = AITaskService(worker_id="worker-test")
     task = make_task(
@@ -212,6 +256,44 @@ def test_cleanup_stale_tasks_marks_timeout_failures(db_session, make_task, monke
         .count()
     )
     assert event_count == 1
+
+
+def test_cleanup_stale_translation_task_updates_article_translation_status(
+    db_session,
+    make_task,
+    monkeypatch,
+):
+    service = AITaskService(worker_id="worker-test")
+    article = Article(
+        title="Long Article",
+        slug="long-article",
+        content_md="source",
+        translation_status="processing",
+        translation_error=None,
+        created_at=now_str(),
+        updated_at=now_str(),
+    )
+    db_session.add(article)
+    db_session.commit()
+    db_session.refresh(article)
+    make_task(
+        article_id=article.id,
+        task_type="process_article_translation",
+        content_type="translation",
+        status="processing",
+        locked_by="worker-test",
+        locked_at="2026-01-01T00:00:00+00:00",
+    )
+    monkeypatch.setattr(ai_task_module, "get_now_iso", lambda: "2026-01-04T00:00:00+00:00")
+    monkeypatch.setattr(ai_task_module, "get_stale_lock_iso", lambda: "2026-01-02T00:00:00+00:00")
+
+    cleaned = service.cleanup_stale_tasks(db_session)
+
+    assert cleaned == 1
+    db_session.refresh(article)
+    assert article.translation_status == "failed"
+    assert article.translation_error == "任务超时或锁过期已重置"
+    assert article.updated_at == "2026-01-04T00:00:00+00:00"
 
 
 def test_require_article_id_raises_when_missing():

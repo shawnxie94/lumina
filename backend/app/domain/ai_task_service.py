@@ -8,7 +8,7 @@ from app.core.settings import get_settings
 from app.domain.article_ai_pipeline_service import ArticleAIPipelineService
 from app.domain.article_embedding_service import ArticleEmbeddingService
 from app.domain.review_service import ReviewService
-from models import AITask, now_str
+from models import AITask, Article, now_str
 from task_errors import TaskDataError
 from task_state import append_task_event, ensure_task_status_transition
 
@@ -31,6 +31,38 @@ class AITaskService:
         self.worker_id = worker_id
         self.embedding_service = ArticleEmbeddingService()
         self.review_service = ReviewService()
+
+    def _translation_failure_message(
+        self,
+        error: str | None,
+        error_type: str | None,
+    ) -> str:
+        message = (error or "").strip()
+        if message:
+            return message
+        if error_type == "timeout":
+            return "翻译超时，请稍后重试"
+        return "翻译失败，请稍后重试"
+
+    def _mark_translation_article_failed(
+        self,
+        db,
+        task: AITask,
+        *,
+        error: str | None,
+        error_type: str | None,
+        now_iso: str,
+    ) -> None:
+        if task.task_type != "process_article_translation" or not task.article_id:
+            return
+
+        article = db.query(Article).filter(Article.id == task.article_id).first()
+        if not article:
+            return
+
+        article.translation_status = "failed"
+        article.translation_error = self._translation_failure_message(error, error_type)
+        article.updated_at = now_iso
 
     def enqueue_task(
         self,
@@ -215,6 +247,14 @@ class AITaskService:
         )
 
         if affected:
+            if not success:
+                self._mark_translation_article_failed(
+                    db,
+                    task,
+                    error=error,
+                    error_type=error_type,
+                    now_iso=now_iso,
+                )
             append_task_event(
                 db,
                 task_id=task.id,
@@ -452,6 +492,13 @@ class AITaskService:
             task.last_error = "任务超时或锁过期已重置"
             task.last_error_type = "timeout"
             task.updated_at = now_iso
+            self._mark_translation_article_failed(
+                db,
+                task,
+                error=task.last_error,
+                error_type=task.last_error_type,
+                now_iso=now_iso,
+            )
             append_task_event(
                 db,
                 task_id=task.id,

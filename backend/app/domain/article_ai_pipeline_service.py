@@ -2328,7 +2328,8 @@ class ArticleAIPipelineService:
             return True, input_budget
         if strategy_value == "single":
             return False, input_budget
-        return estimated_tokens > input_budget, input_budget
+        chunk_threshold = min(input_budget, int(advanced_options["chunk_size_tokens"]))
+        return estimated_tokens > chunk_threshold, input_budget
 
     def _update_current_task_payload(self, db, **updates) -> None:
         if not self.current_task_id or not updates:
@@ -2351,6 +2352,62 @@ class ArticleAIPipelineService:
             )
             task.updated_at = now_str()
             db.commit()
+
+    def _enqueue_translation_chunk_continuation(
+        self,
+        db,
+        *,
+        article_id: str,
+        category_id: str | None,
+        model_config_id: str | None,
+        prompt_config_id: str | None,
+        strategy: str,
+        chunk_cursor: int,
+    ) -> str | None:
+        if not self.current_task_id:
+            return None
+
+        current_task = db.query(AITask).filter(AITask.id == self.current_task_id).first()
+        if current_task:
+            root_task_id = current_task.root_task_id or current_task.id
+            content_type = current_task.content_type
+        else:
+            root_task_id = self.current_task_id
+            content_type = "translation"
+
+        payload = {
+            "category_id": category_id,
+            "chunk_cursor": chunk_cursor,
+            "strategy": strategy,
+        }
+        if model_config_id:
+            payload["model_config_id"] = model_config_id
+        if prompt_config_id:
+            payload["prompt_config_id"] = prompt_config_id
+
+        next_task_id = self._enqueue_task(
+            db,
+            task_type="process_article_translation",
+            article_id=article_id,
+            content_type=content_type,
+            payload=payload,
+            parent_task_id=self.current_task_id,
+            root_task_id=root_task_id,
+        )
+        append_task_event(
+            db,
+            task_id=self.current_task_id,
+            event_type="chunk_continuation_enqueued",
+            from_status=None,
+            to_status=None,
+            message=f"已排队继续翻译第 {chunk_cursor + 1} 块",
+            details={
+                "next_task_id": next_task_id,
+                "chunk_cursor": chunk_cursor,
+            },
+        )
+        db.commit()
+        return next_task_id
 
     async def _clean_markdown_chunk(
         self,
@@ -4122,6 +4179,18 @@ class ArticleAIPipelineService:
                     article.updated_at = now_str()
                     db.commit()
                     self._update_current_task_payload(db, chunk_cursor=index + 1)
+                    if self.current_task_id and index + 1 < len(chunks):
+                        self._enqueue_translation_chunk_continuation(
+                            db,
+                            article_id=article_id,
+                            category_id=category_id,
+                            model_config_id=model_config_id
+                            or ai_config.get("model_api_config_id"),
+                            prompt_config_id=prompt_config_id,
+                            strategy=strategy_value,
+                            chunk_cursor=index + 1,
+                        )
+                        return
 
                 content_trans = self._finalize_markdown(assembled)
                 if not content_trans:

@@ -756,6 +756,46 @@ def test_build_cleaning_and_translation_prompts_append_runtime_content_block():
     assert service._build_translation_prompt("翻译：{content}") == "翻译：{content}"
 
 
+def test_auto_chunking_uses_configured_chunk_size_as_threshold():
+    service = ArticleAIPipelineService()
+    advanced_options = {
+        "context_window_tokens": 128000,
+        "reserve_output_tokens": 16000,
+        "chunk_size_tokens": 12000,
+        "chunk_overlap_tokens": 400,
+        "max_continue_rounds": 2,
+    }
+
+    should_chunk, input_budget = service._determine_cleaning_strategy(
+        estimated_tokens=33487,
+        strategy="auto",
+        advanced_options=advanced_options,
+    )
+
+    assert input_budget == 111000
+    assert should_chunk is True
+
+
+def test_auto_chunking_keeps_small_content_single_chunk():
+    service = ArticleAIPipelineService()
+    advanced_options = {
+        "context_window_tokens": 128000,
+        "reserve_output_tokens": 16000,
+        "chunk_size_tokens": 12000,
+        "chunk_overlap_tokens": 400,
+        "max_continue_rounds": 2,
+    }
+
+    should_chunk, input_budget = service._determine_cleaning_strategy(
+        estimated_tokens=8000,
+        strategy="auto",
+        advanced_options=advanced_options,
+    )
+
+    assert input_budget == 111000
+    assert should_chunk is False
+
+
 def test_normalize_quotes_markdown_outputs_unordered_list():
     service = ArticleAIPipelineService()
 
@@ -836,6 +876,144 @@ def test_process_article_translation_also_updates_translated_title(
         "翻译为中文。\n\n待翻译内容：\n{content}",
         "翻译为中文。\n\n待翻译内容：\n{content}",
     ]
+
+
+def test_process_article_translation_enqueues_next_chunk_task(
+    db_session,
+    monkeypatch,
+):
+    article = Article(
+        title="Long Article",
+        slug="long-article",
+        content_md="source",
+        created_at=now_str(),
+        updated_at=now_str(),
+    )
+    current_task = AITask(
+        id="task-translation-current",
+        article_id=None,
+        parent_task_id=None,
+        root_task_id="task-translation-root",
+        task_type="process_article_translation",
+        content_type="translation",
+        status="processing",
+        payload='{"category_id":"category-1","strategy":"auto","chunk_cursor":0}',
+        attempts=1,
+        max_attempts=1,
+        run_at=now_str(),
+        created_at=now_str(),
+        updated_at=now_str(),
+    )
+    db_session.add_all([article, current_task])
+    db_session.commit()
+    db_session.refresh(article)
+    article_id = article.id
+    current_task_id = current_task.id
+
+    enqueued = []
+
+    def fake_enqueue_task(db, **kwargs):
+        enqueued.append(kwargs)
+        return "task-translation-next"
+
+    service = ArticleAIPipelineService(
+        current_task_id=current_task.id,
+        enqueue_task_func=fake_enqueue_task,
+    )
+
+    class FakeClient:
+        def __init__(self):
+            self.contents = []
+
+        async def translate_to_chinese(self, content, **kwargs):
+            self.contents.append(content)
+            if content.startswith("# "):
+                return {"content": "# 长文标题", "finish_reason": "stop"}
+            return {"content": f"译文 {content}", "finish_reason": "stop"}
+
+    fake_client = FakeClient()
+    monkeypatch.setattr(article_ai_pipeline_module, "SessionLocal", lambda: db_session)
+    monkeypatch.setattr(
+        service,
+        "get_ai_config",
+        lambda *args, **kwargs: {
+            "base_url": "https://example.com",
+            "api_key": "test-key",
+            "model_name": "test-model",
+            "model_api_config_id": "model-default",
+            "price_input_per_1k": None,
+            "price_output_per_1k": None,
+            "currency": None,
+            "context_window_tokens": 45000,
+            "reserve_output_tokens": 16000,
+            "prompt_template": "翻译为中文。",
+            "parameters": {
+                "chunk_size_tokens": 12000,
+                "chunk_overlap_tokens": 400,
+                "max_continue_rounds": 2,
+            },
+        },
+    )
+    monkeypatch.setattr(service, "create_ai_client", lambda config: fake_client)
+    monkeypatch.setattr(
+        service,
+        "_estimate_tokens",
+        lambda text: 33487 if text == "source" else 100,
+    )
+    monkeypatch.setattr(
+        service,
+        "_chunk_markdown_content",
+        lambda content, chunk_size_tokens, overlap_tokens: [
+            "chunk-one",
+            "chunk-two",
+            "chunk-three",
+        ],
+    )
+
+    asyncio.run(
+        service.process_article_translation(
+            article_id=article_id,
+            category_id="category-1",
+            strategy="auto",
+        )
+    )
+
+    persisted_article = db_session.get(Article, article_id)
+    persisted_task = db_session.get(AITask, current_task_id)
+    assert persisted_article is not None
+    assert persisted_task is not None
+    assert fake_client.contents == ["# Long Article", "chunk-one"]
+    assert persisted_article.title_trans == "长文标题"
+    assert persisted_article.content_trans == "译文 chunk-one"
+    assert persisted_article.translation_status == "processing"
+    assert json.loads(persisted_task.payload)["chunk_cursor"] == 1
+    assert enqueued == [
+        {
+            "task_type": "process_article_translation",
+            "article_id": article_id,
+            "content_type": "translation",
+            "payload": {
+                "category_id": "category-1",
+                "chunk_cursor": 1,
+                "model_config_id": "model-default",
+                "strategy": "auto",
+            },
+            "parent_task_id": current_task_id,
+            "root_task_id": "task-translation-root",
+        }
+    ]
+    event = (
+        db_session.query(AITaskEvent)
+        .filter(
+            AITaskEvent.task_id == current_task_id,
+            AITaskEvent.event_type == "chunk_continuation_enqueued",
+        )
+        .one()
+    )
+    assert json.loads(event.details) == {
+        "next_task_id": "task-translation-next",
+        "chunk_cursor": 1,
+    }
 
 
 def test_get_prompt_output_contract_returns_structured_contracts():
