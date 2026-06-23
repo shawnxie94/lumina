@@ -1,7 +1,6 @@
 import "../../styles/popup.css";
 import { ApiClient } from "../../utils/api";
 import {
-	addToHistory,
 	clearHistory,
 	formatHistoryDate,
 	getHistory,
@@ -13,11 +12,9 @@ import {
 	logError,
 	setupGlobalErrorHandler,
 } from "../../utils/errorLogger";
-import { htmlToMarkdown } from "../../utils/markdownConverter";
 import { ensureContentScriptLoaded } from "../../utils/contentScript";
 import {
 	loadHtmlCleaningUrlPatterns,
-	matchesHtmlCleaningUrl,
 	saveHtmlCleaningUrlPatterns,
 } from "../../utils/htmlCleaningRules";
 import {
@@ -284,6 +281,11 @@ class PopupController {
 
 	async collectArticle() {
 		this.updateStatus("loading", this.t("正在连接页面..."));
+		const collectBtn = document.getElementById("collectBtn");
+		if (collectBtn) {
+			collectBtn.disabled = true;
+		}
+		let dispatched = false;
 
 		try {
 			const [tab] = await chrome.tabs.query({
@@ -330,142 +332,46 @@ class PopupController {
 			this.#selectionAvailable = hasSelection;
 			this.updateSelectionHint();
 
-			try {
-				const xArticleCheck = await chrome.tabs.sendMessage(tab.id, {
-					type: "CHECK_X_ARTICLE",
-				});
-				if (xArticleCheck?.shouldRedirect && xArticleCheck?.articleUrl) {
-					this.updateStatus(
-						"loading",
-						this.t("检测到 X 长文章，正在跳转到专注模式..."),
-					);
-					await chrome.tabs.update(tab.id, { url: xArticleCheck.articleUrl });
-					await new Promise((resolve) => setTimeout(resolve, 3000));
-					await ensureContentScriptLoaded(tab.id, {
-						onError: (error) =>
-							logError("popup", error, {
-								action: "injectContentScript",
-								tabId: tab.id,
-							}),
-					});
-				}
-			} catch (err) {
-				console.log("X article check failed:", err);
-			}
-
 			if (!hasSelection) {
 				try {
-					const currentTab = await chrome.tabs.get(tab.id);
-					const targetUrl = currentTab?.url || tab.url;
-					const forceHtmlCleaning = matchesHtmlCleaningUrl(
-						targetUrl,
-						await loadHtmlCleaningUrlPatterns(),
-					);
-					if (forceHtmlCleaning) {
+					const xArticleCheck = await chrome.tabs.sendMessage(tab.id, {
+						type: "CHECK_X_ARTICLE",
+					});
+					if (xArticleCheck?.shouldRedirect && xArticleCheck?.articleUrl) {
 						this.updateStatus(
 							"loading",
-							this.t("当前地址已配置为默认全文抓取，正在提取全文..."),
+							this.t("检测到 X 长文章，正在跳转到专注模式..."),
 						);
-					} else {
-						this.updateStatus("loading", this.t("正在解析链接..."));
-						const result = await this.#apiClient.reportArticleByUrl({
-							url: targetUrl,
+						await chrome.tabs.update(tab.id, { url: xArticleCheck.articleUrl });
+						await new Promise((resolve) => setTimeout(resolve, 3000));
+						await ensureContentScriptLoaded(tab.id, {
+							onError: (error) =>
+								logError("popup", error, {
+									action: "injectContentScript",
+									tabId: tab.id,
+								}),
 						});
-						const existing =
-							result?.code === "source_url_exists" ? result.existing : null;
-						const articleSlug = existing?.slug || result?.slug || result?.id;
-						const title =
-							existing?.title ||
-							currentTab?.title ||
-							tab.title ||
-							this.t("(无标题)");
-						await addToHistory({
-							articleId: result?.id
-								? String(result.id)
-								: String(existing?.id || articleSlug || ""),
-							slug: articleSlug ? String(articleSlug) : undefined,
-							title,
-							url: targetUrl,
-							domain: new URL(targetUrl).hostname,
-							topImage: undefined,
-						});
-						await this.loadHistory();
-						this.updateStatus(
-							"success",
-							existing ? this.t("文章已存在") : this.t("采集成功"),
-						);
-						if (articleSlug) {
-							const articleUrl = this.buildAdminPreviewArticleUrl(articleSlug);
-							chrome.tabs.create({ url: articleUrl });
-							window.close();
-						}
-						return;
 					}
-				} catch (error) {
-					console.warn(
-						"Backend URL extraction failed, falling back to DOM extraction:",
-						error,
-					);
-					logError("popup", error, {
-						action: "reportArticleByUrlFallback",
-						url: this.#currentTab?.url,
-					});
+				} catch (err) {
+					console.log("X article check failed:", err);
 				}
 			}
 
-			this.updateStatus(
-				"loading",
-				hasSelection ? this.t("正在提取选区...") : this.t("正在提取全文..."),
-			);
-
-			const extractedData = await chrome.tabs.sendMessage(tab.id, {
-				type: hasSelection ? "EXTRACT_SELECTION" : "EXTRACT_ARTICLE",
-				forceRefresh: !hasSelection,
-			});
-
-			if (!extractedData || !extractedData.content_html) {
-				this.updateStatus(
-					"error",
-					this.t("未能提取到文章内容，请确认页面已加载完成"),
-				);
-				return;
-			}
-
-			const contentMd = this.htmlToMarkdown(extractedData.content_html);
-
-			this.updateStatus("loading", this.t("正在上传内容..."));
-
-			const result = await this.#apiClient.createArticle({
-				title: extractedData.title || document.title,
-				content_html: extractedData.content_html,
-				content_md: contentMd,
-				source_url: extractedData.source_url || tab.url,
-				top_image: extractedData.top_image || null,
-				author: extractedData.author || "",
-				published_at: extractedData.published_at || this.getTodayDate(),
-				source_domain: extractedData.source_domain || new URL(tab.url).hostname,
-				content_structured: extractedData.content_structured || null,
-			});
-
-			this.updateStatus("success", this.t("采集成功"));
-			await this.clearErrorLogList();
-
-			const articleSlug = result?.slug || result?.id;
-			await addToHistory({
-				articleId: result?.id ? String(result.id) : String(articleSlug || ""),
-				slug: articleSlug ? String(articleSlug) : undefined,
-				title: extractedData.title || document.title || this.t("(无标题)"),
-				url: extractedData.source_url || tab.url,
-				domain: extractedData.source_domain || new URL(tab.url).hostname,
-				topImage: extractedData.top_image || undefined,
-			});
-			await this.loadHistory();
-
-			if (articleSlug) {
-				const articleUrl = this.buildAdminPreviewArticleUrl(articleSlug);
-				chrome.tabs.create({ url: articleUrl });
-				window.close();
-			}
+			chrome.runtime
+				.sendMessage({
+					type: "COLLECT_TAB_IN_BACKGROUND",
+					tabId: tab.id,
+					hasSelection,
+				})
+				.catch((error) => {
+					logError("popup", error, {
+						action: "dispatchBackgroundCollect",
+						url: this.#currentTab?.url,
+					});
+				});
+			dispatched = true;
+			this.updateStatus("success", this.t("已转入后台采集"));
+			setTimeout(() => window.close(), 500);
 		} catch (error) {
 			console.error("Failed to collect article:", error);
 			logError("popup", error, {
@@ -482,23 +388,10 @@ class PopupController {
 			}
 
 			this.updateStatus("error", this.t("采集失败，请重试"));
-		}
-	}
-
-	htmlToMarkdown(html) {
-		return htmlToMarkdown(html, { source: "popup", logError });
-	}
-
-	getTodayDate() {
-		try {
-			const now = new Date();
-			const year = now.getFullYear();
-			const month = String(now.getMonth() + 1).padStart(2, "0");
-			const day = String(now.getDate()).padStart(2, "0");
-			return `${year}-${month}-${day}`;
-		} catch (error) {
-			logError("popup", error, { action: "getTodayDate" });
-			return "";
+		} finally {
+			if (!dispatched && collectBtn) {
+				collectBtn.disabled = false;
+			}
 		}
 	}
 

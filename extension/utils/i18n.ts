@@ -55,6 +55,7 @@ const translations: Record<ExtensionLanguage, Record<string, string>> = {
 		"未能提取到文章内容，请确认页面已加载完成":
 			"Failed to extract content. Make sure the page is fully loaded.",
 		"正在上传内容...": "Uploading content...",
+		已转入后台采集: "Collecting in background...",
 		"正在解析链接...": "Parsing URL...",
 		采集成功: "Collected",
 		文章已存在: "Article already exists",

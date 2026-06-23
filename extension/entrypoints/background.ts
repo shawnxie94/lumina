@@ -77,6 +77,14 @@ const buildAdminPreviewArticleUrl = (
 ): string => `${frontendUrl}/article/${slug}`;
 
 export default defineBackground(() => {
+	type CollectArticleFromTabOptions = {
+		tab: chrome.tabs.Tab;
+		selectionText?: string;
+		linkUrl?: string;
+		allowContextLink?: boolean;
+		errorAction: string;
+	};
+
 	const resetCollectContextMenu = async (language: string): Promise<void> => {
 		const t = (key: string) => translate(language, key);
 		await new Promise<void>((resolve) => {
@@ -153,9 +161,13 @@ export default defineBackground(() => {
 		},
 	);
 
-	chrome.contextMenus.onClicked.addListener(async (info, tab) => {
-		if (info.menuItemId !== "collect-article" || !tab?.id) return;
-
+	const collectArticleFromTab = async ({
+		tab,
+		selectionText,
+		linkUrl: requestedLinkUrl,
+		allowContextLink = false,
+		errorAction,
+	}: CollectArticleFromTabOptions): Promise<void> => {
 		const language = await resolveLanguage();
 		const t = (key: string) => translate(language, key);
 		let reportUrlForError = "";
@@ -169,13 +181,16 @@ export default defineBackground(() => {
 			}
 
 			const hasSelection =
-				info.selectionText && info.selectionText.trim().length > 0;
-			const runtimeLinkUrl = await getContextLinkUrlFromContent(tab.id);
+				selectionText && selectionText.trim().length > 0;
+			const runtimeLinkUrl =
+				allowContextLink && typeof tab.id === "number"
+					? await getContextLinkUrlFromContent(tab.id)
+					: "";
 			const linkUrl = resolveHttpUrl(
-				info.linkUrl || runtimeLinkUrl,
+				requestedLinkUrl || runtimeLinkUrl,
 				tab.url || "",
 			);
-			const selectedUrl = extractSelectedUrl(info.selectionText);
+			const selectedUrl = extractSelectedUrl(selectionText);
 			const currentPageUrl = !hasSelection ? resolveHttpUrl(tab.url, "") : "";
 			const reportUrl = linkUrl || selectedUrl || currentPageUrl;
 			const canFallbackToDom = Boolean(
@@ -352,7 +367,7 @@ export default defineBackground(() => {
 				chrome.tabs.create({ url: articleUrl });
 			}
 		} catch (error) {
-			console.error("Context menu extraction failed:", error);
+			console.error("Article collection failed:", error);
 			if (error instanceof Error && error.message === "UNAUTHORIZED") {
 				chrome.notifications.create({
 					type: "basic",
@@ -378,7 +393,7 @@ export default defineBackground(() => {
 			logError(
 				"background",
 				error instanceof Error ? error : new Error(String(error)),
-				{ action: "contextMenuExtract", url: tab?.url },
+				{ action: errorAction, url: tab?.url },
 			);
 			chrome.notifications.create({
 				type: "basic",
@@ -387,5 +402,48 @@ export default defineBackground(() => {
 				message: t("提取内容时出错，请刷新页面后重试"),
 			});
 		}
+	};
+
+	chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+		if (message?.type !== "COLLECT_TAB_IN_BACKGROUND") return false;
+		if (typeof message.tabId !== "number") {
+			sendResponse({ success: false, error: "INVALID_TAB_ID" });
+			return false;
+		}
+
+		(async () => {
+			const tab = await chrome.tabs.get(message.tabId);
+			await collectArticleFromTab({
+				tab,
+				selectionText: message.hasSelection ? "__selection__" : "",
+				allowContextLink: false,
+				errorAction: "popupBackgroundCollect",
+			});
+			sendResponse({ success: true });
+		})().catch((error) => {
+			logError(
+				"background",
+				error instanceof Error ? error : new Error(String(error)),
+				{
+					action: "popupBackgroundCollectDispatch",
+					tabId: message.tabId,
+				},
+			);
+			sendResponse({ success: false, error: String(error) });
+		});
+
+		return true;
+	});
+
+	chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+		if (info.menuItemId !== "collect-article" || !tab?.id) return;
+
+		await collectArticleFromTab({
+			tab,
+			selectionText: info.selectionText,
+			linkUrl: info.linkUrl,
+			allowContextLink: true,
+			errorAction: "contextMenuExtract",
+		});
 	});
 });

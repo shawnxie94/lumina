@@ -172,6 +172,16 @@ const hasPendingArticleJob = (article: ArticleDetail | null): boolean => {
 const hasAiTabContent = (content: string | null | undefined): boolean =>
 	Boolean(content?.trim());
 
+const canManuallyGenerateAIContent = (
+	status?: string | null,
+	content?: string | null,
+): boolean =>
+	Boolean(content?.trim()) ||
+	!status ||
+	status === "completed" ||
+	status === "failed" ||
+	status === "skipped";
+
 const normalizeQuotesMarkdown = (
 	content: string | null | undefined,
 ): string | null | undefined => {
@@ -690,7 +700,7 @@ function AIContentSection({
 	};
 
 	const showGenerateButton =
-		canEdit && (!status || status === "completed" || status === "failed");
+		canEdit && canManuallyGenerateAIContent(status, content);
 	const statusBadge = showStatus ? getStatusBadge() : null;
 
 	return (
@@ -2484,9 +2494,10 @@ export default function ArticleDetailPage({
 		: null;
 	const showActiveGenerateButton =
 		isAdmin &&
-		(!activeTabConfig?.status ||
-			activeTabConfig.status === "completed" ||
-			activeTabConfig.status === "failed");
+		canManuallyGenerateAIContent(
+			activeTabConfig?.status,
+			activeTabConfig?.content,
+		);
 	const showActiveCopyButton =
 		Boolean(activeTabConfig?.content) && activeTabConfig?.canCopy !== false;
 	const showActiveDeleteButton =
