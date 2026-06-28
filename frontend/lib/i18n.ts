@@ -46,6 +46,15 @@ const translations: Record<Language, Record<string | number, string>> = {
 		首页主按钮链接: "Primary button URL",
 		首页副按钮文案: "Secondary button text",
 		首页副按钮链接: "Secondary button URL",
+		"Header 自定义链接": "Header custom links",
+		"配置后会显示在顶部导航，支持站内路径或 http/https 外链":
+			"Configured links are shown in the top navigation. Supports internal paths or http/https URLs.",
+		添加链接: "Add link",
+		暂无自定义链接: "No custom links",
+		"链接名称，例如 AFF": "Link label, e.g. AFF",
+		"链接地址，例如 https://example.com/aff/":
+			"Link URL, e.g. https://example.com/aff/",
+		删除链接: "Delete link",
 		"请输入首页顶部标语（留空使用默认）": "Enter home badge text (leave empty for default)",
 		"请输入首页补充文案（留空使用默认）": "Enter home tagline (leave empty for default)",
 		"请输入按钮文案（留空使用默认）": "Enter button text (leave empty for default)",

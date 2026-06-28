@@ -16,6 +16,7 @@ const DEFAULT_BASIC_SETTINGS: BasicSettings = {
 	home_primary_button_url: "",
 	home_secondary_button_text: "",
 	home_secondary_button_url: "",
+	header_custom_links: [],
 };
 
 type LanguagePreference = "zh-CN" | "en" | null;

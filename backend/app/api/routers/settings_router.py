@@ -8,6 +8,7 @@ from app.core.dependencies import (
     build_basic_settings,
     ensure_nextauth_secret,
     get_admin_or_internal,
+    serialize_header_custom_links,
     validate_home_button_url,
 )
 from app.core.public_cache import (
@@ -166,6 +167,10 @@ async def update_basic_settings(
         admin.home_secondary_button_url = validate_home_button_url(
             payload.home_secondary_button_url,
             "首页副按钮链接",
+        )
+    if payload.header_custom_links is not None:
+        admin.header_custom_links = serialize_header_custom_links(
+            payload.header_custom_links,
         )
     admin.updated_at = now_str()
     db.commit()

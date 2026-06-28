@@ -52,6 +52,7 @@ import {
 	IconMoney,
 	IconNote,
 	IconPlug,
+	IconPlus,
 	IconRobot,
 	IconSettings,
 	IconRefresh,
@@ -886,6 +887,7 @@ export default function AdminPage() {
 		home_primary_button_url: "",
 		home_secondary_button_text: "",
 		home_secondary_button_url: "",
+		header_custom_links: [],
 	});
 	const [storageSettings, setStorageSettings] = useState<StorageSettings>({
 		media_storage_enabled: false,
@@ -1555,13 +1557,48 @@ export default function AdminPage() {
 		setBasicSettingsLoading(true);
 		try {
 			const data = await basicSettingsApi.getSettings();
-			setBasicSettingsForm(data);
+			setBasicSettingsForm({
+				...data,
+				header_custom_links: data.header_custom_links || [],
+			});
 		} catch (error) {
 			console.error("Failed to fetch basic settings:", error);
 			showToast(t("基础配置加载失败"), "error");
 		} finally {
 			setBasicSettingsLoading(false);
 		}
+	};
+
+	const handleAddHeaderCustomLink = () => {
+		setBasicSettingsForm((prev) => ({
+			...prev,
+			header_custom_links: [
+				...(prev.header_custom_links || []),
+				{ label: "", url: "" },
+			],
+		}));
+	};
+
+	const handleUpdateHeaderCustomLink = (
+		index: number,
+		field: "label" | "url",
+		value: string,
+	) => {
+		setBasicSettingsForm((prev) => ({
+			...prev,
+			header_custom_links: (prev.header_custom_links || []).map((item, itemIndex) =>
+				itemIndex === index ? { ...item, [field]: value } : item,
+			),
+		}));
+	};
+
+	const handleRemoveHeaderCustomLink = (index: number) => {
+		setBasicSettingsForm((prev) => ({
+			...prev,
+			header_custom_links: (prev.header_custom_links || []).filter(
+				(_, itemIndex) => itemIndex !== index,
+			),
+		}));
 	};
 
 	const handleSaveBasicSettings = async () => {
@@ -5027,6 +5064,83 @@ export default function AdminPage() {
 														]}
 													/>
 												</div>
+											</div>
+											<div className="space-y-3 border-t border-border pt-4">
+												<div className="flex flex-wrap items-center justify-between gap-3">
+													<div>
+														<div className="text-sm font-medium text-text-1">
+															{t("Header 自定义链接")}
+														</div>
+														<div className="mt-1 text-xs text-text-3">
+															{t(
+																"配置后会显示在顶部导航，支持站内路径或 http/https 外链",
+															)}
+														</div>
+													</div>
+													<Button
+														onClick={handleAddHeaderCustomLink}
+														variant="secondary"
+														size="sm"
+														disabled={
+															(basicSettingsForm.header_custom_links || [])
+																.length >= 8
+														}
+													>
+														<IconPlus className="mr-1.5 h-3.5 w-3.5" />
+														{t("添加链接")}
+													</Button>
+												</div>
+												{(basicSettingsForm.header_custom_links || []).length ===
+												0 ? (
+													<div className="text-sm text-text-3">
+														{t("暂无自定义链接")}
+													</div>
+												) : (
+													<div className="space-y-2">
+														{(basicSettingsForm.header_custom_links || []).map(
+															(item, index) => (
+																<div
+																	key={index}
+																	className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,180px)_minmax(0,1fr)_auto] md:items-center"
+																>
+																	<TextInput
+																		value={item.label}
+																		onChange={(e) =>
+																			handleUpdateHeaderCustomLink(
+																				index,
+																				"label",
+																				e.target.value,
+																			)
+																		}
+																		placeholder={t("链接名称，例如 AFF")}
+																	/>
+																	<TextInput
+																		value={item.url}
+																		onChange={(e) =>
+																			handleUpdateHeaderCustomLink(
+																				index,
+																				"url",
+																				e.target.value,
+																			)
+																		}
+																		placeholder={t(
+																			"链接地址，例如 https://example.com/aff/",
+																		)}
+																	/>
+																	<IconButton
+																		title={t("删除链接")}
+																		variant="danger"
+																		onClick={() =>
+																			handleRemoveHeaderCustomLink(index)
+																		}
+																	>
+																		<IconTrash className="h-4 w-4" />
+																	</IconButton>
+																</div>
+															),
+														)}
+													</div>
+												)}
 											</div>
 											<div className="flex items-center justify-between rounded-sm border border-border bg-surface p-4">
 												<div>

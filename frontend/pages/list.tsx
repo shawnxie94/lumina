@@ -363,6 +363,7 @@ export const getServerSideProps: GetServerSideProps<ListPageProps> = async ({ re
           home_primary_button_url: '',
           home_secondary_button_text: '',
           home_secondary_button_url: '',
+          header_custom_links: [],
         },
         initialArticles: [],
         initialCategories: [],

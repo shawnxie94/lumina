@@ -1,7 +1,8 @@
+import json
 import secrets
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials
@@ -26,7 +27,10 @@ DEFAULT_BASIC_SETTINGS = {
     "home_primary_button_url": "",
     "home_secondary_button_text": "",
     "home_secondary_button_url": "",
+    "header_custom_links": [],
 }
+
+HEADER_CUSTOM_LINKS_MAX = 8
 
 
 def is_internal_request(request: Request) -> bool:
@@ -64,7 +68,7 @@ def check_is_admin_or_internal(
 
 def build_basic_settings(admin: Optional[AdminSettings]) -> dict:
     if admin is None:
-        return DEFAULT_BASIC_SETTINGS.copy()
+        return {**DEFAULT_BASIC_SETTINGS, "header_custom_links": []}
     return {
         "default_language": admin.default_language
         or DEFAULT_BASIC_SETTINGS["default_language"],
@@ -79,6 +83,9 @@ def build_basic_settings(admin: Optional[AdminSettings]) -> dict:
         "home_primary_button_url": admin.home_primary_button_url or "",
         "home_secondary_button_text": admin.home_secondary_button_text or "",
         "home_secondary_button_url": admin.home_secondary_button_url or "",
+        "header_custom_links": parse_header_custom_links(
+            getattr(admin, "header_custom_links", None),
+        ),
     }
 
 
@@ -94,6 +101,66 @@ def validate_home_button_url(value: str, field_name: str) -> str:
         status_code=400,
         detail=f"{field_name}仅支持以 / 开头的站内路径或 http/https 外链地址",
     )
+
+
+def parse_header_custom_links(raw_value: str | None) -> list[dict[str, str]]:
+    if not raw_value:
+        return []
+    try:
+        parsed = json.loads(raw_value)
+    except (TypeError, ValueError):
+        return []
+    if not isinstance(parsed, list):
+        return []
+    links: list[dict[str, str]] = []
+    for item in parsed:
+        if not isinstance(item, dict):
+            continue
+        label = str(item.get("label") or "").strip()
+        url = str(item.get("url") or "").strip()
+        if not label or not url:
+            continue
+        links.append({"label": label, "url": url})
+    return links[:HEADER_CUSTOM_LINKS_MAX]
+
+
+def _read_link_field(item: Any, field: str) -> str:
+    if isinstance(item, dict):
+        return str(item.get(field) or "").strip()
+    return str(getattr(item, field, "") or "").strip()
+
+
+def serialize_header_custom_links(value: Any) -> str:
+    if not value:
+        return "[]"
+    if not isinstance(value, list):
+        raise HTTPException(status_code=400, detail="Header 自定义链接格式不正确")
+    if len(value) > HEADER_CUSTOM_LINKS_MAX:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Header 自定义链接最多支持 {HEADER_CUSTOM_LINKS_MAX} 条",
+        )
+    links: list[dict[str, str]] = []
+    for index, item in enumerate(value, start=1):
+        label = _read_link_field(item, "label")
+        url = _read_link_field(item, "url")
+        if not label and not url:
+            continue
+        if not label or not url:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Header 自定义链接第 {index} 条需同时填写名称和地址",
+            )
+        links.append(
+            {
+                "label": label,
+                "url": validate_home_button_url(
+                    url,
+                    f"Header 自定义链接第 {index} 条地址",
+                ),
+            },
+        )
+    return json.dumps(links, ensure_ascii=False)
 
 
 def normalize_date_bound(value: Optional[str], is_end: bool) -> Optional[str]:

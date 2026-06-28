@@ -27,6 +27,7 @@ def test_build_basic_settings_prefers_admin_values_and_fallbacks():
         home_primary_button_url="/list",
         home_secondary_button_text=None,
         home_secondary_button_url="https://example.com",
+        header_custom_links='[{"label": "AFF", "url": "https://example.com/aff/"}]',
     )
     result = dependencies.build_basic_settings(admin)
 
@@ -37,6 +38,9 @@ def test_build_basic_settings_prefers_admin_values_and_fallbacks():
     assert result["home_badge_text"] == "Badge"
     assert result["home_primary_button_url"] == "/list"
     assert result["home_secondary_button_url"] == "https://example.com"
+    assert result["header_custom_links"] == [
+        {"label": "AFF", "url": "https://example.com/aff/"}
+    ]
 
 
 def test_validate_home_button_url_allows_internal_and_http_links():
@@ -56,6 +60,20 @@ def test_validate_home_button_url_rejects_invalid_scheme():
         dependencies.validate_home_button_url("ftp://example.com", "home_primary_button_url")
     assert exc_info.value.status_code == 400
     assert "home_primary_button_url仅支持" in exc_info.value.detail
+
+
+def test_serialize_header_custom_links_validates_items():
+    result = dependencies.serialize_header_custom_links(
+        [{"label": "AFF", "url": "https://example.com/aff/"}]
+    )
+    assert result == '[{"label": "AFF", "url": "https://example.com/aff/"}]'
+
+    with pytest.raises(HTTPException) as exc_info:
+        dependencies.serialize_header_custom_links(
+            [{"label": "Bad", "url": "ftp://example.com"}]
+        )
+    assert exc_info.value.status_code == 400
+    assert "Header 自定义链接第 1 条地址仅支持" in exc_info.value.detail
 
 
 def test_normalize_date_bound_handles_date_iso_z_and_invalid_values():

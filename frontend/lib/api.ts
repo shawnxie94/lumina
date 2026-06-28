@@ -615,6 +615,12 @@ export interface BasicSettings {
 	home_primary_button_url: string;
 	home_secondary_button_text: string;
 	home_secondary_button_url: string;
+	header_custom_links: HeaderCustomLink[];
+}
+
+export interface HeaderCustomLink {
+	label: string;
+	url: string;
 }
 
 export type ReviewScheduleType = "weekly" | "monthly" | "custom_days";

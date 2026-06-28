@@ -44,6 +44,11 @@ class ExtractionSettingsUpdate(BaseModel):
     auto_translation_enabled: Optional[bool] = None
 
 
+class HeaderCustomLink(BaseModel):
+    label: str = ""
+    url: str = ""
+
+
 class BasicSettingsUpdate(BaseModel):
     default_language: Optional[str] = None
     site_name: Optional[str] = None
@@ -56,6 +61,7 @@ class BasicSettingsUpdate(BaseModel):
     home_primary_button_url: Optional[str] = None
     home_secondary_button_text: Optional[str] = None
     home_secondary_button_url: Optional[str] = None
+    header_custom_links: Optional[list[HeaderCustomLink]] = None
 
 
 class MediaIngestRequest(BaseModel):

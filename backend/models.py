@@ -693,6 +693,7 @@ class AdminSettings(Base):
     home_primary_button_url = Column(String, default="")
     home_secondary_button_text = Column(String, default="")
     home_secondary_button_url = Column(String, default="")
+    header_custom_links = Column(Text, default="[]")
     created_at = Column(String, default=now_str)
     updated_at = Column(String, default=now_str)
 

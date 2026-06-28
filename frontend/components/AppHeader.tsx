@@ -39,6 +39,8 @@ const getQueryValue = (value: string | string[] | undefined): string => {
   return value || '';
 };
 
+const isExternalHref = (href: string): boolean => /^https?:\/\//i.test(href);
+
 type ErrorTaskItem = {
   id: string;
   article_id: string | null;
@@ -369,6 +371,18 @@ export default function AppHeader({ hideRss, activeNav }: { hideRss?: boolean; a
   const isHomeRoute = activeNav === 'home' || (!activeNav && router.pathname === '/');
   const isFeedRoute = activeNav === 'feed' || (!activeNav && router.pathname === '/list');
   const isReviewRoute = activeNav === 'review' || (!activeNav && (router.pathname === '/reviews' || router.pathname === '/reviews/[slug]'));
+  const headerCustomLinks = useMemo(
+    () =>
+      (basicSettings.header_custom_links || [])
+        .map((item) => ({
+          label: item.label.trim(),
+          url: item.url.trim(),
+        }))
+        .filter((item) => item.label && item.url),
+    [basicSettings.header_custom_links],
+  );
+  const navLinkClass =
+    'px-3 py-1 rounded-sm transition text-text-2 hover:bg-muted hover:text-text-1';
   const handleOpenRss = useCallback(() => {
     if (typeof window === 'undefined') return;
     const targetUrl = isReviewRoute
@@ -418,6 +432,27 @@ export default function AppHeader({ hideRss, activeNav }: { hideRss?: boolean; a
               >
                 {t('回顾')}
               </Link>
+              {headerCustomLinks.map((item) =>
+                isExternalHref(item.url) ? (
+                  <a
+                    key={`${item.label}:${item.url}`}
+                    href={item.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={navLinkClass}
+                  >
+                    {item.label}
+                  </a>
+                ) : (
+                  <Link
+                    key={`${item.label}:${item.url}`}
+                    href={item.url}
+                    className={navLinkClass}
+                  >
+                    {item.label}
+                  </Link>
+                ),
+              )}
             </div>
           </div>
           <div className="flex items-center gap-2">
