@@ -875,6 +875,15 @@ const translations: Record<Language, Record<string | number, string>> = {
 		"支持单篇文章占位符 {{article_slug}}，可在正文中通过 /ref 插入引用。": "Supports per-article placeholder {{article_slug}}. Use /ref in the body to insert references.",
 		// 专栏相关
 		返回草稿: "Revert to draft",
+		已自动暂存: "Draft auto-saved",
+		发现未保存的本地草稿: "Unsaved local draft found",
+		"本地暂存于 {time}，是否恢复？": "Local draft saved at {time}. Restore it?",
+		恢复本地草稿: "Restore local draft",
+		丢弃本地草稿: "Discard local draft",
+		已恢复本地草稿: "Local draft restored",
+		已丢弃本地草稿: "Local draft discarded",
+		本地草稿已清除: "Local draft cleared",
+
 		删除后无法恢复确认继续吗: "Cannot recover after deletion. Confirm to continue?",
 		评论发布成功: "Comment posted successfully",
 		评论可见性更新失败: "Failed to update comment visibility",

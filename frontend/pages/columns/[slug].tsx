@@ -48,6 +48,16 @@ import FormField from "@/components/ui/FormField";
 import TextArea from "@/components/ui/TextArea";
 import TextInput from "@/components/ui/TextInput";
 import { useAuth } from "@/contexts/AuthContext";
+import {
+	buildColumnEditorDraftKey,
+	clearEditorDraft,
+	formatEditorDraftTime,
+	isColumnEditorDraftDirty,
+	isEditorDraftFresh,
+	readEditorDraft,
+	writeEditorDraft,
+	type ColumnEditorDraftPayload,
+} from "@/lib/editorDraft";
 import { useBasicSettings } from "@/contexts/BasicSettingsContext";
 import { useReading } from "@/contexts/ReadingContext";
 import {
@@ -501,6 +511,14 @@ export default function ReviewDetailPage({
 	);
 	const [topImage, setTopImage] = useState(initialReview.top_image || "");
 	const [isEditing, setIsEditing] = useState(false);
+	const [columnDraftHint, setColumnDraftHint] = useState<{
+		updatedAt: number;
+		payload: ColumnEditorDraftPayload;
+	} | null>(null);
+	const [columnDraftSavedAt, setColumnDraftSavedAt] = useState<number | null>(
+		null,
+	);
+	const columnDraftHydratedRef = useRef(false);
 	const [saving, setSaving] = useState(false);
 	const [publishing, setPublishing] = useState(false);
 	const [immersiveMode, setImmersiveMode] = useState(false);
@@ -981,15 +999,64 @@ export default function ReviewDetailPage({
 		setMarkdownContent(nextReview.markdown_content || "");
 	};
 
+
+	const buildColumnEditorBaseline = useCallback(
+		(source: ReviewIssue = review): ColumnEditorDraftPayload => ({
+			title: source.title || "",
+			publishedAt: toDateInputValue(source.published_at || source.created_at),
+			topImage: source.top_image || "",
+			markdownContent: source.markdown_content || "",
+		}),
+		[review],
+	);
+
+	const applyColumnEditorDraft = useCallback((draft: ColumnEditorDraftPayload) => {
+		setTitle(draft.title);
+		setPublishedAt(draft.publishedAt);
+		setTopImage(draft.topImage);
+		setMarkdownContent(draft.markdownContent);
+	}, []);
+
+	const clearColumnEditorDraftState = useCallback(() => {
+		clearEditorDraft(buildColumnEditorDraftKey(review.id));
+		setColumnDraftHint(null);
+		setColumnDraftSavedAt(null);
+	}, [review.id]);
+
 	const openEditMode = () => {
-		resetEditDraft(review);
+		const baseline = buildColumnEditorBaseline(review);
+		columnDraftHydratedRef.current = false;
+		setColumnDraftHint(null);
+		setColumnDraftSavedAt(null);
+		applyColumnEditorDraft(baseline);
+
+		const draftKey = buildColumnEditorDraftKey(review.id);
+		const stored = readEditorDraft<ColumnEditorDraftPayload>(draftKey);
+		if (
+			stored &&
+			isEditorDraftFresh(stored, { sourceUpdatedAt: review.updated_at }) &&
+			isColumnEditorDraftDirty(stored.payload, baseline)
+		) {
+			setColumnDraftHint({
+				updatedAt: stored.updatedAt,
+				payload: stored.payload,
+			});
+		} else if (stored && !isColumnEditorDraftDirty(stored.payload, baseline)) {
+			clearEditorDraft(draftKey);
+		}
+
 		setIsEditing(true);
+		requestAnimationFrame(() => {
+			columnDraftHydratedRef.current = true;
+		});
 	};
 
 	const closeEditMode = () => {
+		// Keep local draft for recovery; only reset the in-memory form.
 		resetEditDraft(review);
 		setShowReferenceInsertPanel(false);
 		setReferenceCommandRange(null);
+		setColumnDraftHint(null);
 		setIsEditing(false);
 	};
 
@@ -1242,6 +1309,68 @@ export default function ReviewDetailPage({
 		}
 	};
 
+
+	useEffect(() => {
+		if (!isEditing || !columnDraftHydratedRef.current) return;
+		const baseline = buildColumnEditorBaseline(review);
+		const draft: ColumnEditorDraftPayload = {
+			title,
+			publishedAt,
+			topImage,
+			markdownContent,
+		};
+		const draftKey = buildColumnEditorDraftKey(review.id);
+		if (!isColumnEditorDraftDirty(draft, baseline)) {
+			clearEditorDraft(draftKey);
+			setColumnDraftSavedAt(null);
+			return;
+		}
+		const timer = window.setTimeout(() => {
+			const written = writeEditorDraft(draftKey, draft, {
+				sourceUpdatedAt: review.updated_at,
+			});
+			if (written) {
+				setColumnDraftSavedAt(written.updatedAt);
+			}
+		}, 500);
+		return () => window.clearTimeout(timer);
+	}, [
+		buildColumnEditorBaseline,
+		isEditing,
+		markdownContent,
+		publishedAt,
+		review,
+		title,
+		topImage,
+	]);
+
+	useEffect(() => {
+		if (!isEditing) return;
+		const baseline = buildColumnEditorBaseline(review);
+		const draft: ColumnEditorDraftPayload = {
+			title,
+			publishedAt,
+			topImage,
+			markdownContent,
+		};
+		const dirty = isColumnEditorDraftDirty(draft, baseline);
+		const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+			if (!dirty) return;
+			event.preventDefault();
+			event.returnValue = "";
+		};
+		window.addEventListener("beforeunload", handleBeforeUnload);
+		return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+	}, [
+		buildColumnEditorBaseline,
+		isEditing,
+		markdownContent,
+		publishedAt,
+		review,
+		title,
+		topImage,
+	]);
+
 	const handleSave = async () => {
 		if (!review.id) return;
 		setSaving(true);
@@ -1253,6 +1382,7 @@ export default function ReviewDetailPage({
 				markdown_content: markdownContent,
 			});
 			setReview(next);
+			clearColumnEditorDraftState();
 			resetEditDraft(next);
 			setIsEditing(false);
 			showToast(t("专栏文章已保存"), "success");
@@ -1478,11 +1608,59 @@ export default function ReviewDetailPage({
 					<section className="overflow-hidden bg-surface">
 						<div className="border-b border-border px-5 py-3 sm:px-6">
 							<div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-								<div>
+								<div className="min-w-0 flex-1 space-y-2">
 									<h2 className="inline-flex items-center gap-2 text-lg font-semibold text-text-1">
 										<IconEdit className="h-4 w-4" />
 										<span>{t("编辑专栏文章")}</span>
 									</h2>
+									{(columnDraftHint || columnDraftSavedAt) ? (
+										<div className="rounded-sm border border-border bg-muted/60 px-3 py-2 text-sm text-text-2">
+											{columnDraftHint ? (
+												<div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+													<div>
+														<div className="font-medium text-text-1">{t("发现未保存的本地草稿")}</div>
+														<div className="text-xs text-text-3">
+															{t("本地暂存于 {time}，是否恢复？").replace(
+																"{time}",
+																formatEditorDraftTime(columnDraftHint.updatedAt, language),
+															)}
+														</div>
+													</div>
+													<div className="flex items-center gap-2">
+														<Button
+															variant="secondary"
+															size="sm"
+															onClick={() => {
+																clearColumnEditorDraftState();
+																showToast(t("已丢弃本地草稿"));
+															}}
+														>
+															{t("丢弃本地草稿")}
+														</Button>
+														<Button
+															variant="primary"
+															size="sm"
+															onClick={() => {
+																applyColumnEditorDraft(columnDraftHint.payload);
+																setColumnDraftSavedAt(columnDraftHint.updatedAt);
+																setColumnDraftHint(null);
+																showToast(t("已恢复本地草稿"));
+															}}
+														>
+															{t("恢复本地草稿")}
+														</Button>
+													</div>
+												</div>
+											) : (
+												<div className="text-xs text-text-3">
+													{t("已自动暂存")}
+													{columnDraftSavedAt
+														? ` · ${formatEditorDraftTime(columnDraftSavedAt, language)}`
+														: ""}
+												</div>
+											)}
+										</div>
+									) : null}
 								</div>
 								<div className="flex flex-wrap items-center gap-2">
 									<Button variant="secondary" onClick={closeEditMode} disabled={saving}>

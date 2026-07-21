@@ -85,6 +85,16 @@ import {
 	IconGlobe,
 } from "@/components/icons";
 import { useAuth } from "@/contexts/AuthContext";
+import {
+	buildArticleEditorDraftKey,
+	clearEditorDraft,
+	formatEditorDraftTime,
+	isArticleEditorDraftDirty,
+	isEditorDraftFresh,
+	readEditorDraft,
+	writeEditorDraft,
+	type ArticleEditorDraftPayload,
+} from "@/lib/editorDraft";
 import { useBasicSettings } from "@/contexts/BasicSettingsContext";
 import { useReading } from "@/contexts/ReadingContext";
 import { useI18n } from "@/lib/i18n";
@@ -654,7 +664,7 @@ function AIContentSection({
 	extraActions,
 	footerContent,
 }: AIContentSectionProps) {
-	const { t } = useI18n();
+	const { t, language } = useI18n();
 	const getStatusBadge = () => {
 		if (!status) return null;
 		const statusConfig: Record<
@@ -1161,6 +1171,14 @@ export default function ArticleDetailPage({
 	const [mediaStorageEnabled, setMediaStorageEnabled] = useState(false);
 	const [mediaStorageLoading, setMediaStorageLoading] = useState(false);
 	const [mediaUploading, setMediaUploading] = useState(false);
+	const [articleDraftHint, setArticleDraftHint] = useState<{
+		updatedAt: number;
+		payload: ArticleEditorDraftPayload;
+	} | null>(null);
+	const [articleDraftSavedAt, setArticleDraftSavedAt] = useState<number | null>(
+		null,
+	);
+	const articleDraftHydratedRef = useRef(false);
 
 	const [noteContent, setNoteContent] = useState("");
 	const [noteDraft, setNoteDraft] = useState("");
@@ -3708,26 +3726,189 @@ export default function ArticleDetailPage({
 		}
 	};
 
+
+	const buildArticleEditorBaseline = useCallback(
+		(mode: "original" | "translation"): ArticleEditorDraftPayload | null => {
+			if (!article) return null;
+			return {
+				mode,
+				title:
+					mode === "translation"
+						? article.title_trans || article.title || ""
+						: article.title || "",
+				author: article.author || "",
+				publishedAt: toDateInputValue(article.published_at),
+				categoryId: article.category?.id || "",
+				tagNames: article.tags.map((tag) => tag.name),
+				topImage: article.top_image || "",
+				content:
+					mode === "translation"
+						? article.content_trans || ""
+						: article.content_md || "",
+			};
+		},
+		[article],
+	);
+
+	const buildArticleEditorSourceStamp = useCallback(
+		(mode: "original" | "translation") => {
+			const baseline = buildArticleEditorBaseline(mode);
+			if (!baseline || !article) return null;
+			return [
+				article.id,
+				baseline.mode,
+				baseline.title,
+				baseline.author,
+				baseline.publishedAt,
+				baseline.categoryId,
+				baseline.tagNames.join("\u0001"),
+				baseline.topImage,
+				baseline.content,
+			].join("\u0002");
+		},
+		[article, buildArticleEditorBaseline],
+	);
+
+	const applyArticleEditorDraft = useCallback(
+		(draft: ArticleEditorDraftPayload) => {
+			setEditMode(draft.mode);
+			setEditTitle(draft.title);
+			setEditAuthor(draft.author);
+			setEditPublishedAt(draft.publishedAt);
+			setEditCategoryId(draft.categoryId);
+			setEditTagNames(draft.tagNames);
+			setEditTopImage(draft.topImage);
+			setEditContent(draft.content);
+		},
+		[],
+	);
+
+	const clearArticleEditorDraftState = useCallback(
+		(mode?: "original" | "translation") => {
+			const targetMode = mode || editMode;
+			if (article?.id) {
+				clearEditorDraft(buildArticleEditorDraftKey(article.id, targetMode));
+			}
+			setArticleDraftHint(null);
+			setArticleDraftSavedAt(null);
+		},
+		[article?.id, editMode],
+	);
+
 	const openEditModal = (mode: "original" | "translation") => {
 		if (!article) return;
-		setEditMode(mode);
-		setEditTitle(
-			mode === "translation"
-				? article.title_trans || article.title || ""
-				: article.title || "",
-		);
-		setEditAuthor(article.author || "");
-		setEditPublishedAt(toDateInputValue(article.published_at));
-		setEditCategoryId(article.category?.id || "");
-		setEditTagNames(article.tags.map((tag) => tag.name));
-		setEditTopImage(article.top_image || "");
-		setEditContent(
-			mode === "translation"
-				? article.content_trans || ""
-				: article.content_md || "",
-		);
+		const baseline = buildArticleEditorBaseline(mode);
+		if (!baseline) return;
+		articleDraftHydratedRef.current = false;
+		setArticleDraftHint(null);
+		setArticleDraftSavedAt(null);
+		applyArticleEditorDraft(baseline);
+
+		const draftKey = buildArticleEditorDraftKey(article.id, mode);
+		const stored = readEditorDraft<ArticleEditorDraftPayload>(draftKey);
+		if (
+			stored &&
+			isEditorDraftFresh(stored, {
+			sourceUpdatedAt: buildArticleEditorSourceStamp(mode),
+		}) &&
+			isArticleEditorDraftDirty(stored.payload, baseline)
+		) {
+			setArticleDraftHint({
+				updatedAt: stored.updatedAt,
+				payload: stored.payload,
+			});
+		} else if (stored && !isArticleEditorDraftDirty(stored.payload, baseline)) {
+			clearEditorDraft(draftKey);
+		}
+
 		setShowEditModal(true);
+		// Allow autosave after the initial open state settles.
+		requestAnimationFrame(() => {
+			articleDraftHydratedRef.current = true;
+		});
 	};
+
+
+	useEffect(() => {
+		if (!showEditModal || !article?.id || !articleDraftHydratedRef.current) {
+			return;
+		}
+		const baseline = buildArticleEditorBaseline(editMode);
+		if (!baseline) return;
+		const draft: ArticleEditorDraftPayload = {
+			mode: editMode,
+			title: editTitle,
+			author: editAuthor,
+			publishedAt: editPublishedAt,
+			categoryId: editCategoryId,
+			tagNames: editTagNames,
+			topImage: editTopImage,
+			content: editContent,
+		};
+		const draftKey = buildArticleEditorDraftKey(article.id, editMode);
+		if (!isArticleEditorDraftDirty(draft, baseline)) {
+			clearEditorDraft(draftKey);
+			setArticleDraftSavedAt(null);
+			return;
+		}
+		const timer = window.setTimeout(() => {
+			const written = writeEditorDraft(draftKey, draft, {
+				sourceUpdatedAt: buildArticleEditorSourceStamp(editMode),
+			});
+			if (written) {
+				setArticleDraftSavedAt(written.updatedAt);
+			}
+		}, 500);
+		return () => window.clearTimeout(timer);
+	}, [
+		article?.id,
+		buildArticleEditorBaseline,
+		buildArticleEditorSourceStamp,
+		editAuthor,
+		editCategoryId,
+		editContent,
+		editMode,
+		editPublishedAt,
+		editTagNames,
+		editTitle,
+		editTopImage,
+		showEditModal,
+	]);
+
+	useEffect(() => {
+		if (!showEditModal) return;
+		const baseline = buildArticleEditorBaseline(editMode);
+		if (!baseline) return;
+		const draft: ArticleEditorDraftPayload = {
+			mode: editMode,
+			title: editTitle,
+			author: editAuthor,
+			publishedAt: editPublishedAt,
+			categoryId: editCategoryId,
+			tagNames: editTagNames,
+			topImage: editTopImage,
+			content: editContent,
+		};
+		const dirty = isArticleEditorDraftDirty(draft, baseline);
+		const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+			if (!dirty) return;
+			event.preventDefault();
+			event.returnValue = "";
+		};
+		window.addEventListener("beforeunload", handleBeforeUnload);
+		return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+	}, [
+		buildArticleEditorBaseline,
+		editAuthor,
+		editCategoryId,
+		editContent,
+		editMode,
+		editPublishedAt,
+		editTagNames,
+		editTitle,
+		editTopImage,
+		showEditModal,
+	]);
 
 	const handleSaveEdit = async () => {
 		if (!id || !article) return;
@@ -3767,6 +3948,7 @@ export default function ArticleDetailPage({
 			}
 
 			await articleApi.updateArticle(id as string, updateData);
+			clearArticleEditorDraftState(editMode);
 			showToast(t("保存成功"));
 			setShowEditModal(false);
 			fetchArticle();
@@ -4665,10 +4847,61 @@ export default function ArticleDetailPage({
 				isOpen={showEditModal}
 				title={t("编辑文章")}
 				closeAriaLabel={t("关闭编辑弹窗")}
-				onClose={() => setShowEditModal(false)}
+				onClose={() => {
+					setShowEditModal(false);
+					setArticleDraftHint(null);
+				}}
 				onSave={handleSaveEdit}
 				topFields={(
 					<>
+						{(articleDraftHint || articleDraftSavedAt) && (
+							<div className="rounded-sm border border-border bg-muted/60 px-3 py-2 text-sm text-text-2">
+								{articleDraftHint ? (
+									<div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+										<div>
+											<div className="font-medium text-text-1">{t("发现未保存的本地草稿")}</div>
+											<div className="text-xs text-text-3">
+												{t("本地暂存于 {time}，是否恢复？").replace(
+													"{time}",
+													formatEditorDraftTime(articleDraftHint.updatedAt, language),
+												)}
+											</div>
+										</div>
+										<div className="flex items-center gap-2">
+											<Button
+												variant="secondary"
+												size="sm"
+												onClick={() => {
+													clearArticleEditorDraftState(editMode);
+													showToast(t("已丢弃本地草稿"));
+												}}
+											>
+												{t("丢弃本地草稿")}
+											</Button>
+											<Button
+												variant="primary"
+												size="sm"
+												onClick={() => {
+													applyArticleEditorDraft(articleDraftHint.payload);
+													setArticleDraftSavedAt(articleDraftHint.updatedAt);
+													setArticleDraftHint(null);
+													showToast(t("已恢复本地草稿"));
+												}}
+											>
+												{t("恢复本地草稿")}
+											</Button>
+										</div>
+									</div>
+								) : (
+								<div className="text-xs text-text-3">
+									{t("已自动暂存")}
+									{articleDraftSavedAt
+										? ` · ${formatEditorDraftTime(articleDraftSavedAt, language)}`
+										: ""}
+								</div>
+								)}
+							</div>
+						)}
 						<FormField label={t("标题")}>
 							<TextInput
 								type="text"
