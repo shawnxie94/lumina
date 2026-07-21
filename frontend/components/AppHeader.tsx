@@ -432,12 +432,6 @@ export default function AppHeader({ hideRss, activeNav }: { hideRss?: boolean; a
               >
                 {t('专栏')}
               </Link>
-              <Link
-                className={`px-3 py-1 rounded-sm transition ${
-                }`}
-              >
-                {t('图谱')}
-              </Link>
               {headerCustomLinks.map((item) =>
                 isExternalHref(item.url) ? (
                   <a
@@ -674,12 +668,6 @@ export default function AppHeader({ hideRss, activeNav }: { hideRss?: boolean; a
               }`}
             >
               {t('专栏')}
-            </Link>
-            <Link
-              className={`inline-flex lg:hidden h-8 items-center px-3 rounded-sm text-sm font-medium transition ${
-              }`}
-            >
-              {t('图谱')}
             </Link>
             {resolvedAdmin && (
               <Link
