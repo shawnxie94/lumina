@@ -1,7 +1,7 @@
 """column product cleanup: slug lock, drop windows, slim templates
 
 Revision ID: 20260721_0027
-Revises: 20260413_0026
+Revises: 20260413_0025
 Create Date: 2026-07-21 00:00:00
 
 Merges the previously unreleased local-only steps:
@@ -17,7 +17,7 @@ from sqlalchemy import inspect, text
 
 
 revision = "20260721_0027"
-down_revision = "20260413_0026"
+down_revision = "20260413_0025"
 branch_labels = None
 depends_on = None
 
