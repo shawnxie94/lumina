@@ -1,4 +1,9 @@
 import axios from "axios";
+import {
+	isAuthProbePath,
+	isCanceledRequestError,
+	isTransientAuthNetworkError,
+} from "@/lib/authSession";
 import { notificationStore } from "@/lib/notifications";
 
 declare global {
@@ -278,27 +283,33 @@ api.interceptors.response.use(
 	(error) => {
 		try {
 			if (typeof window !== "undefined") {
-				const status = error?.response?.status;
-				const detail =
-					error?.response?.data?.detail ||
-					error?.response?.data?.message ||
-					error?.message ||
-					localize("未知错误", "Unknown error");
 				const endpoint = error?.config?.url || "";
-				const method =
-					error?.config?.method?.toUpperCase() ||
-					localize("请求", "REQUEST");
-				notificationStore.add({
-					id: `api:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`,
-					title: localize("接口请求失败", "API request failed"),
-					message: `${method} ${endpoint} ${
-						status ? `(${status})` : ""
-					} ${detail}`.trim(),
-					level: "error",
-					source: "api",
-					category: localize("接口错误", "API error"),
-					createdAt: new Date().toISOString(),
-				});
+				const shouldSilenceAuthProbe =
+					isAuthProbePath(endpoint) &&
+					(isCanceledRequestError(error) ||
+						isTransientAuthNetworkError(error));
+				if (!shouldSilenceAuthProbe && !isCanceledRequestError(error)) {
+					const status = error?.response?.status;
+					const detail =
+						error?.response?.data?.detail ||
+						error?.response?.data?.message ||
+						error?.message ||
+						localize("未知错误", "Unknown error");
+					const method =
+						error?.config?.method?.toUpperCase() ||
+						localize("请求", "REQUEST");
+					notificationStore.add({
+						id: `api:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`,
+						title: localize("接口请求失败", "API request failed"),
+						message: `${method} ${endpoint} ${
+							status ? `(${status})` : ""
+						} ${detail}`.trim(),
+						level: "error",
+						source: "api",
+						category: localize("接口错误", "API error"),
+						createdAt: new Date().toISOString(),
+					});
+				}
 			}
 		} catch {
 			// ignore
@@ -329,8 +340,17 @@ export interface LoginResponse {
 export const authApi = {
 	/** 获取认证状态：是否已初始化管理员密码 */
 	getStatus: async (): Promise<AuthStatus> => {
-		const response = await api.get("/api/auth/status");
-		return response.data;
+		try {
+			const response = await api.get("/api/auth/status");
+			return response.data;
+		} catch (error) {
+			if (isTransientAuthNetworkError(error)) {
+				await sleep(200);
+				const retryResponse = await api.get("/api/auth/status");
+				return retryResponse.data;
+			}
+			throw error;
+		}
 	},
 
 	/** 首次设置管理员密码 */
@@ -347,8 +367,17 @@ export const authApi = {
 
 	/** 验证当前 token 是否有效 */
 	verify: async (): Promise<AuthVerifyResponse> => {
-		const response = await api.get("/api/auth/verify");
-		return response.data;
+		try {
+			const response = await api.get("/api/auth/verify");
+			return response.data;
+		} catch (error) {
+			if (isTransientAuthNetworkError(error)) {
+				await sleep(200);
+				const retryResponse = await api.get("/api/auth/verify");
+				return retryResponse.data;
+			}
+			throw error;
+		}
 	},
 
 	getExtensionToken: async (): Promise<LoginResponse> => {
