@@ -4846,6 +4846,51 @@ export default function ArticleDetailPage({
 			<ArticleSplitEditorModal
 				isOpen={showEditModal}
 				title={t("编辑文章")}
+				titleAddon={
+					articleDraftHint || articleDraftSavedAt ? (
+						<div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+							{articleDraftHint ? (
+								<>
+									<span className="min-w-0 text-xs text-text-3 sm:text-sm">
+										{t("发现未保存的本地草稿")}
+										{` · ${formatEditorDraftTime(articleDraftHint.updatedAt, language)}`}
+									</span>
+									<div className="flex items-center gap-2">
+										<Button
+											variant="secondary"
+											size="sm"
+											onClick={() => {
+												clearArticleEditorDraftState(editMode);
+												showToast(t("已丢弃本地草稿"));
+											}}
+										>
+											{t("丢弃本地草稿")}
+										</Button>
+										<Button
+											variant="primary"
+											size="sm"
+											onClick={() => {
+												applyArticleEditorDraft(articleDraftHint.payload);
+												setArticleDraftSavedAt(articleDraftHint.updatedAt);
+												setArticleDraftHint(null);
+												showToast(t("已恢复本地草稿"));
+											}}
+										>
+											{t("恢复本地草稿")}
+										</Button>
+									</div>
+								</>
+							) : (
+								<span className="text-xs text-text-3 sm:text-sm">
+									{t("已自动暂存")}
+									{articleDraftSavedAt
+										? ` · ${formatEditorDraftTime(articleDraftSavedAt, language)}`
+										: ""}
+								</span>
+							)}
+						</div>
+					) : null
+				}
 				closeAriaLabel={t("关闭编辑弹窗")}
 				onClose={() => {
 					setShowEditModal(false);
@@ -4854,54 +4899,6 @@ export default function ArticleDetailPage({
 				onSave={handleSaveEdit}
 				topFields={(
 					<>
-						{(articleDraftHint || articleDraftSavedAt) && (
-							<div className="rounded-sm border border-border bg-muted/60 px-3 py-2 text-sm text-text-2">
-								{articleDraftHint ? (
-									<div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-										<div>
-											<div className="font-medium text-text-1">{t("发现未保存的本地草稿")}</div>
-											<div className="text-xs text-text-3">
-												{t("本地暂存于 {time}，是否恢复？").replace(
-													"{time}",
-													formatEditorDraftTime(articleDraftHint.updatedAt, language),
-												)}
-											</div>
-										</div>
-										<div className="flex items-center gap-2">
-											<Button
-												variant="secondary"
-												size="sm"
-												onClick={() => {
-													clearArticleEditorDraftState(editMode);
-													showToast(t("已丢弃本地草稿"));
-												}}
-											>
-												{t("丢弃本地草稿")}
-											</Button>
-											<Button
-												variant="primary"
-												size="sm"
-												onClick={() => {
-													applyArticleEditorDraft(articleDraftHint.payload);
-													setArticleDraftSavedAt(articleDraftHint.updatedAt);
-													setArticleDraftHint(null);
-													showToast(t("已恢复本地草稿"));
-												}}
-											>
-												{t("恢复本地草稿")}
-											</Button>
-										</div>
-									</div>
-								) : (
-								<div className="text-xs text-text-3">
-									{t("已自动暂存")}
-									{articleDraftSavedAt
-										? ` · ${formatEditorDraftTime(articleDraftSavedAt, language)}`
-										: ""}
-								</div>
-								)}
-							</div>
-						)}
 						<FormField label={t("标题")}>
 							<TextInput
 								type="text"

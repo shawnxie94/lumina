@@ -8,6 +8,7 @@ interface ArticleSplitEditorModalProps {
   isOpen: boolean;
   title: string;
   closeAriaLabel: string;
+  titleAddon?: ReactNode;
   onClose: () => void;
   onSave: () => void;
   topFields: ReactNode;
@@ -41,6 +42,7 @@ export default function ArticleSplitEditorModal({
   isOpen,
   title,
   closeAriaLabel,
+  titleAddon,
   onClose,
   onSave,
   topFields,
@@ -78,12 +80,15 @@ export default function ArticleSplitEditorModal({
         className="bg-surface rounded-lg shadow-xl w-full h-[95vh] flex flex-col"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="flex items-center justify-between p-4 border-b border-border flex-shrink-0">
-          <h3 className="text-lg font-semibold text-text-1">{title}</h3>
+        <div className="flex items-center justify-between gap-3 p-4 border-b border-border flex-shrink-0">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
+            <h3 className="shrink-0 text-lg font-semibold text-text-1">{title}</h3>
+            {titleAddon ? <div className="min-w-0 flex-1">{titleAddon}</div> : null}
+          </div>
           <button
             type="button"
             onClick={onClose}
-            className="text-text-3 hover:text-text-1 text-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
+            className="shrink-0 text-text-3 hover:text-text-1 text-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
             aria-label={closeAriaLabel}
           >
             ×

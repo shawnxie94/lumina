@@ -1608,24 +1608,19 @@ export default function ReviewDetailPage({
 					<section className="overflow-hidden bg-surface">
 						<div className="border-b border-border px-5 py-3 sm:px-6">
 							<div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-								<div className="min-w-0 flex-1 space-y-2">
-									<h2 className="inline-flex items-center gap-2 text-lg font-semibold text-text-1">
+								<div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">
+									<h2 className="inline-flex shrink-0 items-center gap-2 text-lg font-semibold text-text-1">
 										<IconEdit className="h-4 w-4" />
 										<span>{t("编辑专栏文章")}</span>
 									</h2>
 									{(columnDraftHint || columnDraftSavedAt) ? (
-										<div className="rounded-sm border border-border bg-muted/60 px-3 py-2 text-sm text-text-2">
+										<div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
 											{columnDraftHint ? (
-												<div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-													<div>
-														<div className="font-medium text-text-1">{t("发现未保存的本地草稿")}</div>
-														<div className="text-xs text-text-3">
-															{t("本地暂存于 {time}，是否恢复？").replace(
-																"{time}",
-																formatEditorDraftTime(columnDraftHint.updatedAt, language),
-															)}
-														</div>
-													</div>
+												<>
+													<span className="min-w-0 text-xs text-text-3 sm:text-sm">
+														{t("发现未保存的本地草稿")}
+														{` · ${formatEditorDraftTime(columnDraftHint.updatedAt, language)}`}
+													</span>
 													<div className="flex items-center gap-2">
 														<Button
 															variant="secondary"
@@ -1650,14 +1645,14 @@ export default function ReviewDetailPage({
 															{t("恢复本地草稿")}
 														</Button>
 													</div>
-												</div>
+												</>
 											) : (
-												<div className="text-xs text-text-3">
+												<span className="text-xs text-text-3 sm:text-sm">
 													{t("已自动暂存")}
 													{columnDraftSavedAt
 														? ` · ${formatEditorDraftTime(columnDraftSavedAt, language)}`
 														: ""}
-												</div>
+												</span>
 											)}
 										</div>
 									) : null}
