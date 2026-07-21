@@ -20,7 +20,7 @@ def test_serialize_extraction_settings_maps_disabled_jina_to_local_only():
 
     assert settings["jina_reader_enabled"] is False
     assert settings["jina_reader_prefer_mode"] == "local_only"
-    assert settings["auto_ai_outline_enabled"] is False
+    assert settings["auto_ai_outline_enabled"] is True
     assert settings["auto_ai_quotes_enabled"] is False
 
 

@@ -315,7 +315,8 @@ type PromptType =
 	| "quotes"
 	| "content_cleaning"
 	| "classification"
-	| "tagging";
+	| "tagging"
+	| "digest_prefill";
 
 const createEmptyPromptFormData = (
 	type: PromptType,
@@ -359,6 +360,7 @@ const PROMPT_TYPES = [
 	{ value: "translation" as PromptType, labelKey: "翻译" },
 	{ value: "outline" as PromptType, labelKey: "大纲" },
 	{ value: "quotes" as PromptType, labelKey: "金句" },
+	{ value: "digest_prefill" as PromptType, labelKey: "批注" },
 ];
 
 const supportsChunkOptionsForPromptType = (

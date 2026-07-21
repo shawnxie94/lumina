@@ -150,6 +150,12 @@
     ]
   },
   {
+    "path": "/api/articles/{article_slug}/digest/prefill",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/articles/{article_slug}/embedding",
     "methods": [
       "POST"
@@ -309,6 +315,138 @@
     "path": "/api/categories/{category_id}",
     "methods": [
       "PUT"
+    ]
+  },
+  {
+    "path": "/api/column-comments/{comment_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/column-comments/{comment_id}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/column-comments/{comment_id}",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/column-comments/{comment_id}/visibility",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/column-issues/{issue_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/column-issues/{issue_id}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/column-issues/{issue_id}",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/column-issues/{issue_id}/publish",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/column-issues/{issue_id}/unpublish",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/column-templates",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/column-templates",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/column-templates/sort",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/column-templates/{template_id}",
+    "methods": [
+      "DELETE"
+    ]
+  },
+  {
+    "path": "/api/column-templates/{template_id}",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
+    "path": "/api/column-templates/{template_id}/run-manual",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/columns",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/columns/rss.xml",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/columns/{review_slug}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/columns/{review_slug}/comments",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/columns/{review_slug}/comments",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/columns/{review_slug}/export.md",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/columns/{review_slug}/view",
+    "methods": [
+      "POST"
     ]
   },
   {
@@ -522,6 +660,12 @@
     ]
   },
   {
+    "path": "/api/review-templates/sort",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
     "path": "/api/review-templates/{template_id}",
     "methods": [
       "DELETE"
@@ -681,144 +825,6 @@
     "path": "/api/tags",
     "methods": [
       "GET"
-    ]
-  },
-  {
-    "path": "/api/column-comments/{comment_id}",
-    "methods": [
-      "DELETE"
-    ]
-  },
-  {
-    "path": "/api/column-comments/{comment_id}",
-    "methods": [
-      "GET"
-    ]
-  },
-  {
-    "path": "/api/column-comments/{comment_id}",
-    "methods": [
-      "PUT"
-    ]
-  },
-  {
-    "path": "/api/column-comments/{comment_id}/visibility",
-    "methods": [
-      "PUT"
-    ]
-  },
-  {
-    "path": "/api/column-issues/{issue_id}",
-    "methods": [
-      "DELETE"
-    ]
-  },
-  {
-    "path": "/api/column-issues/{issue_id}",
-    "methods": [
-      "GET"
-    ]
-  },
-  {
-    "path": "/api/column-issues/{issue_id}",
-    "methods": [
-      "PUT"
-    ]
-  },
-  {
-    "path": "/api/column-issues/{issue_id}/publish",
-    "methods": [
-      "POST"
-    ]
-  },
-  {
-    "path": "/api/column-issues/{issue_id}/unpublish",
-    "methods": [
-      "POST"
-    ]
-  },
-  {
-    "path": "/api/column-templates",
-    "methods": [
-      "GET"
-    ]
-  },
-  {
-    "path": "/api/column-templates",
-    "methods": [
-      "POST"
-    ]
-  },
-  {
-    "path": "/api/column-templates/sort",
-    "methods": [
-      "PUT"
-    ]
-  },
-  {
-    "path": "/api/review-templates/sort",
-    "methods": [
-      "PUT"
-    ]
-  },
-  {
-    "path": "/api/column-templates/{template_id}",
-    "methods": [
-      "DELETE"
-    ]
-  },
-  {
-    "path": "/api/column-templates/{template_id}",
-    "methods": [
-      "PUT"
-    ]
-  },
-  {
-    "path": "/api/column-templates/{template_id}/run-manual",
-    "methods": [
-      "POST"
-    ]
-  },
-  {
-    "path": "/api/columns",
-    "methods": [
-      "GET"
-    ]
-  },
-  {
-    "path": "/api/columns/rss.xml",
-    "methods": [
-      "GET"
-    ]
-  },
-  {
-    "path": "/api/columns/{review_slug}",
-    "methods": [
-      "GET"
-    ]
-  },
-  {
-    "path": "/api/columns/{review_slug}/comments",
-    "methods": [
-      "GET"
-    ]
-  },
-  {
-    "path": "/api/columns/{review_slug}/comments",
-    "methods": [
-      "POST"
-    ]
-  },
-  {
-    "path": "/api/columns/{review_slug}/export.md",
-    "methods": [
-      "GET"
-    ]
-  },
-  {
-    "path": "/api/columns/{review_slug}/view",
-    "methods": [
-      "POST"
     ]
   }
 ]

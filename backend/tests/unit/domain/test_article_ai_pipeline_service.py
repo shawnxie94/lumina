@@ -8,7 +8,7 @@ import pytest
 from app.domain.ai_invocation_service import AIInvocationService
 from app.domain.article_ai_pipeline_service import ArticleAIPipelineService
 from app.domain.article_command_service import ArticleCommandService
-from task_errors import TaskExternalError
+from task_errors import TaskDataError, TaskExternalError
 from models import (
     AICallSession,
     AIAnalysis,
@@ -1049,6 +1049,81 @@ def test_quotes_output_format_is_fixed_by_backend_protocols():
     )
 
 
+
+def test_strip_model_reasoning_noise_handles_unclosed_think_block():
+    service = ArticleAIPipelineService()
+    cleaned = service._strip_model_reasoning_noise(
+        "<think>partial reasoning that never finishes"
+    )
+    assert cleaned == ""
+
+
+def test_loads_json_payload_strips_think_tags_and_fences():
+    service = ArticleAIPipelineService()
+    payload = service._loads_json_payload(
+        """
+        <think>planning the tree</think>
+        ```json
+        {"title": "主题", "children": [{"title": "观点", "children": []}]}
+        ```
+        """,
+        label="outline",
+    )
+    assert payload == {
+        "title": "主题",
+        "children": [{"title": "观点", "children": []}],
+    }
+
+
+def test_loads_json_payload_extracts_embedded_json_object():
+    service = ArticleAIPipelineService()
+    payload = service._loads_json_payload(
+        '先说结论再输出：{"title":"A","children":[]}',
+        label="outline",
+    )
+    assert payload == {"title": "A", "children": []}
+
+
+def test_loads_json_payload_think_only_gives_actionable_error():
+    service = ArticleAIPipelineService()
+    with pytest.raises(TaskDataError, match="思考过程"):
+        service._loads_json_payload(
+            "<think>only reasoning, no json",
+            label="outline",
+        )
+
+
+def test_resolve_generation_max_tokens_never_below_default():
+    service = ArticleAIPipelineService()
+    default = service.DEFAULT_AI_CONTENT_MAX_TOKENS["outline"]
+    assert service._resolve_generation_max_tokens("outline", {"max_tokens": 1200}) == default
+    assert service._resolve_generation_max_tokens("outline", {"max_tokens": 5000}) == 5000
+    assert service._resolve_generation_max_tokens("outline", {}) == default
+    assert service._resolve_generation_max_tokens("outline", None) == default
+
+
+
+def test_merge_protocol_parameters_disables_thinking_for_json_modes():
+    service = ArticleAIPipelineService()
+    outline_params = service._merge_protocol_parameters("outline", {"max_tokens": 3000})
+    assert outline_params["disable_thinking"] is True
+    assert outline_params["response_format"] == {"type": "json_object"}
+
+    digest_params = service._merge_protocol_parameters("digest_prefill", {})
+    assert digest_params["disable_thinking"] is True
+
+    # Explicit override wins
+    keep = service._merge_protocol_parameters(
+        "outline", {"thinking": {"type": "adaptive"}}
+    )
+    assert "disable_thinking" not in keep
+    assert keep["thinking"] == {"type": "adaptive"}
+
+    # Text modes stay untouched
+    summary_params = service._merge_protocol_parameters("summary", {})
+    assert "disable_thinking" not in summary_params
+
+
 def test_process_ai_content_outline_normalizes_json_payload(
     db_session,
     monkeypatch,
@@ -1381,6 +1456,12 @@ def test_process_article_classification_failure_raises_after_followups(
     assert [item["task_type"] for item in enqueued] == [
         "process_article_tagging",
         "process_ai_content",
+        "process_ai_content",
+    ]
+    assert [item.get("content_type") for item in enqueued] == [
+        "tagging",
+        "summary",
+        "outline",
     ]
 
 

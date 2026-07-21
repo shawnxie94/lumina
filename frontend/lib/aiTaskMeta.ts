@@ -6,7 +6,8 @@ export type AITaskPromptType =
   | "content_cleaning"
   | "interpretation"
   | "classification"
-  | "tagging";
+  | "tagging"
+  | "digest_prefill";
 
 type Translate = (key: string) => string;
 
@@ -88,6 +89,13 @@ const AI_TASK_META: AITaskMeta[] = [
     labelKey: "金句",
     filterValue: "process_ai_content:quotes",
     promptType: "quotes",
+  },
+  {
+    taskType: "process_ai_content",
+    contentType: "digest_prefill",
+    labelKey: "批注",
+    filterValue: "process_ai_content:digest_prefill",
+    promptType: "digest_prefill",
   },
   {
     taskType: "generate_review_issue",

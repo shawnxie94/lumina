@@ -199,6 +199,7 @@ def create_admin_settings(db: Session, password: str) -> AdminSettings:
         recommendation_model_config_id=None,
         auto_ai_classification_enabled=True,
         auto_ai_summary_enabled=True,
+        auto_ai_outline_enabled=True,
         auto_ai_tagging_enabled=True,
         auto_translation_enabled=True,
         default_language="zh-CN",

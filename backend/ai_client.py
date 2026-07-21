@@ -350,6 +350,44 @@ class ConfigurableAIClient:
             print(f"翻译失败: {e}")
             raise
 
+    def _is_minimax_provider(self) -> bool:
+        """Detect MiniMax OpenAI-compatible endpoints / model names."""
+        base = (self.base_url or "").lower()
+        model = (self.model_name or "").lower()
+        return (
+            "minimax" in base
+            or "minimaxi" in base
+            or model.startswith("minimax")
+            or "minimax-" in model
+        )
+
+    def _build_provider_extra_body(
+        self, parameters: Dict[str, Any]
+    ) -> Dict[str, Any] | None:
+        """
+        Build OpenAI SDK extra_body for provider-specific fields.
+
+        MiniMax-M3 defaults to adaptive thinking which can consume the entire
+        max_tokens budget before any JSON content is produced. Structured
+        callers may pass thinking={"type":"disabled"} (or disable_thinking).
+        Non-MiniMax providers never receive these fields.
+        """
+        extra_body: Dict[str, Any] = {}
+        raw_extra = parameters.get("extra_body")
+        if isinstance(raw_extra, dict):
+            extra_body.update(raw_extra)
+
+        if self._is_minimax_provider():
+            thinking = parameters.get("thinking")
+            if thinking is None and parameters.get("disable_thinking"):
+                thinking = {"type": "disabled"}
+            if thinking is not None:
+                extra_body["thinking"] = thinking
+            if "reasoning_split" in parameters:
+                extra_body["reasoning_split"] = parameters["reasoning_split"]
+
+        return extra_body or None
+
     def _build_chat_request(
         self,
         *,
@@ -377,6 +415,9 @@ class ConfigurableAIClient:
             request_params["response_format"] = {"type": response_format}
         elif isinstance(response_format, dict):
             request_params["response_format"] = response_format
+        extra_body = self._build_provider_extra_body(parameters)
+        if extra_body is not None:
+            request_params["extra_body"] = extra_body
         return request_params
 
     def _build_responses_request(

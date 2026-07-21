@@ -107,9 +107,8 @@ def serialize_extraction_settings(admin) -> dict:
             "auto_ai_classification_enabled"
         ),
         "auto_ai_summary_enabled": enabled_by_default("auto_ai_summary_enabled"),
-        "auto_ai_outline_enabled": bool(
-            getattr(admin, "auto_ai_outline_enabled", False)
-        ),
+        "auto_ai_outline_enabled": getattr(admin, "auto_ai_outline_enabled", True)
+        is not False,
         "auto_ai_quotes_enabled": bool(
             getattr(admin, "auto_ai_quotes_enabled", False)
         ),

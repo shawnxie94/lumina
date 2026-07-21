@@ -6,6 +6,8 @@ import {
 	useCallback,
 	useMemo,
 	type ReactNode,
+	type MouseEvent as ReactMouseEvent,
+	type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 
 import { useRouter } from "next/router";
@@ -36,6 +38,13 @@ import {
 	type VersionedAIContentType,
 } from "@/lib/api";
 import { shouldFetchSimilarArticlesForSlug } from "@/lib/articleDetail";
+import {
+	applyPrefillToNote,
+	normalizeDigestNoteForDisplay,
+	parseDigestPrefillPayload,
+	extractDigestNoteFromTaskPayload,
+	type DigestLines,
+} from "@/lib/articleDigest";
 import {
 	buildArticleHref as buildNavigableArticleHref,
 } from "@/lib/articlePreview";
@@ -566,26 +575,73 @@ async function runWithConcurrency<T>(
 	await Promise.all(workers);
 }
 
-function MindMapTree({
-	node,
-	isRoot = false,
-	compact = false,
+function countOutlineDescendants(node: MindMapNode): number {
+	if (!node.children?.length) return 0;
+	return node.children.reduce(
+		(sum, child) => sum + 1 + countOutlineDescendants(child),
+		0,
+	);
+}
+
+function collectOutlineExpandablePaths(
+	node: MindMapNode,
+	path = "root",
+	acc: string[] = [],
+): string[] {
+	if (node.children?.length) {
+		acc.push(path);
+		node.children.forEach((child, index) => {
+			collectOutlineExpandablePaths(child, `${path}.${index}`, acc);
+		});
+	}
+	return acc;
+}
+
+function buildDefaultOutlineExpandedPaths(
+	node: MindMapNode,
+	defaultExpandedDepth: number,
+	path = "root",
 	depth = 0,
+	acc: Set<string> = new Set(),
+): Set<string> {
+	// Keep children visible through L2 when defaultExpandedDepth=2.
+	if (node.children?.length && depth < defaultExpandedDepth) {
+		acc.add(path);
+		node.children.forEach((child, index) => {
+			buildDefaultOutlineExpandedPaths(
+				child,
+				defaultExpandedDepth,
+				`${path}.${index}`,
+				depth + 1,
+				acc,
+			);
+		});
+	}
+	return acc;
+}
+
+function OutlineTreeNode({
+	node,
+	path,
+	depth,
+	compact,
+	expandedPaths,
+	onToggle,
 }: {
 	node: MindMapNode;
-	isRoot?: boolean;
-	compact?: boolean;
-	depth?: number;
+	path: string;
+	depth: number;
+	compact: boolean;
+	expandedPaths: Set<string>;
+	onToggle: (path: string) => void;
 }) {
-	const hasTitle = node.title && node.title.trim().length > 0;
-	const hasChildren = Boolean(node.children && node.children.length > 0);
-	const containerClass = isRoot
-		? compact
-			? "space-y-2"
-			: "space-y-4"
-		: compact
-			? "pl-3 border-l border-border space-y-2"
-			: "pl-5 border-l border-border space-y-4";
+	const { t } = useI18n();
+	const hasTitle = Boolean(node.title && node.title.trim().length > 0);
+	const children = node.children || [];
+	const hasChildren = children.length > 0;
+	const isExpanded = hasChildren && expandedPaths.has(path);
+	const descendantCount = hasChildren ? countOutlineDescendants(node) : 0;
+	const isRootNode = depth === 0;
 
 	const palette = [
 		"border-info-soft bg-info-soft text-info-ink",
@@ -595,50 +651,216 @@ function MindMapTree({
 	];
 	const colorClass = palette[depth % palette.length];
 
+	const containerClass = isRootNode
+		? compact
+			? "space-y-2"
+			: "space-y-4"
+		: compact
+			? "pl-3 border-l border-border space-y-2"
+			: "pl-5 border-l border-border space-y-4";
+
+	const chipClass = compact
+		? `inline-flex max-w-full items-center rounded-md border px-2 py-1 text-xs shadow-sm ${colorClass}`
+		: `inline-flex max-w-full items-center rounded-lg border px-3 py-1.5 text-sm shadow-sm ${colorClass}`;
+
+	const handleToggle = (event: ReactMouseEvent | ReactKeyboardEvent) => {
+		event.stopPropagation();
+		if (!hasChildren) return;
+		onToggle(path);
+	};
+
 	return (
 		<div className={containerClass}>
 			{hasTitle && (
 				<div
 					className={
-						isRoot
-							? ""
+						isRootNode
+							? "flex items-start gap-1.5"
 							: compact
 								? "flex items-start gap-2 -ml-3"
 								: "flex items-start gap-3 -ml-5"
 					}
 				>
-					{!isRoot && (
+					{!isRootNode && (
 						<span
 							className={
 								compact
-									? "mt-2 h-1.5 w-1.5 rounded-full bg-border"
-									: "mt-2 h-2 w-2 rounded-full bg-border"
+									? "mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-border"
+									: "mt-2 h-2 w-2 shrink-0 rounded-full bg-border"
 							}
 						/>
 					)}
-					<span
-						className={
-							compact
-								? `inline-flex items-center rounded-md border px-2 py-1 text-xs shadow-sm ${colorClass}`
-								: `inline-flex items-center rounded-lg border px-3 py-1.5 text-sm shadow-sm ${colorClass}`
-						}
-					>
-						{node.title}
-					</span>
+					{hasChildren ? (
+						<button
+							type="button"
+							onClick={handleToggle}
+							className={`${chipClass} text-left transition hover:brightness-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35`}
+							aria-expanded={isExpanded}
+							aria-label={isExpanded ? t("全部折叠") : t("全部展开")}
+						>
+							<span className="break-words">{node.title}</span>
+							{!isExpanded && descendantCount > 0 && (
+								<span className="ml-1.5 shrink-0 rounded-full bg-surface/70 px-1.5 py-0.5 text-[10px] font-medium opacity-80">
+									+{descendantCount}
+								</span>
+							)}
+							<span
+								className={`ml-1.5 shrink-0 text-[10px] opacity-70 transition-transform ${
+									isExpanded ? "rotate-90" : ""
+								}`}
+							>
+								▶
+							</span>
+						</button>
+					) : (
+						<span className={`${chipClass} break-words`}>{node.title}</span>
+					)}
 				</div>
 			)}
-			{hasChildren && (
+			{!hasTitle && hasChildren && (
+				<button
+					type="button"
+					onClick={handleToggle}
+					className="text-xs text-text-3 hover:text-text-1 transition"
+					aria-expanded={isExpanded}
+				>
+					{isExpanded ? t("全部折叠") : `+${descendantCount}`}
+				</button>
+			)}
+			{hasChildren && isExpanded && (
 				<div className={compact ? "space-y-2" : "space-y-5"}>
-					{node.children?.map((child, index) => (
-						<MindMapTree
-							key={`${child.title}-${index}`}
+					{children.map((child, index) => (
+						<OutlineTreeNode
+							key={`${path}.${index}-${child.title || "node"}`}
 							node={child}
-							compact={compact}
+							path={`${path}.${index}`}
 							depth={depth + 1}
+							compact={compact}
+							expandedPaths={expandedPaths}
+							onToggle={onToggle}
 						/>
 					))}
 				</div>
 			)}
+		</div>
+	);
+}
+
+function MindMapTree({
+	node,
+	compact = false,
+	defaultExpandedDepth = 2,
+	showToolbar = false,
+	onOpenFullscreen,
+}: {
+	node: MindMapNode;
+	compact?: boolean;
+	/** Visible structure through this depth; deeper nodes start collapsed. */
+	defaultExpandedDepth?: number;
+	showToolbar?: boolean;
+	onOpenFullscreen?: () => void;
+}) {
+	const { t } = useI18n();
+	const allExpandablePaths = useMemo(
+		() => collectOutlineExpandablePaths(node),
+		[node],
+	);
+	const defaultExpandedPaths = useMemo(
+		() => buildDefaultOutlineExpandedPaths(node, defaultExpandedDepth),
+		[node, defaultExpandedDepth],
+	);
+	const [expandedPaths, setExpandedPaths] = useState<Set<string>>(
+		() => new Set(defaultExpandedPaths),
+	);
+
+	useEffect(() => {
+		setExpandedPaths(new Set(defaultExpandedPaths));
+	}, [defaultExpandedPaths]);
+
+	const togglePath = useCallback((path: string) => {
+		setExpandedPaths((prev) => {
+			const next = new Set(prev);
+			if (next.has(path)) next.delete(path);
+			else next.add(path);
+			return next;
+		});
+	}, []);
+
+	const expandAll = useCallback(() => {
+		setExpandedPaths(new Set(allExpandablePaths));
+	}, [allExpandablePaths]);
+
+	const collapseToDefault = useCallback(() => {
+		setExpandedPaths(new Set(defaultExpandedPaths));
+	}, [defaultExpandedPaths]);
+
+	const collapseAll = useCallback(() => {
+		// Keep root branch open so the first level stays scannable.
+		const rootOnly = new Set<string>();
+		if (node.children?.length) rootOnly.add("root");
+		setExpandedPaths(rootOnly);
+	}, [node]);
+
+	return (
+		<div className="space-y-2">
+			{showToolbar && (
+				<div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-text-3">
+					<button
+						type="button"
+						onClick={(event) => {
+							event.stopPropagation();
+							expandAll();
+						}}
+						className="hover:text-primary transition"
+					>
+						{t("全部展开")}
+					</button>
+					<span className="text-border">·</span>
+					<button
+						type="button"
+						onClick={(event) => {
+							event.stopPropagation();
+							collapseToDefault();
+						}}
+						className="hover:text-primary transition"
+					>
+						{t("默认层级")}
+					</button>
+					<span className="text-border">·</span>
+					<button
+						type="button"
+						onClick={(event) => {
+							event.stopPropagation();
+							collapseAll();
+						}}
+						className="hover:text-primary transition"
+					>
+						{t("全部折叠")}
+					</button>
+					{onOpenFullscreen && (
+						<button
+							type="button"
+							onClick={(event) => {
+								event.stopPropagation();
+								onOpenFullscreen();
+							}}
+							className="ml-auto text-text-3 hover:text-primary transition"
+						>
+							{t("点击放大")}
+						</button>
+					)}
+				</div>
+			)}
+			<div className={compact ? "space-y-2" : "space-y-4"}>
+				<OutlineTreeNode
+					node={node}
+					path="root"
+					depth={0}
+					compact={compact}
+					expandedPaths={expandedPaths}
+					onToggle={togglePath}
+				/>
+			</div>
 		</div>
 	);
 }
@@ -777,25 +999,14 @@ function AIContentSection({
 						const tree = parseMindMapOutline(content);
 						return tree ? (
 							<div className="rounded-lg border border-border bg-muted p-2">
-								<div
-									onClick={onMindMapOpen}
-									className="cursor-zoom-in"
-									role="button"
-									tabIndex={0}
-									onKeyDown={(event) => {
-										if (event.key === "Enter" || event.key === " ") {
-											onMindMapOpen?.();
-										}
-									}}
-								>
-									<div className="overflow-hidden relative">
-										<div className="inline-block">
-											<MindMapTree node={tree} isRoot compact />
-										</div>
-										<div className="absolute top-1 right-1 text-xs text-text-3 bg-surface/80 px-2 py-0.5 rounded">
-											{t("点击放大")}
-										</div>
-									</div>
+								<div className="max-h-[28rem] overflow-auto">
+									<MindMapTree
+										node={tree}
+										compact
+										defaultExpandedDepth={2}
+										showToolbar
+										onOpenFullscreen={onMindMapOpen}
+									/>
 								</div>
 							</div>
 						) : (
@@ -1187,6 +1398,21 @@ export default function ArticleDetailPage({
 	const [noteRecommendationDraftLevel, setNoteRecommendationDraftLevel] =
 		useState<NoteRecommendationLevel>(DEFAULT_NOTE_RECOMMENDATION_LEVEL);
 	const [showNoteModal, setShowNoteModal] = useState(false);
+	const [digestPrefilling, setDigestPrefilling] = useState(false);
+	const [noteDraftDirty, setNoteDraftDirty] = useState(false);
+	const noteDraftRef = useRef(noteDraft);
+	const showNoteModalRef = useRef(showNoteModal);
+	const digestPrefillGenerationRef = useRef(0);
+	const noteRecoveryArticleIdRef = useRef<string | null>(null);
+
+	useEffect(() => {
+		noteDraftRef.current = noteDraft;
+	}, [noteDraft]);
+
+	useEffect(() => {
+		showNoteModalRef.current = showNoteModal;
+	}, [showNoteModal]);
+
 	const [annotations, setAnnotations] = useState<ArticleAnnotation[]>([]);
 	const [activeAnnotationId, setActiveAnnotationId] = useState<string>("");
 	const [showAnnotationView, setShowAnnotationView] = useState(false);
@@ -1449,6 +1675,9 @@ export default function ArticleDetailPage({
 			}
 			if (showNoteModal) {
 				setShowNoteModal(false);
+				if (digestPrefilling) {
+					showToast(t("批注仍在后台生成，完成后可打开编辑查看"), "info");
+				}
 				return;
 			}
 			if (showEditModal) {
@@ -1505,6 +1734,7 @@ export default function ArticleDetailPage({
 		showAnnotationModal,
 		showDeleteNoteModal,
 		showNoteModal,
+		digestPrefilling,
 		showEditModal,
 		showConfigModal,
 		showAnnotationView,
@@ -1829,28 +2059,6 @@ export default function ArticleDetailPage({
 	}, [article, id, needsPolling]);
 	/* eslint-enable react-hooks/exhaustive-deps */
 
-	useEffect(() => {
-		if (!article) return;
-		setNoteContent(article.note_content || "");
-		setNoteDraft(article.note_content || "");
-		const normalizedLevel = normalizeNoteRecommendationLevel(
-			article.note_recommendation_level,
-		);
-		setNoteRecommendationLevel(normalizedLevel);
-		setNoteRecommendationDraftLevel(normalizedLevel);
-		if (article.note_annotations) {
-			try {
-				const parsed = JSON.parse(
-					article.note_annotations,
-				) as ArticleAnnotation[];
-				setAnnotations(parsed || []);
-			} catch {
-				setAnnotations([]);
-			}
-		} else {
-			setAnnotations([]);
-		}
-	}, [article]);
 
 	useEffect(() => {
 		if (article?.id && article?.title && article?.slug) {
@@ -1990,6 +2198,79 @@ export default function ArticleDetailPage({
 		},
 		[isAdmin],
 	);
+
+	const recoverLatestDigestDraft = useCallback(
+		async (articleId: string): Promise<string | null> => {
+			if (!isAdmin || !articleId) return null;
+			try {
+				const taskResponse = await articleApi.getAITasks({
+					page: 1,
+					size: 10,
+					article_id: articleId,
+					content_type: "digest_prefill",
+					status: "completed",
+					task_type: "process_ai_content",
+				});
+				const tasks = Array.isArray(taskResponse?.data)
+					? taskResponse.data
+					: [];
+				for (const item of tasks) {
+					const taskId = item.latest_task_id || item.id;
+					if (!taskId) continue;
+					const detail = await articleApi.getAITask(taskId);
+					if (detail.status !== "completed") continue;
+					let payload: unknown = null;
+					if (detail.payload) {
+						try {
+							payload = JSON.parse(detail.payload);
+						} catch {
+							payload = null;
+						}
+					}
+					const note = extractDigestNoteFromTaskPayload(payload);
+					if (note && note.trim()) {
+						return note.trim();
+					}
+				}
+			} catch (error) {
+				console.error("Failed to recover digest draft:", error);
+			}
+			return null;
+		},
+		[isAdmin],
+	);
+
+	const applyRecoveredDigestDraft = useCallback((note: string) => {
+		setNoteDraft(note);
+		setNoteDraftDirty(true);
+	}, []);
+
+	useEffect(() => {
+		if (!article) return;
+		setNoteContent(article.note_content || "");
+		setNoteDraft(article.note_content || "");
+		setNoteDraftDirty(false);
+		// Allow open-modal recovery again after article identity changes.
+		noteRecoveryArticleIdRef.current = null;
+		const normalizedLevel = normalizeNoteRecommendationLevel(
+			article.note_recommendation_level,
+		);
+		setNoteRecommendationLevel(normalizedLevel);
+		setNoteRecommendationDraftLevel(normalizedLevel);
+		if (article.note_annotations) {
+			try {
+				const parsed = JSON.parse(
+					article.note_annotations,
+				) as ArticleAnnotation[];
+				setAnnotations(parsed || []);
+			} catch {
+				setAnnotations([]);
+			}
+		} else {
+			setAnnotations([]);
+		}
+	}, [article]);
+
 
 		const fetchSimilarArticles = useCallback(async (detail: ArticleDetail) => {
 			if (!detail?.slug) return;
@@ -2544,7 +2825,12 @@ export default function ArticleDetailPage({
 			}
 			return (
 				<div className="max-h-[420px] overflow-auto rounded-lg border border-border bg-surface p-4">
-					<MindMapTree node={tree} isRoot compact />
+					<MindMapTree
+						node={tree}
+						compact
+						defaultExpandedDepth={2}
+						showToolbar
+					/>
 				</div>
 			);
 		}
@@ -3223,17 +3509,6 @@ export default function ArticleDetailPage({
 				...(isAdmin
 					? [
 							{
-								key: "note",
-								label: t("编辑批注"),
-								danger: false,
-								icon: <IconNote className="h-4 w-4" />,
-								onClick: () => {
-									setNoteDraft(noteContent);
-									setNoteRecommendationDraftLevel(noteRecommendationLevel);
-									setShowNoteModal(true);
-								},
-							},
-							{
 								key: "visibility",
 								label: article.is_visible ? t("设为隐藏") : t("设为显示"),
 								danger: false,
@@ -3349,9 +3624,120 @@ export default function ArticleDetailPage({
 	const handleSaveNoteContent = async () => {
 		setNoteContent(noteDraft);
 		setNoteRecommendationLevel(noteRecommendationDraftLevel);
+		setNoteDraftDirty(false);
 		setShowNoteModal(false);
 		await saveNotes(noteDraft, annotations, noteRecommendationDraftLevel);
 		showToast(t("已保存批注"));
+	};
+
+	const openNoteModal = () => {
+		// Keep AI/in-progress draft; only sync from saved note when draft is clean.
+		if (!digestPrefilling && !noteDraftDirty) {
+			setNoteDraft(noteContent);
+			setNoteRecommendationDraftLevel(noteRecommendationLevel);
+		}
+		setShowNoteModal(true);
+
+		// Only when opening the editor: if saved note is empty, try latest AI draft.
+		const shouldRecover =
+			isAdmin &&
+			Boolean(article?.id) &&
+			!(noteContent || "").trim() &&
+			!digestPrefilling &&
+			!noteDraftDirty &&
+			!(noteDraftRef.current || "").trim() &&
+			noteRecoveryArticleIdRef.current !== article?.id;
+
+		if (!shouldRecover || !article?.id) return;
+
+		noteRecoveryArticleIdRef.current = article.id;
+		void (async () => {
+			const recovered = await recoverLatestDigestDraft(article.id);
+			if (!recovered) return;
+			// Bail if user already typed/generated something after opening.
+			if ((noteContent || "").trim()) return;
+			if (digestPrefilling) return;
+			if ((noteDraftRef.current || "").trim()) return;
+			applyRecoveredDigestDraft(recovered);
+			showToast(t("已恢复最近一次 AI 批注草稿"), "info");
+		})();
+	};
+
+	const closeNoteModal = () => {
+		setShowNoteModal(false);
+		if (digestPrefilling) {
+			showToast(t("批注仍在后台生成，完成后可打开编辑查看"), "info");
+		}
+	};
+
+	const pollDigestPrefillTask = async (taskId: string): Promise<DigestLines> => {
+		const started = Date.now();
+		const timeoutMs = 120000;
+		while (Date.now() - started < timeoutMs) {
+			const task = await articleApi.getAITask(taskId);
+			const status = task.status;
+			if (status === "completed") {
+				let payload: unknown = null;
+				if (task.payload) {
+					try {
+						payload = JSON.parse(task.payload);
+					} catch {
+						payload = null;
+					}
+				}
+				const lines = parseDigestPrefillPayload(payload);
+				if (!lines) {
+					throw new Error(t("预填失败"));
+				}
+				return lines;
+			}
+			if (status === "failed" || status === "cancelled") {
+				throw new Error(task.last_error || t("预填失败"));
+			}
+			await new Promise((resolve) => setTimeout(resolve, 1500));
+		}
+		throw new Error(t("预填失败"));
+	};
+
+	const handleDigestPrefill = async () => {
+		if (!article?.slug || digestPrefilling) return;
+		const generation = digestPrefillGenerationRef.current + 1;
+		digestPrefillGenerationRef.current = generation;
+		setDigestPrefilling(true);
+		try {
+			const response = await articleApi.prefillArticleDigest(article.slug);
+			const taskId = response.task_id;
+			if (!taskId) {
+				throw new Error(t("预填失败"));
+			}
+			const lines = await pollDigestPrefillTask(taskId);
+			if (generation !== digestPrefillGenerationRef.current) {
+				return;
+			}
+			// Always land on draft state even if the modal was closed mid-flight.
+			const next = applyPrefillToNote(noteDraftRef.current, lines, "replace");
+			setNoteDraft(next);
+			setNoteDraftDirty(true);
+			if (showNoteModalRef.current) {
+				showToast(t("已生成批注草稿，可继续修改后保存"));
+			} else {
+				showToast(t("批注草稿已生成，打开编辑可继续修改"));
+			}
+		} catch (error) {
+			if (generation !== digestPrefillGenerationRef.current) {
+				return;
+			}
+			console.error("Digest prefill failed:", error);
+			const message =
+				error instanceof Error && error.message
+					? error.message
+					: t("预填失败");
+			showToast(message, "error");
+		} finally {
+			if (generation === digestPrefillGenerationRef.current) {
+				setDigestPrefilling(false);
+			}
+		}
 	};
 
 	const handleStartAnnotation = () => {
@@ -3651,6 +4037,7 @@ export default function ArticleDetailPage({
 		try {
 			setNoteDraft("");
 			setNoteContent("");
+			setNoteDraftDirty(false);
 			setNoteRecommendationLevel(DEFAULT_NOTE_RECOMMENDATION_LEVEL);
 			setNoteRecommendationDraftLevel(DEFAULT_NOTE_RECOMMENDATION_LEVEL);
 			await saveNotes(
@@ -4449,6 +4836,17 @@ export default function ArticleDetailPage({
 										{isAdmin && (
 											<button
 												type="button"
+												onClick={openNoteModal}
+												className="flex items-center justify-center w-8 h-8 rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
+												title={t("编辑批注")}
+												aria-label={t("编辑批注")}
+											>
+												<IconNote className="h-4 w-4" />
+											</button>
+										)}
+										{isAdmin && (
+											<button
+												type="button"
 												onClick={() => {
 													setShowMoreActions(false);
 													openEditModal(
@@ -4539,7 +4937,7 @@ export default function ArticleDetailPage({
 								<div
 									className="prose prose-sm max-w-none"
 									dangerouslySetInnerHTML={{
-										__html: renderMarkdown(noteContent),
+										__html: renderMarkdown(normalizeDigestNoteForDisplay(noteContent)),
 									}}
 								/>
 							</div>
@@ -5153,7 +5551,7 @@ export default function ArticleDetailPage({
 			{showNoteModal && (
 				<ModalShell
 					isOpen={showNoteModal}
-					onClose={() => setShowNoteModal(false)}
+					onClose={closeNoteModal}
 					title={t("批注内容")}
 					widthClassName="max-w-lg"
 					footer={
@@ -5170,7 +5568,7 @@ export default function ArticleDetailPage({
 							<Button
 								type="button"
 								variant="secondary"
-								onClick={() => setShowNoteModal(false)}
+								onClick={closeNoteModal}
 							>
 								{t("取消")}
 							</Button>
@@ -5201,12 +5599,45 @@ export default function ArticleDetailPage({
 								showSearch={false}
 							/>
 						</FormField>
-						<TextArea
-							value={noteDraft}
-							onChange={(e) => setNoteDraft(e.target.value)}
-							rows={6}
-							placeholder={t("输入批注内容，支持 Markdown")}
-						/>
+						<div>
+							<div className="mb-1.5 flex items-center justify-between gap-2">
+								<label className="block text-sm text-text-2">
+									{t("批注正文")}
+								</label>
+								<button
+									type="button"
+									onClick={() => void handleDigestPrefill()}
+									disabled={digestPrefilling}
+									className="flex items-center justify-center w-8 h-8 rounded-sm text-text-2 hover:text-primary hover:bg-muted transition disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
+									title={
+										digestPrefilling ? t("生成中...") : t("AI 生成批注")
+									}
+									aria-label={
+										digestPrefilling ? t("生成中...") : t("AI 生成批注")
+									}
+								>
+									{digestPrefilling ? (
+										<IconRefresh className="h-4 w-4 animate-spin" />
+									) : (
+										<IconBolt className="h-4 w-4" />
+									)}
+								</button>
+							</div>
+							<TextArea
+								value={noteDraft}
+								onChange={(e) => {
+									setNoteDraft(e.target.value);
+									setNoteDraftDirty(true);
+								}}
+								rows={10}
+								placeholder={
+									digestPrefilling
+										? t("批注生成中，可先关闭弹窗，完成后会保留草稿")
+										: t("输入批注内容，支持 Markdown")
+								}
+								disabled={digestPrefilling}
+							/>
+						</div>
 					</div>
 				</ModalShell>
 			)}
@@ -5450,7 +5881,11 @@ export default function ArticleDetailPage({
 							bodyClassName="p-0"
 						>
 							<div className="h-[80vh] overflow-auto p-6">
-								<MindMapTree node={tree} isRoot />
+								<MindMapTree
+									node={tree}
+									defaultExpandedDepth={2}
+									showToolbar
+								/>
 							</div>
 						</ModalShell>
 					);

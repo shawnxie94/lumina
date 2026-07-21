@@ -93,7 +93,7 @@ class ArticleCommandService:
             "cleaning": False,
             "classification": enabled_by_default("auto_ai_classification_enabled"),
             "summary": enabled_by_default("auto_ai_summary_enabled"),
-            "outline": bool(getattr(admin, "auto_ai_outline_enabled", False)),
+            "outline": getattr(admin, "auto_ai_outline_enabled", True) is not False,
             "quotes": bool(getattr(admin, "auto_ai_quotes_enabled", False)),
             "tagging": enabled_by_default("auto_ai_tagging_enabled"),
             "translation": enabled_by_default("auto_translation_enabled"),
@@ -546,6 +546,38 @@ class ArticleCommandService:
                 "prompt_config_id": prompt_config_id,
             },
         )
+
+
+    def enqueue_digest_prefill(
+        self,
+        db: Session,
+        article_id: str,
+        model_config_id: str | None = None,
+        prompt_config_id: str | None = None,
+    ) -> str:
+        article = db.query(Article).filter(Article.id == article_id).first()
+        if not article:
+            raise ValueError("文章不存在")
+
+        analysis = article.ai_analysis
+        summary = (analysis.summary if analysis else None) or ""
+        outline = (analysis.outline if analysis else None) or ""
+        content_md = article.content_md or ""
+        if not (summary.strip() or outline.strip() or content_md.strip()):
+            raise ValueError("缺少摘要、大纲或正文，无法生成批注")
+
+        task_id = self.ai_task_service.enqueue_task(
+            db,
+            task_type="process_ai_content",
+            article_id=article_id,
+            content_type="digest_prefill",
+            payload={
+                "category_id": article.category_id,
+                "model_config_id": model_config_id,
+                "prompt_config_id": prompt_config_id,
+            },
+        )
+        return task_id
 
     def delete_ai_content(self, db: Session, article_id: str, content_type: str) -> None:
         article = db.query(Article).filter(Article.id == article_id).first()

@@ -960,7 +960,7 @@ async def regenerate_article_interpretation(
     options = {
         "classification": enabled_by_default("auto_ai_classification_enabled"),
         "summary": enabled_by_default("auto_ai_summary_enabled"),
-        "outline": bool(getattr(admin, "auto_ai_outline_enabled", False)),
+        "outline": getattr(admin, "auto_ai_outline_enabled", True) is not False,
         "quotes": bool(getattr(admin, "auto_ai_quotes_enabled", False)),
         "tagging": enabled_by_default("auto_ai_tagging_enabled"),
         "translation": enabled_by_default("auto_translation_enabled"),
@@ -1020,6 +1020,47 @@ async def retry_article_translation(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+
+@router.post("/api/articles/{article_slug}/digest/prefill")
+async def prefill_article_digest(
+    article_slug: str,
+    model_config_id: str = None,
+    prompt_config_id: str = None,
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
+    article = article_query_service.get_article_by_slug(db, article_slug)
+    if not article:
+        raise HTTPException(status_code=404, detail="文章不存在")
+
+    analysis = article.ai_analysis
+    summary = (analysis.summary if analysis else None) or ""
+    outline = (analysis.outline if analysis else None) or ""
+    content_md = article.content_md or ""
+    if not (summary.strip() or outline.strip() or content_md.strip()):
+        raise HTTPException(
+            status_code=409,
+            detail="缺少摘要、大纲或正文，请先生成解读或确保正文可用",
+        )
+
+    try:
+        task_id = article_command_service.enqueue_digest_prefill(
+            db,
+            article.id,
+            model_config_id=model_config_id,
+            prompt_config_id=prompt_config_id,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return {
+        "success": True,
+        "task_id": task_id,
+        "content_type": "digest_prefill",
+        "status": "pending",
+    }
 
 
 @router.post("/api/articles/{article_slug}/generate/{content_type}")

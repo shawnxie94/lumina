@@ -957,6 +957,7 @@ export interface AITaskTimelineResponse {
 
 export interface AITaskListItem {
 	id: string;
+	payload?: string | null;
 	root_task_id?: string | null;
 	latest_task_id?: string | null;
 	chain_length?: number;
@@ -1180,6 +1181,27 @@ export const articleApi = {
 	regenerateArticleTags: async (id: string) => {
 		const response = await api.post(`/api/articles/${id}/tags/regenerate`);
 		return response.data;
+	},
+
+	prefillArticleDigest: async (
+		id: string,
+		modelConfigId?: string,
+		promptConfigId?: string,
+	) => {
+		const params = new URLSearchParams();
+		if (modelConfigId) params.append("model_config_id", modelConfigId);
+		if (promptConfigId) params.append("prompt_config_id", promptConfigId);
+		const queryString = params.toString();
+		const url = `/api/articles/${id}/digest/prefill${
+			queryString ? `?${queryString}` : ""
+		}`;
+		const response = await api.post(url);
+		return response.data as {
+			success: boolean;
+			task_id: string;
+			content_type: "digest_prefill";
+			status: string;
+		};
 	},
 
 	regenerateArticleInterpretation: async (

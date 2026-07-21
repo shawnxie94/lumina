@@ -19,6 +19,11 @@ from app.core.public_cache import (
 from app.domain.article_embedding_service import ArticleEmbeddingService
 from app.domain.ai_call_session_service import AICallSessionService
 from app.domain.ai_invocation_service import AIInvocationService
+from app.domain.article_digest import (
+    build_prefill_material,
+    join_digest_lines,
+    parse_digest_prefill_result,
+)
 from app.domain.article_tag_service import ArticleTagService
 from app.domain.article_ai_version_service import ArticleAIVersionService
 from models import (
@@ -94,17 +99,18 @@ def build_parameters(model) -> dict:
 class ArticleAIPipelineService:
     DEFAULT_SAFETY_MARGIN_TOKENS = 1000
     DEFAULT_CLEANING_MAX_TOKENS = 16000
-    SUPPORTED_AI_CONTENT_TYPES = {"summary", "outline", "quotes"}
+    SUPPORTED_AI_CONTENT_TYPES = {"summary", "outline", "quotes", "digest_prefill"}
     DEFAULT_AI_CONTENT_MAX_TOKENS = {
         "summary": 500,
-        "outline": 1000,
+        "outline": 3000,
         "quotes": 800,
+        "digest_prefill": 1000,
     }
     INTERPRETATION_FIELD_MAX_TOKENS = {
         "classification": 200,
         "tagging": 300,
         "summary": 500,
-        "outline": 1000,
+        "outline": 3000,
         "quotes": 800,
     }
     INTERPRETATION_BASE_MAX_TOKENS = 300
@@ -132,6 +138,12 @@ class ArticleAIPipelineService:
             "1) 使用 Markdown 无序列表（-），每行输出一条金句，数量 3-5 条。\n"
             "2) 禁止输出解释、标题、编号、Markdown 代码块或额外前后缀。"
         ),
+        "digest_prefill": (
+            "输出协议：\n"
+            "1) 只输出单个 JSON 对象，键必须为 line1..line6。\n"
+            "2) 六句都必须是完整批注句，不得只填空槽 ____。\n"
+            "3) 禁止 Markdown 代码块、解释或额外字段。"
+        ),
         "classification": (
             "输出协议：\n"
             "1) 只返回协议要求的分类结果，不要输出解释、Markdown 代码块或额外字段。\n"
@@ -147,6 +159,15 @@ class ArticleAIPipelineService:
         "summary": PromptOutputContract(mode="text", response_format=None),
         "translation": PromptOutputContract(mode="text", response_format=None),
         "quotes": PromptOutputContract(mode="text", response_format=None),
+        "digest_prefill": PromptOutputContract(
+            mode="json_object",
+            response_format={"type": "json_object"},
+            system_instruction=(
+                "固定输出协议：必须返回单个 JSON 对象，键为 line1,line2,line3,line4,line5,line6。"
+                "六句都必须填写完整、非空内容；禁止只输出空槽 ____。"
+                "禁止输出解释、Markdown 代码块或额外字段。"
+            ),
+        ),
         "content_cleaning": PromptOutputContract(
             mode="markdown_text",
             response_format=None,
@@ -157,6 +178,7 @@ class ArticleAIPipelineService:
             system_instruction=(
                 "固定输出协议：必须返回单个 JSON 对象；每个节点仅允许包含 title 和 children。"
                 "title 必须是字符串；children 必须是数组；禁止输出解释、Markdown 代码块或额外字段。"
+                "禁止输出思考过程、推理步骤或 <think> 标签；第一个字符必须是 { 或 [。"
             ),
         ),
         "classification": PromptOutputContract(
@@ -234,7 +256,7 @@ class ArticleAIPipelineService:
             return {
                 "classification": True,
                 "summary": True,
-                "outline": False,
+                "outline": True,
                 "quotes": False,
                 "tagging": True,
                 "translation": True,
@@ -516,6 +538,15 @@ class ArticleAIPipelineService:
                 )
             else:
                 merged["system_prompt"] = protocol_block
+        # Structured JSON outputs need tokens for the payload itself. MiniMax-M3
+        # defaults to adaptive thinking which can exhaust max_tokens on <think>
+        # only. Prefer disabling thinking unless the prompt config overrides.
+        if (
+            contract.mode in {"json_object", "structured_json"}
+            and "thinking" not in merged
+            and "disable_thinking" not in merged
+        ):
+            merged["disable_thinking"] = True
         return merged
 
     def _enabled_interpretation_fields(self, options: dict) -> list[str]:
@@ -674,22 +705,98 @@ class ArticleAIPipelineService:
             for field in enabled_fields
         )
 
+    def _resolve_generation_max_tokens(
+        self,
+        content_type: str,
+        parameters: dict | None,
+    ) -> int:
+        """Pick generation budget, never below type default.
+
+        Prompt-config max_tokens is a soft preference. Reasoning models may
+        spend a large share of the budget on <think> wrappers; under-budgeted
+        configs (e.g. outline=1200) can produce empty JSON payloads.
+        """
+        default = int(self.DEFAULT_AI_CONTENT_MAX_TOKENS.get(content_type, 500))
+        configured = None
+        if parameters is not None and parameters.get("max_tokens") is not None:
+            try:
+                configured = int(parameters.get("max_tokens"))
+            except (TypeError, ValueError):
+                configured = None
+        if configured is None or configured <= 0:
+            return default
+        return max(configured, default)
+
+    def _strip_model_reasoning_noise(self, raw_text: str) -> str:
+        """Remove chain-of-thought wrappers and markdown fences from model output."""
+        text = str(raw_text or "").strip()
+        if not text:
+            return ""
+        # Common thinking wrappers from reasoning-capable models.
+        text = re.sub(
+            r"<think>.*?</(?:think|thinking)>",
+            "",
+            text,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        text = re.sub(
+            r"<thinking>.*?</thinking>",
+            "",
+            text,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        # Unclosed think block (model hit max_tokens mid-reasoning).
+        text = re.sub(
+            r"<think(?:ing)?>.*$",
+            "",
+            text,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        text = text.strip()
+        if text.startswith("```"):
+            text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)
+            text = re.sub(r"\s*```$", "", text)
+        return text.strip()
+
+    def _loads_json_payload(self, raw_output: Any, *, label: str) -> Any:
+        if isinstance(raw_output, (dict, list)):
+            return raw_output
+        original_text = str(raw_output or "").strip()
+        raw_text = self._strip_model_reasoning_noise(original_text)
+        if not raw_text:
+            if original_text and (
+                "<think" in original_text.lower()
+                or "<thinking" in original_text.lower()
+            ):
+                raise TaskDataError(
+                    f"{label} 输出为空：模型只返回了思考过程未产出 JSON，"
+                    "请提高 max_tokens 或更换模型后重试"
+                )
+            raise TaskDataError(f"{label} 输出为空")
+        try:
+            return json.loads(raw_text)
+        except json.JSONDecodeError:
+            pass
+
+        # Extract first top-level JSON object or array from mixed text.
+        decoder = json.JSONDecoder()
+        for index, char in enumerate(raw_text):
+            if char not in "{[":
+                continue
+            try:
+                parsed, _end = decoder.raw_decode(raw_text[index:])
+            except json.JSONDecodeError:
+                continue
+            if isinstance(parsed, (dict, list)):
+                return parsed
+        raise TaskDataError(f"{label} 输出不是合法 JSON")
+
     def _parse_structured_task_result(
         self,
         prompt_type: str,
         raw_output: Any,
     ) -> dict[str, Any]:
-        if isinstance(raw_output, (dict, list)):
-            parsed = raw_output
-        else:
-            raw_text = str(raw_output or "").strip()
-            if not raw_text:
-                raise TaskDataError(f"{prompt_type} 输出为空")
-            try:
-                parsed = json.loads(raw_text)
-            except json.JSONDecodeError as exc:
-                raise TaskDataError(f"{prompt_type} 输出不是合法 JSON") from exc
-
+        parsed = self._loads_json_payload(raw_output, label=prompt_type)
         if not isinstance(parsed, dict):
             raise TaskDataError(f"{prompt_type} 输出必须是 JSON 对象")
 
@@ -743,16 +850,7 @@ class ArticleAIPipelineService:
         return {"title": title, "children": children}
 
     def _parse_outline_task_result(self, raw_output: Any) -> str:
-        if isinstance(raw_output, (dict, list)):
-            parsed = raw_output
-        else:
-            raw_text = str(raw_output or "").strip()
-            if not raw_text:
-                raise TaskDataError("outline 输出为空")
-            try:
-                parsed = json.loads(raw_text)
-            except json.JSONDecodeError as exc:
-                raise TaskDataError("outline 输出不是合法 JSON") from exc
+        parsed = self._loads_json_payload(raw_output, label="outline")
 
         if isinstance(parsed, list):
             normalized = {
@@ -4232,6 +4330,221 @@ class ArticleAIPipelineService:
             finally:
                 db.close()
 
+
+    async def process_digest_prefill(
+        self,
+        article_id: str,
+        category_id: str | None,
+        model_config_id: str | None = None,
+        prompt_config_id: str | None = None,
+    ):
+        """Generate six-line note draft; result goes to task payload only."""
+        db = SessionLocal()
+        try:
+            article = db.query(Article).filter(Article.id == article_id).first()
+            if not article:
+                raise TaskDataError("文章不存在")
+
+            analysis = (
+                db.query(AIAnalysis).filter(AIAnalysis.article_id == article_id).first()
+            )
+            summary = analysis.summary if analysis else None
+            outline = analysis.outline if analysis else None
+            material, flags = build_prefill_material(
+                summary=summary,
+                outline=outline,
+                content_md=article.content_md,
+            )
+            if not material:
+                raise TaskDataError("缺少摘要、大纲或正文，无法生成批注")
+
+            ai_config = None
+            prompt = None
+            prompt_parameters: dict = {}
+            default_config = self.get_ai_config(
+                db, category_id, prompt_type="digest_prefill"
+            )
+
+            if model_config_id:
+                model_config = (
+                    db.query(ModelAPIConfig)
+                    .filter(
+                        ModelAPIConfig.id == model_config_id,
+                        ModelAPIConfig.is_enabled == True,
+                    )
+                    .first()
+                )
+                if not model_config:
+                    raise TaskConfigError("指定模型配置不存在或已禁用")
+                self._assert_general_model(model_config)
+                ai_config = {
+                    "base_url": model_config.base_url,
+                    "api_key": model_config.api_key,
+                    "model_name": model_config.model_name,
+                    "model_api_config_id": model_config.id,
+                    "api_type": model_config.api_type or "chat_completions",
+                    "price_input_per_1k": model_config.price_input_per_1k,
+                    "price_output_per_1k": model_config.price_output_per_1k,
+                    "currency": model_config.currency,
+                    "parameters": default_config.get("parameters") if default_config else None,
+                }
+
+            if prompt_config_id:
+                prompt_config = (
+                    db.query(PromptConfig)
+                    .filter(
+                        PromptConfig.id == prompt_config_id,
+                        PromptConfig.is_enabled == True,
+                        PromptConfig.type == "digest_prefill",
+                    )
+                    .first()
+                )
+                if not prompt_config:
+                    raise TaskConfigError(
+                        "指定批注提示词不存在、已禁用或类型不匹配"
+                    )
+                prompt = prompt_config.prompt
+                prompt_parameters = build_parameters(prompt_config)
+                if not ai_config and prompt_config.model_api_config_id:
+                    model_config = (
+                        db.query(ModelAPIConfig)
+                        .filter(
+                            ModelAPIConfig.id == prompt_config.model_api_config_id,
+                            ModelAPIConfig.is_enabled == True,
+                        )
+                        .first()
+                    )
+                    if not model_config:
+                        raise TaskConfigError("提示词绑定的模型不存在或已禁用")
+                    self._assert_general_model(model_config)
+                    ai_config = {
+                        "base_url": model_config.base_url,
+                        "api_key": model_config.api_key,
+                        "model_name": model_config.model_name,
+                        "model_api_config_id": model_config.id,
+                        "api_type": model_config.api_type or "chat_completions",
+                        "price_input_per_1k": model_config.price_input_per_1k,
+                        "price_output_per_1k": model_config.price_output_per_1k,
+                        "currency": model_config.currency,
+                    }
+
+            if not ai_config and default_config:
+                ai_config = default_config
+            if not prompt and default_config:
+                prompt = default_config.get("prompt_template")
+            if not ai_config:
+                raise TaskConfigError("未配置AI服务，请先在配置页面设置AI参数")
+            if not prompt:
+                raise TaskConfigError("未配置批注提示词，请先在配置页面设置")
+
+            parameters = ai_config.get("parameters") or {}
+            if prompt_parameters:
+                parameters = {**parameters, **prompt_parameters}
+            elif not parameters and default_config:
+                parameters = default_config.get("parameters") or {}
+
+            protocol = self.SINGLE_OUTPUT_PROTOCOLS.get("digest_prefill")
+            instruction = str(prompt).strip()
+            # Prefer explicit material block over raw article body.
+            if "{content}" in instruction:
+                instruction = instruction.replace("{content}", material)
+                user_prompt = instruction
+                if protocol:
+                    user_prompt = f"{instruction}\n\n{protocol}"
+            else:
+                blocks = [instruction]
+                if protocol:
+                    blocks.append(protocol)
+                blocks.append(f"客观材料：\n{material}")
+                user_prompt = "\n\n".join(block for block in blocks if block)
+
+            parameters = self._merge_protocol_parameters("digest_prefill", parameters)
+            pricing = {
+                "model_api_config_id": ai_config.get("model_api_config_id"),
+                "price_input_per_1k": ai_config.get("price_input_per_1k"),
+                "price_output_per_1k": ai_config.get("price_output_per_1k"),
+                "currency": ai_config.get("currency"),
+            }
+            ai_client = self.create_ai_client(ai_config)
+            max_tokens = self._resolve_generation_max_tokens(
+                "digest_prefill", parameters
+            )
+            parameters = dict(parameters or {})
+            parameters["max_tokens"] = max_tokens
+            result = await self.ai_invocation_service.invoke_generation(
+                db=db,
+                api_type=ai_config.get("api_type") or "chat_completions",
+                model_name=ai_config["model_name"],
+                base_url=ai_config["base_url"],
+                api_key=ai_config["api_key"],
+                system_prompt=parameters.get("system_prompt"),
+                user_prompt=user_prompt,
+                article_id=article_id,
+                task_type="process_ai_content",
+                content_type="digest_prefill",
+                task_id=self.current_task_id,
+                client=ai_client,
+                content=material,
+                prompt=user_prompt,
+                parameters=parameters,
+                max_tokens=max_tokens,
+                request_context={
+                    "parameters": parameters,
+                    "max_tokens": max_tokens,
+                    "material_flags": flags,
+                },
+            )
+
+            raw_content = result.get("content") if isinstance(result, dict) else result
+            try:
+                lines = parse_digest_prefill_result(raw_content)
+            except ValueError as exc:
+                raise TaskDataError(str(exc)) from exc
+
+            note_markdown = join_digest_lines(lines)
+            self._update_current_task_payload(
+                db,
+                digest_prefill_result={
+                    "lines": lines,
+                    "note_markdown": note_markdown,
+                    "material_flags": flags,
+                },
+            )
+
+            if isinstance(result, dict):
+                usage_log = self._log_ai_usage(
+                    db,
+                    model_config_id=pricing.get("model_api_config_id"),
+                    article_id=article_id,
+                    task_type="process_ai_content",
+                    content_type="digest_prefill",
+                    usage=result.get("usage"),
+                    latency_ms=result.get("latency_ms"),
+                    status="completed",
+                    error_message=None,
+                    price_input_per_1k=pricing.get("price_input_per_1k"),
+                    price_output_per_1k=pricing.get("price_output_per_1k"),
+                    currency=pricing.get("currency"),
+                    request_payload=result.get("request_payload"),
+                    response_payload=result.get("response_payload"),
+                )
+                if usage_log is not None:
+                    self.ai_call_session_service.create_session(
+                        db,
+                        usage_log_id=usage_log.id,
+                        task_id=self.current_task_id,
+                        article_id=article_id,
+                        task_type="process_ai_content",
+                        content_type="digest_prefill",
+                        session_info=result.get("session_info") or {},
+                    )
+            db.commit()
+        except Exception as exc:
+            print(f"digest_prefill 处理失败: {exc}")
+            raise
+        finally:
+            db.close()
+
     async def process_ai_content(
         self,
         article_id: str,
@@ -4243,10 +4556,22 @@ class ArticleAIPipelineService:
         db = SessionLocal()
         try:
             article = db.query(Article).filter(Article.id == article_id).first()
-            if not article or not article.ai_analysis:
+            if not article:
                 return
             if content_type not in self.SUPPORTED_AI_CONTENT_TYPES:
                 raise TaskDataError("不支持的 AI 内容类型")
+
+            if content_type == "digest_prefill":
+                await self.process_digest_prefill(
+                    article_id,
+                    category_id,
+                    model_config_id=model_config_id,
+                    prompt_config_id=prompt_config_id,
+                )
+                return
+
+            if not article.ai_analysis:
+                return
 
             setattr(article.ai_analysis, f"{content_type}_status", "processing")
             article.ai_analysis.updated_at = now_str()
@@ -4363,9 +4688,11 @@ class ArticleAIPipelineService:
 
             try:
                 generation_error: Exception | None = None
-                default_max_tokens = self.DEFAULT_AI_CONTENT_MAX_TOKENS.get(
-                    content_type, 500
+                max_tokens = self._resolve_generation_max_tokens(
+                    content_type, parameters
                 )
+                parameters = dict(parameters or {})
+                parameters["max_tokens"] = max_tokens
                 result = await self.ai_invocation_service.invoke_generation(
                     db=db,
                     api_type=ai_config.get("api_type") or "chat_completions",
@@ -4382,10 +4709,10 @@ class ArticleAIPipelineService:
                     content=article.content_md,
                     prompt=prompt,
                     parameters=parameters,
-                    max_tokens=default_max_tokens,
+                    max_tokens=max_tokens,
                     request_context={
                         "parameters": parameters,
-                        "max_tokens": default_max_tokens,
+                        "max_tokens": max_tokens,
                     },
                 )
                 if isinstance(result, dict):
@@ -4507,12 +4834,13 @@ class ArticleAIPipelineService:
                         db.commit()
         except Exception as exc:
             print(f"{content_type} 处理失败: {exc}")
-            article = db.query(Article).filter(Article.id == article_id).first()
-            if article and article.ai_analysis:
-                setattr(article.ai_analysis, f"{content_type}_status", "failed")
-                article.ai_analysis.error_message = str(exc)
-                article.ai_analysis.updated_at = now_str()
-                db.commit()
+            if content_type != "digest_prefill":
+                article = db.query(Article).filter(Article.id == article_id).first()
+                if article and article.ai_analysis:
+                    setattr(article.ai_analysis, f"{content_type}_status", "failed")
+                    article.ai_analysis.error_message = str(exc)
+                    article.ai_analysis.updated_at = now_str()
+                    db.commit()
             raise
         finally:
             db.close()

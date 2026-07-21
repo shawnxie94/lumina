@@ -138,3 +138,67 @@ def test_generate_summary_persists_responses_event_stream_response_id():
     assert result["content"] == "最终结果"
     assert result["response_payload"]["id"] == "resp_stream_1"
     assert result["finish_reason"] == "completed"
+
+
+def test_build_chat_request_disables_minimax_thinking_via_extra_body():
+    client = ConfigurableAIClient(
+        base_url="https://api.minimaxi.com/v1",
+        api_key="sk-test",
+        model_name="MiniMax-M3",
+        api_type="chat_completions",
+    )
+
+    request = client._build_chat_request(
+        prompt="输出 JSON",
+        system_prompt="只返回 JSON",
+        parameters={
+            "disable_thinking": True,
+            "response_format": {"type": "json_object"},
+            "max_tokens": 3000,
+        },
+        max_tokens=3000,
+        temperature=0.2,
+    )
+
+    assert request["extra_body"]["thinking"] == {"type": "disabled"}
+    assert request["response_format"] == {"type": "json_object"}
+    assert request["max_tokens"] == 3000
+
+
+def test_build_chat_request_skips_thinking_for_non_minimax():
+    client = ConfigurableAIClient(
+        base_url="https://api.openai.com/v1",
+        api_key="sk-test",
+        model_name="gpt-4o-mini",
+        api_type="chat_completions",
+    )
+
+    request = client._build_chat_request(
+        prompt="输出 JSON",
+        system_prompt=None,
+        parameters={"disable_thinking": True},
+        max_tokens=500,
+        temperature=0.7,
+    )
+
+    assert "extra_body" not in request
+
+
+def test_build_chat_request_respects_explicit_thinking_override():
+    client = ConfigurableAIClient(
+        base_url="https://api.minimaxi.com/v1",
+        api_key="sk-test",
+        model_name="MiniMax-M3",
+        api_type="chat_completions",
+    )
+
+    request = client._build_chat_request(
+        prompt="深度思考",
+        system_prompt=None,
+        parameters={"thinking": {"type": "adaptive"}},
+        max_tokens=500,
+        temperature=0.7,
+    )
+
+    assert request["extra_body"]["thinking"] == {"type": "adaptive"}
+
