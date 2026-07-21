@@ -134,7 +134,7 @@ test("comment link helpers extract the target comment id from hash and absolute 
   assert.equal(extractCommentIdFromHash("#comment-reply-2"), "reply-2");
   assert.equal(extractCommentIdFromHash("#other-anchor"), "");
   assert.equal(
-    extractCommentIdFromLink("https://lumina.test/reviews/demo#comment-root-1"),
+    extractCommentIdFromLink("https://lumina.test/columns/demo#comment-root-1"),
     "root-1",
   );
   assert.equal(extractCommentIdFromLink("#comment-inline-3"), "inline-3");

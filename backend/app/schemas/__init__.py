@@ -33,6 +33,8 @@ from app.schemas.review import (
     ReviewTemplateBase,
     ReviewTemplateManualRunRequest,
     ReviewTemplateUpdate,
+    ReviewTemplateSortItem,
+    ReviewTemplateSortRequest,
 )
 
 __all__ = [
@@ -68,5 +70,7 @@ __all__ = [
     "ReviewTemplateBase",
     "ReviewTemplateManualRunRequest",
     "ReviewTemplateUpdate",
+    "ReviewTemplateSortItem",
+    "ReviewTemplateSortRequest",
     "StorageSettingsUpdate",
 ]

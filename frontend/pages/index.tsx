@@ -41,14 +41,15 @@ const formatDate = (date: string | null, language: 'zh-CN' | 'en'): string => {
   return new Date(date).toLocaleDateString(language === 'en' ? 'en-US' : 'zh-CN');
 };
 
-const getReviewCategoryChips = (
+const getColumnChip = (
   review: ReviewIssue,
-  t: (key: string) => string,
-): string[] => {
-  if ((review as any).template?.include_all_categories) {
-    return [t('全部分类')];
-  }
-  return review.category_names.length > 0 ? review.category_names : [];
+): { name: string; color?: string | null } | null => {
+  const name = ((review as any).template?.name || '').trim();
+  if (!name) return null;
+  return {
+    name,
+    color: (review as any).template?.color || null,
+  };
 };
 
 const formatDateTime = (date: string | null, language: 'zh-CN' | 'en'): string => {
@@ -251,12 +252,12 @@ export default function HomePage({
 
   const renderReviewCard = (review: ReviewIssue) => {
     const template = (review as any).template;
-    const href = `/reviews/${review.slug}`;
+    const href = `/columns/${review.slug}`;
     const displayTitle = review.title;
     const topImage = resolveMediaUrl(review.top_image || logoUrl) || fallbackTopImageUrl;
     const reviewSummary = stripMarkdownStyles(review.summary);
 
-    const categoryChips = getReviewCategoryChips(review, t);
+    const columnChip = getColumnChip(review);
 
     return (
       <Link
@@ -270,11 +271,6 @@ export default function HomePage({
             alt={displayTitle}
             className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
           />
-          {template && (
-            <span className="language-tag absolute left-2 top-2 px-2 py-0.5 text-xs">
-              {template.name}
-            </span>
-          )}
         </div>
         <div className="p-4">
           <h3 className="text-base font-semibold text-text-1 truncate group-hover:text-primary transition" title={displayTitle}>
@@ -286,11 +282,22 @@ export default function HomePage({
             </p>
           )}
           <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-text-3">
-            {categoryChips.map((chip) => (
-              <span key={chip} className="category-chip rounded-sm px-2 py-0.5 bg-muted text-text-2">
-                {chip}
+            {columnChip ? (
+              <span
+                className="category-chip rounded-sm px-2 py-0.5 border border-border"
+                style={
+                  columnChip.color
+                    ? {
+                        backgroundColor: `${columnChip.color}22`,
+                        color: columnChip.color,
+                        borderColor: `${columnChip.color}55`,
+                      }
+                    : undefined
+                }
+              >
+                {columnChip.name}
               </span>
-            ))}
+            ) : null}
             <span>
               {formatDate(review.published_at || review.created_at, language)}
             </span>
@@ -345,11 +352,11 @@ export default function HomePage({
                   {primaryButtonText}
                 </LinkButton>
                 <LinkButton
-                  href="/reviews"
+                  href="/columns"
                   variant="secondary"
                   className="rounded-full px-5 py-2.5"
                 >
-                  {t('回顾')}
+                  {t('专栏')}
                 </LinkButton>
                 {isExternalUrl(secondaryButtonUrl) ? (
                   <LinkButton
@@ -379,7 +386,7 @@ export default function HomePage({
           <section className="max-w-7xl mx-auto px-4 pb-12">
             <div className="text-center">
               <h2 className="text-2xl sm:text-3xl font-semibold text-text-1">
-                {t('最新回顾')}
+                {t('最新专栏')}
               </h2>
               <div className="mx-auto mt-4 w-full max-w-3xl border-b border-border-strong" />
             </div>

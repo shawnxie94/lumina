@@ -154,7 +154,7 @@ export const buildClientSafePublicRssUrl = (params?: {
 
 export const buildPublicReviewRssRelativeUrl = (params?: {
 	templateId?: string;
-}): string => `/backend/api/reviews/rss.xml${buildPublicReviewRssQueryString(params)}`;
+}): string => `/backend/api/columns/rss.xml${buildPublicReviewRssQueryString(params)}`;
 
 export const buildPublicReviewRssUrl = (params?: {
 	templateId?: string;
@@ -162,7 +162,7 @@ export const buildPublicReviewRssUrl = (params?: {
 	if (typeof window !== "undefined") {
 		return `${window.location.origin}${buildPublicReviewRssRelativeUrl(params)}`;
 	}
-	return `${getApiBaseUrl()}/api/reviews/rss.xml${buildPublicReviewRssQueryString(params)}`;
+	return `${getApiBaseUrl()}/api/columns/rss.xml${buildPublicReviewRssQueryString(params)}`;
 };
 
 export const resolveMediaUrl = (url?: string | null): string => {
@@ -623,9 +623,7 @@ export interface HeaderCustomLink {
 	url: string;
 }
 
-export type ReviewScheduleType = "weekly" | "monthly" | "custom_days";
 export type ReviewIssueStatus = "draft" | "published";
-export type ReviewTemplateInputMode = "abstract" | "summary" | "full_text";
 
 export interface ReviewIssueArticle {
 	id?: string;
@@ -635,16 +633,6 @@ export interface ReviewIssueArticle {
 	article_sort_order: number;
 }
 
-export interface ReviewIssueVersionSummary {
-	id: string;
-	slug: string;
-	title: string;
-	status: ReviewIssueStatus;
-	generated_at?: string | null;
-	published_at?: string | null;
-	created_at: string;
-	updated_at: string;
-}
 
 export interface ReviewNeighbor {
 	id: string;
@@ -658,17 +646,10 @@ export interface ReviewTemplateSummary {
 	id: string;
 	name: string;
 	slug: string;
-	include_all_categories?: boolean;
-	model_api_config_id?: string | null;
-	review_input_mode?: ReviewTemplateInputMode;
+	color?: string | null;
+	sort_order?: number;
 	description?: string | null;
-	schedule_type?: ReviewScheduleType;
-	custom_interval_days?: number | null;
-	trigger_time?: string | null;
 	category_names?: string[];
-	temperature?: number | null;
-	max_tokens?: number | null;
-	top_p?: number | null;
 }
 
 export interface ReviewTemplate {
@@ -676,40 +657,24 @@ export interface ReviewTemplate {
 	name: string;
 	slug: string;
 	description?: string | null;
-	is_enabled: boolean;
-	schedule_type: ReviewScheduleType;
-	custom_interval_days?: number | null;
-	anchor_date: string;
-	timezone: string;
-	trigger_time: string;
-	include_all_categories: boolean;
-	category_ids: string[];
-	model_api_config_id?: string | null;
-	review_input_mode: ReviewTemplateInputMode;
-	system_prompt?: string | null;
-	prompt_template: string;
-	temperature?: number | null;
-	max_tokens?: number | null;
-	top_p?: number | null;
-	title_template: string;
-	next_run_at?: string | null;
-	last_run_at?: string | null;
+	color?: string | null;
+	sort_order?: number;
 	created_at: string;
 	updated_at: string;
 }
 
-export type ReviewTemplateMutationInput = Omit<
-	ReviewTemplate,
-	"id" | "slug" | "created_at" | "updated_at" | "next_run_at" | "last_run_at"
->;
+export type ReviewTemplateMutationInput = {
+	name: string;
+	description?: string | null;
+	color?: string | null;
+	sort_order?: number;
+};
 
 export interface ReviewIssue {
 	id: string;
 	slug: string;
 	title: string;
 	status: ReviewIssueStatus;
-	window_start: string;
-	window_end: string;
 	top_image?: string | null;
 	generated_at?: string | null;
 	published_at?: string | null;
@@ -719,8 +684,6 @@ export interface ReviewIssue {
 	template: ReviewTemplateSummary | null;
 	category_names: string[];
 	summary: string;
-	version_count?: number;
-	versions?: ReviewIssueVersionSummary[];
 	markdown_content?: string;
 	article_sections_markdown?: string;
 	article_placeholder_blocks?: Record<string, string>;
@@ -735,32 +698,11 @@ export interface ReviewIssue {
 export interface ReviewTemplateFilterItem {
 	id: string;
 	name: string;
-	slug: string;
-	count: number;
+	slug?: string;
+	color?: string | null;
+	count?: number;
 }
 
-export interface ReviewGenerationCandidate {
-	id: string;
-	slug: string;
-	title: string;
-	summary: string;
-	top_image?: string | null;
-	created_at: string;
-	category: {
-		id: string;
-		name: string;
-	} | null;
-}
-
-export interface ReviewTemplateGenerationPreview {
-	template: ReviewTemplateSummary;
-	date_start: string;
-	date_end: string;
-	window_start: string;
-	window_end: string;
-	period_label: string;
-	articles: ReviewGenerationCandidate[];
-}
 
 export interface ReviewIssueListResponse {
 	data: ReviewIssue[];
@@ -1772,17 +1714,17 @@ export const reviewApi = {
 		published_at_end?: string;
 		visibility?: string;
 	}): Promise<ReviewIssueListResponse> => {
-		const response = await api.get("/api/reviews", { params });
+		const response = await api.get("/api/columns", { params });
 		return response.data;
 	},
 
 	getPublicReview: async (slug: string): Promise<ReviewIssue> => {
-		const response = await api.get(`/api/reviews/${slug}`);
+		const response = await api.get(`/api/columns/${slug}`);
 		return response.data;
 	},
 
 	recordReviewView: async (slug: string) => {
-		const response = await api.post(`/api/reviews/${slug}/view`);
+		const response = await api.post(`/api/columns/${slug}/view`);
 		return response.data as {
 			review_slug: string;
 			view_count: number;
@@ -1791,14 +1733,14 @@ export const reviewApi = {
 	},
 
 	getTemplates: async (): Promise<ReviewTemplate[]> => {
-		const response = await api.get("/api/review-templates");
+		const response = await api.get("/api/column-templates");
 		return response.data;
 	},
 
 	createTemplate: async (
 		data: ReviewTemplateMutationInput,
 	) => {
-		const response = await api.post("/api/review-templates", data);
+		const response = await api.post("/api/column-templates", data);
 		return response.data as { id: string };
 	},
 
@@ -1806,53 +1748,37 @@ export const reviewApi = {
 		id: string,
 		data: Partial<ReviewTemplateMutationInput>,
 	) => {
-		const response = await api.put(`/api/review-templates/${id}`, data);
+		const response = await api.put(`/api/column-templates/${id}`, data);
 		return response.data as { success: boolean };
 	},
 
 	deleteTemplate: async (id: string) => {
-		const response = await api.delete(`/api/review-templates/${id}`);
+		const response = await api.delete(`/api/column-templates/${id}`);
 		return response.data as { success: boolean };
 	},
 
-	getTemplateIssues: async (id: string): Promise<ReviewIssue[]> => {
-		const response = await api.get(`/api/review-templates/${id}/issues`);
-		return response.data;
-	},
-
-	runTemplateNow: async (id: string) => {
-		const response = await api.post(`/api/review-templates/${id}/run-now`);
-		return response.data as { success: boolean; task_id: string };
-	},
-
-	getTemplateGenerationPreview: async (
-		id: string,
-		params?: {
-			date_start?: string;
-			date_end?: string;
-		},
-	): Promise<ReviewTemplateGenerationPreview> => {
-		const response = await api.get(`/api/review-templates/${id}/generation-preview`, {
-			params,
-		});
+	updateTemplatesSort: async (items: { id: string; sort_order: number }[]) => {
+		const response = await api.put("/api/column-templates/sort", { items });
 		return response.data;
 	},
 
 	runTemplateManual: async (
 		id: string,
 		data: {
-			date_start?: string | null;
-			date_end?: string | null;
-			article_ids: string[];
-			model_api_config_id?: string | null;
+			title?: string | null;
 		},
 	) => {
-		const response = await api.post(`/api/review-templates/${id}/run-manual`, data);
-		return response.data as { success: boolean; task_id: string; issue_id: string };
+		const response = await api.post(`/api/column-templates/${id}/run-manual`, data);
+		return response.data as {
+			success: boolean;
+			task_id: string | null;
+			issue_id: string;
+			issue_slug?: string;
+		};
 	},
 
 	getIssue: async (id: string): Promise<ReviewIssue> => {
-		const response = await api.get(`/api/review-issues/${id}`);
+		const response = await api.get(`/api/column-issues/${id}`);
 		return response.data;
 	},
 
@@ -1865,29 +1791,29 @@ export const reviewApi = {
 			markdown_content: string;
 		},
 	): Promise<ReviewIssue> => {
-		const response = await api.put(`/api/review-issues/${id}`, data);
+		const response = await api.put(`/api/column-issues/${id}`, data);
 		return response.data;
 	},
 
 	publishIssue: async (id: string) => {
-		const response = await api.post(`/api/review-issues/${id}/publish`);
+		const response = await api.post(`/api/column-issues/${id}/publish`);
 		return response.data as { success: boolean; status: ReviewIssueStatus };
 	},
 
 	unpublishIssue: async (id: string) => {
-		const response = await api.post(`/api/review-issues/${id}/unpublish`);
+		const response = await api.post(`/api/column-issues/${id}/unpublish`);
 		return response.data as { success: boolean; status: ReviewIssueStatus };
 	},
 
 	deleteIssue: async (id: string) => {
-		const response = await api.delete(`/api/review-issues/${id}`);
+		const response = await api.delete(`/api/column-issues/${id}`);
 		return response.data as { success: boolean };
 	},
 };
 
 export const reviewCommentApi = {
 	getReviewComments: async (reviewSlug: string): Promise<ReviewComment[]> => {
-		const response = await api.get(`/api/reviews/${reviewSlug}/comments`, {
+		const response = await api.get(`/api/columns/${reviewSlug}/comments`, {
 			params: { include_hidden: true },
 		});
 		return response.data as ReviewComment[];
@@ -1897,7 +1823,7 @@ export const reviewCommentApi = {
 		content: string,
 		replyToId?: string | null,
 	) => {
-		const response = await fetch(`/api/review-comments/${reviewSlug}`, {
+		const response = await fetch(`/api/column-comments/${reviewSlug}`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({ content, reply_to_id: replyToId || null }),
@@ -1910,7 +1836,7 @@ export const reviewCommentApi = {
 		return data as ReviewComment;
 	},
 	updateComment: async (commentId: string, content: string) => {
-		const response = await fetch(`/api/review-comments/item/${commentId}`, {
+		const response = await fetch(`/api/column-comments/item/${commentId}`, {
 			method: "PUT",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({ content }),
@@ -1925,7 +1851,7 @@ export const reviewCommentApi = {
 		return data as ReviewComment;
 	},
 	deleteComment: async (commentId: string) => {
-		const response = await fetch(`/api/review-comments/item/${commentId}`, {
+		const response = await fetch(`/api/column-comments/item/${commentId}`, {
 			method: "DELETE",
 			credentials: "same-origin",
 		});
@@ -1936,7 +1862,7 @@ export const reviewCommentApi = {
 		return data as { success: boolean };
 	},
 	toggleHidden: async (commentId: string, isHidden: boolean) => {
-		const response = await api.put(`/api/review-comments/${commentId}/visibility`, {
+		const response = await api.put(`/api/column-comments/${commentId}/visibility`, {
 			is_hidden: isHidden,
 		});
 		return response.data as { id: string; is_hidden: boolean; updated_at: string };
@@ -2071,7 +1997,7 @@ export const commentAdminApi = {
 	) => {
 		const endpoint =
 			resourceType === "review"
-				? `/api/review-comments/${commentId}`
+				? `/api/column-comments/${commentId}`
 				: `/api/comments/${commentId}`;
 		const response = await api.delete(endpoint);
 		return response.data as { success: boolean };

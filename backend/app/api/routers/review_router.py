@@ -32,6 +32,7 @@ from app.schemas import (
     ReviewTemplateBase,
     ReviewTemplateManualRunRequest,
     ReviewTemplateUpdate,
+    ReviewTemplateSortRequest,
 )
 from app.domain.review_service import ReviewService
 from auth import check_is_admin, get_admin_settings, get_current_admin, security
@@ -72,21 +73,6 @@ def _collect_review_comment_descendant_ids(db: Session, root_comment_id: str) ->
     return descendant_ids
 
 
-def _sync_template_categories(db: Session, template: ReviewTemplate, category_ids: list[str]) -> None:
-    normalized_ids = [item.strip() for item in category_ids if item and item.strip()]
-    if not normalized_ids:
-        template.categories = []
-        return
-    categories = (
-        db.query(Category)
-        .filter(Category.id.in_(normalized_ids))
-        .order_by(Category.sort_order.asc(), Category.name.asc())
-        .all()
-    )
-    if len(categories) != len(set(normalized_ids)):
-        raise HTTPException(status_code=400, detail="存在无效的分类配置")
-    template.categories = categories
-
 
 def _build_unique_template_slug(
     db: Session,
@@ -108,21 +94,8 @@ def _build_unique_template_slug(
         suffix += 1
 
 
-def _resolve_template_model_config_id(db: Session, model_api_config_id: str | None) -> str | None:
-    normalized_id = (model_api_config_id or "").strip()
-    if not normalized_id:
-        return None
-    model_config = db.query(ModelAPIConfig).filter(ModelAPIConfig.id == normalized_id).first()
-    if not model_config:
-        raise HTTPException(status_code=400, detail="指定的模型不存在")
-    if not model_config.is_enabled:
-        raise HTTPException(status_code=400, detail="指定的模型已禁用")
-    if (model_config.model_type or "general") == "vector":
-        raise HTTPException(status_code=400, detail="回顾模板仅支持通用模型")
-    return model_config.id
 
-
-@router.get("/api/reviews")
+@router.get("/api/columns")
 async def get_public_reviews(
     response: Response,
     page: int = 1,
@@ -174,7 +147,7 @@ async def get_public_reviews(
     }
 
 
-@router.get("/api/reviews/rss.xml")
+@router.get("/api/columns/rss.xml")
 async def get_reviews_rss(
     request: Request,
     template_id: str | None = None,
@@ -208,7 +181,7 @@ async def get_reviews_rss(
     return response
 
 
-@router.get("/api/reviews/{review_slug}")
+@router.get("/api/columns/{review_slug}")
 async def get_public_review_detail(
     review_slug: str,
     db: Session = Depends(get_db),
@@ -218,7 +191,7 @@ async def get_public_review_detail(
     return review_service.serialize_issue_detail(db, issue, is_admin=is_admin)
 
 
-@router.get("/api/reviews/{review_slug}/export.md")
+@router.get("/api/columns/{review_slug}/export.md")
 async def export_public_review_markdown(
     review_slug: str,
     request: Request,
@@ -236,7 +209,7 @@ async def export_public_review_markdown(
     return build_markdown_response(markdown, f"review-{issue.slug}.md")
 
 
-@router.post("/api/reviews/{review_slug}/view")
+@router.post("/api/columns/{review_slug}/view")
 async def record_review_view(
     review_slug: str,
     db: Session = Depends(get_db),
@@ -253,7 +226,7 @@ async def record_review_view(
         synchronize_session=False,
     )
     if updated == 0:
-        raise HTTPException(status_code=404, detail="回顾不存在")
+        raise HTTPException(status_code=404, detail="专栏文章不存在")
 
     db.commit()
     issue = (
@@ -263,7 +236,7 @@ async def record_review_view(
         .first()
     )
     if issue is None:
-        raise HTTPException(status_code=404, detail="回顾不存在")
+        raise HTTPException(status_code=404, detail="专栏文章不存在")
     return {
         "review_slug": issue.slug,
         "view_count": int(issue.view_count or 0),
@@ -271,7 +244,7 @@ async def record_review_view(
     }
 
 
-@router.get("/api/reviews/{review_slug}/comments")
+@router.get("/api/columns/{review_slug}/comments")
 async def get_review_comments(
     review_slug: str,
     include_hidden: bool = False,
@@ -300,7 +273,7 @@ async def get_review_comments(
     ]
 
 
-@router.post("/api/reviews/{review_slug}/comments")
+@router.post("/api/columns/{review_slug}/comments")
 async def create_review_comment(
     review_slug: str,
     payload: CommentCreate,
@@ -339,7 +312,7 @@ async def create_review_comment(
     return review_service.serialize_review_comment(comment, review_slug=issue.slug)
 
 
-@router.get("/api/review-comments/{comment_id}")
+@router.get("/api/column-comments/{comment_id}")
 async def get_review_comment(
     comment_id: str,
     db: Session = Depends(get_db),
@@ -357,7 +330,7 @@ async def get_review_comment(
     return review_service.serialize_review_comment(comment, review_slug=comment.issue.slug)
 
 
-@router.put("/api/review-comments/{comment_id}")
+@router.put("/api/column-comments/{comment_id}")
 async def update_review_comment(
     comment_id: str,
     payload: CommentUpdate,
@@ -394,7 +367,7 @@ async def update_review_comment(
     return review_service.serialize_review_comment(comment, review_slug=comment.issue.slug)
 
 
-@router.delete("/api/review-comments/{comment_id}")
+@router.delete("/api/column-comments/{comment_id}")
 async def delete_review_comment(
     comment_id: str,
     db: Session = Depends(get_db),
@@ -420,7 +393,7 @@ async def delete_review_comment(
     return {"success": True, "deleted": deleted}
 
 
-@router.put("/api/review-comments/{comment_id}/visibility")
+@router.put("/api/column-comments/{comment_id}/visibility")
 async def update_review_comment_visibility(
     comment_id: str,
     payload: CommentVisibilityUpdate,
@@ -441,15 +414,18 @@ async def update_review_comment_visibility(
     }
 
 
-@router.get("/api/review-templates")
+@router.get("/api/column-templates")
 async def get_review_templates(
     db: Session = Depends(get_db),
     _: bool = Depends(get_current_admin),
 ):
     rows = (
         db.query(ReviewTemplate)
-        .options(joinedload(ReviewTemplate.categories))
-        .order_by(ReviewTemplate.updated_at.desc(), ReviewTemplate.created_at.desc())
+                .order_by(
+            ReviewTemplate.sort_order.asc(),
+            ReviewTemplate.created_at.asc(),
+            ReviewTemplate.id.asc(),
+        )
         .all()
     )
     return [
@@ -458,24 +434,8 @@ async def get_review_templates(
             "name": row.name,
             "slug": row.slug,
             "description": row.description,
-            "is_enabled": row.is_enabled,
-            "schedule_type": row.schedule_type,
-            "custom_interval_days": row.custom_interval_days,
-            "anchor_date": row.anchor_date,
-            "timezone": row.timezone,
-            "trigger_time": row.trigger_time,
-            "include_all_categories": row.include_all_categories,
-            "category_ids": [category.id for category in row.categories],
-            "model_api_config_id": row.model_api_config_id,
-            "review_input_mode": row.review_input_mode,
-            "system_prompt": row.system_prompt,
-            "prompt_template": row.prompt_template,
-            "temperature": row.temperature,
-            "max_tokens": row.max_tokens,
-            "top_p": row.top_p,
-            "title_template": row.title_template,
-            "next_run_at": row.next_run_at,
-            "last_run_at": row.last_run_at,
+            "color": getattr(row, "color", None) or "#3B82F6",
+            "sort_order": int(getattr(row, "sort_order", 0) or 0),
             "created_at": row.created_at,
             "updated_at": row.updated_at,
         }
@@ -483,45 +443,50 @@ async def get_review_templates(
     ]
 
 
-@router.post("/api/review-templates")
+@router.post("/api/column-templates")
 async def create_review_template(
     payload: ReviewTemplateBase,
     db: Session = Depends(get_db),
     _: bool = Depends(get_current_admin),
 ):
     template_slug = _build_unique_template_slug(db, name=payload.name)
+    max_sort = db.query(func.max(ReviewTemplate.sort_order)).scalar()
+    next_sort = int(max_sort or 0) + 1 if max_sort is not None else 0
     template = ReviewTemplate(
         name=payload.name,
         slug=template_slug,
         description=payload.description,
-        is_enabled=payload.is_enabled,
-        schedule_type=payload.schedule_type,
-        custom_interval_days=payload.custom_interval_days,
-        anchor_date=payload.anchor_date,
-        timezone=payload.timezone,
-        trigger_time=payload.trigger_time,
-        include_all_categories=payload.include_all_categories,
-        model_api_config_id=_resolve_template_model_config_id(db, payload.model_api_config_id),
-        review_input_mode=payload.review_input_mode,
-        system_prompt=(payload.system_prompt or "").strip() or None,
-        prompt_template=payload.prompt_template,
-        temperature=payload.temperature,
-        max_tokens=payload.max_tokens,
-        top_p=payload.top_p,
-        title_template=payload.title_template,
+        color=(payload.color or "#3B82F6").strip() or "#3B82F6",
+        sort_order=payload.sort_order if payload.sort_order is not None else next_sort,
         created_at=now_str(),
         updated_at=now_str(),
     )
     db.add(template)
-    db.flush()
-    _sync_template_categories(db, template, payload.category_ids)
-    template.next_run_at = review_service.resolve_window(template, now_str()).next_run_at
     db.commit()
     db.refresh(template)
     return {"id": template.id}
 
 
-@router.put("/api/review-templates/{template_id}")
+@router.put("/api/column-templates/sort")
+async def update_review_templates_sort(
+    request: ReviewTemplateSortRequest,
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
+    try:
+        for item in request.items:
+            template = db.query(ReviewTemplate).filter(ReviewTemplate.id == item.id).first()
+            if template:
+                template.sort_order = item.sort_order
+                template.updated_at = now_str()
+        db.commit()
+        return {"message": "排序更新成功"}
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.put("/api/column-templates/{template_id}")
 async def update_review_template(
     template_id: str,
     payload: ReviewTemplateUpdate,
@@ -530,50 +495,24 @@ async def update_review_template(
 ):
     template = (
         db.query(ReviewTemplate)
-        .options(joinedload(ReviewTemplate.categories))
-        .filter(ReviewTemplate.id == template_id)
+                .filter(ReviewTemplate.id == template_id)
         .first()
     )
     if not template:
-        raise HTTPException(status_code=404, detail="回顾模板不存在")
-    for field in (
-        "name",
-        "description",
-        "is_enabled",
-        "schedule_type",
-        "custom_interval_days",
-        "anchor_date",
-        "timezone",
-        "trigger_time",
-        "include_all_categories",
-        "review_input_mode",
-        "system_prompt",
-        "prompt_template",
-        "title_template",
-    ):
+        raise HTTPException(status_code=404, detail="专栏不存在")
+    for field in ("name", "description", "color", "sort_order"):
         value = getattr(payload, field)
         if value is not None:
-            if field == "system_prompt":
-                value = (value or "").strip() or None
             setattr(template, field, value)
-    for field in ("temperature", "max_tokens", "top_p"):
-        if field in payload.model_fields_set:
-            setattr(template, field, getattr(payload, field))
-    if "model_api_config_id" in payload.model_fields_set:
-        template.model_api_config_id = _resolve_template_model_config_id(
-            db,
-            payload.model_api_config_id,
-        )
-    if payload.category_ids is not None:
-        _sync_template_categories(db, template, payload.category_ids)
     template.updated_at = now_str()
-    template.next_run_at = review_service.resolve_window(template, now_str()).next_run_at
     db.commit()
     db.refresh(template)
     return {"success": True}
 
 
-@router.delete("/api/review-templates/{template_id}")
+
+
+@router.delete("/api/column-templates/{template_id}")
 async def delete_review_template(
     template_id: str,
     db: Session = Depends(get_db),
@@ -581,81 +520,19 @@ async def delete_review_template(
 ):
     template = (
         db.query(ReviewTemplate)
-        .options(joinedload(ReviewTemplate.categories))
-        .filter(ReviewTemplate.id == template_id)
+                .filter(ReviewTemplate.id == template_id)
         .first()
     )
     if not template:
-        raise HTTPException(status_code=404, detail="回顾模板不存在")
+        raise HTTPException(status_code=404, detail="专栏不存在")
     db.delete(template)
     db.commit()
     return {"success": True}
 
 
-@router.get("/api/review-templates/{template_id}/issues")
-async def get_review_template_issues(
-    template_id: str,
-    db: Session = Depends(get_db),
-    _: bool = Depends(get_current_admin),
-):
-    issues = (
-        db.query(ReviewIssue)
-        .options(joinedload(ReviewIssue.template))
-        .filter(ReviewIssue.template_id == template_id)
-        .order_by(ReviewIssue.window_start.desc(), ReviewIssue.created_at.desc())
-        .all()
-    )
-    return [review_service.serialize_issue_card(db, issue) for issue in issues]
 
 
-@router.post("/api/review-templates/{template_id}/run-now")
-async def run_review_template_now(
-    template_id: str,
-    db: Session = Depends(get_db),
-    _: bool = Depends(get_current_admin),
-):
-    template = (
-        db.query(ReviewTemplate)
-        .options(joinedload(ReviewTemplate.categories))
-        .filter(ReviewTemplate.id == template_id)
-        .first()
-    )
-    if not template:
-        raise HTTPException(status_code=404, detail="回顾模板不存在")
-    task_id = review_service.enqueue_template_run_now(
-        db,
-        template,
-        now_iso=now_str(),
-    )
-    return {"success": True, "task_id": task_id}
-
-
-@router.get("/api/review-templates/{template_id}/generation-preview")
-async def get_review_template_generation_preview(
-    template_id: str,
-    date_start: str | None = None,
-    date_end: str | None = None,
-    db: Session = Depends(get_db),
-    _: bool = Depends(get_current_admin),
-):
-    template = (
-        db.query(ReviewTemplate)
-        .options(joinedload(ReviewTemplate.categories))
-        .filter(ReviewTemplate.id == template_id)
-        .first()
-    )
-    if not template:
-        raise HTTPException(status_code=404, detail="回顾模板不存在")
-    return review_service.build_generation_preview(
-        db,
-        template,
-        date_start=date_start,
-        date_end=date_end,
-        now_iso=now_str(),
-    )
-
-
-@router.post("/api/review-templates/{template_id}/run-manual")
+@router.post("/api/column-templates/{template_id}/run-manual")
 async def run_review_template_manual(
     template_id: str,
     payload: ReviewTemplateManualRunRequest,
@@ -664,25 +541,25 @@ async def run_review_template_manual(
 ):
     template = (
         db.query(ReviewTemplate)
-        .options(joinedload(ReviewTemplate.categories))
-        .filter(ReviewTemplate.id == template_id)
+                .filter(ReviewTemplate.id == template_id)
         .first()
     )
     if not template:
-        raise HTTPException(status_code=404, detail="回顾模板不存在")
+        raise HTTPException(status_code=404, detail="专栏不存在")
     issue, task_id = review_service.enqueue_manual_issue_task(
         db,
         template,
-        date_start=payload.date_start,
-        date_end=payload.date_end,
-        article_ids=payload.article_ids,
-        model_api_config_id=_resolve_template_model_config_id(db, payload.model_api_config_id),
-        now_iso=now_str(),
+        title=payload.title,
     )
-    return {"success": True, "task_id": task_id, "issue_id": issue.id}
+    return {
+        "success": True,
+        "task_id": task_id,
+        "issue_id": issue.id,
+        "issue_slug": issue.slug,
+    }
 
 
-@router.get("/api/review-issues/{issue_id}")
+@router.get("/api/column-issues/{issue_id}")
 async def get_review_issue_detail(
     issue_id: str,
     db: Session = Depends(get_db),
@@ -692,7 +569,7 @@ async def get_review_issue_detail(
     return review_service.serialize_issue_detail(db, issue, is_admin=True)
 
 
-@router.put("/api/review-issues/{issue_id}")
+@router.put("/api/column-issues/{issue_id}")
 async def update_review_issue(
     issue_id: str,
     payload: ReviewIssueUpdateRequest,
@@ -711,18 +588,8 @@ async def update_review_issue(
     return review_service.serialize_issue_detail(db, updated, is_admin=True)
 
 
-@router.post("/api/review-issues/{issue_id}/regenerate")
-async def regenerate_review_issue(
-    issue_id: str,
-    db: Session = Depends(get_db),
-    _: bool = Depends(get_current_admin),
-):
-    issue = review_service.get_issue_by_id(db, issue_id)
-    await review_service.generate_issue(db, issue.template_id, issue.id)
-    return {"success": True, "status": "draft"}
 
-
-@router.post("/api/review-issues/{issue_id}/publish")
+@router.post("/api/column-issues/{issue_id}/publish")
 async def publish_review_issue(
     issue_id: str,
     db: Session = Depends(get_db),
@@ -733,7 +600,7 @@ async def publish_review_issue(
     return {"success": True, "status": issue.status}
 
 
-@router.post("/api/review-issues/{issue_id}/unpublish")
+@router.post("/api/column-issues/{issue_id}/unpublish")
 async def unpublish_review_issue(
     issue_id: str,
     db: Session = Depends(get_db),
@@ -744,7 +611,7 @@ async def unpublish_review_issue(
     return {"success": True, "status": issue.status}
 
 
-@router.delete("/api/review-issues/{issue_id}")
+@router.delete("/api/column-issues/{issue_id}")
 async def delete_review_issue(
     issue_id: str,
     db: Session = Depends(get_db),
@@ -754,3 +621,49 @@ async def delete_review_issue(
     db.delete(issue)
     db.commit()
     return {"success": True}
+
+
+# Legacy review path aliases for transition period.
+_LEGACY_PATH_ALIASES = {
+    "/api/columns": "/api/reviews",
+    "/api/columns/rss.xml": "/api/reviews/rss.xml",
+    "/api/columns/{review_slug}": "/api/reviews/{review_slug}",
+    "/api/columns/{review_slug}/export.md": "/api/reviews/{review_slug}/export.md",
+    "/api/columns/{review_slug}/view": "/api/reviews/{review_slug}/view",
+    "/api/columns/{review_slug}/comments": "/api/reviews/{review_slug}/comments",
+    "/api/column-templates": "/api/review-templates",
+    "/api/column-templates/sort": "/api/review-templates/sort",
+    "/api/column-templates/{template_id}": "/api/review-templates/{template_id}",
+    "/api/column-templates/{template_id}/run-manual": "/api/review-templates/{template_id}/run-manual",
+    "/api/column-issues/{issue_id}": "/api/review-issues/{issue_id}",
+    "/api/column-issues/{issue_id}/publish": "/api/review-issues/{issue_id}/publish",
+    "/api/column-issues/{issue_id}/unpublish": "/api/review-issues/{issue_id}/unpublish",
+    "/api/column-comments/{comment_id}": "/api/review-comments/{comment_id}",
+    "/api/column-comments/{comment_id}/visibility": "/api/review-comments/{comment_id}/visibility",
+}
+
+
+def _register_legacy_review_path_aliases() -> None:
+    for route in list(router.routes):
+        path = getattr(route, "path", None)
+        methods = getattr(route, "methods", None)
+        endpoint = getattr(route, "endpoint", None)
+        if not path or not methods or endpoint is None:
+            continue
+        legacy_path = _LEGACY_PATH_ALIASES.get(path)
+        if not legacy_path:
+            continue
+        for method in methods:
+            if method in {"HEAD", "OPTIONS"}:
+                continue
+            router.add_api_route(
+                legacy_path,
+                endpoint,
+                methods=[method],
+                include_in_schema=False,
+                name=f"legacy_{getattr(route, 'name', endpoint.__name__)}_{method.lower()}",
+            )
+
+
+_register_legacy_review_path_aliases()
+

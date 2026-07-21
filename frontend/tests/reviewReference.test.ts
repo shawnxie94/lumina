@@ -188,7 +188,7 @@ test("review reference selection preview focuses on full-width article content s
 
 test("review detail page wires review reference panel into the markdown editor", () => {
 	const source = readFileSync(
-		join(process.cwd(), "pages/reviews/[slug].tsx"),
+		join(process.cwd(), "pages/columns/[slug].tsx"),
 		"utf8",
 	);
 

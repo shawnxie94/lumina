@@ -41,6 +41,7 @@ import TextArea from "@/components/ui/TextArea";
 import TextInput from "@/components/ui/TextInput";
 import { ArticleSearchSelect } from "@/components/ArticleSearchSelect";
 import {
+	IconDoc,
 	IconEdit,
 	IconEye,
 	IconArrowDown,
@@ -108,6 +109,7 @@ type SettingSection =
 	| "basic"
 	| "ai"
 	| "categories"
+	| "columns"
 	| "monitoring"
 	| "comments"
 	| "extraction"
@@ -115,7 +117,6 @@ type SettingSection =
 type AISubSection =
 	| "model-api"
 	| "prompt"
-	| "review-templates"
 	| "recommendations";
 type MonitoringSubSection = "tasks" | "ai-usage" | "comments";
 type CommentSubSection = "keys" | "filters";
@@ -132,7 +133,6 @@ type AdminRouteState = {
 const AI_SUB_SECTIONS: AISubSection[] = [
 	"model-api",
 	"prompt",
-	"review-templates",
 	"recommendations",
 ];
 const MONITORING_SUB_SECTIONS: MonitoringSubSection[] = [
@@ -231,6 +231,8 @@ const parseAdminRouteState = (
 			section = "basic";
 		} else if (settingsSection === "categories") {
 			section = "categories";
+		} else if (settingsSection === "columns") {
+			section = "columns";
 		} else if (settingsSection === "storage") {
 			section = "storage";
 		} else if (settingsSection === "extraction") {
@@ -293,6 +295,9 @@ const buildAdminPath = (
 	}
 	if (section === "categories") {
 		return "/admin/settings/categories";
+	}
+	if (section === "columns") {
+		return "/admin/settings/columns";
 	}
 	if (section === "storage") {
 		return "/admin/settings/storage";
@@ -715,6 +720,7 @@ export default function AdminPage() {
 			new Set<SettingSection>([
 				"basic",
 				"categories",
+				"columns",
 				"ai",
 				"comments",
 				"extraction",
@@ -1936,9 +1942,9 @@ export default function AdminPage() {
 			} else if (aiSubSection === "prompt") {
 				fetchModelAPIConfigs();
 				fetchPromptConfigs();
-			} else if (aiSubSection === "review-templates") {
+			} else if (false) {
 				return;
-			} else {
+			} else if (aiSubSection === "recommendations") {
 				fetchRecommendationSettings();
 				fetchModelAPIConfigs();
 			}
@@ -2768,7 +2774,7 @@ export default function AdminPage() {
 		},
 	) => {
 		if (task.article_kind === "review" && task.article_slug) {
-			return `/reviews/${task.article_slug}`;
+			return `/columns/${task.article_slug}`;
 		}
 		if (
 			(task.article_kind === "article" || !task.article_kind) &&
@@ -2782,7 +2788,7 @@ export default function AdminPage() {
 	const getCommentTargetHref = (comment: AdminCommentItem) => {
 		if (comment.resource_type === "review") {
 			const reviewTarget = comment.review_slug || comment.review_id;
-			return reviewTarget ? `/reviews/${reviewTarget}#comment-${comment.id}` : null;
+			return reviewTarget ? `/columns/${reviewTarget}#comment-${comment.id}` : null;
 		}
 		const articleTarget = comment.article_slug || comment.article_id;
 		return articleTarget ? `/article/${articleTarget}#comment-${comment.id}` : null;
@@ -2809,7 +2815,7 @@ export default function AdminPage() {
 	) =>
 		task.article_title ||
 		task.article_id ||
-		(task.article_kind === "review" ? t("未知回顾") : t("未知文章"));
+		(task.article_kind === "review" ? t("未知专栏文章") : t("未知文章"));
 
 	const getTaskStatusLabel = (status: string) => {
 		if (status === "completed") return t("已完成");
@@ -3841,6 +3847,16 @@ export default function AdminPage() {
 													<span>{t("分类管理")}</span>
 												</span>
 											</SelectableButton>
+											<SelectableButton
+												onClick={() => setActiveSection("columns")}
+												active={activeSection === "columns"}
+												variant="menu"
+											>
+												<span className="inline-flex items-center gap-2">
+													<IconDoc className="h-4 w-4" />
+													<span>{t("专栏管理")}</span>
+												</span>
+											</SelectableButton>
 
 											<SectionToggleButton
 												label={t("内容解析")}
@@ -3945,23 +3961,7 @@ export default function AdminPage() {
 															<span>{t("提示词")}</span>
 														</span>
 													</SelectableButton>
-													<SelectableButton
-														onClick={() => {
-															setActiveSection("ai");
-															setAISubSection("review-templates");
-														}}
-														active={
-															activeSection === "ai" &&
-															aiSubSection === "review-templates"
-														}
-														variant="submenu"
-													>
-														<span className="inline-flex items-center gap-2">
-															<IconList className="h-4 w-4" />
-															<span>{t("回顾模板")}</span>
-														</span>
-													</SelectableButton>
-													<SelectableButton
+																										<SelectableButton
 														onClick={() => {
 															setActiveSection("ai");
 															setAISubSection("recommendations");
@@ -5232,7 +5232,11 @@ export default function AdminPage() {
 								</div>
 							)}
 
-							{activeSection === "comments" && (
+														{activeSection === "columns" && (
+								<ReviewTemplateSettings />
+							)}
+
+{activeSection === "comments" && (
 								<div className="bg-surface rounded-sm shadow-sm border border-border p-6 w-full min-w-0">
 									<div className="mb-6 flex flex-wrap items-start justify-between gap-3">
 										<div className="space-y-1">
@@ -6257,9 +6261,6 @@ export default function AdminPage() {
 								</div>
 							)}
 
-							{activeSection === "ai" && aiSubSection === "review-templates" && (
-								<ReviewTemplateSettings />
-							)}
 
 							{activeSection === "ai" && aiSubSection === "recommendations" && (
 								<div className="bg-surface rounded-sm shadow-sm border border-border p-6 w-full min-w-0">
@@ -6432,7 +6433,7 @@ export default function AdminPage() {
 													setCommentArticleTitle(value);
 													setCommentListPage(1);
 												}}
-												placeholder={t("输入文章或回顾标题搜索...")}
+												placeholder={t("输入文章或专栏标题搜索...")}
 											/>
 											<FilterInput
 												label={t("评论人")}
@@ -7257,7 +7258,7 @@ export default function AdminPage() {
 									{getTaskTargetHref(selectedTaskTimeline.task) && (
 										<div>
 											{selectedTaskTimeline.task.article_kind === "review"
-												? t("回顾")
+												? t("专栏")
 												: t("文章")}
 											:
 											<Link

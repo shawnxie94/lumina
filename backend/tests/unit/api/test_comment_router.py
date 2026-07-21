@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import uuid
+
 from types import SimpleNamespace
 
 import pytest
@@ -99,19 +101,12 @@ async def test_list_comments_includes_review_comments_with_resource_metadata(db_
         updated_at=now_str(),
     )
     template = ReviewTemplate(
+        id=str(uuid.uuid4()),
         name="每周回顾",
         slug="weekly-review-template",
         description="",
-        is_enabled=True,
-        schedule_type="weekly",
-        anchor_date="2026-04-01",
-        timezone="Asia/Shanghai",
-        trigger_time="09:00",
-        include_all_categories=True,
-        review_input_mode="abstract",
-        prompt_template="请生成回顾\n\n{content}",
-        title_template="第 {period_label} 回顾",
-        next_run_at="2026-04-07T09:00:00+08:00",
+        color="#3B82F6",
+        sort_order=0,
         created_at=now_str(),
         updated_at=now_str(),
     )
@@ -123,8 +118,6 @@ async def test_list_comments_includes_review_comments_with_resource_metadata(db_
         slug="review-with-comments",
         title="第 1 期回顾",
         status="published",
-        window_start="2026-04-01T00:00:00+08:00",
-        window_end="2026-04-08T00:00:00+08:00",
         top_image="",
         markdown_content="# 回顾",
         generated_at=now_str(),
@@ -175,19 +168,12 @@ async def test_list_comments_includes_review_comments_with_resource_metadata(db_
 @pytest.mark.anyio
 async def test_list_comments_article_title_filter_matches_review_title(db_session):
     template = ReviewTemplate(
+        id=str(uuid.uuid4()),
         name="每周回顾",
-        slug="weekly-review-filter-template",
+        slug="weekly-review-template",
         description="",
-        is_enabled=True,
-        schedule_type="weekly",
-        anchor_date="2026-04-01",
-        timezone="Asia/Shanghai",
-        trigger_time="09:00",
-        include_all_categories=True,
-        review_input_mode="abstract",
-        prompt_template="请生成回顾\n\n{content}",
-        title_template="第 {period_label} 回顾",
-        next_run_at="2026-04-07T09:00:00+08:00",
+        color="#3B82F6",
+        sort_order=0,
         created_at=now_str(),
         updated_at=now_str(),
     )
@@ -199,8 +185,6 @@ async def test_list_comments_article_title_filter_matches_review_title(db_sessio
         slug="review-filter-target",
         title="回顾标题筛选命中",
         status="published",
-        window_start="2026-04-01T00:00:00+08:00",
-        window_end="2026-04-08T00:00:00+08:00",
         top_image="",
         markdown_content="# 回顾",
         generated_at=now_str(),
@@ -254,19 +238,12 @@ async def test_get_comment_notifications_includes_review_comments(db_session):
         updated_at=now_str(),
     )
     template = ReviewTemplate(
+        id=str(uuid.uuid4()),
         name="每周回顾",
-        slug="notification-review-template",
+        slug="weekly-review-template",
         description="",
-        is_enabled=True,
-        schedule_type="weekly",
-        anchor_date="2026-04-01",
-        timezone="Asia/Shanghai",
-        trigger_time="09:00",
-        include_all_categories=True,
-        review_input_mode="abstract",
-        prompt_template="请生成回顾\n\n{content}",
-        title_template="第 {period_label} 回顾",
-        next_run_at="2026-04-07T09:00:00+08:00",
+        color="#3B82F6",
+        sort_order=0,
         created_at=now_str(),
         updated_at=now_str(),
     )
@@ -278,8 +255,6 @@ async def test_get_comment_notifications_includes_review_comments(db_session):
         slug="notification-review",
         title="通知回顾",
         status="published",
-        window_start="2026-04-01T00:00:00+08:00",
-        window_end="2026-04-08T00:00:00+08:00",
         top_image="",
         markdown_content="# 回顾",
         generated_at=now_str(),

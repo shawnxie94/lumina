@@ -11,7 +11,7 @@ import {
 const t = (key: string) => key;
 
 test("ai task metadata returns unified display labels", () => {
-  assert.equal(getAITaskLabel("generate_review_issue", null, t), "回顾");
+  assert.equal(getAITaskLabel("generate_review_issue", null, t), "专栏");
   assert.equal(
     getAITaskLabel("process_article_embedding", "embedding", t),
     "向量化",
@@ -22,12 +22,12 @@ test("ai task metadata returns unified display labels", () => {
   );
 });
 
-test("ai task metadata exposes task monitor filter labels with 回顾 text", () => {
+test("ai task metadata exposes task monitor filter labels with 专栏 text", () => {
   const options = getAITaskFilterOptions(t);
 
   assert.ok(
     options.some(
-      (option) => option.value === "generate_review_issue" && option.label === "回顾",
+      (option) => option.value === "generate_review_issue" && option.label === "专栏",
     ),
   );
 });

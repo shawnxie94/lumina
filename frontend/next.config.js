@@ -23,6 +23,20 @@ const nextConfig = {
 	images: {
 		unoptimized: true,
 	},
+	async redirects() {
+		return [
+			{
+				source: "/reviews",
+				destination: "/columns",
+				permanent: true,
+			},
+			{
+				source: "/reviews/:slug*",
+				destination: "/columns/:slug*",
+				permanent: true,
+			},
+		];
+	},
 	async rewrites() {
 		return [
 			{

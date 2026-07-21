@@ -30,7 +30,7 @@ const buildReviewEntries = (origin: string, reviews: ReviewIssue[]) =>
 	reviews
 		.filter((review) => review.status === "published")
 		.map((review) => ({
-			loc: buildCanonicalUrl(origin, `/reviews/${review.slug}`),
+			loc: buildCanonicalUrl(origin, `/columns/${review.slug}`),
 			lastmod: review.updated_at || review.published_at || review.created_at,
 			changefreq: "weekly" as const,
 			priority: 0.7,
@@ -63,7 +63,7 @@ export const getServerSideProps: GetServerSideProps = async ({ req, res }) => {
 					priority: 0.9,
 				},
 				{
-					loc: buildCanonicalUrl(origin, "/reviews"),
+					loc: buildCanonicalUrl(origin, "/columns"),
 					changefreq: "weekly",
 					priority: 0.8,
 				},
@@ -91,7 +91,7 @@ export const getServerSideProps: GetServerSideProps = async ({ req, res }) => {
 					priority: 0.9,
 				},
 				{
-					loc: buildCanonicalUrl(origin, "/reviews"),
+					loc: buildCanonicalUrl(origin, "/columns"),
 					changefreq: "weekly",
 					priority: 0.8,
 				},

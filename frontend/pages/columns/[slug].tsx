@@ -18,7 +18,6 @@ import AppHeader from "@/components/AppHeader";
 import Button from "@/components/Button";
 import ConfirmModal from "@/components/ConfirmModal";
 import IconButton from "@/components/IconButton";
-import ReviewManualGenerateModal from "@/components/ReviewManualGenerateModal";
 import ReviewReferenceInsertPanel from "@/components/ReviewReferenceInsertPanel";
 import SeoHead from "@/components/SeoHead";
 import { BackToTop } from "@/components/BackToTop";
@@ -41,7 +40,6 @@ import {
 	IconEyeOff,
 	IconLink,
 	IconList,
-	IconRefresh,
 	IconReply,
 	IconTag,
 	IconTrash,
@@ -408,20 +406,6 @@ function formatDate(value: string | null | undefined, language: "zh-CN" | "en") 
 	return new Date(value).toLocaleDateString(language === "en" ? "en-US" : "zh-CN");
 }
 
-function formatReviewRange(
-	windowStart: string | null | undefined,
-	windowEnd: string | null | undefined,
-) {
-	if (!windowStart || !windowEnd) return "";
-	const start = windowStart.slice(0, 10);
-	const endDate = new Date(windowEnd);
-	if (Number.isNaN(endDate.getTime())) {
-		return `${start} - ${windowEnd.slice(0, 10)}`;
-	}
-	endDate.setDate(endDate.getDate() - 1);
-	const end = endDate.toISOString().slice(0, 10);
-	return `${start} - ${end}`;
-}
 
 function extractReplyPrefix(content: string): { prefix: string; body: string } {
 	if (!content) return { prefix: "", body: "" };
@@ -537,7 +521,6 @@ export default function ReviewDetailPage({
 		google: false,
 	});
 	const [showDeleteIssueModal, setShowDeleteIssueModal] = useState(false);
-	const [showRegenerateModal, setShowRegenerateModal] = useState(false);
 	const [tocItems, setTocItems] = useState<TocItem[]>([]);
 	const [activeTocId, setActiveTocId] = useState("");
 	const [tocCollapsed, setTocCollapsed] = useState(false);
@@ -615,6 +598,29 @@ export default function ReviewDetailPage({
 		setTopImage(initialReview.top_image || "");
 		setIsEditing(false);
 	}, [initialReview]);
+
+	useEffect(() => {
+		if (!isAdmin || !router.isReady) return;
+		const editQuery = router.query.edit;
+		const shouldEdit =
+			editQuery === "1" ||
+			editQuery === "true" ||
+			(Array.isArray(editQuery) && (editQuery[0] === "1" || editQuery[0] === "true"));
+		if (!shouldEdit) return;
+		setTitle(initialReview.title);
+		setPublishedAt(toDateInputValue(initialReview.published_at || initialReview.created_at));
+		setTopImage(initialReview.top_image || "");
+		setMarkdownContent(initialReview.markdown_content || "");
+		setIsEditing(true);
+		const nextQuery = { ...router.query };
+		delete nextQuery.edit;
+		void router.replace(
+			{ pathname: router.pathname, query: nextQuery },
+			undefined,
+			{ shallow: true },
+		);
+	// eslint-disable-next-line react-hooks/exhaustive-deps -- enter edit mode once when edit query is present
+	}, [initialReview.id, isAdmin, router.isReady, router.query.edit]);
 
 	useEffect(() => {
 		const templateId = review.template?.id;
@@ -884,8 +890,8 @@ export default function ReviewDetailPage({
 		[editPreviewMarkdown],
 	);
 
-	const canonicalUrl = buildCanonicalUrl(siteOrigin, `/reviews/${review.slug}`);
-	const seoDescription = buildMetaDescription(review.summary || t("周期回顾"));
+	const canonicalUrl = buildCanonicalUrl(siteOrigin, `/columns/${review.slug}`);
+	const seoDescription = buildMetaDescription(review.summary || t("专栏"));
 	const seoImageUrl = resolveSeoAssetUrl(
 		siteOrigin,
 		review.top_image || siteSettings.site_logo_url || "/logo.png",
@@ -894,10 +900,6 @@ export default function ReviewDetailPage({
 		siteOrigin,
 		siteSettings.site_logo_url || "/logo.png",
 	);
-	const templateCategoryText = useMemo(() => {
-		const categoryNames = review.template?.category_names || [];
-		return categoryNames.length > 0 ? categoryNames.join("、") : t("全部分类");
-	}, [review.template?.category_names, t]);
 	const recentReviews = useMemo(() => review.recent_reviews || [], [review.recent_reviews]);
 	const templateDescriptionText = useMemo(
 		() => (review.template?.description || "").trim(),
@@ -916,8 +918,8 @@ export default function ReviewDetailPage({
 			{
 				"@type": "ListItem",
 				position: 2,
-				name: t("回顾"),
-				item: buildCanonicalUrl(siteOrigin, "/reviews"),
+				name: t("专栏"),
+				item: buildCanonicalUrl(siteOrigin, "/columns"),
 			},
 			{
 				"@type": "ListItem",
@@ -1046,14 +1048,6 @@ export default function ReviewDetailPage({
 		if (!match) return;
 		setReferenceCommandRange(match);
 		setShowReferenceInsertPanel(true);
-	};
-
-	const handleOpenRegenerateModal = () => {
-		if (!review.template?.id) {
-			showToast(t("当前回顾未关联模板无法重新生成"), "error");
-			return;
-		}
-		setShowRegenerateModal(true);
 	};
 
 	const handleTocSelect = (id: string) => {
@@ -1261,10 +1255,10 @@ export default function ReviewDetailPage({
 			setReview(next);
 			resetEditDraft(next);
 			setIsEditing(false);
-			showToast(t("回顾已保存"), "success");
+			showToast(t("专栏文章已保存"), "success");
 		} catch (error) {
 			console.error("Failed to save review issue:", error);
-			showToast(t("回顾保存失败"), "error");
+			showToast(t("专栏文章保存失败"), "error");
 		} finally {
 			setSaving(false);
 		}
@@ -1276,19 +1270,19 @@ export default function ReviewDetailPage({
 		try {
 			if (review.status === "published") {
 				await reviewApi.unpublishIssue(review.id);
-				showToast(t("回顾已撤回"), "success");
+				showToast(t("专栏文章已撤回"), "success");
 			} else {
 				await reviewApi.publishIssue(review.id);
-				showToast(t("回顾已发布"), "success");
+				showToast(t("专栏文章已发布"), "success");
 			}
 			const previousSlug = review.slug;
 			const next = await refreshAdminReview(review.id);
 			if (next.slug && next.slug !== previousSlug) {
-				await router.replace(`/reviews/${next.slug}`);
+				await router.replace(`/columns/${next.slug}`);
 			}
 		} catch (error) {
 			console.error("Failed to toggle review issue publish status:", error);
-			showToast(t("回顾发布状态更新失败"), "error");
+			showToast(t("专栏文章发布状态更新失败"), "error");
 		} finally {
 			setPublishing(false);
 		}
@@ -1298,11 +1292,11 @@ export default function ReviewDetailPage({
 		if (!review.id) return;
 		try {
 			await reviewApi.deleteIssue(review.id);
-			showToast(t("回顾已删除"), "success");
-			await router.push("/reviews");
+			showToast(t("专栏文章已删除"), "success");
+			await router.push("/columns");
 		} catch (error) {
 			console.error("Failed to delete review issue:", error);
-			showToast(t("回顾删除失败"), "error");
+			showToast(t("专栏文章删除失败"), "error");
 		}
 	};
 
@@ -1409,8 +1403,8 @@ export default function ReviewDetailPage({
 								{t("主页")}
 							</Link>
 							<span>/</span>
-							<Link href="/reviews" className="hover:text-primary hover:underline">
-								{t("回顾")}
+							<Link href="/columns" className="hover:text-primary hover:underline">
+								{t("专栏")}
 							</Link>
 							<span>/</span>
 							<span>{review.title}</span>
@@ -1455,8 +1449,8 @@ export default function ReviewDetailPage({
 										{formatDate(review.published_at || review.created_at, language)}
 									</div>
 									<div>
-										<span className="font-medium text-text-2">{t("本期范围")}：</span>
-										{formatReviewRange(review.window_start, review.window_end)}
+										<span className="font-medium text-text-2"></span>
+										{""}
 									</div>
 								</div>
 								<ArticleMetaRow
@@ -1464,7 +1458,7 @@ export default function ReviewDetailPage({
 									publishedAt={review.published_at}
 									createdAt={review.created_at}
 									items={[
-										<div key="template">{review.template?.name || t("回顾模板")}</div>,
+										<div key="template">{review.template?.name || t("专栏")}</div>,
 									]}
 								/>
 							</>
@@ -1487,7 +1481,7 @@ export default function ReviewDetailPage({
 								<div>
 									<h2 className="inline-flex items-center gap-2 text-lg font-semibold text-text-1">
 										<IconEdit className="h-4 w-4" />
-										<span>{t("编辑回顾")}</span>
+										<span>{t("编辑专栏文章")}</span>
 									</h2>
 								</div>
 								<div className="flex flex-wrap items-center gap-2">
@@ -1564,7 +1558,7 @@ export default function ReviewDetailPage({
 												<span>{t("内容（Markdown）")}</span>
 												<span className="text-danger">*</span>
 												<span className="text-xs font-normal text-text-3">
-													{t("支持全部文章占位符 {{review_article_sections}} 和单篇文章占位符 {{article_slug}}。")}
+													{t("支持单篇文章占位符 {{article_slug}}，可在正文中通过 /ref 插入引用。")}
 												</span>
 												<span className="text-xs font-normal text-text-3">
 													{t("输入 /ref 可打开引用插入。")}
@@ -1669,22 +1663,11 @@ export default function ReviewDetailPage({
 													onClick={openEditMode}
 													variant="ghost"
 													size="md"
-													title={t("编辑回顾")}
+													title={t("编辑专栏文章")}
 													className="rounded-sm"
 												>
 													<IconEdit className="h-4 w-4" />
 												</IconButton>
-												{review.status !== "published" ? (
-													<IconButton
-														onClick={handleOpenRegenerateModal}
-														variant="ghost"
-														size="md"
-														title={t("重新生成回顾")}
-														className="rounded-sm"
-													>
-														<IconRefresh className="h-4 w-4" />
-													</IconButton>
-												) : null}
 												<IconButton
 													onClick={handlePublishToggle}
 													variant="ghost"
@@ -1692,7 +1675,7 @@ export default function ReviewDetailPage({
 													title={
 														review.status === "published"
 															? t("返回草稿")
-															: t("发布回顾")
+															: t("发布专栏文章")
 													}
 													loading={publishing}
 													disabled={publishing}
@@ -1708,7 +1691,7 @@ export default function ReviewDetailPage({
 													onClick={() => setShowDeleteIssueModal(true)}
 													variant="danger"
 													size="md"
-													title={t("删除回顾")}
+													title={t("删除专栏文章")}
 													className="rounded-sm"
 												>
 													<IconTrash className="h-4 w-4" />
@@ -1755,7 +1738,7 @@ export default function ReviewDetailPage({
 										type="button"
 										onClick={() =>
 											review.prev_review &&
-											router.push(`/reviews/${review.prev_review.slug}`)
+											router.push(`/columns/${review.prev_review.slug}`)
 										}
 										disabled={!review.prev_review}
 										className={`rounded-lg px-3 py-2 text-left transition ${
@@ -1778,7 +1761,7 @@ export default function ReviewDetailPage({
 										type="button"
 										onClick={() =>
 											review.next_review &&
-											router.push(`/reviews/${review.next_review.slug}`)
+											router.push(`/columns/${review.next_review.slug}`)
 										}
 										disabled={!review.next_review}
 										className={`rounded-lg px-3 py-2 text-right transition ${
@@ -1834,27 +1817,23 @@ export default function ReviewDetailPage({
 									<section className="rounded-sm border border-border bg-surface p-4 shadow-sm">
 										<div className="flex items-center gap-2">
 											<IconTag className="h-4 w-4 text-text-2" />
-											<h3 className="text-lg font-semibold text-text-1">{t("模版信息")}</h3>
+											<h3 className="text-lg font-semibold text-text-1">{t("专栏信息")}</h3>
 										</div>
 										<div className="mt-4 space-y-2 text-sm leading-6 text-text-2">
 											<div>
 												<span className="font-medium text-text-1">{t("名称")}：</span>
 												{review.template?.id ? (
 													<Link
-														href={`/reviews?template_id=${review.template.id}`}
+														href={`/columns?template_id=${review.template.id}`}
 														className="break-words text-primary hover:underline"
 													>
-														{review.template?.name || t("未命名模板")}
+														{review.template?.name || t("未命名专栏")}
 													</Link>
 												) : (
 													<span className="break-words">
-														{review.template?.name || t("未命名模板")}
+														{review.template?.name || t("未命名专栏")}
 													</span>
 												)}
-											</div>
-											<div>
-												<span className="font-medium text-text-1">{t("分类")}：</span>
-												<span>{templateCategoryText}</span>
 											</div>
 											<div>
 												<span className="font-medium text-text-1">{t("描述")}：</span>
@@ -1909,7 +1888,7 @@ export default function ReviewDetailPage({
 															<span className="text-text-3">·</span>
 															<div className="min-w-0">
 																<Link
-																	href={`/reviews/${item.slug}`}
+																	href={`/columns/${item.slug}`}
 																	className="line-clamp-2 text-sm font-medium leading-6 text-text-2 transition hover:text-text-1"
 																	target="_blank"
 																	rel="noreferrer"
@@ -1945,29 +1924,12 @@ export default function ReviewDetailPage({
 		</div>
 			<ConfirmModal
 				isOpen={showDeleteIssueModal}
-				title={t("删除回顾")}
-				message={t("确定要删除这篇回顾吗？此操作不可撤销。")}
+				title={t("删除专栏文章")}
+				message={t("确定要删除这篇专栏文章吗？此操作不可撤销。")}
 				confirmText={t("删除")}
 				cancelText={t("取消")}
 				onConfirm={handleDeleteIssue}
 				onCancel={() => setShowDeleteIssueModal(false)}
-			/>
-			<ReviewManualGenerateModal
-				isOpen={showRegenerateModal}
-				onClose={() => setShowRegenerateModal(false)}
-				initialTemplateId={review.template?.id || undefined}
-				initialDateStart={toDateInputValue(review.window_start)}
-				initialDateEnd={(() => {
-					const value = toDateInputValue(review.window_end);
-					if (!value) return "";
-					const date = new Date(`${value}T00:00:00`);
-					if (Number.isNaN(date.getTime())) return "";
-					date.setDate(date.getDate() - 1);
-					return date.toISOString().slice(0, 10);
-				})()}
-				initialSelectedArticleIds={review.selected_article_ids || []}
-				lockTemplateSelection
-				title={t("重新生成回顾")}
 			/>
 			<ReviewReferenceInsertPanel
 				isOpen={showReferenceInsertPanel}

@@ -13,7 +13,7 @@ test("app header routes review comment notifications to review detail pages", ()
   const source = readPageSource("components/AppHeader.tsx");
 
   assert.match(source, /comment\.resource_type === ['"]review['"]/);
-  assert.match(source, /\/reviews\/\$\{/);
+  assert.match(source, /\/columns\/\$\{/);
 });
 
 test("admin monitoring comments page routes delete through the admin comment api", () => {
@@ -23,18 +23,18 @@ test("admin monitoring comments page routes delete through the admin comment api
   assert.match(source, /commentAdminApi\.delete\(comment\.id,\s*comment\.resource_type\)/);
   assert.doesNotMatch(source, /reviewCommentApi\.deleteComment/);
   assert.match(source, /comment\.resource_type === ['"]review['"]/);
-  assert.match(source, /\/reviews\/\$\{/);
+  assert.match(source, /\/columns\/\$\{/);
 });
 
 test("review detail page uses admin-compatible delete path for review comments", () => {
-  const source = readPageSource("pages/reviews/[slug].tsx");
+  const source = readPageSource("pages/columns/[slug].tsx");
 
   assert.match(source, /if \(isAdmin\) \{\s*await commentAdminApi\.delete\(commentId,\s*"review"\);/);
   assert.match(source, /await reviewCommentApi\.deleteComment\(commentId\);/);
 });
 
 test("review detail page keeps total comment count when reusing CommentSection", () => {
-  const source = readPageSource("pages/reviews/[slug].tsx");
+  const source = readPageSource("pages/columns/[slug].tsx");
 
   assert.match(
     source,
@@ -44,7 +44,7 @@ test("review detail page keeps total comment count when reusing CommentSection",
 });
 
 test("review detail page removes comment-header leftovers after extraction", () => {
-  const source = readPageSource("pages/reviews/[slug].tsx");
+  const source = readPageSource("pages/columns/[slug].tsx");
 
   assert.doesNotMatch(source, /const \[showUserMenu, setShowUserMenu\] = useState/);
   assert.doesNotMatch(source, /const userMenuRef = useRef<HTMLDivElement \| null>\(null\)/);
@@ -55,7 +55,7 @@ test("review detail page removes comment-header leftovers after extraction", () 
 });
 
 test("review detail page removes deleted reply descendants from local comment state", () => {
-  const source = readPageSource("pages/reviews/[slug].tsx");
+  const source = readPageSource("pages/columns/[slug].tsx");
 
   assert.match(
     source,

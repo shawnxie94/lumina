@@ -180,7 +180,7 @@ export const fetchServerReviews = (
 		}
 	});
 	const suffix = query.toString() ? `?${query.toString()}` : "";
-	return fetchServerJson<ReviewIssueListResponse>(req, `/api/reviews${suffix}`);
+	return fetchServerJson<ReviewIssueListResponse>(req, `/api/columns${suffix}`);
 };
 
 export const fetchAllServerReviews = async (
@@ -206,4 +206,4 @@ export const fetchAllServerReviews = async (
 };
 
 export const fetchServerReview = (req: IncomingMessage | undefined, slug: string) =>
-	fetchServerJson<ReviewIssue>(req, `/api/reviews/${encodeURIComponent(slug)}`);
+	fetchServerJson<ReviewIssue>(req, `/api/columns/${encodeURIComponent(slug)}`);

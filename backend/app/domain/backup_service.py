@@ -33,7 +33,6 @@ REQUIRED_SNAPSHOT_TABLES = {
     "review_comments",
     "review_issue_articles",
     "review_issues",
-    "review_template_categories",
     "review_templates",
     "tags",
 }

@@ -12,7 +12,7 @@ export function ContinueReadingBanner() {
   const { t } = useI18n();
 
   const isArticlePage = router.pathname === '/article/[id]';
-  const isReviewPage = router.pathname === '/reviews/[slug]';
+  const isReviewPage = router.pathname === '/columns/[slug]';
 
   useEffect(() => {
     if (isCollapsed) return;
@@ -80,7 +80,7 @@ export function ContinueReadingBanner() {
         <div className="py-2">
           {recentArticles.map((article) => {
             const articleType = article.type || 'article';
-            const articleHref = articleType === 'review' ? `/reviews/${article.slug}` : `/article/${article.slug}`;
+            const articleHref = articleType === 'review' ? `/columns/${article.slug}` : `/article/${article.slug}`;
             const isCurrentArticle =
               (articleType === 'article' && isArticlePage && router.query.id === article.slug) ||
               (articleType === 'review' && isReviewPage && router.query.slug === article.slug);

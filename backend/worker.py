@@ -12,7 +12,6 @@ from task_errors import normalize_task_error
 REQUIRED_TASK_TABLES = (
     "ai_tasks",
     "review_templates",
-    "review_template_categories",
     "review_issues",
     "review_issue_articles",
 )

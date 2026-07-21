@@ -11,15 +11,15 @@ import {
 
 test("shouldDisablePwaForLocation only disables localhost hosts", () => {
   assert.equal(
-    shouldDisablePwaForLocation({ hostname: "localhost", href: "http://localhost:3000/reviews" }),
+    shouldDisablePwaForLocation({ hostname: "localhost", href: "http://localhost:3000/columns" }),
     true,
   );
   assert.equal(
-    shouldDisablePwaForLocation({ hostname: "127.0.0.1", href: "http://127.0.0.1:3000/reviews" }),
+    shouldDisablePwaForLocation({ hostname: "127.0.0.1", href: "http://127.0.0.1:3000/columns" }),
     true,
   );
   assert.equal(
-    shouldDisablePwaForLocation({ hostname: "lumina.example.com", href: "https://lumina.example.com/reviews" }),
+    shouldDisablePwaForLocation({ hostname: "lumina.example.com", href: "https://lumina.example.com/columns" }),
     false,
   );
 });
@@ -45,7 +45,7 @@ test("resetLocalPwaState unregisters local service workers and clears caches", a
   const deleted: string[] = [];
 
   const changed = await resetLocalPwaState({
-    location: { hostname: "localhost", href: "http://localhost:3000/reviews/demo" },
+    location: { hostname: "localhost", href: "http://localhost:3000/columns/demo" },
     serviceWorker: {
       async getRegistrations() {
         return [
@@ -81,7 +81,7 @@ test("resetLocalPwaState unregisters local service workers and clears caches", a
 test("syncPwaRegistration registers sw.js for non-localhost domains", async () => {
   const registered: string[] = [];
   const result = await syncPwaRegistration({
-    location: { hostname: "lumina.example.com", href: "https://lumina.example.com/reviews/demo" },
+    location: { hostname: "lumina.example.com", href: "https://lumina.example.com/columns/demo" },
     serviceWorker: {
       async getRegistrations() {
         return [];
@@ -99,7 +99,7 @@ test("syncPwaRegistration registers sw.js for non-localhost domains", async () =
 
 test("syncPwaRegistration clears localhost pwa state without requesting a reload", async () => {
   const result = await syncPwaRegistration({
-    location: { hostname: "localhost", href: "http://localhost:3000/reviews/demo" },
+    location: { hostname: "localhost", href: "http://localhost:3000/columns/demo" },
     serviceWorker: {
       async getRegistrations() {
         return [

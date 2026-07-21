@@ -91,7 +91,7 @@ const AI_TASK_META: AITaskMeta[] = [
   },
   {
     taskType: "generate_review_issue",
-    labelKey: "回顾",
+    labelKey: "专栏",
     filterValue: "generate_review_issue",
     promptType: null,
   },
@@ -105,7 +105,7 @@ const TASK_TYPE_FALLBACK_LABELS: Record<string, string> = {
   process_article_translation: "翻译",
   process_article_embedding: "向量化",
   process_ai_content: "AI内容",
-  generate_review_issue: "回顾",
+  generate_review_issue: "专栏",
 };
 
 function findTaskMeta(

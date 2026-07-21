@@ -127,7 +127,7 @@ test("review list SEO marks search, visibility, and date filters as noindex", ()
 test("review list template name falls back when filtered template list no longer includes the selected template", () => {
   const resolved = resolveReviewListTemplateName({
     selectedTemplateId: "weekly-review",
-    templateFilters: [{ id: "", name: "全部回顾" }],
+    templateFilters: [{ id: "", name: "全部专栏" }],
     fallbackTemplateName: "Weekly Review",
   });
 
@@ -265,7 +265,7 @@ test("list page only emits collection structured data for indexable aggregations
 });
 
 test("review list page keeps heading copy available for SEO and scopes indexing to template filters", () => {
-  const source = readPageSource("pages/reviews/index.tsx");
+  const source = readPageSource("pages/columns/index.tsx");
 
   assert.match(source, /initialSelectedTemplateName: string \| null;/);
   assert.match(source, /const reviewListSeo = useMemo\(/);
@@ -278,7 +278,7 @@ test("review list page keeps heading copy available for SEO and scopes indexing 
 });
 
 test("review detail page emits breadcrumb and article structured data", () => {
-  const source = readPageSource("pages/reviews/[slug].tsx");
+  const source = readPageSource("pages/columns/[slug].tsx");
 
   assert.match(source, /"@type": "BreadcrumbList"/);
   assert.match(source, /"@type": "BlogPosting"/);
@@ -302,7 +302,7 @@ test("sitemap page excludes tag and author aggregation URLs", () => {
   assert.match(source, /buildCategoryEntries/);
   assert.match(source, /buildReviewEntries/);
   assert.match(source, /fetchAllServerReviews/);
-  assert.match(source, /buildCanonicalUrl\(origin, "\/reviews"\)/);
+  assert.match(source, /buildCanonicalUrl\(origin, "\/columns"\)/);
   assert.doesNotMatch(source, /buildTagEntries/);
   assert.doesNotMatch(source, /buildAuthorEntries/);
   assert.doesNotMatch(source, /fetchServerTags/);

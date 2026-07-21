@@ -18,8 +18,6 @@ import SeoHead from "@/components/SeoHead";
 import TextInput from "@/components/ui/TextInput";
 import { BackToTop } from "@/components/BackToTop";
 import {
-	IconChevronDown,
-	IconChevronUp,
 	IconEdit,
 	IconEye,
 	IconEyeOff,
@@ -34,7 +32,6 @@ import {
 	type ReviewIssue,
 	type ReviewIssueListResponse,
 	type ReviewTemplateFilterItem,
-	type ReviewIssueVersionSummary,
 	resolveMediaUrl,
 	reviewApi,
 } from "@/lib/api";
@@ -117,27 +114,21 @@ const toDayjsRange = (range: [Date | null, Date | null]): [Dayjs | null, Dayjs |
 	range[1] ? dayjs(range[1]) : null,
 ];
 
-const formatWindow = (issue: ReviewIssue, language: "zh-CN" | "en") => {
-	const start = new Date(issue.window_start);
-	const end = new Date(issue.window_end);
-	const endLabel = new Date(end.getTime() - 24 * 60 * 60 * 1000);
-	return `${start.toLocaleDateString(language === "en" ? "en-US" : "zh-CN")} - ${endLabel.toLocaleDateString(language === "en" ? "en-US" : "zh-CN")}`;
-};
-
-const getReviewCategoryChips = (
+const getColumnChip = (
 	review: ReviewIssue,
-	t: (key: string) => string,
-): string[] => {
-	if (review.template?.include_all_categories) {
-		return [t("全部分类")];
-	}
-	return review.category_names.length > 0 ? review.category_names : [];
+): { name: string; color?: string | null } | null => {
+	const name = (review.template?.name || "").trim();
+	if (!name) return null;
+	return {
+		name,
+		color: review.template?.color || null,
+	};
 };
 
 const getTemplateFilterLabel = (
 	template: ReviewTemplateFilterItem,
 	t: (key: string) => string,
-): string => (template.id ? template.name : t("全部回顾"));
+): string => (template.id ? template.name : t("全部专栏"));
 
 export const getServerSideProps: GetServerSideProps<ReviewListPageProps> = async ({
 	req,
@@ -259,7 +250,6 @@ export default function ReviewListPage({
 	const [issueActionKey, setIssueActionKey] = useState<string | null>(null);
 	const [jumpToPage, setJumpToPage] = useState("");
 	const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-	const [expandedVersionGroups, setExpandedVersionGroups] = useState<Record<string, boolean>>({});
 	const [showManualGenerateModal, setShowManualGenerateModal] = useState(false);
 	const filterDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const lastAutoFilterSignatureRef = useRef<string | null>(null);
@@ -285,7 +275,7 @@ export default function ReviewListPage({
 
 	const siteName = basicSettings.site_name || "Lumina";
 	const siteDescription = buildMetaDescription(
-		`${siteName} ${t("回顾")} ${t("复盘内容重点沉淀周期总结")}`,
+		`${siteName} ${t("专栏")} ${t("专栏文章与内容沉淀")}`,
 	);
 	const seoImageUrl = resolveSeoAssetUrl(siteOrigin, basicSettings.site_logo_url || "/logo.png");
 	const defaultTopImageUrl = useMemo(
@@ -311,15 +301,15 @@ export default function ReviewListPage({
 		[initialQuery, selectedTemplateName, siteDescription, siteName],
 	);
 	const canonicalUrl = useMemo(
-		() => buildCanonicalUrl(siteOrigin, "/reviews", reviewListSeo.canonicalQuery),
+		() => buildCanonicalUrl(siteOrigin, "/columns", reviewListSeo.canonicalQuery),
 		[siteOrigin, reviewListSeo.canonicalQuery],
 	);
 	const reviewListHeading = useMemo(() => {
 		const pageLabel = currentPage > 1 ? ` - ${t("第")} ${currentPage} ${t("页")}` : "";
 		if (selectedTemplateName) {
-			return `${selectedTemplateName}${t("回顾")}${pageLabel}`;
+			return `${selectedTemplateName}${t("专栏")}${pageLabel}`;
 		}
-		return `${t("回顾")}${pageLabel}`;
+		return `${t("专栏")}${pageLabel}`;
 	}, [currentPage, selectedTemplateName, t]);
 	const reviewListStructuredData = reviewListSeo.indexable ? [
 		{
@@ -338,7 +328,7 @@ export default function ReviewListPage({
 			itemListElement: reviews.map((review, index) => ({
 				"@type": "ListItem",
 				position: index + 1,
-				url: buildCanonicalUrl(siteOrigin, `/reviews/${review.slug}`),
+				url: buildCanonicalUrl(siteOrigin, `/columns/${review.slug}`),
 				name: review.title,
 			})),
 		},
@@ -374,7 +364,7 @@ export default function ReviewListPage({
 	]);
 
 	const navigateWithQuery = (query: ReviewListQuery) =>
-		router.push(buildPathWithQuery("/reviews", query));
+		router.push(buildPathWithQuery("/columns", query));
 
 	const handleClearFilters = () => {
 		setSearchTerm("");
@@ -384,7 +374,7 @@ export default function ReviewListPage({
 
 	const buildTemplateHref = (templateId: string) =>
 		buildPathWithQuery(
-			"/reviews",
+			"/columns",
 			buildNextQuery({
 				template_id: templateId || undefined,
 				page: "1",
@@ -393,7 +383,7 @@ export default function ReviewListPage({
 
 	const buildPaginationHref = (page: number) =>
 		buildPathWithQuery(
-			"/reviews",
+			"/columns",
 			buildNextQuery({
 				page: String(page),
 			}),
@@ -417,13 +407,13 @@ export default function ReviewListPage({
 		}
 		lastAutoFilterSignatureRef.current = filterSignature;
 		const nextPath = buildPathWithQuery(
-			"/reviews",
+			"/columns",
 			buildNextQuery({
 				page: "1",
 			}),
 		);
 		const currentPath = buildPathWithQuery(
-			"/reviews",
+			"/columns",
 			pickReviewQuery(router.query as Record<string, string | string[] | undefined>),
 		);
 		if (nextPath === currentPath) return;
@@ -469,7 +459,7 @@ export default function ReviewListPage({
 	const activeFilters = useMemo(() => {
 		const filters: string[] = [];
 		const templateName = templateFilters.find((template) => template.id === selectedTemplateId)?.name;
-		if (templateName) filters.push(`${t("回顾模板")}：${templateName}`);
+		if (templateName) filters.push(`${t("专栏")}：${templateName}`);
 		if (searchTerm.trim()) filters.push(`${t("标题")}：${searchTerm.trim()}`);
 		if (publishedDateRange[0] || publishedDateRange[1]) {
 			filters.push(
@@ -509,7 +499,7 @@ export default function ReviewListPage({
 	const refreshCurrentList = async (
 		overrides?: Partial<Record<keyof ReviewListQuery, string | undefined>>,
 	) => {
-		await router.replace(buildPathWithQuery("/reviews", buildNextQuery(overrides)), undefined, {
+		await router.replace(buildPathWithQuery("/columns", buildNextQuery(overrides)), undefined, {
 			scroll: false,
 		});
 	};
@@ -547,29 +537,6 @@ export default function ReviewListPage({
 			setIssueActionKey(null);
 		}
 	};
-
-	const toggleVersionGroup = (groupId: string) => {
-		setExpandedVersionGroups((current) => ({
-			...current,
-			[groupId]: !current[groupId],
-		}));
-	};
-
-	const getReviewVersions = (review: ReviewIssue): ReviewIssueVersionSummary[] =>
-		review.versions && review.versions.length > 0
-			? review.versions
-			: [
-					{
-						id: review.id,
-						slug: review.slug,
-						title: review.title,
-						status: review.status,
-						generated_at: review.generated_at,
-						published_at: review.published_at,
-						created_at: review.created_at,
-						updated_at: review.updated_at,
-					},
-				];
 
 	return (
 		<div className="min-h-screen bg-app flex flex-col">
@@ -620,7 +587,7 @@ export default function ReviewListPage({
 									{!sidebarCollapsed && (
 										<h2 className="font-semibold text-text-1 inline-flex items-center gap-2">
 											<IconTag className="h-4 w-4" />
-											<span>{t("模板筛选")}</span>
+											<span>{t("专栏筛选")}</span>
 										</h2>
 									)}
 									<button
@@ -656,7 +623,7 @@ export default function ReviewListPage({
 
 						<main className="flex-1 min-w-0" aria-busy={!initialDataLoaded}>
 							<div className="sr-only">
-								<h1 className="text-2xl font-semibold text-text-1">{t("周期回顾")}</h1>
+								<h1 className="text-2xl font-semibold text-text-1">{t("专栏")}</h1>
 								<p className="mt-2 text-sm text-text-2">{siteDescription}</p>
 							</div>
 							<div className="panel-raised rounded-sm border border-border p-4 sm:p-6 mb-6">
@@ -672,7 +639,7 @@ export default function ReviewListPage({
 											>
 												<span className="inline-flex items-center gap-2">
 													<IconPlus className="h-4 w-4" />
-													<span>{t("立即生成")}</span>
+													<span>{t("创建文章")}</span>
 												</span>
 											</Button>
 										) : null}
@@ -739,7 +706,7 @@ export default function ReviewListPage({
 											>
 												<span className="inline-flex items-center gap-2">
 													<IconPlus className="h-4 w-4" />
-													<span>{t("立即生成")}</span>
+													<span>{t("创建文章")}</span>
 												</span>
 											</Button>
 										) : null}
@@ -815,7 +782,7 @@ export default function ReviewListPage({
 								</div>
 							) : reviews.length === 0 ? (
 								<div className="panel-subtle rounded-sm border border-border text-center py-12 text-text-3">
-									{t("暂无回顾")}
+									{t("暂无专栏文章")}
 								</div>
 							) : (
 								<>
@@ -890,7 +857,7 @@ export default function ReviewListPage({
 												) : null}
 												<div className="flex flex-col gap-4 sm:flex-row sm:items-start">
 													<Link
-														href={`/reviews/${review.slug}`}
+														href={`/columns/${review.slug}`}
 														className="relative block w-full self-start overflow-hidden rounded-lg bg-muted aspect-video sm:w-40 sm:aspect-square"
 														target="_blank"
 														rel="noopener noreferrer"
@@ -906,14 +873,11 @@ export default function ReviewListPage({
 															loading="lazy"
 															decoding="async"
 														/>
-														<span className="language-tag absolute left-2 top-2 px-2 py-0.5 text-xs">
-															{review.template?.name || t("回顾模板")}
-														</span>
 														{mediaStatsOverlay}
 													</Link>
 													<div className="flex-1 sm:pr-6 min-w-0">
 														<Link
-															href={`/reviews/${review.slug}`}
+															href={`/columns/${review.slug}`}
 															target="_blank"
 															rel="noopener noreferrer"
 														>
@@ -922,19 +886,27 @@ export default function ReviewListPage({
 															</h2>
 														</Link>
 														<div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-text-2">
-															{getReviewCategoryChips(review, t).length > 0 ? (
-																<span className="inline-flex flex-wrap items-center gap-2 min-w-0">
-																	{getReviewCategoryChips(review, t).map((categoryName) => (
-																		<span
-																			key={`${review.id}-${categoryName}`}
-																			className="px-2 py-1 text-xs rounded-sm bg-muted text-text-2"
-																		>
-																			{categoryName}
-																		</span>
-																	))}
-																</span>
-															) : null}
-															<span>{t("本期范围")}：{formatWindow(review, language)}</span>
+															{(() => {
+																const columnChip = getColumnChip(review);
+																if (!columnChip) return null;
+																const chipColor = columnChip.color || undefined;
+																return (
+																	<span
+																		className="px-2 py-1 text-xs rounded-sm border border-border"
+																		style={
+																			chipColor
+																				? {
+																						backgroundColor: `${chipColor}22`,
+																						color: chipColor,
+																						borderColor: `${chipColor}55`,
+																				  }
+																				: undefined
+																		}
+																	>
+																		{columnChip.name}
+																	</span>
+																);
+															})()}
 															{review.published_at ? (
 																<span>{t("发表时间")}：{formatDate(new Date(review.published_at))}</span>
 															) : null}
@@ -943,113 +915,6 @@ export default function ReviewListPage({
 															<p className="mt-2 text-text-2 line-clamp-3">
 																{reviewSummary}
 															</p>
-														) : null}
-														{(review.version_count || 1) > 1 ? (
-															<div className="mt-4">
-																<div className="flex items-center gap-3">
-																{(() => {
-																	const versionToggleLabel = `${review.version_count || 0} ${t("个版本")}`;
-																	return (
-																<button
-																	type="button"
-																	onClick={() => toggleVersionGroup(review.id)}
-																	className="inline-flex items-center gap-1 text-xs text-text-3 hover:text-text-1 transition"
-																	aria-expanded={expandedVersionGroups[review.id] || false}
-																	title={versionToggleLabel}
-																	aria-label={versionToggleLabel}
-																>
-																	{expandedVersionGroups[review.id] ? (
-																		<IconChevronUp className="h-3.5 w-3.5" />
-																	) : (
-																		<IconChevronDown className="h-3.5 w-3.5" />
-																	)}
-																	<span>{versionToggleLabel}</span>
-																</button>
-																	);
-																})()}
-																	<div className="h-px flex-1 bg-border" />
-																</div>
-																{expandedVersionGroups[review.id] ? (
-																	<div className="mt-3 space-y-2">
-																		{getReviewVersions(review).map((version, index) => (
-																			<div
-																				key={version.id}
-																				className="rounded-sm border border-border bg-surface px-3 py-3"
-																			>
-																				<div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-																					<div className="min-w-0">
-																						<div className="flex flex-wrap items-center gap-2 text-xs text-text-3">
-																							<span className="filter-chip px-2 py-0.5 rounded-sm">
-																								V{(review.version_count || 0) - index}
-																							</span>
-																							<span>
-																								{version.status === "published"
-																									? t("已发布")
-																									: t("草稿")}
-																							</span>
-																							<span>
-																								{t("创建时间")}：
-																								{formatDate(new Date(version.created_at))}
-																							</span>
-																							{version.published_at ? (
-																								<span>
-																									{t("发表时间")}：
-																									{formatDate(new Date(version.published_at))}
-																								</span>
-																							) : null}
-																						</div>
-																						<Link
-																							href={`/reviews/${version.slug}`}
-																							className="mt-1 block truncate text-sm font-medium text-primary hover:underline"
-																							target="_blank"
-																							rel="noopener noreferrer"
-																						>
-																							{version.title}
-																						</Link>
-																					</div>
-																					{showAdminControls ? (
-																						<div className="flex items-center gap-1 shrink-0">
-																							{version.status === "draft" ? (
-																								<IconButton
-																									onClick={() => void handlePublishIssue(version.id)}
-																									variant="default"
-																									size="sm"
-																									title={t("发布")}
-																									loading={issueActionKey === `publish:${version.id}`}
-																									disabled={issueActionKey !== null}
-																								>
-																									<IconEye className="h-4 w-4" />
-																								</IconButton>
-																							) : (
-																								<IconButton
-																									onClick={() => void handleUnpublishIssue(version.id)}
-																									variant="default"
-																									size="sm"
-																									title={t("返回草稿")}
-																									loading={issueActionKey === `unpublish:${version.id}`}
-																									disabled={issueActionKey !== null}
-																								>
-																									<IconEyeOff className="h-4 w-4" />
-																								</IconButton>
-																							)}
-																							<IconButton
-																								onClick={() => void handleDeleteIssue(version.id)}
-																								variant="danger"
-																								size="sm"
-																								title={t("删除")}
-																								loading={issueActionKey === `delete:${version.id}`}
-																								disabled={issueActionKey !== null}
-																							>
-																								<IconTrash className="h-4 w-4" />
-																							</IconButton>
-																						</div>
-																					) : null}
-																				</div>
-																			</div>
-																		))}
-																	</div>
-																) : null}
-															</div>
 														) : null}
 													</div>
 												</div>

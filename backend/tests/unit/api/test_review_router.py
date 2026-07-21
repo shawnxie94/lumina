@@ -35,23 +35,16 @@ def make_template(
     name: str = "每周回顾",
     slug: str = "weekly-review",
     system_prompt: str | None = None,
+    **_legacy_kwargs,
 ) -> ReviewTemplate:
+    del system_prompt
     template = ReviewTemplate(
         id=str(uuid.uuid4()),
         name=name,
         slug=slug,
         description="",
-        is_enabled=True,
-        schedule_type="weekly",
-        anchor_date="2026-04-01",
-        timezone="Asia/Shanghai",
-        trigger_time="09:00",
-        include_all_categories=True,
-        review_input_mode="abstract",
-        system_prompt=system_prompt,
-        prompt_template="请生成回顾\n\n{content}",
-        title_template="第 {period_label} 回顾",
-        next_run_at="2026-04-07T09:00:00+08:00",
+        color="#3B82F6",
+        sort_order=0,
         created_at=now_str(),
         updated_at=now_str(),
     )
@@ -59,6 +52,8 @@ def make_template(
     db_session.commit()
     db_session.refresh(template)
     return template
+
+
 
 
 def make_model_config(
@@ -156,8 +151,6 @@ def make_issue(
     title: str | None = None,
     created_at: str | None = None,
     published_at: str | None = None,
-    window_start: str = "2026-04-01T00:00:00+08:00",
-    window_end: str = "2026-04-08T00:00:00+08:00",
     top_image: str | None = None,
     view_count: int = 0,
 ) -> ReviewIssue:
@@ -166,10 +159,9 @@ def make_issue(
         id=str(uuid.uuid4()),
         template_id=template_id,
         slug=slug,
+        slug_locked=(status == "published"),
         title=title or slug,
         status=status,
-        window_start=window_start,
-        window_end=window_end,
         top_image=top_image,
         markdown_content=f"# 回顾\n\n{REVIEW_ARTICLE_SECTIONS_PLACEHOLDER}",
         generated_at=now_str(),
@@ -255,7 +247,7 @@ async def test_get_public_reviews_returns_only_published_items(db_session):
     )
 
     assert [item["slug"] for item in payload["data"]] == [published.slug]
-    assert payload["data"][0]["template"]["include_all_categories"] is True
+    assert payload["data"][0]["template"]["name"]
 
 
 @pytest.mark.anyio
@@ -297,12 +289,7 @@ async def test_get_public_reviews_allows_admin_to_see_draft_items(db_session):
         is_admin=True,
     )
 
-    assert [item["slug"] for item in payload["data"]] == [published.slug]
-    assert payload["data"][0]["version_count"] == 2
-    assert {item["slug"] for item in payload["data"][0]["versions"]} == {
-        draft.slug,
-        published.slug,
-    }
+    assert {item["slug"] for item in payload["data"]} == {draft.slug, published.slug}
 
 
 @pytest.mark.anyio
@@ -316,8 +303,6 @@ async def test_get_public_reviews_sorts_by_published_at_desc(db_session):
         title="新建更晚",
         created_at="2026-04-05T12:00:00+08:00",
         published_at="2026-04-03T09:00:00+08:00",
-        window_start="2026-03-24T00:00:00+08:00",
-        window_end="2026-03-31T00:00:00+08:00",
     )
     older_created = make_issue(
         db_session,
@@ -327,8 +312,6 @@ async def test_get_public_reviews_sorts_by_published_at_desc(db_session):
         title="新建更早",
         created_at="2026-04-04T12:00:00+08:00",
         published_at="2026-04-04T09:00:00+08:00",
-        window_start="2026-03-31T00:00:00+08:00",
-        window_end="2026-04-07T00:00:00+08:00",
     )
 
     payload = await review_router.get_public_reviews(
@@ -355,8 +338,6 @@ async def test_get_public_reviews_places_drafts_first_for_admin(db_session):
         status="draft",
         title="较早草稿",
         created_at="2026-04-05T09:00:00+08:00",
-        window_start="2026-04-01T00:00:00+08:00",
-        window_end="2026-04-08T00:00:00+08:00",
     )
     newer_draft = make_issue(
         db_session,
@@ -365,8 +346,6 @@ async def test_get_public_reviews_places_drafts_first_for_admin(db_session):
         status="draft",
         title="较新草稿",
         created_at="2026-04-05T12:00:00+08:00",
-        window_start="2026-04-08T00:00:00+08:00",
-        window_end="2026-04-15T00:00:00+08:00",
     )
     published = make_issue(
         db_session,
@@ -376,8 +355,6 @@ async def test_get_public_reviews_places_drafts_first_for_admin(db_session):
         title="已发布内容",
         created_at="2026-04-05T11:00:00+08:00",
         published_at="2026-04-06T09:00:00+08:00",
-        window_start="2026-03-25T00:00:00+08:00",
-        window_end="2026-04-01T00:00:00+08:00",
     )
 
     payload = await review_router.get_public_reviews(
@@ -394,53 +371,6 @@ async def test_get_public_reviews_places_drafts_first_for_admin(db_session):
         published.slug,
     ]
 
-
-@pytest.mark.anyio
-async def test_get_public_reviews_groups_same_issue_versions_into_one_card_for_admin(db_session):
-    template = make_template(db_session)
-    older = make_issue(
-        db_session,
-        template.id,
-        slug="weekly-review-v1",
-        status="draft",
-        title="第 1 版",
-        created_at="2026-04-04T10:00:00+08:00",
-    )
-    latest = make_issue(
-        db_session,
-        template.id,
-        slug="weekly-review-v2",
-        status="draft",
-        title="第 2 版",
-        created_at="2026-04-04T11:00:00+08:00",
-    )
-    other_window = make_issue(
-        db_session,
-        template.id,
-        slug="weekly-review-next-window",
-        status="draft",
-        title="下一期",
-        created_at="2026-04-05T10:00:00+08:00",
-        window_start="2026-04-08T00:00:00+08:00",
-        window_end="2026-04-15T00:00:00+08:00",
-    )
-
-    payload = await review_router.get_public_reviews(
-        response=Response(),
-        page=1,
-        size=20,
-        db=db_session,
-        is_admin=True,
-    )
-
-    assert payload["pagination"]["total"] == 2
-    assert [item["slug"] for item in payload["data"]] == [other_window.slug, latest.slug]
-    assert payload["data"][1]["version_count"] == 2
-    assert [item["slug"] for item in payload["data"][1]["versions"]] == [
-        latest.slug,
-        older.slug,
-    ]
-    assert payload["filters"]["templates"][1]["count"] == 2
 
 
 @pytest.mark.anyio
@@ -526,7 +456,7 @@ async def test_get_public_review_detail_rejects_draft_issue(db_session):
             db=db_session,
             is_admin=False,
     )
-    assert exc_info.value.detail == "回顾不存在"
+    assert exc_info.value.detail == "专栏文章不存在"
 
 
 @pytest.mark.anyio
@@ -540,8 +470,6 @@ async def test_get_public_review_detail_includes_neighbors_and_public_comment_co
         title="上一期",
         created_at="2026-03-29T10:00:00+08:00",
         published_at="2026-03-30T09:00:00+08:00",
-        window_start="2026-03-17T00:00:00+08:00",
-        window_end="2026-03-24T00:00:00+08:00",
     )
     target = make_issue(
         db_session,
@@ -551,8 +479,6 @@ async def test_get_public_review_detail_includes_neighbors_and_public_comment_co
         title="当前期",
         created_at="2026-04-05T10:00:00+08:00",
         published_at="2026-04-06T09:00:00+08:00",
-        window_start="2026-03-24T00:00:00+08:00",
-        window_end="2026-03-31T00:00:00+08:00",
     )
     next_issue = make_issue(
         db_session,
@@ -562,8 +488,6 @@ async def test_get_public_review_detail_includes_neighbors_and_public_comment_co
         title="下一期",
         created_at="2026-04-12T10:00:00+08:00",
         published_at="2026-04-13T09:00:00+08:00",
-        window_start="2026-03-31T00:00:00+08:00",
-        window_end="2026-04-07T00:00:00+08:00",
     )
     make_issue(
         db_session,
@@ -572,8 +496,6 @@ async def test_get_public_review_detail_includes_neighbors_and_public_comment_co
         status="draft",
         title="草稿不参与跳转",
         created_at="2026-04-13T10:00:00+08:00",
-        window_start="2026-04-07T00:00:00+08:00",
-        window_end="2026-04-14T00:00:00+08:00",
     )
     make_review_comment(db_session, target.id, content="公开评论")
     make_review_comment(db_session, target.id, content="隐藏评论", is_hidden=True)
@@ -691,9 +613,9 @@ async def test_get_review_rss_supports_template_filter_and_outputs_review_items(
     body = response.body.decode("utf-8")
     assert response.media_type == "application/rss+xml"
     assert "<title>Lumina</title>" in body
-    assert "https://lumina.example.com/reviews?template_id=" in body
-    assert f"https://lumina.example.com/backend/api/reviews/rss.xml?template_id={template.id}" in body
-    assert f"<link>https://lumina.example.com/reviews/{matched.slug}</link>" in body
+    assert "https://lumina.example.com/columns?template_id=" in body
+    assert f"https://lumina.example.com/backend/api/columns/rss.xml?template_id={template.id}" in body
+    assert f"<link>https://lumina.example.com/columns/{matched.slug}</link>" in body
     assert matched.title in body
     assert "本期摘要" in body
     assert "产品月报 1" not in body
@@ -705,8 +627,6 @@ async def test_get_public_review_detail_includes_sidebar_template_info_and_recen
     template = make_template(db_session, name="肖恩技术周刊", slug="shawn-weekly")
     other_template = make_template(db_session, name="产品月报", slug="product-monthly")
     template.description = "聚焦 AI 工程化、智能体与基础设施。"
-    template.schedule_type = "weekly"
-    template.trigger_time = "08:00"
     db_session.commit()
 
     for index in range(1, 7):
@@ -718,8 +638,6 @@ async def test_get_public_review_detail_includes_sidebar_template_info_and_recen
             title=f"第 {index} 期",
             created_at=f"2026-04-0{index}T10:00:00+08:00",
             published_at=f"2026-04-0{index}T09:00:00+08:00",
-            window_start=f"2026-03-{20 + index:02d}T00:00:00+08:00",
-            window_end=f"2026-03-{21 + index:02d}T00:00:00+08:00",
         )
     make_issue(
         db_session,
@@ -729,8 +647,6 @@ async def test_get_public_review_detail_includes_sidebar_template_info_and_recen
         title="草稿版",
         created_at="2026-04-07T10:00:00+08:00",
         published_at=None,
-        window_start="2026-03-27T00:00:00+08:00",
-        window_end="2026-03-28T00:00:00+08:00",
     )
     make_issue(
         db_session,
@@ -740,8 +656,6 @@ async def test_get_public_review_detail_includes_sidebar_template_info_and_recen
         title="产品月报 1",
         created_at="2026-04-07T10:00:00+08:00",
         published_at="2026-04-07T09:00:00+08:00",
-        window_start="2026-04-01T00:00:00+08:00",
-        window_end="2026-05-01T00:00:00+08:00",
     )
 
     payload = await review_router.get_public_review_detail(
@@ -751,8 +665,7 @@ async def test_get_public_review_detail_includes_sidebar_template_info_and_recen
     )
 
     assert payload["template"]["description"] == "聚焦 AI 工程化、智能体与基础设施。"
-    assert payload["template"]["schedule_type"] == "weekly"
-    assert payload["template"]["trigger_time"] == "08:00"
+    assert payload["template"]["name"] == template.name
     assert len(payload["recent_reviews"]) == 5
     assert [item["slug"] for item in payload["recent_reviews"]] == [
         "product-monthly-1",
@@ -916,7 +829,6 @@ async def test_get_review_issue_detail_includes_selected_article_ids_and_templat
     category = make_category(db_session, name="AI", sort_order=1)
     model = make_model_config(db_session, name="Review Default Model")
     template = make_template(db_session, name="周刊模板", slug="weekly-template")
-    template.model_api_config_id = model.id
     db_session.commit()
 
     first_article = make_article(
@@ -969,25 +881,8 @@ async def test_get_review_issue_detail_includes_selected_article_ids_and_templat
     )
 
     assert payload["selected_article_ids"] == [second_article.id, first_article.id]
-    assert payload["template"]["model_api_config_id"] == model.id
+    assert payload["template"]["id"] == template.id
 
-
-@pytest.mark.anyio
-async def test_update_review_rejects_missing_article_placeholder(db_session):
-    template = make_template(db_session)
-    issue = make_issue(db_session, template.id, slug="draft-issue", status="draft")
-
-    with pytest.raises(HTTPException) as exc_info:
-        await review_router.update_review_issue(
-            issue_id=issue.id,
-            payload=review_router.ReviewIssueUpdateRequest(
-                title="新标题",
-                markdown_content="# 手工正文\n\n没有占位符",
-            ),
-            db=db_session,
-            _=True,
-    )
-    assert "至少一个 {{article_slug}} 文章占位符" in exc_info.value.detail
 
 
 @pytest.mark.anyio
@@ -1031,181 +926,6 @@ async def test_update_review_accepts_article_slug_placeholders(db_session):
     assert payload["markdown_content"] == "# 手工正文\n\n## AI\n\n### {{openai-news}}"
 
 
-@pytest.mark.anyio
-async def test_run_review_template_now_enqueues_generation_task(db_session, monkeypatch):
-    template = make_template(db_session)
-    monkeypatch.setattr(review_router, "now_str", lambda: "2026-04-04T12:00:00+08:00")
-
-    payload = await review_router.run_review_template_now(
-        template_id=template.id,
-        db=db_session,
-        _=True,
-    )
-
-    assert payload["success"] is True
-    assert payload["task_id"]
-    task = db_session.query(AITask).filter(AITask.task_type == "generate_review_issue").one()
-    assert task.id == payload["task_id"]
-    assert task.payload
-
-
-@pytest.mark.anyio
-async def test_run_review_template_now_only_enqueues_selected_template(db_session, monkeypatch):
-    target = make_template(db_session, name="目标模板", slug="target-template")
-    other = make_template(db_session, name="其他模板", slug="other-template")
-    monkeypatch.setattr(review_router, "now_str", lambda: "2026-04-04T12:00:00+08:00")
-
-    payload = await review_router.run_review_template_now(
-        template_id=target.id,
-        db=db_session,
-        _=True,
-    )
-
-    assert payload["success"] is True
-    assert payload["task_id"]
-    tasks = db_session.query(AITask).filter(AITask.task_type == "generate_review_issue").all()
-    assert len(tasks) == 1
-    assert tasks[0].id == payload["task_id"]
-    assert target.id in tasks[0].payload
-    assert other.id not in tasks[0].payload
-    target_issue = db_session.query(ReviewIssue).filter(ReviewIssue.template_id == target.id).one()
-    assert target_issue.window_start == "2026-03-30T00:00:00+08:00"
-    assert target_issue.window_end == "2026-04-06T00:00:00+08:00"
-
-
-@pytest.mark.anyio
-async def test_get_review_template_generation_preview_returns_window_defaults_and_filtered_articles(
-    db_session,
-    monkeypatch,
-):
-    target_category = make_category(db_session, name="AI", sort_order=1)
-    other_category = make_category(db_session, name="效率", sort_order=2)
-    template = make_template(db_session, name="周刊模板", slug="weekly-template")
-    template.include_all_categories = False
-    template.categories = [target_category]
-    db_session.commit()
-
-    in_window_latest = make_article(
-        db_session,
-        title="AI Agent 实战",
-        slug="ai-agent-practice",
-        category_id=target_category.id,
-        created_at="2026-04-03T08:00:00+08:00",
-        summary="摘要 A",
-    )
-    in_window_older = make_article(
-        db_session,
-        title="模型工程综述",
-        slug="model-engineering",
-        category_id=target_category.id,
-        created_at="2026-04-01T08:00:00+08:00",
-        summary="摘要 B",
-    )
-    make_article(
-        db_session,
-        title="隐藏候选文章",
-        slug="hidden-candidate-article",
-        category_id=target_category.id,
-        created_at="2026-04-02T08:00:00+08:00",
-        summary="隐藏摘要",
-        is_visible=False,
-    )
-    make_article(
-        db_session,
-        title="不在模板分类",
-        slug="other-category-article",
-        category_id=other_category.id,
-        created_at="2026-04-03T08:00:00+08:00",
-        summary="摘要 C",
-    )
-    make_article(
-        db_session,
-        title="超出时间窗口",
-        slug="outside-window-article",
-        category_id=target_category.id,
-        created_at="2026-04-08T08:00:00+08:00",
-        summary="摘要 D",
-    )
-
-    monkeypatch.setattr(review_router, "now_str", lambda: "2026-04-05T12:00:00+08:00")
-
-    payload = await review_router.get_review_template_generation_preview(
-        template_id=template.id,
-        date_start=None,
-        date_end=None,
-        db=db_session,
-        _=True,
-    )
-
-    assert payload["template"]["id"] == template.id
-    assert payload["date_start"] == "2026-03-30"
-    assert payload["date_end"] == "2026-04-05"
-    assert [item["id"] for item in payload["articles"]] == [
-        in_window_latest.id,
-        in_window_older.id,
-    ]
-    assert payload["articles"][0]["summary"] == "摘要 A"
-    assert payload["articles"][0]["category"]["id"] == target_category.id
-
-
-@pytest.mark.anyio
-async def test_run_review_template_manual_enqueues_selected_articles_and_model_override(
-    db_session,
-    monkeypatch,
-):
-    category = make_category(db_session, name="AI", sort_order=1)
-    template = make_template(db_session, name="周刊模板", slug="weekly-template")
-    template.include_all_categories = False
-    template.categories = [category]
-    db_session.commit()
-    model = make_model_config(db_session, name="Manual Review Model")
-    first_article = make_article(
-        db_session,
-        title="第一篇",
-        slug="first-article",
-        category_id=category.id,
-        created_at="2026-04-01T08:00:00+08:00",
-        summary="摘要 1",
-    )
-    second_article = make_article(
-        db_session,
-        title="第二篇",
-        slug="second-article",
-        category_id=category.id,
-        created_at="2026-04-02T08:00:00+08:00",
-        summary="摘要 2",
-    )
-
-    monkeypatch.setattr(review_router, "now_str", lambda: "2026-04-05T12:00:00+08:00")
-
-    payload = await review_router.run_review_template_manual(
-        template_id=template.id,
-        payload=review_router.ReviewTemplateManualRunRequest(
-            date_start="2026-04-01",
-            date_end="2026-04-03",
-            article_ids=[second_article.id, first_article.id],
-            model_api_config_id=model.id,
-        ),
-        db=db_session,
-        _=True,
-    )
-
-    assert payload["success"] is True
-    assert payload["task_id"]
-    assert payload["issue_id"]
-
-    issue = db_session.query(ReviewIssue).filter(ReviewIssue.id == payload["issue_id"]).one()
-    assert issue.template_id == template.id
-    assert issue.status == "draft"
-    assert issue.window_start == "2026-04-01T00:00:00+08:00"
-    assert issue.window_end == "2026-04-04T00:00:00+08:00"
-
-    task = db_session.query(AITask).filter(AITask.id == payload["task_id"]).one()
-    task_payload = json.loads(task.payload)
-    assert task_payload["template_id"] == template.id
-    assert task_payload["issue_id"] == issue.id
-    assert task_payload["article_ids"] == [second_article.id, first_article.id]
-    assert task_payload["model_api_config_id"] == model.id
 
 
 @pytest.mark.anyio
@@ -1213,17 +933,6 @@ async def test_create_review_template_generates_slug_when_payload_omits_it(db_se
     payload = review_router.ReviewTemplateBase(
         name="技术周回顾",
         description="",
-        is_enabled=True,
-        schedule_type="weekly",
-        custom_interval_days=None,
-        anchor_date="2026-04-01",
-        timezone="Asia/Shanghai",
-        trigger_time="09:00",
-        include_all_categories=True,
-        category_ids=[],
-        system_prompt="你是回顾主编。",
-        prompt_template="请生成回顾\n\n{content}",
-        title_template="第 {period_label} 回顾",
     )
 
     result = await review_router.create_review_template(
@@ -1234,7 +943,6 @@ async def test_create_review_template_generates_slug_when_payload_omits_it(db_se
 
     created = db_session.query(ReviewTemplate).filter(ReviewTemplate.id == result["id"]).one()
     assert created.slug == "ji-zhu-zhou-hui-gu"
-    assert created.system_prompt == "你是回顾主编。"
 
 
 @pytest.mark.anyio
@@ -1242,30 +950,10 @@ async def test_create_review_template_generates_unique_slug_for_duplicate_names(
     first_payload = review_router.ReviewTemplateBase(
         name="技术周回顾",
         description="",
-        is_enabled=True,
-        schedule_type="weekly",
-        custom_interval_days=None,
-        anchor_date="2026-04-01",
-        timezone="Asia/Shanghai",
-        trigger_time="09:00",
-        include_all_categories=True,
-        category_ids=[],
-        prompt_template="请生成回顾\n\n{content}",
-        title_template="第 {period_label} 回顾",
     )
     second_payload = review_router.ReviewTemplateBase(
         name="技术周回顾",
         description="",
-        is_enabled=True,
-        schedule_type="weekly",
-        custom_interval_days=None,
-        anchor_date="2026-04-01",
-        timezone="Asia/Shanghai",
-        trigger_time="09:00",
-        include_all_categories=True,
-        category_ids=[],
-        prompt_template="请生成回顾\n\n{content}",
-        title_template="第 {period_label} 回顾",
     )
 
     first = await review_router.create_review_template(
@@ -1283,84 +971,6 @@ async def test_create_review_template_generates_unique_slug_for_duplicate_names(
     second_template = db_session.query(ReviewTemplate).filter(ReviewTemplate.id == second["id"]).one()
     assert first_template.slug == "ji-zhu-zhou-hui-gu"
     assert second_template.slug == "ji-zhu-zhou-hui-gu-2"
-
-
-@pytest.mark.anyio
-async def test_create_review_template_persists_selected_model_config(db_session):
-    model = make_model_config(db_session)
-    payload = review_router.ReviewTemplateBase(
-        name="技术周回顾",
-        description="",
-        is_enabled=True,
-        schedule_type="weekly",
-        custom_interval_days=None,
-        anchor_date="2026-04-01",
-        timezone="Asia/Shanghai",
-        trigger_time="09:00",
-        include_all_categories=True,
-        category_ids=[],
-        prompt_template="请生成回顾\n\n{content}",
-        title_template="第 {period_label} 回顾",
-        model_api_config_id=model.id,
-    )
-
-    created = await review_router.create_review_template(
-        payload=payload,
-        db=db_session,
-        _=True,
-    )
-    rows = await review_router.get_review_templates(db=db_session, _=True)
-
-    created_template = db_session.query(ReviewTemplate).filter(ReviewTemplate.id == created["id"]).one()
-    serialized = next(item for item in rows if item["id"] == created["id"])
-
-    assert getattr(created_template, "model_api_config_id", None) == model.id
-    assert serialized["model_api_config_id"] == model.id
-
-
-@pytest.mark.anyio
-async def test_create_review_template_persists_input_mode_and_advanced_generation_params(
-    db_session,
-):
-    payload = review_router.ReviewTemplateBase(
-        name="技术周回顾",
-        description="",
-        is_enabled=True,
-        schedule_type="weekly",
-        custom_interval_days=None,
-        anchor_date="2026-04-01",
-        timezone="Asia/Shanghai",
-        trigger_time="09:00",
-        include_all_categories=True,
-        category_ids=[],
-        prompt_template="请生成回顾\n\n{content}",
-        title_template="第 {period_label} 回顾",
-        review_input_mode="full_text",
-        temperature=0.85,
-        max_tokens=2400,
-        top_p=0.7,
-    )
-
-    created = await review_router.create_review_template(
-        payload=payload,
-        db=db_session,
-        _=True,
-    )
-    rows = await review_router.get_review_templates(db=db_session, _=True)
-
-    created_template = db_session.query(ReviewTemplate).filter(ReviewTemplate.id == created["id"]).one()
-    serialized = next(item for item in rows if item["id"] == created["id"])
-
-    assert getattr(created_template, "review_input_mode", None) == "full_text"
-    assert getattr(created_template, "temperature", None) == pytest.approx(0.85)
-    assert getattr(created_template, "max_tokens", None) == 2400
-    assert getattr(created_template, "top_p", None) == pytest.approx(0.7)
-    assert serialized["review_input_mode"] == "full_text"
-    assert serialized["temperature"] == pytest.approx(0.85)
-    assert serialized["max_tokens"] == 2400
-    assert serialized["top_p"] == pytest.approx(0.7)
-
-
 @pytest.mark.anyio
 async def test_delete_review_template_removes_template_and_related_issues(db_session):
     template = make_template(db_session)
@@ -1392,41 +1002,3 @@ async def test_delete_review_issue_removes_issue(db_session):
     assert db_session.query(ReviewIssue).filter(ReviewIssue.id == issue.id).first() is None
 
 
-@pytest.mark.anyio
-async def test_publish_review_issue_deletes_other_drafts_in_same_group(db_session):
-    template = make_template(db_session)
-    target = make_issue(
-        db_session,
-        template.id,
-        slug="issue-to-publish",
-        status="draft",
-        created_at="2026-04-04T11:00:00+08:00",
-    )
-    sibling_draft = make_issue(
-        db_session,
-        template.id,
-        slug="issue-to-delete-after-publish",
-        status="draft",
-        created_at="2026-04-04T10:00:00+08:00",
-    )
-    other_group = make_issue(
-        db_session,
-        template.id,
-        slug="issue-other-group",
-        status="draft",
-        created_at="2026-04-05T10:00:00+08:00",
-        window_start="2026-04-08T00:00:00+08:00",
-        window_end="2026-04-15T00:00:00+08:00",
-    )
-
-    payload = await review_router.publish_review_issue(
-        issue_id=target.id,
-        db=db_session,
-        _=True,
-    )
-
-    db_session.refresh(target)
-    assert payload == {"success": True, "status": "published"}
-    assert target.status == "published"
-    assert db_session.query(ReviewIssue).filter(ReviewIssue.id == sibling_draft.id).first() is None
-    assert db_session.query(ReviewIssue).filter(ReviewIssue.id == other_group.id).first() is not None

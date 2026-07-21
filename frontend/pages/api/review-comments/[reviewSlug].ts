@@ -32,7 +32,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 			return;
 		}
 		try {
-			const response = await fetch(`${API_URL}/api/reviews/${reviewSlug}/comments`);
+			const response = await fetch(`${API_URL}/api/columns/${reviewSlug}/comments`);
 			const data = await response.json();
 			res.status(response.status).json(data);
 		} catch {
@@ -70,7 +70,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 		}
 
 		try {
-			const response = await fetch(`${API_URL}/api/reviews/${reviewSlug}/comments`, {
+			const response = await fetch(`${API_URL}/api/columns/${reviewSlug}/comments`, {
 				method: "POST",
 				headers: {
 					"Content-Type": "application/json",

@@ -94,24 +94,6 @@ article_tags = Table(
     Column("created_at", String, default=now_str, nullable=False),
 )
 
-review_template_categories = Table(
-    "review_template_categories",
-    Base.metadata,
-    Column(
-        "template_id",
-        String,
-        ForeignKey("review_templates.id", ondelete="CASCADE"),
-        primary_key=True,
-    ),
-    Column(
-        "category_id",
-        String,
-        ForeignKey("categories.id", ondelete="CASCADE"),
-        primary_key=True,
-    ),
-    Column("created_at", String, default=now_str, nullable=False),
-)
-
 
 class Category(Base):
     __tablename__ = "categories"
@@ -125,11 +107,6 @@ class Category(Base):
 
     articles = relationship("Article", back_populates="category")
     prompt_configs = relationship("PromptConfig", back_populates="category")
-    review_templates = relationship(
-        "ReviewTemplate",
-        secondary=review_template_categories,
-        back_populates="categories",
-    )
 
 
 class Tag(Base):
@@ -513,36 +490,11 @@ class ReviewTemplate(Base):
     name = Column(String, nullable=False)
     slug = Column(String, nullable=False, unique=True, index=True)
     description = Column(Text, nullable=True)
-    is_enabled = Column(Boolean, nullable=False, default=True)
-    schedule_type = Column(String, nullable=False)
-    custom_interval_days = Column(Integer, nullable=True)
-    anchor_date = Column(String, nullable=False)
-    timezone = Column(String, nullable=False, default="Asia/Shanghai")
-    trigger_time = Column(String, nullable=False, default="09:00")
-    include_all_categories = Column(Boolean, nullable=False, default=True)
-    model_api_config_id = Column(
-        String,
-        ForeignKey("model_api_configs.id", ondelete="SET NULL"),
-        nullable=True,
-    )
-    review_input_mode = Column(String, nullable=False, default="abstract")
-    system_prompt = Column(Text, nullable=True)
-    prompt_template = Column(Text, nullable=False)
-    temperature = Column(Float, nullable=True)
-    max_tokens = Column(Integer, nullable=True)
-    top_p = Column(Float, nullable=True)
-    title_template = Column(Text, nullable=False)
-    next_run_at = Column(String, nullable=True)
-    last_run_at = Column(String, nullable=True)
+    color = Column(String, nullable=False, default="#3B82F6")
+    sort_order = Column(Integer, nullable=False, default=0)
     created_at = Column(String, default=now_str)
     updated_at = Column(String, default=now_str)
 
-    categories = relationship(
-        "Category",
-        secondary=review_template_categories,
-        back_populates="review_templates",
-    )
-    model_api_config = relationship("ModelAPIConfig")
     issues = relationship(
         "ReviewIssue",
         back_populates="template",
@@ -561,10 +513,9 @@ class ReviewIssue(Base):
         index=True,
     )
     slug = Column(String, nullable=False, unique=True, index=True)
+    slug_locked = Column(Boolean, nullable=False, default=False)
     title = Column(String, nullable=False)
     status = Column(String, nullable=False, default="draft")
-    window_start = Column(String, nullable=False, index=True)
-    window_end = Column(String, nullable=False, index=True)
     top_image = Column(String, nullable=True)
     markdown_content = Column(Text, nullable=False)
     view_count = Column(Integer, nullable=False, default=0)

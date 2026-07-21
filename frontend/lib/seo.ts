@@ -295,9 +295,9 @@ const buildReviewListTitle = (
 	const page = Number.parseInt(query.page || "1", 10);
 	const pageLabel = Number.isFinite(page) && page > 1 ? ` - 第 ${page} 页` : "";
 	if (options.templateName || query.template_id) {
-		return `${options.templateName || query.template_id} - 回顾列表${pageLabel} - ${siteName}`;
+		return `${options.templateName || query.template_id} - 专栏列表${pageLabel} - ${siteName}`;
 	}
-	return `回顾列表${pageLabel} - ${siteName}`;
+	return `专栏列表${pageLabel} - ${siteName}`;
 };
 
 const buildReviewListDescription = (
@@ -306,9 +306,9 @@ const buildReviewListDescription = (
 ): string => {
 	const siteDescription = options.siteDescription || DEFAULT_SITE_DESCRIPTION;
 	if (options.templateName || query.template_id) {
-		return `浏览 ${(options.templateName || query.template_id) as string} 模板下的公开回顾、总结与周期复盘。${siteDescription}`;
+		return `浏览 ${(options.templateName || query.template_id) as string} 专栏下的公开文章与内容沉淀。${siteDescription}`;
 	}
-	return `浏览最新公开回顾、总结与周期复盘。${siteDescription}`;
+	return `浏览最新公开专栏文章与内容沉淀。${siteDescription}`;
 };
 
 export const getReviewListPageSeo = (

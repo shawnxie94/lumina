@@ -91,11 +91,11 @@ test("resolveReviewDetailExportMarkdown converts relative markdown image urls to
 		resolveReviewDetailExportMarkdown({
 			origin: "http://localhost:3000",
 			title: "Review With Relative Media",
-			topImage: "/backend/media/reviews/review-cover.png",
-			renderedMarkdown: "![回顾插图](/media/reviews/review-inline.png)",
+			topImage: "/backend/media/columns/review-cover.png",
+			renderedMarkdown: "![回顾插图](/media/columns/review-inline.png)",
 			markdownContent: "",
 		}),
-		"# Review With Relative Media\n\n![](http://localhost:3000/backend/media/reviews/review-cover.png)\n\n![回顾插图](http://localhost:3000/backend/media/reviews/review-inline.png)",
+		"# Review With Relative Media\n\n![](http://localhost:3000/backend/media/columns/review-cover.png)\n\n![回顾插图](http://localhost:3000/backend/media/columns/review-inline.png)",
 	);
 });
 
@@ -130,7 +130,7 @@ test("article detail page wires markdown export into the content toolbar", () =>
 
 test("review detail page wires markdown export into the content toolbar", () => {
 	const source = readFileSync(
-		join(process.cwd(), "pages/reviews/[slug].tsx"),
+		join(process.cwd(), "pages/columns/[slug].tsx"),
 		"utf8",
 	);
 

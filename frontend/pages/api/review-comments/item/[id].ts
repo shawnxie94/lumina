@@ -19,7 +19,7 @@ async function commentsEnabled(): Promise<boolean> {
 }
 
 async function fetchComment(commentId: string) {
-	const response = await fetch(`${API_URL}/api/review-comments/${commentId}`);
+	const response = await fetch(`${API_URL}/api/column-comments/${commentId}`);
 	const data = await response.json();
 	return { response, data };
 }
@@ -81,7 +81,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 				res.status(403).json({ message: "无权限操作该评论" });
 				return;
 			}
-			const response = await fetch(`${API_URL}/api/review-comments/${id}`, {
+			const response = await fetch(`${API_URL}/api/column-comments/${id}`, {
 				method: "PUT",
 				headers: {
 					"Content-Type": "application/json",
@@ -117,7 +117,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 				res.status(403).json({ message: "无权限操作该评论" });
 				return;
 			}
-			const response = await fetch(`${API_URL}/api/review-comments/${id}`, {
+			const response = await fetch(`${API_URL}/api/column-comments/${id}`, {
 				method: "DELETE",
 				headers: {
 					"X-Internal-Token": INTERNAL_API_TOKEN,

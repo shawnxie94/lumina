@@ -89,7 +89,7 @@ export default function AppHeader({ hideRss, activeNav }: { hideRss?: boolean; a
   const getCommentNotificationLink = useCallback((comment: Awaited<ReturnType<typeof commentApi.getNotifications>>[number]) => {
     if (comment.resource_type === 'review') {
       const reviewTarget = comment.review_slug || comment.review_id;
-      return reviewTarget ? `/reviews/${reviewTarget}#comment-${comment.id}` : undefined;
+      return reviewTarget ? `/columns/${reviewTarget}#comment-${comment.id}` : undefined;
     }
     const articleTarget = comment.article_slug || comment.article_id;
     return articleTarget ? `/article/${articleTarget}#comment-${comment.id}` : undefined;
@@ -182,7 +182,7 @@ export default function AppHeader({ hideRss, activeNav }: { hideRss?: boolean; a
       if (task.task_type === 'process_article_classification') return t('分类');
       if (task.task_type === 'process_article_translation') return t('翻译');
       if (task.task_type === 'process_article_embedding') return t('向量化');
-      if (task.task_type === 'generate_review_issue') return t('回顾');
+      if (task.task_type === 'generate_review_issue') return t('专栏');
       if (task.task_type === 'process_ai_content') {
         if (task.content_type === 'summary') return t('摘要');
         if (task.content_type === 'outline') return t('大纲');
@@ -350,11 +350,11 @@ export default function AppHeader({ hideRss, activeNav }: { hideRss?: boolean; a
     };
   }, [router.pathname, router.query.category_id, router.query.tag_ids]);
   const reviewRssFilters = useMemo(() => {
-    if (router.pathname !== '/reviews' && router.pathname !== '/reviews/[slug]') {
+    if (router.pathname !== '/columns' && router.pathname !== '/columns/[slug]') {
       return {};
     }
     const templateId =
-      router.pathname === '/reviews'
+      router.pathname === '/columns'
         ? getQueryValue(router.query.template_id).trim()
         : '';
     return {
@@ -370,7 +370,7 @@ export default function AppHeader({ hideRss, activeNav }: { hideRss?: boolean; a
   }, [router.asPath]);
   const isHomeRoute = activeNav === 'home' || (!activeNav && router.pathname === '/');
   const isFeedRoute = activeNav === 'feed' || (!activeNav && router.pathname === '/list');
-  const isReviewRoute = activeNav === 'review' || (!activeNav && (router.pathname === '/reviews' || router.pathname === '/reviews/[slug]'));
+  const isReviewRoute = activeNav === 'review' || (!activeNav && (router.pathname === '/columns' || router.pathname === '/columns/[slug]'));
   const headerCustomLinks = useMemo(
     () =>
       (basicSettings.header_custom_links || [])
@@ -425,12 +425,18 @@ export default function AppHeader({ hideRss, activeNav }: { hideRss?: boolean; a
                 {t('信息流')}
               </Link>
               <Link
-                href="/reviews"
+                href="/columns"
                 className={`px-3 py-1 rounded-sm transition ${
                   isReviewRoute ? 'bg-muted text-text-1' : 'text-text-2 hover:bg-muted hover:text-text-1'
                 }`}
               >
-                {t('回顾')}
+                {t('专栏')}
+              </Link>
+              <Link
+                className={`px-3 py-1 rounded-sm transition ${
+                }`}
+              >
+                {t('图谱')}
               </Link>
               {headerCustomLinks.map((item) =>
                 isExternalHref(item.url) ? (
@@ -662,12 +668,18 @@ export default function AppHeader({ hideRss, activeNav }: { hideRss?: boolean; a
               {t('信息流')}
             </Link>
             <Link
-              href="/reviews"
+              href="/columns"
               className={`inline-flex lg:hidden h-8 items-center px-3 rounded-sm text-sm font-medium transition ${
                 isReviewRoute ? 'bg-muted text-text-1' : 'text-text-2 hover:bg-muted hover:text-text-1'
               }`}
             >
-              {t('回顾')}
+              {t('专栏')}
+            </Link>
+            <Link
+              className={`inline-flex lg:hidden h-8 items-center px-3 rounded-sm text-sm font-medium transition ${
+              }`}
+            >
+              {t('图谱')}
             </Link>
             {resolvedAdmin && (
               <Link

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+import uuid
 
 from app.api.routers import ai_tasks_router
 from models import (
@@ -523,17 +524,12 @@ async def test_get_ai_task_prefers_translated_article_title_and_falls_back(db_se
 @pytest.mark.anyio
 async def test_list_ai_tasks_returns_review_issue_target_for_review_generation_task(db_session):
     template = ReviewTemplate(
+        id=str(uuid.uuid4()),
         name="周期回顾模板",
         slug="periodic-review",
         description="",
-        is_enabled=True,
-        schedule_type="weekly",
-        anchor_date="2026-04-01",
-        timezone="Asia/Shanghai",
-        trigger_time="09:00",
-        include_all_categories=True,
-        prompt_template="请生成回顾\n\n{content}",
-        title_template="{period_label} 回顾",
+        color="#3B82F6",
+        sort_order=0,
         created_at="2026-04-04T10:00:00",
         updated_at="2026-04-04T10:00:00",
     )
@@ -545,8 +541,6 @@ async def test_list_ai_tasks_returns_review_issue_target_for_review_generation_t
         slug="reviews-2026-03-30-v2",
         title="2026-03-30 ~ 2026-04-05 周期回顾（草稿 2）",
         status="draft",
-        window_start="2026-03-30T00:00:00+08:00",
-        window_end="2026-04-06T00:00:00+08:00",
         markdown_content="# 回顾\n\n{{review_article_sections}}",
         created_at="2026-04-04T10:01:00",
         updated_at="2026-04-04T10:01:00",
@@ -590,17 +584,12 @@ async def test_list_ai_tasks_returns_review_issue_target_for_review_generation_t
 @pytest.mark.anyio
 async def test_get_ai_task_timeline_returns_review_issue_target_for_review_generation_task(db_session):
     template = ReviewTemplate(
+        id=str(uuid.uuid4()),
         name="周期回顾模板",
         slug="periodic-review",
         description="",
-        is_enabled=True,
-        schedule_type="weekly",
-        anchor_date="2026-04-01",
-        timezone="Asia/Shanghai",
-        trigger_time="09:00",
-        include_all_categories=True,
-        prompt_template="请生成回顾\n\n{content}",
-        title_template="{period_label} 回顾",
+        color="#3B82F6",
+        sort_order=0,
         created_at="2026-04-04T10:00:00",
         updated_at="2026-04-04T10:00:00",
     )
@@ -612,8 +601,6 @@ async def test_get_ai_task_timeline_returns_review_issue_target_for_review_gener
         slug="reviews-2026-03-30-v3",
         title="2026-03-30 ~ 2026-04-05 周期回顾（草稿 3）",
         status="draft",
-        window_start="2026-03-30T00:00:00+08:00",
-        window_end="2026-04-06T00:00:00+08:00",
         markdown_content="# 回顾\n\n{{review_article_sections}}",
         created_at="2026-04-04T10:01:00",
         updated_at="2026-04-04T10:01:00",
