@@ -299,3 +299,70 @@ def test_parse_jina_response_repairs_dropped_nbsp_inside_mojibake():
     parsed = ArticleExtractionService()._parse_jina_response(FakeResponse())
 
     assert parsed["content_md"] == expected_content
+
+
+
+def test_extract_article_fields_prefers_defuddle(monkeypatch):
+    service = ArticleExtractionService()
+    body = "enough text " * 20
+
+    class FakeResult:
+        title = "Defuddle Title"
+        content_html = f"<article><p>{body}</p></article>"
+        author = "Defuddle Author"
+        published = "2026-01-02"
+        image = "https://example.com/cover.png"
+        description = "desc"
+        word_count = 40
+        parse_time_ms = 12
+        engine_version = "0.19.1"
+
+    monkeypatch.setattr(
+        article_extraction_service_module,
+        "is_defuddle_local_available",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        article_extraction_service_module,
+        "extract_with_defuddle_local",
+        lambda **_kwargs: FakeResult(),
+    )
+
+    fields = service._extract_article_fields(
+        "<html><body><article><p>raw</p></article></body></html>",
+        "https://example.com/a",
+    )
+    assert fields["title"] == "Defuddle Title"
+    assert fields["author"] == "Defuddle Author"
+    assert fields["engine"] == "defuddle"
+    assert "enough text" in fields["content_html"]
+
+
+def test_extract_article_fields_falls_back_to_regex_when_defuddle_fails(monkeypatch):
+    service = ArticleExtractionService()
+
+    monkeypatch.setattr(
+        article_extraction_service_module,
+        "is_defuddle_local_available",
+        lambda: True,
+    )
+
+    def boom(**_kwargs):
+        from app.domain.defuddle_local_extractor import DefuddleLocalExtractionError
+
+        raise DefuddleLocalExtractionError("boom")
+
+    monkeypatch.setattr(
+        article_extraction_service_module,
+        "extract_with_defuddle_local",
+        boom,
+    )
+
+    html = (
+        "<html><body><article><p>"
+        + ("fallback body content " * 10)
+        + "</p></article></body></html>"
+    )
+    fields = service._extract_article_fields(html, "https://example.com/b")
+    assert fields["engine"] in {"regex", "regex_fallback"}
+    assert "fallback body content" in fields["content_html"]

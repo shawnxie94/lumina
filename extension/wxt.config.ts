@@ -10,6 +10,8 @@ const connectableMatches = [
 ];
 
 export default defineConfig({
+  // WXT output: extension/.output/chrome-mv3
+  outDir: '.output',
   manifest: {
   name: 'Lumina 采集器',
   description: '一键采集网页内容到 Lumina',
@@ -32,6 +34,12 @@ export default defineConfig({
       '48': 'icon/48.png',
       '128': 'icon/128.png',
     },
+    web_accessible_resources: [
+      {
+        resources: ['flatten-shadow-dom.js'],
+        matches: ['<all_urls>'],
+      },
+    ],
   },
   runner: {
     disabled: false,
@@ -42,6 +50,11 @@ export default defineConfig({
   vite: () => ({
     build: {
       target: 'esnext',
+    },
+    // Chrome rejects content scripts it cannot treat as UTF-8.
+    // Escape non-ASCII (e.g. Temml/math symbols from defuddle/full) as \uXXXX.
+    esbuild: {
+      charset: 'ascii',
     },
   }),
 });

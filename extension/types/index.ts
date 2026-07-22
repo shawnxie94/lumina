@@ -8,6 +8,11 @@ export interface ArticleData {
 	author: string;
 	published_at: string;
 	source_domain: string;
+	/** Final client body; backend must not re-clean with Jina HTML. */
+	extraction_provider?: string;
+	extraction_status?: string;
+	/** JSON string: quality + extract_debug for observability. */
+	extraction_metadata?: string;
 }
 
 export interface CreateArticleRequest extends ArticleData {}
@@ -37,9 +42,12 @@ export interface ReportArticleByUrlDuplicateResponse {
 	existing: ExistingArticleInfo;
 }
 
+export type CreateArticleResult =
+	| CreateArticleResponse
+	| ReportArticleByUrlDuplicateResponse;
+
 export interface StorageData {
 	apiHost: string;
-	htmlCleaningUrlPatterns?: string;
 }
 
 export type StatusType = "idle" | "loading" | "success" | "error";

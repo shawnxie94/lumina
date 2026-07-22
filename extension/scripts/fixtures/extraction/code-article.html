@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Debugging Async Pipelines</title>
+  <meta property="og:title" content="Debugging Async Pipelines" />
+  <meta name="author" content="Pat Engineer" />
+</head>
+<body>
+  <header>Tech Blog</header>
+  <main>
+    <article class="post-content">
+      <h1>Debugging Async Pipelines</h1>
+      <p>When a worker stalls, start by measuring queue latency and retry amplification before changing business logic. This fixture ensures code blocks survive extraction.</p>
+      <pre><code class="language-ts">async function run(job: Job) {
+  const started = Date.now();
+  await process(job);
+  return Date.now() - started;
+}
+</code></pre>
+      <p>After the snippet, document how to correlate spans with logs. Extra text: pipeline queue backlog retry budget circuit breaker timeout jitter backoff saturation.</p>
+      <p>Final notes cover rollout gates and dashboards for production readiness checks across canaries.</p>
+    </article>
+  </main>
+  <footer>nav noise</footer>
+</body>
+</html>

@@ -148,64 +148,6 @@ class ArticleCommandService:
             or ip_obj.is_unspecified
         )
 
-    async def _apply_jina_html_cleaning_if_enabled(
-        self,
-        article_data: dict,
-        db: Session,
-    ) -> dict:
-        if article_data.get("extraction_provider"):
-            return article_data
-        content_html = (article_data.get("content_html") or "").strip()
-        if not content_html:
-            return article_data
-        extraction_settings = self.article_extraction_service.resolve_settings(db)
-        if (
-            not extraction_settings.jina_reader_enabled
-            or extraction_settings.jina_reader_prefer_mode == "local_only"
-        ):
-            return article_data
-
-        try:
-            extracted = await self.article_extraction_service.extract_html(
-                db,
-                html=content_html,
-                source_url=article_data.get("source_url"),
-                title=article_data.get("title"),
-                top_image=article_data.get("top_image"),
-                author=article_data.get("author"),
-                published_at=article_data.get("published_at"),
-                source_domain=article_data.get("source_domain"),
-            )
-        except ArticleExtractionError as exc:
-            metadata = {
-                "attempts": [{"provider": "jina_html", "error": exc.detail}]
-            }
-            return {
-                **article_data,
-                "extraction_provider": "direct",
-                "extraction_status": "fallback_used",
-                "extraction_error": exc.detail,
-                "extraction_metadata": json.dumps(metadata, ensure_ascii=False),
-            }
-
-        return {
-            **article_data,
-            "title": extracted.title or article_data.get("title"),
-            "content_html": extracted.content_html,
-            "content_md": extracted.content_md,
-            "content_structured": None,
-            "source_url": extracted.source_url or article_data.get("source_url"),
-            "top_image": extracted.top_image or article_data.get("top_image"),
-            "author": extracted.author or article_data.get("author"),
-            "published_at": extracted.published_at or article_data.get("published_at"),
-            "source_domain": extracted.source_domain or article_data.get("source_domain"),
-            "extraction_provider": extracted.provider,
-            "extraction_status": extracted.status,
-            "extraction_error": extracted.error,
-            "extraction_metadata": self.article_extraction_service.metadata_to_json(
-                extracted.metadata
-            ),
-        }
 
     def _enqueue_configured_post_process(
         self,
@@ -345,7 +287,6 @@ class ArticleCommandService:
         db.refresh(article)
 
     async def create_article(self, article_data: dict, db: Session) -> str:
-        article_data = await self._apply_jina_html_cleaning_if_enabled(article_data, db)
         if not article_data.get("content_html") and not article_data.get("content_md"):
             raise ValueError("文章内容不能为空")
         skip_ai_processing = bool(article_data.get("skip_ai_processing"))

@@ -1,7 +1,11 @@
-import { Readability } from "@mozilla/readability";
 import { parseDate } from "../utils/dateParser";
+import {
+	DEFUDDLE_ENGINE_VERSION,
+	extractWithDefuddle,
+	htmlToDefuddleMarkdown,
+} from "../utils/defuddleExtract";
 import { logError } from "../utils/errorLogger";
-import { extractWithAdapter, getSiteAdapter } from "../utils/siteAdapters";
+import { flattenShadowDom } from "../utils/flattenShadowDom";
 
 let cachedResult: { url: string; data: ExtractedArticle } | null = null;
 let lastContextLinkHref: string | null = null;
@@ -163,9 +167,18 @@ function checkXArticleRedirect(): {
 	return { shouldRedirect: false };
 }
 
+interface ExtractDebug {
+	strategy_final: "selection" | "defuddle" | "fallback";
+	retries: Array<{ strategy: string; reason: string }>;
+	parse_time_ms?: number;
+	engine_version?: string;
+}
+
 interface ExtractedArticle {
 	title: string;
 	content_html: string;
+	/** Built in content script (has DOM). Do not re-convert in service worker. */
+	content_md?: string;
 	source_url: string;
 	top_image: string | null;
 	author: string;
@@ -175,6 +188,7 @@ interface ExtractedArticle {
 	isSelection?: boolean;
 	quality?: ContentQuality;
 	content_structured?: StructuredContent;
+	extract_debug?: ExtractDebug;
 }
 
 interface ContentQuality {
@@ -224,48 +238,66 @@ function countImgTags(html: string): number {
 	return html.match(/<img\b[^>]*>/gi)?.length || 0;
 }
 
-function countFormulaSignalsInRoot(root: ParentNode): number {
+function countFormulaSignals(rootOrHtml: ParentNode | string): number {
 	try {
-		return root.querySelectorAll(FORMULA_SIGNAL_SELECTOR).length;
+		if (typeof rootOrHtml === "string") {
+			if (!rootOrHtml) return 0;
+			const doc = new DOMParser().parseFromString(rootOrHtml, "text/html");
+			return doc.querySelectorAll(FORMULA_SIGNAL_SELECTOR).length;
+		}
+		return rootOrHtml.querySelectorAll(FORMULA_SIGNAL_SELECTOR).length;
 	} catch {
 		return 0;
 	}
 }
 
-function countFormulaSignalsInHtml(html: string): number {
-	if (!html) return 0;
-	const parser = new DOMParser();
-	const doc = parser.parseFromString(html, "text/html");
-	return countFormulaSignalsInRoot(doc);
+function textLen(html: string): number {
+	return (html || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().length;
 }
 
-function getTextLengthFromHtml(html: string): number {
-	if (!html) return 0;
-	return (html || "")
-		.replace(/<[^>]*>/g, " ")
-		.replace(/\s+/g, " ")
-		.trim().length;
-}
-
-function shouldPreferFallbackForFormula(
-	sourceFormulaCount: number,
-	readabilityHtml: string,
+/**
+ * Soft pick between Defuddle HTML and heuristic fallback.
+ * Only switches when Defuddle is empty/short, lost images, or lost formulas.
+ */
+function pickContentHtml(
+	engineHtml: string,
 	fallbackHtml: string,
-): boolean {
-	if (sourceFormulaCount <= 0) return false;
-	const readabilityFormulaCount = countFormulaSignalsInHtml(readabilityHtml);
-	const fallbackFormulaCount = countFormulaSignalsInHtml(fallbackHtml);
+	sourceFormulaCount: number,
+): { html: string; strategy: ExtractDebug["strategy_final"]; retries: ExtractDebug["retries"] } {
+	const retries: ExtractDebug["retries"] = [];
+	let html = engineHtml || "";
+	let strategy: ExtractDebug["strategy_final"] = "defuddle";
 
-	if (fallbackFormulaCount <= 0) return false;
-	if (readabilityFormulaCount === 0) return true;
-	if (fallbackFormulaCount <= readabilityFormulaCount) return false;
+	const useFallback = (reason: string) => {
+		retries.push({ strategy: "fallback", reason });
+		html = fallbackHtml;
+		strategy = "fallback";
+	};
 
-	const readabilityTextLength = getTextLengthFromHtml(readabilityHtml);
-	const fallbackTextLength = getTextLengthFromHtml(fallbackHtml);
-	if (fallbackTextLength < Math.max(120, Math.floor(readabilityTextLength * 0.5))) {
-		return false;
+	if (!html.trim()) {
+		useFallback("empty_content");
+		return { html, strategy, retries };
 	}
-	return true;
+
+	if (countImgTags(html) === 0 && countImgTags(fallbackHtml) > 0) {
+		useFallback("empty_images");
+	} else if (sourceFormulaCount > 0) {
+		const engineF = countFormulaSignals(html);
+		const fallF = countFormulaSignals(fallbackHtml);
+		if (fallF > 0 && (engineF === 0 || fallF > engineF)) {
+			const engineT = textLen(html);
+			const fallT = textLen(fallbackHtml);
+			if (fallT >= Math.max(120, Math.floor(engineT * 0.5))) {
+				useFallback("formula_preservation");
+			}
+		}
+	}
+
+	if (strategy === "defuddle" && textLen(html) < 120 && textLen(fallbackHtml) >= 120) {
+		useFallback("content_too_short");
+	}
+
+	return { html, strategy, retries };
 }
 
 function getTodayDate(): string {
@@ -274,6 +306,11 @@ function getTodayDate(): string {
 	const month = String(now.getMonth() + 1).padStart(2, "0");
 	const day = String(now.getDate()).padStart(2, "0");
 	return `${year}-${month}-${day}`;
+}
+
+/** Defuddle first-party HTML->Markdown (same rules as Obsidian Clipper). */
+function buildContentMarkdown(html: string, url: string): string {
+	return htmlToDefuddleMarkdown(html || "", url || window.location.href);
 }
 
 function extractSelection(): ExtractedArticle | null {
@@ -299,8 +336,8 @@ function extractSelection(): ExtractedArticle | null {
 	const meta = extractMetadata();
 
 	const topImage = extractFirstImage(contentHtml) || meta.topImage;
-	const contentStructured = buildStructuredContentFromHtml(contentHtml);
 
+	// content_md / structured / quality filled by finalizeExtracted.
 	return {
 		title: meta.title || document.title,
 		content_html: contentHtml,
@@ -311,7 +348,6 @@ function extractSelection(): ExtractedArticle | null {
 		source_domain: new URL(baseUrl).hostname,
 		excerpt: selectedText.slice(0, 200),
 		isSelection: true,
-		content_structured: contentStructured,
 	};
 }
 
@@ -434,135 +470,109 @@ function findArticleInJsonLd(
 	return null;
 }
 
+async function finalizeExtracted(
+	partial: ExtractedArticle,
+	debug: ExtractDebug,
+): Promise<ExtractedArticle> {
+	const resolved = await resolveXMediaLinks(
+		partial.content_html,
+		partial.top_image,
+		partial.source_url,
+	);
+	const contentHtml = resolved.contentHtml;
+	return {
+		...partial,
+		content_html: contentHtml,
+		top_image: resolved.topImage,
+		content_structured: buildStructuredContentFromHtml(contentHtml),
+		content_md: buildContentMarkdown(contentHtml, partial.source_url),
+		quality: assessContentQuality(contentHtml),
+		extract_debug: debug,
+	};
+}
+
 async function extractArticle(forceRefresh = false): Promise<ExtractedArticle> {
 	const currentUrl = window.location.href;
 
 	if (!forceRefresh && cachedResult && cachedResult.url === currentUrl) {
 		return cachedResult.data;
 	}
+
 	processLazyImages();
+	await flattenShadowDom(document);
 
-	const baseUrl = window.location.href;
-	const sourceFormulaCount = countFormulaSignalsInRoot(document);
-	const jsonLdData = extractJsonLd();
-	const meta = extractMetadata();
-	const mergedMeta = {
-		title: jsonLdData.title || meta.title,
-		author: jsonLdData.author || meta.author,
-		publishedAt: jsonLdData.publishedAt || meta.publishedAt,
-		topImage: jsonLdData.topImage || meta.topImage,
-		description: jsonLdData.description || meta.description,
-	};
-
-	let result: ExtractedArticle;
-	let fallbackContentCache: string | null = null;
-	const getFallbackContent = () => {
-		if (fallbackContentCache === null) {
-			fallbackContentCache = resolveRelativeUrls(extractFallbackContent(), baseUrl);
-		}
-		return fallbackContentCache;
-	};
-
-	const adapter = getSiteAdapter(baseUrl);
-	if (adapter) {
-		const adapterResult = extractWithAdapter(adapter);
-		let contentHtml = resolveRelativeUrls(adapterResult.contentHtml, baseUrl);
-		if (countImgTags(contentHtml) === 0) {
-			const fallbackContent = getFallbackContent();
-			if (countImgTags(fallbackContent) > 0) {
-				contentHtml = fallbackContent;
-			}
-		}
-		if (
-			shouldPreferFallbackForFormula(
-				sourceFormulaCount,
-				contentHtml,
-				getFallbackContent(),
-			)
-		) {
-			contentHtml = getFallbackContent();
-		}
-		const rawDate = adapterResult.publishedAt || mergedMeta.publishedAt;
-
-		result = {
-			title: adapterResult.title || mergedMeta.title || document.title,
-			content_html: contentHtml,
-			source_url: baseUrl,
-			top_image: mergedMeta.topImage || extractFirstImage(contentHtml),
-			author: adapterResult.author || mergedMeta.author,
-			published_at: parseDate(rawDate) || getTodayDate(),
-			source_domain: new URL(baseUrl).hostname,
-			excerpt: mergedMeta.description,
-			content_structured: buildStructuredContentFromHtml(contentHtml),
-		};
-	} else {
-		const doc = document.cloneNode(true) as Document;
-		const reader = new Readability(doc, {
-			charThreshold: 100,
-			keepClasses: true,
+	// P0 selection
+	const selectionResult = extractSelection();
+	if (selectionResult?.content_html?.trim()) {
+		const finalized = await finalizeExtracted(selectionResult, {
+			strategy_final: "selection",
+			retries: [],
+			engine_version: DEFUDDLE_ENGINE_VERSION,
 		});
-		const article = reader.parse();
-
-		if (article) {
-			let contentHtml = resolveRelativeUrls(article.content, baseUrl);
-			if (countImgTags(contentHtml) === 0) {
-				const fallbackContent = getFallbackContent();
-				if (countImgTags(fallbackContent) > 0) {
-					contentHtml = fallbackContent;
-				}
-			}
-			if (
-				shouldPreferFallbackForFormula(
-					sourceFormulaCount,
-					contentHtml,
-					getFallbackContent(),
-				)
-			) {
-				contentHtml = getFallbackContent();
-			}
-			const topImage = mergedMeta.topImage || extractFirstImage(contentHtml);
-			const rawDate = article.publishedTime || mergedMeta.publishedAt;
-
-			result = {
-				title: article.title || mergedMeta.title || document.title,
-				content_html: contentHtml,
-				source_url: baseUrl,
-				top_image: topImage,
-				author: article.byline || mergedMeta.author,
-				published_at: parseDate(rawDate) || getTodayDate(),
-				source_domain: new URL(baseUrl).hostname,
-				excerpt: article.excerpt || mergedMeta.description,
-				content_structured: buildStructuredContentFromHtml(contentHtml),
-			};
-		} else {
-			const contentHtml = getFallbackContent();
-
-			result = {
-				title: mergedMeta.title || document.title,
-				content_html: contentHtml,
-				source_url: baseUrl,
-				top_image: mergedMeta.topImage || extractFirstImage(contentHtml),
-				author: mergedMeta.author,
-				published_at: parseDate(mergedMeta.publishedAt) || getTodayDate(),
-				source_domain: new URL(baseUrl).hostname,
-				excerpt: mergedMeta.description,
-				content_structured: buildStructuredContentFromHtml(contentHtml),
-			};
-		}
+		cachedResult = { url: currentUrl, data: finalized };
+		return finalized;
 	}
 
-	const resolvedMedia = await resolveXMediaLinks(
-		result.content_html,
-		result.top_image,
-		baseUrl,
-	);
-	result.content_html = resolvedMedia.contentHtml;
-	result.top_image = resolvedMedia.topImage;
-	result.content_structured = buildStructuredContentFromHtml(result.content_html);
+	const baseUrl = currentUrl;
+	const sourceFormulaCount = countFormulaSignals(document);
+	const jsonLdData = extractJsonLd();
+	const meta = extractMetadata();
+	const fallbackHtml = resolveRelativeUrls(extractFallbackContent(), baseUrl);
 
-	result.quality = assessContentQuality(result.content_html);
-	cachedResult = { url: currentUrl, data: result };
-	return result;
+	let engineHtml = "";
+	let engineTitle = "";
+	let engineAuthor = "";
+	let enginePublished = "";
+	let engineImage = "";
+	let engineDescription = "";
+	let parseTimeMs = 0;
+	const preRetries: ExtractDebug["retries"] = [];
+
+	try {
+		const defuddled = extractWithDefuddle(document, baseUrl);
+		engineHtml = resolveRelativeUrls(defuddled.contentHtml, baseUrl);
+		engineTitle = defuddled.title;
+		engineAuthor = defuddled.author;
+		enginePublished = defuddled.published;
+		engineImage = defuddled.image;
+		engineDescription = defuddled.description;
+		parseTimeMs = defuddled.parseTime;
+	} catch (error) {
+		preRetries.push({
+			strategy: "defuddle",
+			reason: error instanceof Error ? error.message : "defuddle_failed",
+		});
+	}
+
+	const picked = pickContentHtml(engineHtml, fallbackHtml, sourceFormulaCount);
+	const retries = [...preRetries, ...picked.retries];
+	const contentHtml = picked.html;
+
+	const partial: ExtractedArticle = {
+		title: engineTitle || jsonLdData.title || meta.title || document.title,
+		content_html: contentHtml,
+		source_url: baseUrl,
+		top_image:
+			engineImage ||
+			jsonLdData.topImage ||
+			meta.topImage ||
+			extractFirstImage(contentHtml),
+		author: engineAuthor || jsonLdData.author || meta.author,
+		published_at:
+			parseDate(enginePublished || jsonLdData.publishedAt || meta.publishedAt) ||
+			getTodayDate(),
+		source_domain: new URL(baseUrl).hostname,
+		excerpt: engineDescription || jsonLdData.description || meta.description,
+	};
+
+	const finalized = await finalizeExtracted(partial, {
+		strategy_final: picked.strategy,
+		retries,
+		parse_time_ms: parseTimeMs || undefined,
+		engine_version: DEFUDDLE_ENGINE_VERSION,
+	});
+	cachedResult = { url: currentUrl, data: finalized };
+	return finalized;
 }
 
 function buildStructuredContentFromHtml(html: string): StructuredContent {
@@ -695,51 +705,29 @@ function normalizeText(text: string): string {
 	return text.replace(/\s+/g, " ").trim();
 }
 
+/** Lightweight observability only; never gates capture success. */
 function assessContentQuality(html: string): ContentQuality {
 	const warnings: string[] = [];
+	const wordCount = textLen(html);
+	const hasImages = countImgTags(html) > 0;
+	const hasCode = /<(pre|code)\b/i.test(html || "");
 	let score = 100;
 
-	const textContent = html.replace(/<[^>]*>/g, "");
-	const wordCount = textContent.length;
-
 	if (wordCount < 200) {
-		warnings.push("内容过短，可能提取不完整");
+		warnings.push("内容过短");
 		score -= 30;
 	} else if (wordCount < 500) {
-		warnings.push("内容较短");
 		score -= 10;
 	}
-
-	if (html.includes("<script") || html.includes("<style")) {
-		warnings.push("内容可能包含脚本残留");
-		score -= 20;
-	}
-
-	const imgMatches = html.match(/<img[^>]*>/g) || [];
-	const imgCount = imgMatches.length;
-	let brokenImgCount = 0;
-
-	for (const imgTag of imgMatches) {
-		if (
-			imgTag.includes("data:image/gif") ||
-			imgTag.includes("data:image/svg+xml")
-		) {
-			brokenImgCount++;
-		}
-	}
-
-	if (imgCount > 0 && brokenImgCount > imgCount / 2) {
-		warnings.push("部分图片可能未正确加载");
+	if (/<(script|style)\b/i.test(html || "")) {
+		warnings.push("可能含脚本/样式残留");
 		score -= 15;
 	}
-
-	const hasCode =
-		html.includes("<pre") || html.includes("<code") || html.includes("```");
 
 	return {
 		score: Math.max(0, score),
 		wordCount,
-		hasImages: imgCount > 0,
+		hasImages,
 		hasCode,
 		warnings,
 	};

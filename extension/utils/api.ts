@@ -1,6 +1,7 @@
 import type {
   CreateArticleRequest,
   CreateArticleResponse,
+  CreateArticleResult,
   ReportArticleByUrlDuplicateResponse,
   ReportArticleByUrlRequest,
   StorageData,
@@ -150,7 +151,7 @@ export class ApiClient {
   }
 
 
-  async createArticle(data: CreateArticleRequest): Promise<CreateArticleResponse> {
+  async createArticle(data: CreateArticleRequest): Promise<CreateArticleResult> {
     try {
       const response = await fetch(`${this.baseUrl}${API_PREFIX}/api/articles`, {
         method: 'POST',
@@ -160,6 +161,15 @@ export class ApiClient {
 
       if (response.status === 401) {
         throw new Error('UNAUTHORIZED');
+      }
+
+      if (response.status === 409) {
+        const duplicateData = (await response
+          .json()
+          .catch(() => ({ code: '', existing: null }))) as ReportArticleByUrlDuplicateResponse;
+        if (duplicateData?.code === 'source_url_exists' && duplicateData?.existing) {
+          return duplicateData;
+        }
       }
 
       if (!response.ok) {

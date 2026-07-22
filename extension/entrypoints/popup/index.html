@@ -113,23 +113,6 @@
         <input type="text" id="apiHostInput" placeholder="localhost:8000" />
       </div>
 
-      <div class="form-group">
-        <label for="htmlCleaningPatternsInput" data-i18n="默认全文抓取地址">
-          默认全文抓取地址
-        </label>
-        <textarea
-          id="htmlCleaningPatternsInput"
-          rows="4"
-          placeholder="mp.weixin.qq.com&#10;example.com&#10;*.example.org"
-          data-i18n="每行一个域名或 URL，命中后全文采集将跳过 URL 抓取"
-          data-i18n-attr="placeholder"
-          data-i18n-text="false"
-        ></textarea>
-        <div class="form-hint" data-i18n="用于 Jina 无法从 URL 读取正文但页面 DOM 可提取的站点">
-          用于 Jina 无法从 URL 读取正文但页面 DOM 可提取的站点
-        </div>
-      </div>
-
       <div class="modal-buttons">
         <button id="saveConfigBtn" class="btn btn-primary" data-i18n="保存">保存</button>
         <button id="cancelConfigBtn" class="btn btn-secondary" data-i18n="取消">取消</button>

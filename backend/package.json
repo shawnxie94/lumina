@@ -1,0 +1,10 @@
+{
+  "name": "lumina-backend-extraction",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "defuddle": "0.19.1",
+    "linkedom": "^0.18.12"
+  },
+  "description": "Lumina backend local Defuddle extraction (keep defuddle version in sync with extension)"
+}

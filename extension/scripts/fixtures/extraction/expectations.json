@@ -1,0 +1,33 @@
+{
+  "generic-article.html": {
+    "url": "https://example.com/blog/generic",
+    "minWordCount": 40,
+    "titleIncludes": ["Generic Blog Post"],
+    "authorIncludesAny": ["Ada", "Lovelace"],
+    "contentMustInclude": ["first paragraph", "Closing paragraph"],
+    "contentMustNotInclude": ["Related posts you may like"]
+  },
+  "wechat-like.html": {
+    "url": "https://mp.weixin.qq.com/s/example",
+    "minWordCount": 30,
+    "titleIncludes": ["示例公众号"],
+    "contentMustInclude": ["模拟微信公众号正文", "第三段用于填充"],
+    "softContentShouldNotInclude": ["推荐阅读与广告位"],
+    "notes": "Residual footer/recommend noise is a known soft gap without site adapters; hard-fail only if main body is missing."
+  },
+  "code-article.html": {
+    "url": "https://tech.example.com/async-pipelines",
+    "minWordCount": 30,
+    "titleIncludes": ["Debugging Async Pipelines"],
+    "contentMustInclude": ["async function run", "queue latency"],
+    "preferTagsAny": ["pre", "code"]
+  },
+  "formula-article.html": {
+    "url": "https://math.example.com/softmax",
+    "minWordCount": 30,
+    "titleIncludes": ["Softmax"],
+    "contentMustInclude": ["numerical stability", "probability"],
+    "softPreferTagsAny": ["math", "katex", "annotation"],
+    "notes": "Math tags may be normalized/stripped by Defuddle; hard-fail on prose, soft-check on math DOM."
+  }
+}

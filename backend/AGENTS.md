@@ -92,3 +92,10 @@ uv run pytest tests/unit
 - `pyproject.toml` now includes both flat `py-modules` and `app.*` packages.
 - Alembic revisions currently extend through `20260212_0006_ai_advanced_cleaning_options.py`.
 - `settings_router` exposes `/api/settings/recommendations/rebuild-embeddings` for admin-triggered vector refresh.
+
+## LOCAL DEFUDDLE EXTRACTION
+- Node 20 + `backend/package.json` (`defuddle`, `linkedom`) required for URL local HTML extraction.
+- Install: `cd backend && npm ci`
+- Docker image already runs `npm ci` and verifies `node_modules/defuddle`.
+- Keep version in sync with extension via `python scripts/check_defuddle_version_sync.py`.
+- If Node/package missing, local extract falls back to regex (see logs: `defuddle_local_failed`).

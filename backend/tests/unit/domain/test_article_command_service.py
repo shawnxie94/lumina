@@ -269,10 +269,11 @@ def test_create_article_keeps_explicit_top_image(db_session):
     assert article.top_image == "https://cdn.example.com/from-input.png"
 
 
-def test_create_article_cleans_direct_html_with_jina_when_enabled(
+def test_create_article_keeps_client_html_even_when_jina_enabled(
     db_session,
     monkeypatch,
 ):
+    """Client-provided bodies are final; Jina only applies on URL extract_url."""
     db_session.add(
         AdminSettings(
             password_hash="hash",
@@ -283,10 +284,10 @@ def test_create_article_cleans_direct_html_with_jina_when_enabled(
     )
     db_session.commit()
     extraction_service = ArticleExtractionService()
-    captured = {}
+    called = {"extract_html": 0}
 
-    async def fake_extract_html(_db, **kwargs):
-        captured.update(kwargs)
+    async def fake_extract_html(_db, **_kwargs):
+        called["extract_html"] += 1
         return ExtractedArticle(
             title="Cleaned Title",
             content_html="<p>Cleaned content from Jina Reader.</p>",
@@ -301,18 +302,6 @@ def test_create_article_cleans_direct_html_with_jina_when_enabled(
         )
 
     monkeypatch.setattr(extraction_service, "extract_html", fake_extract_html)
-    ingest_captured = {}
-
-    async def fake_ingest_body_images(_db, article):
-        ingest_captured["provider"] = article.extraction_provider
-        ingest_captured["content_md"] = article.content_md
-        return {"total": 1, "success": 1, "failed": 0, "updated": False}
-
-    monkeypatch.setattr(
-        article_command_service_module,
-        "maybe_ingest_article_images_with_stats",
-        fake_ingest_body_images,
-    )
     service = ArticleCommandService(
         ai_task_service=StubAITaskService(),
         article_extraction_service=extraction_service,
@@ -327,28 +316,25 @@ def test_create_article_cleans_direct_html_with_jina_when_enabled(
                 "content_structured": {"blocks": []},
                 "source_url": "https://example.com/original",
                 "skip_ai_processing": True,
+                "extraction_provider": "browser_extension",
+                "extraction_status": "completed",
             },
             db_session,
         )
     )
 
     article = db_session.query(Article).filter(Article.id == article_id).first()
-    assert captured["html"] == "<article><p>Original selected HTML content.</p></article>"
+    assert called["extract_html"] == 0
     assert article is not None
-    assert article.title == "Cleaned Title"
-    assert article.content_html == "<p>Cleaned content from Jina Reader.</p>"
-    assert article.content_md == "Cleaned content from Jina Reader."
-    assert article.content_structured is None
-    assert article.extraction_provider == "jina_html"
+    assert article.title == "Original Title"
+    assert article.content_html == "<article><p>Original selected HTML content.</p></article>"
+    assert article.content_md == "Original selected HTML content."
+    assert article.content_structured is not None
+    assert article.extraction_provider == "browser_extension"
     assert article.extraction_status == "completed"
-    assert article.extraction_error is None
-    assert ingest_captured == {
-        "provider": "jina_html",
-        "content_md": "Cleaned content from Jina Reader.",
-    }
 
 
-def test_create_article_keeps_direct_html_when_jina_html_cleaning_fails(
+def test_create_article_defaults_provider_direct_without_re_clean(
     db_session,
     monkeypatch,
 ):
@@ -362,8 +348,10 @@ def test_create_article_keeps_direct_html_when_jina_html_cleaning_fails(
     )
     db_session.commit()
     extraction_service = ArticleExtractionService()
+    called = {"extract_html": 0}
 
     async def fake_extract_html(_db, **_kwargs):
+        called["extract_html"] += 1
         raise ArticleExtractionBadGatewayError("Jina HTML unavailable")
 
     monkeypatch.setattr(extraction_service, "extract_html", fake_extract_html)
@@ -386,12 +374,12 @@ def test_create_article_keeps_direct_html_when_jina_html_cleaning_fails(
     )
 
     article = db_session.query(Article).filter(Article.id == article_id).first()
+    assert called["extract_html"] == 0
     assert article is not None
     assert article.content_html == "<article><p>Original selected HTML content.</p></article>"
     assert article.content_md == "Original selected HTML content."
     assert article.extraction_provider == "direct"
-    assert article.extraction_status == "fallback_used"
-    assert article.extraction_error == "Jina HTML unavailable"
+    assert article.extraction_status == "completed"
 
 
 def test_retry_article_ai_refetches_html_when_article_has_only_markdown(

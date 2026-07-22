@@ -12,6 +12,11 @@ import httpx
 from sqlalchemy.orm import Session
 
 from app.domain.article_top_image_service import resolve_top_image
+from app.domain.defuddle_local_extractor import (
+    DefuddleLocalExtractionError,
+    extract_with_defuddle_local,
+    is_defuddle_local_available,
+)
 from auth import get_admin_settings
 
 logger = logging.getLogger("article_extraction")
@@ -562,6 +567,13 @@ class ArticleExtractionService:
     async def _extract_with_local_html(self, source_url: str) -> ExtractedArticle:
         fetch_result = await self._fetch_html_from_url(source_url)
         extracted = self._extract_article_fields(fetch_result.html, fetch_result.final_url)
+        metadata = {
+            "content_length": len(extracted["content_md"] or ""),
+            "engine": extracted.get("engine") or "regex",
+        }
+        engine_meta = extracted.get("engine_meta")
+        if isinstance(engine_meta, dict):
+            metadata.update({k: v for k, v in engine_meta.items() if v is not None})
         return ExtractedArticle(
             title=extracted["title"],
             content_html=extracted["content_html"],
@@ -571,8 +583,9 @@ class ArticleExtractionService:
             author=extracted["author"],
             published_at=extracted["published_at"],
             source_domain=extracted["source_domain"],
+            # Keep provider stable for cascade/tests; engine details live in metadata.
             provider="local_html",
-            metadata={"content_length": len(extracted["content_md"])},
+            metadata=metadata,
         )
 
     async def _fetch_html_from_url(self, url: str) -> LocalFetchResult:
@@ -636,26 +649,79 @@ class ArticleExtractionService:
 
     def _extract_article_fields(self, html: str, source_url: str) -> dict:
         cleaned_html = self._remove_noise_tags(html)
-        content_html = self._extract_primary_content(cleaned_html)
+        engine = "regex"
+        engine_meta: dict = {}
+
+        content_html = ""
+        title = ""
+        author = ""
+        published_at = ""
+        top_image_hint = ""
+
+        # Prefer Defuddle (same engine family as the browser extension) for body HTML.
+        # Fall back to legacy regex extraction when Node/Defuddle is unavailable.
+        if is_defuddle_local_available():
+            try:
+                defuddled = extract_with_defuddle_local(html=html, url=source_url)
+                content_html = (defuddled.content_html or "").strip()
+                title = (defuddled.title or "").strip()
+                author = (defuddled.author or "").strip()
+                published_at = (defuddled.published or "").strip()
+                top_image_hint = (defuddled.image or "").strip()
+                engine = "defuddle"
+                engine_meta = {
+                    "engine": "defuddle",
+                    "engine_version": defuddled.engine_version,
+                    "word_count": defuddled.word_count,
+                    "parse_time_ms": defuddled.parse_time_ms,
+                }
+            except DefuddleLocalExtractionError as exc:
+                logger.info("defuddle_local_failed: %s", exc.detail)
+                engine_meta = {
+                    "engine": "defuddle",
+                    "fallback": "regex",
+                    "error": exc.detail,
+                }
+
+        if not content_html or not self._html_to_text(content_html):
+            content_html = self._extract_primary_content(cleaned_html)
+            if engine == "defuddle":
+                engine = "regex_fallback"
+            else:
+                engine = "regex"
+            engine_meta = {
+                **engine_meta,
+                "engine_final": engine,
+            }
+
         content_text = self._html_to_text(content_html)
         if not content_text:
             raise ArticleExtractionBadRequestError("文章内容为空")
 
-        title = self._extract_title(cleaned_html) or self._title_from_url(source_url)
+        title = (
+            title
+            or self._extract_title(cleaned_html)
+            or self._title_from_url(source_url)
+        )
+        author = author or (self._extract_author(cleaned_html) or "")
+        published_at = published_at or (self._extract_published_at(cleaned_html) or "")
         markdown = self._html_to_markdown(content_html) or content_text
+        top_image = self._extract_top_image(
+            cleaned_html,
+            content_html,
+            source_url,
+        ) or (top_image_hint or None)
 
         return {
             "title": title,
             "content_html": content_html,
             "content_md": markdown,
-            "top_image": self._extract_top_image(
-                cleaned_html,
-                content_html,
-                source_url,
-            ),
-            "author": self._extract_author(cleaned_html),
-            "published_at": self._extract_published_at(cleaned_html),
+            "top_image": top_image,
+            "author": author or None,
+            "published_at": published_at or None,
             "source_domain": (urlparse(source_url).hostname or "").lower(),
+            "engine": engine,
+            "engine_meta": engine_meta,
         }
 
     def _remove_noise_tags(self, html: str) -> str:

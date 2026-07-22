@@ -1,9 +1,12 @@
+import type {
+	CreateArticleResult,
+	ReportArticleByUrlDuplicateResponse,
+	StructuredContent,
+} from "../types";
 import { ApiClient } from "../utils/api";
 import { logError } from "../utils/errorLogger";
 import { addToHistory } from "../utils/history";
-import { htmlToMarkdown } from "../utils/markdownConverter";
 import { ensureContentScriptLoaded } from "../utils/contentScript";
-import { shouldUseHtmlCleaningForUrl } from "../utils/htmlCleaningRules";
 import { resolveLanguage, translate } from "../utils/i18n";
 
 const normalizeUrlCandidate = (value: string): string =>
@@ -79,22 +82,78 @@ const buildAdminPreviewArticleUrl = (
 export default defineBackground(() => {
 	type CollectArticleFromTabOptions = {
 		tab: chrome.tabs.Tab;
+		/** Real selected text (context menu). Not a sentinel. */
 		selectionText?: string;
+		/** Prefer EXTRACT_SELECTION even without selectionText payload (popup). */
+		preferSelection?: boolean;
 		linkUrl?: string;
 		allowContextLink?: boolean;
 		errorAction: string;
 	};
 
-	const resetCollectContextMenu = async (language: string): Promise<void> => {
-		const t = (key: string) => translate(language, key);
-		await new Promise<void>((resolve) => {
-			chrome.contextMenus.removeAll(() => resolve());
-		});
-		chrome.contextMenus.create({
-			id: "collect-article",
-			title: t("采集到 Lumina"),
-			contexts: ["page", "selection", "link"],
-		});
+	// Serialize menu registration: SW wake + onInstalled + onStartup can race
+	// and otherwise throw "Cannot create item with duplicate id collect-article".
+	let contextMenuResetChain: Promise<void> = Promise.resolve();
+
+	const resetCollectContextMenu = (language: string): Promise<void> => {
+		const run = async () => {
+			const t = (key: string) => translate(language, key);
+			const title = t("采集到 Lumina");
+			const contexts: chrome.contextMenus.ContextType[] = [
+				"page",
+				"selection",
+				"link",
+			];
+
+			await new Promise<void>((resolve) => {
+				chrome.contextMenus.removeAll(() => {
+					// Consume lastError so it is never "unchecked".
+					void chrome.runtime.lastError;
+					resolve();
+				});
+			});
+
+			await new Promise<void>((resolve) => {
+				chrome.contextMenus.create(
+					{
+						id: "collect-article",
+						title,
+						contexts,
+					},
+					() => {
+						const createError = chrome.runtime.lastError;
+						if (!createError) {
+							resolve();
+							return;
+						}
+
+						// Another concurrent path may have created it first.
+						const message = createError.message || "";
+						if (/duplicate id/i.test(message)) {
+							chrome.contextMenus.update(
+								"collect-article",
+								{ title, contexts },
+								() => {
+									void chrome.runtime.lastError;
+									resolve();
+								},
+							);
+							return;
+						}
+
+						logError(
+							"background",
+							new Error(message || "contextMenus.create failed"),
+							{ action: "createCollectContextMenu" },
+						);
+						resolve();
+					},
+				);
+			});
+		};
+
+		contextMenuResetChain = contextMenuResetChain.then(run, run);
+		return contextMenuResetChain;
 	};
 
 	const bootstrapContextMenu = async () => {
@@ -102,6 +161,7 @@ export default defineBackground(() => {
 		await resetCollectContextMenu(language);
 	};
 
+	// Register once on SW start; onInstalled/onStartup re-sync title/language.
 	bootstrapContextMenu().catch((error) => {
 		logError("background", error instanceof Error ? error : new Error(String(error)), {
 			action: "bootstrapContextMenu",
@@ -161,9 +221,193 @@ export default defineBackground(() => {
 		},
 	);
 
+	const stripHtmlToText = (html: string | undefined): string =>
+		(html || "")
+			.replace(/<script[\s\S]*?<\/script>/gi, " ")
+			.replace(/<style[\s\S]*?<\/style>/gi, " ")
+			.replace(/<[^>]+>/g, " ")
+			.replace(/\s+/g, " ")
+			.trim();
+
+	type DomExtractPayload = {
+		title?: string;
+		content_html?: string;
+		/** Prefer this when present (converted in content script with real DOM). */
+		content_md?: string;
+		content_structured?: unknown;
+		source_url?: string;
+		top_image?: string | null;
+		author?: string;
+		published_at?: string;
+		source_domain?: string;
+		quality?: {
+			score?: number;
+			wordCount?: number;
+			warnings?: string[];
+		};
+		extract_debug?: {
+			strategy_final?: string;
+			retries?: Array<{ strategy: string; reason: string }>;
+		};
+		isSelection?: boolean;
+	};
+
+	/** True when plugin extraction returned real text (not empty shell HTML). */
+	const hasDomContent = (
+		data: DomExtractPayload | null | undefined,
+	): boolean => {
+		if (!data?.content_html?.trim()) return false;
+		return stripHtmlToText(data.content_html).length > 0;
+	};
+
+	const isDuplicateArticleResult = (
+		result: CreateArticleResult | ReportArticleByUrlDuplicateResponse,
+	): result is ReportArticleByUrlDuplicateResponse =>
+		Boolean(
+			result &&
+				typeof result === "object" &&
+				"code" in result &&
+				result.code === "source_url_exists" &&
+				result.existing,
+		);
+
+	/** Persist soft quality + extract_debug for backend observability only. */
+	const buildExtractionMetadata = (
+		data: DomExtractPayload,
+	): string | undefined => {
+		const payload: Record<string, unknown> = {
+			source: "browser_extension",
+		};
+		if (data.quality) {
+			payload.quality = data.quality;
+		}
+		if (data.extract_debug) {
+			payload.extract_debug = data.extract_debug;
+		}
+		if (data.isSelection) {
+			payload.is_selection = true;
+		}
+		if (!payload.quality && !payload.extract_debug && !payload.is_selection) {
+			return undefined;
+		}
+		try {
+			return JSON.stringify(payload);
+		} catch {
+			return undefined;
+		}
+	};
+
+	const openCollectedArticle = async (
+		apiClient: ApiClient,
+		params: {
+			articleId?: string | number | null;
+			articleSlug?: string | number | null;
+			title: string;
+			url: string;
+			domain: string;
+			topImage?: string | null;
+		},
+	): Promise<void> => {
+		const articleSlug = params.articleSlug || params.articleId;
+		await addToHistory({
+			articleId: params.articleId
+				? String(params.articleId)
+				: String(articleSlug || ""),
+			slug: articleSlug ? String(articleSlug) : undefined,
+			title: params.title,
+			url: params.url,
+			domain: params.domain,
+			topImage: params.topImage || undefined,
+		});
+		if (articleSlug) {
+			const articleUrl = buildAdminPreviewArticleUrl(
+				apiClient.frontendUrl,
+				String(articleSlug),
+			);
+			chrome.tabs.create({ url: articleUrl });
+		}
+	};
+
+	const collectViaUrlReport = async (
+		apiClient: ApiClient,
+		reportUrl: string,
+		fallbackTitle: string,
+		t: (key: string) => string,
+	): Promise<void> => {
+		const reportResult = await apiClient.reportArticleByUrl({ url: reportUrl });
+		const isDuplicate = isDuplicateArticleResult(reportResult);
+		const articleSlug = isDuplicate
+			? reportResult.existing?.slug || reportResult.existing?.id
+			: reportResult.slug || reportResult.id;
+		const articleId = isDuplicate ? reportResult.existing?.id : reportResult.id;
+		const articleTitle =
+			(isDuplicate ? reportResult.existing?.title : "") ||
+			fallbackTitle ||
+			t("未命名");
+
+		await openCollectedArticle(apiClient, {
+			articleId,
+			articleSlug,
+			title: articleTitle,
+			url: reportUrl,
+			domain: getDomainFromUrl(reportUrl),
+		});
+	};
+
+	const collectViaDomCreate = async (
+		apiClient: ApiClient,
+		extractedData: DomExtractPayload,
+		tab: chrome.tabs.Tab,
+		t: (key: string) => string,
+	): Promise<void> => {
+		// content_md is produced in the content script via Defuddle markdown.
+		// Service worker has no DOM and no longer ships a custom turndown pipeline.
+		const contentMd = (extractedData.content_md || "").trim();
+		const sourceDomain =
+			extractedData.source_domain ||
+			(tab.url ? new URL(tab.url).hostname : "");
+		const sourceUrl = extractedData.source_url || tab.url || "";
+		const title = extractedData.title || tab.title || t("未命名");
+
+		const result = await apiClient.createArticle({
+			title,
+			content_html: extractedData.content_html || "",
+			content_md: contentMd,
+			source_url: sourceUrl,
+			top_image: extractedData.top_image || null,
+			author: extractedData.author || "",
+			published_at: extractedData.published_at || "",
+			source_domain: sourceDomain,
+			content_structured:
+				(extractedData.content_structured as StructuredContent | null | undefined) ||
+				null,
+			// Mark as final browser-captured body so backend keeps it as-is.
+			extraction_provider: "browser_extension",
+			extraction_status: "completed",
+			extraction_metadata: buildExtractionMetadata(extractedData),
+		});
+
+		const isDuplicate = isDuplicateArticleResult(result);
+		const articleSlug = isDuplicate
+			? result.existing?.slug || result.existing?.id
+			: result.slug || result.id;
+		const articleId = isDuplicate ? result.existing?.id : result.id;
+		const openTitle = (isDuplicate ? result.existing?.title : "") || title;
+
+		await openCollectedArticle(apiClient, {
+			articleId,
+			articleSlug,
+			title: openTitle,
+			url: sourceUrl,
+			domain: sourceDomain,
+			topImage: extractedData.top_image || null,
+		});
+	};
+
 	const collectArticleFromTab = async ({
 		tab,
 		selectionText,
+		preferSelection = false,
 		linkUrl: requestedLinkUrl,
 		allowContextLink = false,
 		errorAction,
@@ -180,8 +424,11 @@ export default defineBackground(() => {
 				apiClient.setToken(token);
 			}
 
-			const hasSelection =
-				selectionText && selectionText.trim().length > 0;
+			const selectionTextTrimmed = (selectionText || "").trim();
+			// Real text from context menu, or popup boolean preferSelection.
+			// Avoid sentinel strings like "__selection__".
+			const wantsSelection =
+				preferSelection || Boolean(selectionTextTrimmed);
 			const runtimeLinkUrl =
 				allowContextLink && typeof tab.id === "number"
 					? await getContextLinkUrlFromContent(tab.id)
@@ -190,182 +437,108 @@ export default defineBackground(() => {
 				requestedLinkUrl || runtimeLinkUrl,
 				tab.url || "",
 			);
-			const selectedUrl = extractSelectedUrl(selectionText);
-			const currentPageUrl = !hasSelection ? resolveHttpUrl(tab.url, "") : "";
+			// Only parse URL from real selection text (not popup boolean path).
+			const selectedUrl = extractSelectedUrl(
+				selectionTextTrimmed ? selectionTextTrimmed : undefined,
+			);
+			const currentPageUrl = resolveHttpUrl(tab.url, "");
+			// Prefer explicit link/selected URL target; otherwise current page.
 			const reportUrl = linkUrl || selectedUrl || currentPageUrl;
-			const canFallbackToDom = Boolean(
+			const targetingCurrentPage = Boolean(
 				currentPageUrl && reportUrl === currentPageUrl,
 			);
+			// Can run content-script extraction on this tab.
+			const canExtractDom =
+				typeof tab.id === "number" &&
+				(wantsSelection || targetingCurrentPage || !reportUrl);
 			reportUrlForError = reportUrl;
 
 			if (reportUrl) {
-				try {
-					const luminaSlug = extractLuminaArticleSlug(
-						reportUrl,
-						apiClient.frontendUrl,
-					);
-					if (luminaSlug) {
-						const articleUrl = buildAdminPreviewArticleUrl(
-							apiClient.frontendUrl,
-							luminaSlug,
-						);
-						await addToHistory({
-							articleId: luminaSlug,
-							slug: luminaSlug,
-							title: tab.title || t("未命名"),
-							url: reportUrl,
-							domain: getDomainFromUrl(reportUrl),
-						});
-						chrome.tabs.create({ url: articleUrl });
-						return;
-					}
-
-					const forceHtmlCleaning =
-						canFallbackToDom && (await shouldUseHtmlCleaningForUrl(reportUrl));
-					if (!forceHtmlCleaning) {
-						const reportResult = await apiClient.reportArticleByUrl({
-							url: reportUrl,
-						});
-						const isDuplicate =
-							"code" in reportResult &&
-							reportResult.code === "source_url_exists";
-						const articleSlug = isDuplicate
-							? reportResult.existing?.slug || reportResult.existing?.id
-							: reportResult.slug || reportResult.id;
-						const articleId = isDuplicate
-							? reportResult.existing?.id
-							: reportResult.id;
-						const articleTitle =
-							(isDuplicate ? reportResult.existing?.title : "") ||
-							tab.title ||
-							t("未命名");
-
-						await addToHistory({
-							articleId: articleId
-								? String(articleId)
-								: String(articleSlug || ""),
-							slug: articleSlug ? String(articleSlug) : undefined,
-							title: articleTitle,
-							url: reportUrl,
-							domain: getDomainFromUrl(reportUrl),
-						});
-
-						if (articleSlug) {
-							const articleUrl = buildAdminPreviewArticleUrl(
-								apiClient.frontendUrl,
-								String(articleSlug),
-							);
-							chrome.tabs.create({ url: articleUrl });
-						}
-						return;
-					}
-				} catch (error) {
-					if (
-						!canFallbackToDom ||
-						(error instanceof Error && error.message === "UNAUTHORIZED")
-					) {
-						throw error;
-					}
-					console.warn(
-						"Backend URL extraction failed, falling back to DOM extraction:",
-						error,
-					);
-					logError(
-						"background",
-						error instanceof Error ? error : new Error(String(error)),
-						{
-							action: "reportArticleByUrlFallback",
-							url: reportUrl,
-						},
-					);
-				}
-			}
-
-			const scriptLoaded = await ensureContentScriptLoaded(tab.id, {
-				onError: (error) =>
-					logError("background", error, {
-						action: "injectContentScript",
-						tabId: tab.id,
-					}),
-			});
-			if (!scriptLoaded) {
-				chrome.notifications.create({
-					type: "basic",
-					iconUrl: "icon/128.png",
-					title: t("采集失败"),
-					message: t("无法在此页面运行，请刷新页面后重试"),
-				});
-				return;
-			}
-
-			let extractedData: { content_html?: string } | null = null;
-
-			if (hasSelection) {
-				try {
-					const selectionData = await chrome.tabs.sendMessage(tab.id, {
-						type: "EXTRACT_SELECTION",
-					});
-					if (selectionData && selectionData.content_html) {
-						extractedData = selectionData;
-					}
-				} catch (err) {
-					console.log("Selection extraction failed:", err);
-				}
-			}
-
-			if (!extractedData) {
-				extractedData = await chrome.tabs.sendMessage(tab.id, {
-					type: "EXTRACT_ARTICLE",
-				});
-			}
-
-			if (!extractedData || !extractedData.content_html) {
-				chrome.notifications.create({
-					type: "basic",
-					iconUrl: "icon/128.png",
-					title: t("采集失败"),
-					message: t("未能提取到文章内容，请确认页面已加载完成"),
-				});
-				return;
-			}
-
-			const contentMd = htmlToMarkdown(extractedData.content_html || "", {
-				source: "background",
-				logError,
-			});
-			const sourceDomain =
-				extractedData.source_domain ||
-				(tab.url ? new URL(tab.url).hostname : "");
-
-			const result = await apiClient.createArticle({
-				title: extractedData.title || tab.title || t("未命名"),
-				content_html: extractedData.content_html,
-				content_md: contentMd,
-				source_url: extractedData.source_url || tab.url || "",
-				top_image: extractedData.top_image || null,
-				author: extractedData.author || "",
-				published_at: extractedData.published_at || "",
-				source_domain: sourceDomain,
-				content_structured: extractedData.content_structured || null,
-			});
-
-			const articleSlug = result?.slug || result?.id;
-			await addToHistory({
-				articleId: result?.id ? String(result.id) : String(articleSlug || ""),
-				slug: articleSlug ? String(articleSlug) : undefined,
-				title: extractedData.title || tab.title || t("未命名"),
-				url: extractedData.source_url || tab.url || "",
-				domain: sourceDomain,
-				topImage: extractedData.top_image || undefined,
-			});
-
-			if (articleSlug) {
-				const articleUrl = buildAdminPreviewArticleUrl(
+				const luminaSlug = extractLuminaArticleSlug(
+					reportUrl,
 					apiClient.frontendUrl,
-					String(articleSlug),
 				);
-				chrome.tabs.create({ url: articleUrl });
+				if (luminaSlug) {
+					await openCollectedArticle(apiClient, {
+						articleId: luminaSlug,
+						articleSlug: luminaSlug,
+						title: tab.title || t("未命名"),
+						url: reportUrl,
+						domain: getDomainFromUrl(reportUrl),
+					});
+					return;
+				}
 			}
+
+			// --- Primary path: browser DOM extraction (Defuddle cascade) ---
+			let extractedData: DomExtractPayload | null = null;
+			if (canExtractDom && typeof tab.id === "number") {
+				const scriptLoaded = await ensureContentScriptLoaded(tab.id, {
+					onError: (error) =>
+						logError("background", error, {
+							action: "injectContentScript",
+							tabId: tab.id,
+						}),
+				});
+				if (!scriptLoaded) {
+					// Fall through to URL report if possible.
+					console.warn("Content script unavailable; will try URL report if allowed");
+				} else {
+					if (wantsSelection) {
+						try {
+							const selectionData = (await chrome.tabs.sendMessage(tab.id, {
+								type: "EXTRACT_SELECTION",
+							})) as DomExtractPayload | null;
+							if (selectionData?.content_html) {
+								extractedData = {
+									...selectionData,
+									isSelection: true,
+								};
+							}
+						} catch (err) {
+							console.log("Selection extraction failed:", err);
+						}
+					}
+
+					if (!extractedData) {
+						try {
+							extractedData = (await chrome.tabs.sendMessage(tab.id, {
+								type: "EXTRACT_ARTICLE",
+							})) as DomExtractPayload | null;
+						} catch (err) {
+							console.log("Article extraction failed:", err);
+							extractedData = null;
+						}
+					}
+
+					if (hasDomContent(extractedData)) {
+						await collectViaDomCreate(apiClient, extractedData!, tab, t);
+						return;
+					}
+				}
+			}
+
+			// --- Secondary path: backend URL report only when DOM extracted nothing ---
+			if (reportUrl) {
+				try {
+					await collectViaUrlReport(
+						apiClient,
+						reportUrl,
+						tab.title || t("未命名"),
+						t,
+					);
+					return;
+				} catch (error) {
+					throw error;
+				}
+			}
+
+			chrome.notifications.create({
+				type: "basic",
+				iconUrl: "icon/128.png",
+				title: t("采集失败"),
+				message: t("未能提取到文章内容，请确认页面已加载完成"),
+			});
 		} catch (error) {
 			console.error("Article collection failed:", error);
 			if (error instanceof Error && error.message === "UNAUTHORIZED") {
@@ -377,23 +550,10 @@ export default defineBackground(() => {
 				});
 				return;
 			}
-			if (
-				reportUrlForError &&
-				error instanceof Error &&
-				error.message.includes("不允许访问内网或本机地址")
-			) {
-				chrome.notifications.create({
-					type: "basic",
-					iconUrl: "icon/128.png",
-					title: t("采集失败"),
-					message: t("当前链接属于本机或内网地址，URL上报已禁用"),
-				});
-				return;
-			}
 			logError(
 				"background",
 				error instanceof Error ? error : new Error(String(error)),
-				{ action: errorAction, url: tab?.url },
+				{ action: errorAction, url: reportUrlForError || tab?.url },
 			);
 			chrome.notifications.create({
 				type: "basic",
@@ -415,7 +575,7 @@ export default defineBackground(() => {
 			const tab = await chrome.tabs.get(message.tabId);
 			await collectArticleFromTab({
 				tab,
-				selectionText: message.hasSelection ? "__selection__" : "",
+				preferSelection: Boolean(message.hasSelection),
 				allowContextLink: false,
 				errorAction: "popupBackgroundCollect",
 			});

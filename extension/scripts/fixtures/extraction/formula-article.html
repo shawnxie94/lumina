@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Intro to Softmax</title>
+  <meta property="og:title" content="Intro to Softmax" />
+</head>
+<body>
+  <article>
+    <h1>Intro to Softmax</h1>
+    <p>Softmax maps a vector of logits into a probability distribution. This fixture checks that math markup is not completely discarded by the default engine path.</p>
+    <p>The classic definition is:</p>
+    <p>
+      <span class="katex">
+        <math xmlns="http://www.w3.org/1998/Math/MathML"><mi>p</mi><mo>=</mo><mfrac><msup><mi>e</mi><msub><mi>z</mi><mi>i</mi></msub></msup><mrow><mo>∑</mo><msup><mi>e</mi><msub><mi>z</mi><mi>j</mi></msub></msup></mrow></mfrac></math>
+      </span>
+    </p>
+    <p>In practice, subtract the max logit before exponentiating for numerical stability. More prose: classification ranking calibration temperature scaling cross entropy gradients.</p>
+    <p>Closing remarks link training objectives with evaluation metrics on held-out sets.</p>
+  </article>
+</body>
+</html>

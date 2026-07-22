@@ -16,6 +16,12 @@ class ArticleCreate(BaseModel):
     category_id: Optional[str] = None
     skip_ai_processing: Optional[bool] = False
     post_process_options: Optional[dict] = None
+    # Client-supplied body provenance. URL ingest sets these after extract_url.
+    # When present (e.g. browser_extension), content is treated as final.
+    extraction_provider: Optional[str] = None
+    extraction_status: Optional[str] = None
+    extraction_error: Optional[str] = None
+    extraction_metadata: Optional[str] = None
 
 
 class ArticleReportByUrlRequest(BaseModel):

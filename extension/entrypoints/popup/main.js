@@ -14,10 +14,6 @@ import {
 } from "../../utils/errorLogger";
 import { ensureContentScriptLoaded } from "../../utils/contentScript";
 import {
-	loadHtmlCleaningUrlPatterns,
-	saveHtmlCleaningUrlPatterns,
-} from "../../utils/htmlCleaningRules";
-import {
 	resolveLanguage,
 	setStoredLanguage,
 	translate,
@@ -105,12 +101,6 @@ class PopupController {
 		const apiHostInput = document.getElementById("apiHostInput");
 		if (apiHostInput) {
 			apiHostInput.value = apiHost;
-		}
-		const htmlCleaningPatternsInput = document.getElementById(
-			"htmlCleaningPatternsInput",
-		);
-		if (htmlCleaningPatternsInput) {
-			htmlCleaningPatternsInput.value = await loadHtmlCleaningUrlPatterns();
 		}
 	}
 
@@ -423,9 +413,14 @@ class PopupController {
 		await this.loadHistory();
 		await this.loadErrorLogs();
 		try {
-			chrome.contextMenus?.update("collect-article", {
-				title: this.t("采集到 Lumina"),
-			});
+			chrome.contextMenus?.update(
+				"collect-article",
+				{ title: this.t("采集到 Lumina") },
+				() => {
+					// Menu may not exist yet during first paint; ignore.
+					void chrome.runtime.lastError;
+				},
+			);
 		} catch {
 			// ignore
 		}
@@ -433,9 +428,6 @@ class PopupController {
 
 	async saveConfig() {
 		const apiHostInput = document.getElementById("apiHostInput");
-		const htmlCleaningPatternsInput = document.getElementById(
-			"htmlCleaningPatternsInput",
-		);
 		const newApiHost = apiHostInput?.value.trim();
 
 		if (!newApiHost) {
@@ -445,7 +437,6 @@ class PopupController {
 
 		try {
 			await ApiClient.saveApiHost(newApiHost);
-			await saveHtmlCleaningUrlPatterns(htmlCleaningPatternsInput?.value || "");
 			this.showToast(this.t("配置已保存，页面将重新加载"), "success");
 			this.closeConfigModal();
 			setTimeout(() => location.reload(), 600);
