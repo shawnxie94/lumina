@@ -1,5 +1,5 @@
 # FRONTEND PAGES AGENTS
-**Updated:** 2026-02-25 22:22 Asia/Shanghai (`6573af1`)
+**Updated:** 2026-07-22 18:01 Asia/Shanghai (`25404b1`)
 
 ## OVERVIEW
 Next.js pages-router entry layer; major page files contain most UI state, data fetching, and admin workflows.
@@ -10,7 +10,9 @@ frontend/pages/
 ├── index.tsx                 # Landing page + latest content cards
 ├── list.tsx                  # Article list + filters + batch ops
 ├── article/[id].tsx          # Article detail + AI panels + comments
+├── columns/                  # Column list + detail
 ├── admin.tsx                 # Admin settings + monitoring + model/prompt/comment/storage
+├── admin/reviews.tsx         # Review console
 ├── login.tsx                 # Admin setup/login page
 ├── auth/extension.tsx        # Extension auth handoff
 └── api/                      # Next API routes (auth + comments proxy)
@@ -22,7 +24,9 @@ frontend/pages/
 | Landing page hero/latest | `frontend/pages/index.tsx` | Uses basic settings and latest articles |
 | List filters/batch actions | `frontend/pages/list.tsx` | Large, state-heavy page |
 | Article detail + AI/comments | `frontend/pages/article/[id].tsx` | Polling + panels + comments + immersive mode |
+| Columns | `frontend/pages/columns/` | Column surfaces |
 | Admin console modules | `frontend/pages/admin.tsx` | Basic/AI/categories/monitoring/comments/storage/recommendation refresh |
+| Admin reviews | `frontend/pages/admin/reviews.tsx` | Review workflows UI |
 | Admin setup/login flow | `frontend/pages/login.tsx` | First-time setup + normal login |
 | Extension auth flow | `frontend/pages/auth/extension.tsx` | Token handoff |
 | NextAuth bootstrap | `frontend/pages/api/auth/[...nextauth].ts` | OAuth providers from backend comment settings |
@@ -39,4 +43,4 @@ frontend/pages/
 
 ## NOTES
 - `frontend/pages/list.tsx`, `frontend/pages/article/[id].tsx`, and `frontend/pages/admin.tsx` are very large; keep edits minimal and task-scoped.
-- When page logic changes are significant, prioritize checking `/`, `/list`, `/article/[id]`, `/admin`, and `/login` flows in local dev.
+- When page logic changes are significant, prioritize checking `/`, `/list`, `/article/[id]`, `/columns`, `/admin`, and `/login` flows in local dev.

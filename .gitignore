@@ -26,3 +26,6 @@ graphify-out/
 
 # Python package build metadata
 *.egg-info/
+
+# agent-brain local (personal harness — do not commit)
+.agent/

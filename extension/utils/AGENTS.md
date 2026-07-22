@@ -1,8 +1,8 @@
 # EXTENSION UTILS AGENTS
-**Updated:** 2026-02-25 22:22 Asia/Shanghai (`6573af1`)
+**Updated:** 2026-07-22 18:01 Asia/Shanghai (`25404b1`)
 
 ## OVERVIEW
-Shared helper layer for extension API calls, extraction pipeline, popup state utilities, and language/error tooling.
+Shared helper layer for extension API calls, Defuddle extraction pipeline, popup state utilities, and language/error tooling.
 
 ## STRUCTURE
 ```
@@ -29,13 +29,14 @@ extension/utils/
 | Language handling | `extension/utils/i18n.ts` | Translate UI strings and persist setting |
 
 ## CONVENTIONS
-- Default extraction is Defuddle; do not reintroduce a large site-adapter table without TRD evidence.
+- Default extraction is Defuddle; do not reintroduce a large site-adapter table without evidence.
 - Favor pure helpers in utils; side effects belong in entrypoints.
 - Keep storage keys stable (`apiHost`, `adminToken`, `ui_language`) for popup compatibility.
-- Keep extension `defuddle` version aligned with backend (`scripts/check_defuddle_version_sync.py`).
+- Keep extension `defuddle` version aligned with backend (`python3 scripts/check_defuddle_version_sync.py`).
 
 ## ANTI-PATTERNS
 - Avoid direct DOM/UI coupling inside util modules.
+- Avoid custom full-document HTML→Markdown converters; use Defuddle first-party markdown.
 
 ## NOTES
 - Utility changes should be validated from popup capture flow and content extraction flow together to avoid runtime drift.

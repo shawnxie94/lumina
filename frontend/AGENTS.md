@@ -1,5 +1,5 @@
 # FRONTEND AGENTS
-**Updated:** 2026-02-25 22:22 Asia/Shanghai (`6573af1`)
+**Updated:** 2026-07-22 18:01 Asia/Shanghai (`25404b1`)
 
 ## OVERVIEW
 Next.js 14 pages-router frontend with Tailwind + Ant Design, shared API helpers, and bilingual UI (`zh-CN`/`en`).

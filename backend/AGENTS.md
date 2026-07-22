@@ -1,5 +1,5 @@
 # BACKEND AGENTS
-**Updated:** 2026-02-25 22:22 Asia/Shanghai (`6573af1`)
+**Updated:** 2026-07-22 18:01 Asia/Shanghai (`25404b1`)
 
 ## OVERVIEW
 FastAPI backend uses app-factory wiring with modular routers under `backend/app/`, while keeping `main.py` stable for runtime entrypoint compatibility.
@@ -99,3 +99,8 @@ uv run pytest tests/unit
 - Docker image already runs `npm ci` and verifies `node_modules/defuddle`.
 - Keep version in sync with extension via `python scripts/check_defuddle_version_sync.py`.
 - If Node/package missing, local extract falls back to regex (see logs: `defuddle_local_failed`).
+
+## EXTRACTION BOUNDARY
+- Plugin/create body is final: do not re-apply Jina HTML cleaning in `create_article`.
+- URL/HTML extract path uses `_extract_article_fields` → local Defuddle when available, optional Jina by settings.
+- Regex fallback only when Node/defuddle package is missing or Defuddle fails.
