@@ -84,7 +84,7 @@ export default defineBackground(() => {
 		tab: chrome.tabs.Tab;
 		/** Real selected text (context menu). Not a sentinel. */
 		selectionText?: string;
-		/** Prefer EXTRACT_SELECTION even without selectionText payload (popup). */
+		/** Prefer selection capture mode for EXTRACT_CAPTURE (popup/context menu). */
 		preferSelection?: boolean;
 		linkUrl?: string;
 		allowContextLink?: boolean;
@@ -470,7 +470,7 @@ export default defineBackground(() => {
 				}
 			}
 
-			// --- Primary path: browser DOM extraction (Defuddle cascade) ---
+			// --- Primary path: single DOM capture entry (always finalized) ---
 			let extractedData: DomExtractPayload | null = null;
 			if (canExtractDom && typeof tab.id === "number") {
 				const scriptLoaded = await ensureContentScriptLoaded(tab.id, {
@@ -484,31 +484,47 @@ export default defineBackground(() => {
 					// Fall through to URL report if possible.
 					console.warn("Content script unavailable; will try URL report if allowed");
 				} else {
-					if (wantsSelection) {
-						try {
-							const selectionData = (await chrome.tabs.sendMessage(tab.id, {
-								type: "EXTRACT_SELECTION",
-							})) as DomExtractPayload | null;
-							if (selectionData?.content_html) {
-								extractedData = {
-									...selectionData,
-									isSelection: true,
-								};
-							}
-						} catch (err) {
-							console.log("Selection extraction failed:", err);
+					const runCapture = async (
+						captureMode: "selection" | "article",
+					): Promise<DomExtractPayload | null> => {
+						const captureData = (await chrome.tabs.sendMessage(tab.id!, {
+							type: "EXTRACT_CAPTURE",
+							mode: captureMode,
+						})) as DomExtractPayload | null;
+						if (!captureData) return null;
+						const normalized: DomExtractPayload = {
+							...captureData,
+							isSelection:
+								Boolean(captureData.isSelection) ||
+								captureData.extract_debug?.strategy_final === "selection",
+						};
+						// Finalized capture should include markdown. Missing md is a contract warning.
+						if (
+							hasDomContent(normalized) &&
+							!(normalized.content_md || "").trim()
+						) {
+							console.warn(
+								"EXTRACT_CAPTURE returned HTML without content_md; proceeding with HTML only",
+								{
+									mode: captureMode,
+									strategy: normalized.extract_debug?.strategy_final,
+								},
+							);
 						}
-					}
+						return normalized;
+					};
 
-					if (!extractedData) {
-						try {
-							extractedData = (await chrome.tabs.sendMessage(tab.id, {
-								type: "EXTRACT_ARTICLE",
-							})) as DomExtractPayload | null;
-						} catch (err) {
-							console.log("Article extraction failed:", err);
-							extractedData = null;
+					try {
+						if (wantsSelection) {
+							extractedData = await runCapture("selection");
 						}
+						// Selection miss/empty falls back to full-article capture.
+						if (!hasDomContent(extractedData)) {
+							extractedData = await runCapture("article");
+						}
+					} catch (err) {
+						console.log("Capture extraction failed:", err);
+						extractedData = null;
 					}
 
 					if (hasDomContent(extractedData)) {

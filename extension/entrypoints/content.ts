@@ -64,52 +64,44 @@ export default defineContentScript({
 		chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 			if (message.type === "PING") {
 				sendResponse({ pong: true });
+				return false;
 			}
 			if (message.type === "CHECK_X_ARTICLE") {
-				const result = checkXArticleRedirect();
-				sendResponse(result);
+				sendResponse(checkXArticleRedirect());
+				return false;
 			}
-			if (message.type === "EXTRACT_ARTICLE") {
+			if (message.type === "CHECK_SELECTION") {
+				const selection = window.getSelection();
+				const hasSelection = Boolean(selection && selection.toString().trim().length > 0);
+				sendResponse({ hasSelection });
+				return false;
+			}
+			if (message.type === "GET_LAST_CONTEXT_LINK") {
+				sendResponse({
+					url: lastContextLinkHref || "",
+				});
+				return false;
+			}
+			if (message.type === "EXTRACT_CAPTURE") {
+				const mode = normalizeCaptureMode(message.mode);
 				const forceRefresh = message.forceRefresh === true;
-				extractArticle(forceRefresh)
+				extractCapture(mode, forceRefresh)
 					.then((result) => sendResponse(result))
 					.catch((error) => {
 						logError(
 							"content",
 							error instanceof Error ? error : new Error(String(error)),
 							{
-								action: "extractArticle",
+								action: "extractCapture",
+								mode,
 								url: window.location.href,
 							},
 						);
-						sendResponse({
-							title: "",
-							content_html: "",
-							source_url: window.location.href,
-							top_image: null,
-							author: "",
-							published_at: getTodayDate(),
-							source_domain: new URL(window.location.href).hostname,
-							excerpt: "",
-						});
+						sendResponse(emptyCapturePayload());
 					});
+				return true;
 			}
-			if (message.type === "CHECK_SELECTION") {
-				const selection = window.getSelection();
-				const hasSelection =
-					selection && selection.toString().trim().length > 0;
-				sendResponse({ hasSelection });
-			}
-			if (message.type === "EXTRACT_SELECTION") {
-				const result = extractSelection();
-				sendResponse(result);
-			}
-			if (message.type === "GET_LAST_CONTEXT_LINK") {
-				sendResponse({
-					url: lastContextLinkHref || "",
-				});
-			}
-			return true;
+			return false;
 		});
 	},
 });
@@ -167,11 +159,14 @@ function checkXArticleRedirect(): {
 	return { shouldRedirect: false };
 }
 
+type CaptureMode = "auto" | "selection" | "article";
+
 interface ExtractDebug {
 	strategy_final: "selection" | "defuddle" | "fallback";
 	retries: Array<{ strategy: string; reason: string }>;
 	parse_time_ms?: number;
 	engine_version?: string;
+	capture_mode?: CaptureMode;
 }
 
 interface ExtractedArticle {
@@ -491,28 +486,84 @@ async function finalizeExtracted(
 	};
 }
 
-async function extractArticle(forceRefresh = false): Promise<ExtractedArticle> {
-	const currentUrl = window.location.href;
+function normalizeCaptureMode(mode: unknown): CaptureMode {
+	if (mode === "selection" || mode === "article" || mode === "auto") {
+		return mode;
+	}
+	return "auto";
+}
 
-	if (!forceRefresh && cachedResult && cachedResult.url === currentUrl) {
+function emptyCapturePayload(): ExtractedArticle {
+	const href = window.location.href;
+	return {
+		title: "",
+		content_html: "",
+		content_md: "",
+		source_url: href,
+		top_image: null,
+		author: "",
+		published_at: getTodayDate(),
+		source_domain: new URL(href).hostname,
+		excerpt: "",
+	};
+}
+
+function cacheKeyForCapture(url: string, mode: CaptureMode): string {
+	return `${mode}::${url}`;
+}
+
+/**
+ * Single capture entrypoint for createArticle-bound DOM extraction.
+ * Always returns a finalized payload (content_md/structured/quality).
+ */
+async function extractCapture(
+	mode: CaptureMode = "auto",
+	forceRefresh = false,
+): Promise<ExtractedArticle> {
+	const currentUrl = window.location.href;
+	const cacheKey = cacheKeyForCapture(currentUrl, mode);
+
+	if (!forceRefresh && cachedResult && cachedResult.url === cacheKey) {
 		return cachedResult.data;
 	}
 
 	processLazyImages();
 	await flattenShadowDom(document);
 
-	// P0 selection
-	const selectionResult = extractSelection();
-	if (selectionResult?.content_html?.trim()) {
-		const finalized = await finalizeExtracted(selectionResult, {
-			strategy_final: "selection",
-			retries: [],
-			engine_version: DEFUDDLE_ENGINE_VERSION,
-		});
-		cachedResult = { url: currentUrl, data: finalized };
-		return finalized;
+	const preferSelection = mode === "auto" || mode === "selection";
+	if (preferSelection) {
+		const selectionResult = extractSelection();
+		if (selectionResult?.content_html?.trim()) {
+			const finalized = await finalizeExtracted(selectionResult, {
+				strategy_final: "selection",
+				retries: [],
+				engine_version: DEFUDDLE_ENGINE_VERSION,
+				capture_mode: mode,
+			});
+			cachedResult = { url: cacheKey, data: finalized };
+			return finalized;
+		}
+		if (mode === "selection") {
+			const empty = emptyCapturePayload();
+			empty.extract_debug = {
+				strategy_final: "selection",
+				retries: [{ strategy: "selection", reason: "empty_selection" }],
+				engine_version: DEFUDDLE_ENGINE_VERSION,
+				capture_mode: mode,
+			};
+			return empty;
+		}
 	}
 
+	const finalized = await extractFullArticle(currentUrl, mode);
+	cachedResult = { url: cacheKey, data: finalized };
+	return finalized;
+}
+
+async function extractFullArticle(
+	currentUrl: string,
+	mode: CaptureMode,
+): Promise<ExtractedArticle> {
 	const baseUrl = currentUrl;
 	const sourceFormulaCount = countFormulaSignals(document);
 	const jsonLdData = extractJsonLd();
@@ -565,14 +616,13 @@ async function extractArticle(forceRefresh = false): Promise<ExtractedArticle> {
 		excerpt: engineDescription || jsonLdData.description || meta.description,
 	};
 
-	const finalized = await finalizeExtracted(partial, {
+	return finalizeExtracted(partial, {
 		strategy_final: picked.strategy,
 		retries,
 		parse_time_ms: parseTimeMs || undefined,
 		engine_version: DEFUDDLE_ENGINE_VERSION,
+		capture_mode: mode,
 	});
-	cachedResult = { url: currentUrl, data: finalized };
-	return finalized;
 }
 
 function buildStructuredContentFromHtml(html: string): StructuredContent {

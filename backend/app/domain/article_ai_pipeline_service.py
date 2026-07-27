@@ -3138,7 +3138,7 @@ class ArticleAIPipelineService:
             )
             db.commit()
 
-            source_content = self._normalize_markdown_whitespace(article.content_md or "")
+            _, source_content = self.normalize_source_content(article)
             if not source_content:
                 self._mark_interpretation_fields_failed(
                     analysis,
@@ -3747,7 +3747,7 @@ class ArticleAIPipelineService:
                 db.commit()
                 return
 
-            source_content = self._normalize_markdown_whitespace(article.content_md or "")
+            _, source_content = self.normalize_source_content(article)
             if not source_content:
                 analysis.tagging_status = "failed"
                 analysis.updated_at = now_str()

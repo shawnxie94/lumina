@@ -40,7 +40,7 @@ extension/
 - API host and token are stored in `chrome.storage.local`.
 - Use `chrome.scripting.executeScript` for extraction; no persistent content scripts.
 - Keep extension-facing strings translatable via `utils/i18n.ts`.
-- Default extraction uses Defuddle (`defuddle` npm pin), not site adapters or Readability.
+- DOM capture uses a single `EXTRACT_CAPTURE` message (`auto|selection|article`) and always finalizes via `finalizeExtracted` before createArticle. Default extraction engine uses Defuddle (`defuddle` npm pin), not site adapters or Readability.
 - Plugin-captured body is final at create; do not depend on backend re-cleaning plugin HTML with Jina.
 - For math-heavy pages, keep extraction fallback that retains MathML/MathJax when Defuddle body is empty/weak.
 

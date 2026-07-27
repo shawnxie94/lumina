@@ -2043,6 +2043,60 @@ def _install_interpretation_test_config(
     )
 
 
+def test_process_article_interpretation_falls_back_to_content_html_when_md_missing(
+    db_session,
+    monkeypatch,
+):
+    article = Article(
+        title="HTML Only Selection Article",
+        slug="html-only-selection-article",
+        content_html="<p>这是选区 HTML 正文，应可回退生成 AI 解读。</p>",
+        content_md="",
+        created_at=now_str(),
+        updated_at=now_str(),
+    )
+    db_session.add(article)
+    db_session.commit()
+    article_id = article.id
+
+    service = ArticleAIPipelineService(current_task_id="task-html-fallback")
+    content = json.dumps(
+        {
+            "summary": "选区 HTML 回退摘要",
+            "outline": {"title": "大纲", "children": []},
+            "quotes": ["选区金句"],
+        },
+        ensure_ascii=False,
+    )
+    _install_interpretation_test_config(service, db_session, monkeypatch, content)
+    monkeypatch.setattr(
+        article_ai_pipeline_module.ArticleEmbeddingService,
+        "has_available_remote_config",
+        lambda self, db: False,
+    )
+
+    asyncio.run(
+        service.process_article_interpretation(
+            article_id,
+            None,
+            post_process_options={
+                "classification": False,
+                "tagging": False,
+                "summary": True,
+                "outline": True,
+                "quotes": True,
+                "translation": False,
+            },
+        )
+    )
+
+    persisted_analysis = (
+        db_session.query(AIAnalysis).filter(AIAnalysis.article_id == article_id).one()
+    )
+    assert persisted_analysis.summary_status == "completed"
+    assert "选区 HTML 回退摘要" in (persisted_analysis.summary or "")
+
+
 def test_process_article_interpretation_persists_bundle_versions_and_embedding(
     db_session,
     monkeypatch,
