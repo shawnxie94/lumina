@@ -93,25 +93,13 @@ export const getApiBaseUrl = (): string => {
 	return "http://api:8000/backend";
 };
 
-export const normalizePublicRssTagIds = (tagIds?: string[] | null): string[] =>
-	[...(tagIds || [])]
-		.map((item) => item.trim())
-		.filter(Boolean)
-		.filter((item, index, values) => values.indexOf(item) === index)
-		.sort((left, right) => left.localeCompare(right));
-
 const buildPublicRssQueryString = (params?: {
 	categoryId?: string;
-	tagIds?: string[];
 }): string => {
 	const searchParams = new URLSearchParams();
 	const categoryId = params?.categoryId?.trim();
-	const tagIds = normalizePublicRssTagIds(params?.tagIds);
 	if (categoryId) {
 		searchParams.set("category_id", categoryId);
-	}
-	if (tagIds.length > 0) {
-		searchParams.set("tag_ids", tagIds.join(","));
 	}
 	const queryString = searchParams.toString();
 	return queryString ? `?${queryString}` : "";
@@ -131,12 +119,10 @@ const buildPublicReviewRssQueryString = (params?: {
 
 export const buildPublicRssRelativeUrl = (params?: {
 	categoryId?: string;
-	tagIds?: string[];
 }): string => `/backend/api/articles/rss.xml${buildPublicRssQueryString(params)}`;
 
 export const buildPublicRssUrl = (params?: {
 	categoryId?: string;
-	tagIds?: string[];
 }): string => {
 	if (typeof window !== "undefined") {
 		return `${window.location.origin}${buildPublicRssRelativeUrl(params)}`;
@@ -146,7 +132,6 @@ export const buildPublicRssUrl = (params?: {
 
 export const buildClientSafePublicRssUrl = (params?: {
 	categoryId?: string;
-	tagIds?: string[];
 }): string => {
 	if (typeof window === "undefined") {
 		if (process.env.NODE_ENV === "development") {
@@ -404,6 +389,20 @@ export const authApi = {
 	},
 };
 
+export interface TopicSummary {
+	id?: string;
+	key: string;
+	title: string;
+	summary?: string | null;
+	status?: string;
+	topic_type?: string | null;
+	article_count?: number;
+	compiled_at?: string | null;
+	updated_at?: string | null;
+	relation_reason?: string | null;
+	tags?: string[];
+}
+
 export interface Article {
 	id: string;
 	slug: string;  // SEO友好的URL slug
@@ -412,7 +411,7 @@ export interface Article {
 	summary: string;
 	top_image: string;
 	category: { id: string; name: string; color?: string } | null;
-	tags: Tag[];
+	topics?: TopicSummary[];
 	author: string;
 	status: string;
 	source_domain: string | null;
@@ -422,6 +421,8 @@ export interface Article {
 	view_count: number;
 	comment_count: number;
 	original_language?: string;
+	compile_status?: string | null;
+	compiled_at?: string | null;
 	note_recommendation_level?:
 		| "strongly_recommended"
 		| "recommended"
@@ -466,8 +467,6 @@ export interface ArticleDetail extends Article {
 			interpretation_status?: string | null;
 			interpretation_error?: string | null;
 			classification_status?: string | null;
-			tagging_status: string | null;
-		tagging_manual_override?: boolean | null;
 		error_message?: string | null;
 		updated_at?: string | null;
 	} | null;
@@ -545,7 +544,6 @@ export interface ExtractionSettings {
 	auto_ai_summary_enabled: boolean;
 	auto_ai_outline_enabled: boolean;
 	auto_ai_quotes_enabled: boolean;
-	auto_ai_tagging_enabled: boolean;
 	auto_translation_enabled: boolean;
 }
 
@@ -798,12 +796,6 @@ export interface Category {
 	article_count: number;
 }
 
-export interface Tag {
-	id: string;
-	name: string;
-	article_count?: number;
-}
-
 export interface ModelAPIConfig {
 	id: string;
 	name: string;
@@ -1018,7 +1010,7 @@ export const articleApi = {
 		page?: number;
 		size?: number;
 		category_id?: string;
-		tag_ids?: string;
+		topic?: string;
 		search?: string;
 		source_domain?: string;
 		author?: string;
@@ -1160,7 +1152,6 @@ export const articleApi = {
 			author?: string;
 			published_at?: string | null;
 			category_id?: string | null;
-			tag_names?: string[];
 			top_image?: string;
 			content_md?: string;
 			content_trans?: string;
@@ -1175,11 +1166,6 @@ export const articleApi = {
 		const response = await api.put(`/api/articles/${id}/visibility`, {
 			is_visible: isVisible,
 		});
-		return response.data;
-	},
-
-	regenerateArticleTags: async (id: string) => {
-		const response = await api.post(`/api/articles/${id}/tags/regenerate`);
 		return response.data;
 	},
 
@@ -1621,7 +1607,7 @@ export const categoryApi = {
 		search?: string;
 		source_domain?: string;
 		author?: string;
-		tag_ids?: string;
+		topic?: string;
 		published_at_start?: string;
 		published_at_end?: string;
 		created_at_start?: string;
@@ -1670,12 +1656,6 @@ export const categoryApi = {
 	},
 };
 
-export const tagApi = {
-	getTags: async (): Promise<Tag[]> => {
-		const response = await api.get("/api/tags");
-		return response.data as Tag[];
-	},
-};
 
 export const commentApi = {
 	getArticleComments: async (articleId: string): Promise<ArticleComment[]> => {
@@ -2052,5 +2032,165 @@ export const commentAdminApi = {
 				: `/api/comments/${commentId}`;
 		const response = await api.delete(endpoint);
 		return response.data as { success: boolean };
+	},
+};
+
+
+export interface TopicSettings {
+	enabled: boolean;
+	bridge_base_url: string;
+	bridge_token_configured: boolean;
+	auto_sync_on_enable: boolean;
+	knowledge_type: string;
+	project_path: string | null;
+	last_sync_at: string | null;
+	last_sync_status: string;
+	last_sync_error: string | null;
+	last_sync_result?: {
+		status?: string;
+		at?: string;
+		summary?: string;
+		detailLines?: string[];
+		hint?: string | null;
+		error?: string | null;
+		exported?: number;
+		skipped?: number;
+		writebackTopics?: number;
+		writebackArticles?: number;
+	} | null;
+	health: {
+		bridge?: { ok?: boolean; status?: string; detail?: string | null; checked_at?: string | null; version?: string | null };
+		llm_wiki?: {
+			ok?: boolean;
+			status?: string;
+			detail?: string | null;
+			checked_at?: string | null;
+			version?: string | null;
+			install?: {
+				installed?: boolean;
+				app_paths?: string[];
+				cli_path?: string | null;
+				install_url?: string;
+				docs_url?: string;
+				platform?: string;
+			};
+		};
+		provider?: {
+			ok?: boolean;
+			status?: string;
+			detail?: string | null;
+			checked_at?: string | null;
+			version?: string | null;
+			name?: string | null;
+			install?: {
+				installed?: boolean;
+				app_paths?: string[];
+				cli_path?: string | null;
+				install_url?: string;
+				docs_url?: string;
+				platform?: string;
+			};
+		};
+		project?: { ok?: boolean; name?: string | null; path?: string | null; detail?: string | null };
+	};
+	/** Client-side doctor snapshot aligned with `lumina doctor` / Bridge `/doctor`. Not persisted. */
+	doctor?: {
+		ok?: boolean;
+		source?: string;
+		aligned_with?: string;
+		checks?: Array<{ name?: string; ok?: boolean; detail?: unknown }>;
+		summary?: Record<string, string>;
+		hints?: string[];
+		cli?: Record<string, string>;
+	} | null;
+	setup?: {
+		actions?: Array<{ id?: string; title?: string; detail?: string }>;
+		commands?: Record<string, string>;
+		notes?: string[];
+	};
+}
+
+export interface TopicDetail extends TopicSummary {
+	content_md?: string | null;
+	tags?: string[];
+	claims?: Array<{ id?: string; text: string; sort_order?: number; article_ids?: string[] }>;
+	related_topics?: TopicSummary[];
+	articles?: {
+		data: Article[];
+		pagination: {
+			page: number;
+			size: number;
+			total: number;
+			total_pages: number;
+		};
+	};
+	compiler?: string | null;
+	compiler_ref?: string | null;
+}
+
+export interface TopicOrphanCleanupResult {
+	ok: boolean;
+	dry_run: boolean;
+	deleted_count: number;
+	orphan_count: number;
+	known_count: number;
+	total_topics: number;
+	sample_keys?: string[];
+	deleted_keys?: string[];
+	orphans: Array<Pick<TopicSummary, "key" | "title" | "topic_type" | "article_count" | "status">>;
+}
+
+export const topicApi = {
+	list: async (params?: { q?: string; page?: number; size?: number }) => {
+		const response = await api.get("/api/topics", { params });
+		return response.data as {
+			data: TopicSummary[];
+			pagination: { page: number; size: number; total: number; total_pages: number };
+		};
+	},
+	get: async (key: string, params?: { page?: number; size?: number }) => {
+		const response = await api.get(`/api/topics/${encodeURIComponent(key)}`, { params });
+		return response.data as TopicDetail;
+	},
+	cleanupOrphans: async (data?: { dry_run?: boolean; known_keys?: string[] }) => {
+		const response = await api.post("/api/topics/cleanup-orphans", {
+			dry_run: data?.dry_run ?? true,
+			known_keys: data?.known_keys || [],
+		});
+		return response.data as TopicOrphanCleanupResult;
+	},
+};
+
+export const topicSettingsApi = {
+	get: async () => {
+		const response = await api.get("/api/settings/topics");
+		return response.data as TopicSettings;
+	},
+	update: async (data: {
+		enabled?: boolean;
+		bridge_base_url?: string;
+		bridge_token?: string;
+		auto_sync_on_enable?: boolean;
+		knowledge_type?: string;
+		project_path?: string | null;
+		last_sync_at?: string | null;
+		last_sync_status?: string;
+		last_sync_error?: string | null;
+		last_sync_result?: {
+			status?: string;
+			at?: string;
+			summary?: string;
+			detailLines?: string[];
+			hint?: string | null;
+			error?: string | null;
+			exported?: number;
+			skipped?: number;
+			writebackTopics?: number;
+			writebackArticles?: number;
+		} | null;
+		health?: TopicSettings["health"];
+	}) => {
+		const response = await api.put("/api/settings/topics", data);
+		return response.data as TopicSettings;
 	},
 };

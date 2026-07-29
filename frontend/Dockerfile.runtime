@@ -1,0 +1,20 @@
+# EXPERIMENTAL / optional runtime image for prebuilt Next standalone output.
+# Default local/prod compose uses `frontend/Dockerfile` (deps+build+runner).
+# Keep this file only if an external deploy pipeline supplies a flattened
+# standalone context (`server.js`, `.next`, `public`, `node_modules`).
+FROM node:18-alpine
+WORKDIR /app
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+# Expect a flattened runtime context (standalone contents + static/public).
+COPY public ./public
+COPY .next ./.next
+COPY server.js ./server.js
+COPY package.json ./package.json
+COPY pages ./pages
+COPY node_modules ./node_modules
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+EXPOSE 3000
+ENTRYPOINT ["docker-entrypoint.sh"]
+CMD ["node", "server.js"]

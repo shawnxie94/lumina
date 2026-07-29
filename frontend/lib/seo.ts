@@ -20,7 +20,7 @@ export interface SitemapEntry {
 
 export interface ListSeoQuery {
 	category_id?: string;
-	tag_ids?: string;
+	topic?: string;
 	search?: string;
 	source_domain?: string;
 	author?: string;
@@ -39,7 +39,7 @@ export interface ListSeoOptions {
 	siteName?: string;
 	siteDescription?: string;
 	categoryName?: string | null;
-	tagNames?: string[] | null;
+	topicName?: string | null;
 	authorName?: string | null;
 }
 
@@ -130,12 +130,6 @@ const pickFirst = (value?: string | string[] | null): string => {
 	return value || "";
 };
 
-const normalizeIdList = (value?: string): string[] =>
-	(value || "")
-		.split(",")
-		.map((item) => item.trim())
-		.filter(Boolean);
-
 const hasAnyLowValueFilter = (query: ListSeoQuery): boolean =>
 	Boolean(
 		query.search ||
@@ -161,7 +155,7 @@ const hasAnyLowValueReviewFilter = (query: ReviewListSeoQuery): boolean =>
 const countPrimaryFacets = (query: ListSeoQuery): number => {
 	let count = 0;
 	if (query.category_id) count += 1;
-	if (normalizeIdList(query.tag_ids).length > 0) count += 1;
+	if (query.topic) count += 1;
 	if (query.author) count += 1;
 	return count;
 };
@@ -173,10 +167,10 @@ export const buildCanonicalListQuery = (query: ListSeoQuery): Record<string, str
 		countPrimaryFacets(query) <= 1 &&
 		(!query.sort_by || query.sort_by === "published_at_desc");
 	if (query.category_id) nextQuery.category_id = query.category_id;
-	if (query.tag_ids && !query.author && !query.category_id) {
-		nextQuery.tag_ids = normalizeIdList(query.tag_ids).join(",");
+	if (query.topic && !query.category_id && !query.author) {
+		nextQuery.topic = query.topic;
 	}
-	if (query.author && !query.tag_ids && !query.category_id) {
+	if (query.author && !query.category_id && !query.topic) {
 		nextQuery.author = query.author;
 	}
 	if (shouldKeepPage && query.page && query.page !== "1") {
@@ -219,14 +213,11 @@ const buildListTitle = (
 	const siteName = options.siteName || DEFAULT_SITE_NAME;
 	const page = Number.parseInt(query.page || "1", 10);
 	const pageLabel = Number.isFinite(page) && page > 1 ? ` - 第 ${page} 页` : "";
+	if (options.topicName || query.topic) {
+		return `${options.topicName || query.topic} - 主题${pageLabel} - ${siteName}`;
+	}
 	if (options.categoryName || query.category_id) {
 		return `${options.categoryName || query.category_id} - 文章列表${pageLabel} - ${siteName}`;
-	}
-	if ((options.tagNames && options.tagNames.length > 0) || normalizeIdList(query.tag_ids).length > 0) {
-		const tagLabel =
-			options.tagNames?.filter(Boolean).join(" / ") ||
-			normalizeIdList(query.tag_ids).join(" / ");
-		return `${tagLabel} - 标签文章${pageLabel} - ${siteName}`;
 	}
 	if (options.authorName || query.author) {
 		return `${options.authorName || query.author} - 作者文章${pageLabel} - ${siteName}`;
@@ -242,11 +233,8 @@ const buildListDescription = (
 	if (options.categoryName || query.category_id) {
 		return `浏览 ${(options.categoryName || query.category_id) as string} 分类下的公开文章、摘要与延伸阅读。${siteDescription}`;
 	}
-	if ((options.tagNames && options.tagNames.length > 0) || normalizeIdList(query.tag_ids).length > 0) {
-		const tagLabel =
-			options.tagNames?.filter(Boolean).join("、") ||
-			normalizeIdList(query.tag_ids).join("、");
-		return `浏览标签 ${tagLabel} 下的公开文章、摘要与延伸阅读。${siteDescription}`;
+	if (options.topicName || query.topic) {
+		return `浏览主题 ${(options.topicName || query.topic) as string} 下的公开文章、摘要与延伸阅读。${siteDescription}`;
 	}
 	if (options.authorName || query.author) {
 		return `浏览作者 ${(options.authorName || query.author) as string} 的公开文章、摘要与延伸阅读。${siteDescription}`;
@@ -260,7 +248,7 @@ export const getListPageSeo = (
 ): ListSeoResult => {
 	const query: ListSeoQuery = {
 		category_id: pickFirst(rawQuery.category_id),
-		tag_ids: pickFirst(rawQuery.tag_ids),
+		topic: pickFirst(rawQuery.topic),
 		search: pickFirst(rawQuery.search),
 		source_domain: pickFirst(rawQuery.source_domain),
 		author: pickFirst(rawQuery.author),

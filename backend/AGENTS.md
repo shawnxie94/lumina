@@ -1,5 +1,5 @@
 # BACKEND AGENTS
-**Updated:** 2026-07-22 18:01 Asia/Shanghai (`25404b1`)
+**Updated:** 2026-07-29 17:40 Asia/Shanghai
 
 ## OVERVIEW
 FastAPI backend uses app-factory wiring with modular routers under `backend/app/`, while keeping `main.py` stable for runtime entrypoint compatibility.
@@ -44,6 +44,8 @@ backend/
 | Article embedding/recommendation | `backend/app/domain/article_embedding_service.py` | Embedding generation + recommendation support |
 | Recommendation settings API | `backend/app/api/routers/settings_router.py` | Includes batch embedding refresh endpoint for admin |
 | Backup import/export | `backend/app/domain/backup_service.py` | JSON backup and incremental restore |
+| Topics compile/writeback | `backend/app/domain/topic_service.py` `backend/app/api/routers/topic_router.py` | Topic CRUD-ish read APIs + bridge compile-results + orphan cleanup |
+| Topic settings | `backend/app/api/routers/settings_router.py` | `/api/settings/topics` enable/bridge/sync status |
 | Request/response schemas | `backend/app/schemas/` | Reuse schema types across routers |
 | DB migrations | `backend/alembic/` `backend/scripts/migrate_db.py` | Alembic revision + upgrade entrypoint |
 | Unit tests | `backend/tests/unit/` | Unit coverage for core/domain/utils |

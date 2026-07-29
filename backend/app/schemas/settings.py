@@ -40,7 +40,6 @@ class ExtractionSettingsUpdate(BaseModel):
     auto_ai_summary_enabled: Optional[bool] = None
     auto_ai_outline_enabled: Optional[bool] = None
     auto_ai_quotes_enabled: Optional[bool] = None
-    auto_ai_tagging_enabled: Optional[bool] = None
     auto_translation_enabled: Optional[bool] = None
 
 
@@ -69,3 +68,7 @@ class MediaIngestRequest(BaseModel):
     article_id: Optional[str] = None
     review_issue_id: Optional[str] = None
     kind: Literal["image", "book"] = "image"
+
+
+# Re-export for convenience if needed by settings router imports.
+from app.schemas.topic import TopicSettingsUpdate  # noqa: E402

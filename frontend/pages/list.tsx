@@ -10,11 +10,11 @@ import {
   categoryApi,
   mediaApi,
   storageSettingsApi,
-  tagApi,
+  topicApi,
   Article,
   BasicSettings,
   Category,
-  Tag,
+  TopicSummary,
   normalizeMediaHtml,
   resolveMediaUrl,
 } from '@/lib/api';
@@ -36,11 +36,10 @@ import IconButton from '@/components/IconButton';
 import CheckboxInput from '@/components/ui/CheckboxInput';
 import FormField from '@/components/ui/FormField';
 import SelectField from '@/components/ui/SelectField';
-import TagSelectField from '@/components/ui/TagSelectField';
 import TextInput from '@/components/ui/TextInput';
 import { useToast } from '@/components/Toast';
 import { BackToTop } from '@/components/BackToTop';
-import { IconEdit, IconEye, IconEyeOff, IconSearch, IconTag, IconTrash, IconPlus } from '@/components/icons';
+import { IconEdit, IconEye, IconEyeOff, IconSearch, IconTrash, IconPlus } from '@/components/icons';
 import { useAuth } from '@/contexts/AuthContext';
 import { useBasicSettings } from '@/contexts/BasicSettingsContext';
 import { resolveCreateArticlePatch, type CreatePendingMedia } from '@/lib/createArticleMedia';
@@ -53,7 +52,6 @@ import {
   fetchServerBasicSettings,
   fetchServerCategories,
   fetchServerCategoryStats,
-  fetchServerTags,
   resolveRequestOrigin,
 } from '@/lib/serverApi';
 import { shouldRefreshListAfterAuthResolution } from '@/lib/listAuthSync';
@@ -226,14 +224,7 @@ const parseDateQuery = (value: string): Date | null => {
   return Number.isNaN(date.getTime()) ? null : date;
 };
 
-const parseTagIdsQuery = (value: string): string[] =>
-  value
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean);
 
-const sortTagNames = (values: string[]): string[] =>
-  [...values].sort((left, right) => left.localeCompare(right));
 
 const serializeQuery = (query: Record<string, string>): string =>
   Object.entries(query)
@@ -243,10 +234,10 @@ const serializeQuery = (query: Record<string, string>): string =>
 
 const LIST_QUERY_KEYS = [
   'category_id',
-  'tag_ids',
   'search',
   'source_domain',
   'author',
+  'topic',
   'visibility',
   'quick_date',
   'sort_by',
@@ -275,7 +266,6 @@ interface ListPageProps {
   initialBasicSettings: BasicSettings;
   initialArticles: Article[];
   initialCategories: Category[];
-  initialTags: Tag[];
   initialCategoryStats: { id: string; name: string; color: string | null; article_count: number }[];
   initialPagination: {
     page: number;
@@ -301,7 +291,6 @@ export const getServerSideProps: GetServerSideProps<ListPageProps> = async ({ re
       initialBasicSettings,
       articleResponse,
       initialCategories,
-      initialTags,
       initialCategoryStats,
     ] = await Promise.all([
       fetchServerAuthState(req),
@@ -310,10 +299,10 @@ export const getServerSideProps: GetServerSideProps<ListPageProps> = async ({ re
         page: Number.isFinite(page) && page > 0 ? page : 1,
         size: Number.isFinite(size) && [10, 20, 50, 100].includes(size) ? size : 10,
         category_id: initialQuery.category_id,
-        tag_ids: initialQuery.tag_ids,
         search: initialQuery.search,
         source_domain: initialQuery.source_domain,
         author: initialQuery.author,
+        topic: initialQuery.topic,
         published_at_start: initialQuery.published_at_start,
         published_at_end: initialQuery.published_at_end,
         created_at_start: initialQuery.created_at_start,
@@ -321,12 +310,11 @@ export const getServerSideProps: GetServerSideProps<ListPageProps> = async ({ re
         sort_by: initialQuery.sort_by || 'published_at_desc',
       }),
       fetchServerCategories(req),
-      fetchServerTags(req),
       fetchServerCategoryStats(req, {
         search: initialQuery.search,
         source_domain: initialQuery.source_domain,
         author: initialQuery.author,
-        tag_ids: initialQuery.tag_ids,
+        topic: initialQuery.topic,
         published_at_start: initialQuery.published_at_start,
         published_at_end: initialQuery.published_at_end,
         created_at_start: initialQuery.created_at_start,
@@ -339,7 +327,6 @@ export const getServerSideProps: GetServerSideProps<ListPageProps> = async ({ re
         initialBasicSettings,
         initialArticles: articleResponse.data || [],
         initialCategories,
-        initialTags,
         initialCategoryStats,
         initialPagination: articleResponse.pagination,
         initialQuery,
@@ -367,7 +354,6 @@ export const getServerSideProps: GetServerSideProps<ListPageProps> = async ({ re
         },
         initialArticles: [],
         initialCategories: [],
-        initialTags: [],
         initialCategoryStats: [],
         initialPagination: {
           page: 1,
@@ -387,7 +373,6 @@ export const getServerSideProps: GetServerSideProps<ListPageProps> = async ({ re
 export default function Home({
   initialArticles,
   initialCategories,
-  initialTags,
   initialCategoryStats,
   initialPagination,
   initialQuery,
@@ -401,7 +386,6 @@ export default function Home({
   const { t } = useI18n();
   const { basicSettings } = useBasicSettings();
   const initialSelectedCategory = initialQuery.category_id || '';
-  const initialSelectedTagIds = parseTagIdsQuery(initialQuery.tag_ids || '');
   const initialSearchTerm = initialQuery.search || '';
   const initialSourceDomain = initialQuery.source_domain || '';
   const initialAuthor = initialQuery.author || '';
@@ -428,15 +412,15 @@ export default function Home({
       : initialPagination.size || 10;
   const [articles, setArticles] = useState<Article[]>(initialArticles);
   const [categories, setCategories] = useState<Category[]>(initialCategories);
-  const [availableTags, setAvailableTags] = useState<Tag[]>(initialTags);
   const [categoryStats, setCategoryStats] = useState<{ id: string; name: string; color: string | null; article_count: number }[]>(initialCategoryStats);
   const [authors, setAuthors] = useState<string[]>([]);
   const [sources, setSources] = useState<string[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>(initialSelectedCategory);
-  const [selectedTagIds, setSelectedTagIds] = useState<string[]>(initialSelectedTagIds);
   const [searchTerm, setSearchTerm] = useState<string>(initialSearchTerm);
   const [sourceDomain, setSourceDomain] = useState<string>(initialSourceDomain);
   const [author, setAuthor] = useState<string>(initialAuthor);
+  const [topicKey, setTopicKey] = useState<string>(initialQuery.topic || '');
+  const [topics, setTopics] = useState<TopicSummary[]>([]);
   const [publishedDateRange, setPublishedDateRange] = useState<[Date | null, Date | null]>([initialPublishedStart, initialPublishedEnd]);
   const [createdDateRange, setCreatedDateRange] = useState<[Date | null, Date | null]>(
     initialCreatedStart || initialCreatedEnd
@@ -457,7 +441,6 @@ export default function Home({
   const [showFilters, setShowFilters] = useState(
     Boolean(
       initialSearchTerm ||
-      initialSelectedTagIds.length > 0 ||
       initialSourceDomain ||
       initialAuthor ||
       initialVisibilityFilter ||
@@ -494,23 +477,6 @@ export default function Home({
     onConfirm: () => {},
   });
 
-  const handleTagFilterChange = (value: string[]) => {
-    setSelectedTagIds(value);
-    setPage(1);
-  };
-
-  const tagFilterField = (
-    <FormField label={t('标签')}>
-      <TagSelectField
-        tags={availableTags}
-        value={selectedTagIds}
-        onChange={handleTagFilterChange}
-        className="w-full"
-        placeholder={t('选择标签')}
-        maxTagCount="responsive"
-      />
-    </FormField>
-  );
 
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createTitle, setCreateTitle] = useState('');
@@ -565,10 +531,10 @@ export default function Home({
   const currentListQuery = useMemo(() => {
     const nextQuery: Record<string, string> = {};
     if (selectedCategory) nextQuery.category_id = selectedCategory;
-    if (selectedTagIds.length > 0) nextQuery.tag_ids = selectedTagIds.join(',');
     if (searchTerm) nextQuery.search = searchTerm;
     if (sourceDomain) nextQuery.source_domain = sourceDomain;
     if (author) nextQuery.author = author;
+    if (topicKey) nextQuery.topic = topicKey;
     if (visibilityFilter) nextQuery.visibility = visibilityFilter;
     if (quickDateFilter) nextQuery.quick_date = quickDateFilter;
     if (publishedStartDate) nextQuery.published_at_start = formatDate(publishedStartDate);
@@ -581,7 +547,6 @@ export default function Home({
     return nextQuery;
   }, [
     selectedCategory,
-    selectedTagIds,
     searchTerm,
     sourceDomain,
     author,
@@ -600,17 +565,13 @@ export default function Home({
     () => categories.find((category) => category.id === selectedCategory) || null,
     [categories, selectedCategory],
   );
-  const selectedTagMeta = useMemo(
-    () => availableTags.filter((tag) => selectedTagIds.includes(tag.id)),
-    [availableTags, selectedTagIds],
-  );
+
   const listSeo = useMemo(
     () =>
       getListPageSeo(currentListQuery, {
         siteName: basicSettings.site_name || 'Lumina',
         siteDescription: basicSettings.site_description || t('信息灯塔'),
         categoryName: selectedCategoryMeta?.name || null,
-        tagNames: selectedTagMeta.map((tag) => tag.name),
         authorName: author || null,
       }),
     [
@@ -618,19 +579,15 @@ export default function Home({
       basicSettings.site_name,
       basicSettings.site_description,
       selectedCategoryMeta?.name,
-      selectedTagMeta,
       author,
       t,
     ],
   );
   const pageHeading = useMemo(() => {
     if (selectedCategoryMeta?.name) return `${selectedCategoryMeta.name} ${t('全部文章')}`;
-    if (selectedTagMeta.length > 0) {
-      return `${selectedTagMeta.map((tag) => tag.name).join(' / ')} ${t('标签')}`;
-    }
     if (author) return `${author} ${t('作者')}`;
     return t('全部文章');
-  }, [selectedCategoryMeta?.name, selectedTagMeta, author, t]);
+  }, [selectedCategoryMeta?.name, author, t]);
   const listCanonicalUrl = useMemo(
     () => buildCanonicalUrl(siteOrigin, '/list', listSeo.canonicalQuery),
     [siteOrigin, listSeo.canonicalQuery],
@@ -695,10 +652,10 @@ export default function Home({
         page,
         size: pageSize,
         category_id: selectedCategory || undefined,
-        tag_ids: selectedTagIds.length > 0 ? selectedTagIds.join(',') : undefined,
         search: searchTerm || undefined,
         source_domain: sourceDomain || undefined,
         author: author || undefined,
+        topic: topicKey || undefined,
         is_visible: isAdmin ? visibilityValue : undefined,
         published_at_start: formatDate(publishedStartDate) || undefined,
         published_at_end: formatDate(publishedEndDate) || undefined,
@@ -730,6 +687,7 @@ export default function Home({
     }
   }, [
     author,
+    topicKey,
     createdEndDate,
     createdStartDate,
     isAdmin,
@@ -740,7 +698,6 @@ export default function Home({
     publishedStartDate,
     searchTerm,
     selectedCategory,
-    selectedTagIds,
     sortBy,
     sourceDomain,
     visibilityFilter,
@@ -763,7 +720,7 @@ export default function Home({
         search: searchTerm || undefined,
         source_domain: sourceDomain || undefined,
         author: author || undefined,
-        tag_ids: selectedTagIds.length > 0 ? selectedTagIds.join(',') : undefined,
+        topic: topicKey || undefined,
         published_at_start: formatDate(publishedStartDate) || undefined,
         published_at_end: formatDate(publishedEndDate) || undefined,
         created_at_start: formatDate(createdStartDate) || undefined,
@@ -781,12 +738,12 @@ export default function Home({
     }
   }, [
     author,
+    topicKey,
     createdEndDate,
     createdStartDate,
     publishedEndDate,
     publishedStartDate,
     searchTerm,
-    selectedTagIds,
     sourceDomain,
   ]);
 
@@ -803,6 +760,16 @@ export default function Home({
     }
   };
 
+
+  const fetchTopics = async () => {
+    try {
+      const data = await topicApi.list({ page: 1, size: 100 });
+      setTopics(Array.isArray(data?.data) ? data.data : []);
+    } catch (error) {
+      console.error('Failed to fetch topics:', error);
+      setTopics([]);
+    }
+  };
   const fetchSources = async () => {
     if (sourcesLoadingRef.current) return;
     sourcesLoadingRef.current = true;
@@ -816,14 +783,6 @@ export default function Home({
     }
   };
 
-  const fetchTags = async () => {
-    try {
-      const data = await tagApi.getTags();
-      setAvailableTags(data);
-    } catch (error) {
-      console.error('Failed to fetch tags:', error);
-    }
-  };
 
   useEffect(() => {
     if (!showCreateModal || !isAdmin) return;
@@ -888,7 +847,6 @@ export default function Home({
     initialized,
     authLoading,
     selectedCategory,
-    selectedTagIds,
     searchTerm,
     sourceDomain,
     author,
@@ -906,7 +864,6 @@ export default function Home({
     setSelectedArticleSlugs(new Set());
   }, [
     selectedCategory,
-    selectedTagIds,
     searchTerm,
     sourceDomain,
     author,
@@ -967,10 +924,10 @@ export default function Home({
     hydratedQueryRef.current = routerQuerySignature;
 
     const categoryParam = routerQueryState.category_id || '';
-    const tagIdsParam = parseTagIdsQuery(routerQueryState.tag_ids || '');
     const searchParam = routerQueryState.search || '';
     const sourceDomainParam = routerQueryState.source_domain || '';
     const authorParam = routerQueryState.author || '';
+    const topicParam = routerQueryState.topic || '';
     const visibilityParam = routerQueryState.visibility || '';
     const quickDateRaw = routerQueryState.quick_date || '';
     const sortByRaw = routerQueryState.sort_by || '';
@@ -988,10 +945,10 @@ export default function Home({
     const sizeParam = Number(routerQueryState.size || '');
 
     setSelectedCategory(categoryParam);
-    setSelectedTagIds(tagIdsParam);
     setSearchTerm(searchParam);
     setSourceDomain(sourceDomainParam);
     setAuthor(authorParam);
+    setTopicKey(topicParam);
     setVisibilityFilter(
       visibilityParam === 'visible' || visibilityParam === 'hidden'
         ? visibilityParam
@@ -1019,7 +976,6 @@ export default function Home({
     setShowFilters(
       Boolean(
         searchParam ||
-        tagIdsParam.length > 0 ||
         sourceDomainParam ||
         authorParam ||
         visibilityParam ||
@@ -1040,10 +996,10 @@ export default function Home({
 
     const nextQuery: Record<string, string> = {};
     if (selectedCategory) nextQuery.category_id = selectedCategory;
-    if (selectedTagIds.length > 0) nextQuery.tag_ids = selectedTagIds.join(',');
     if (searchTerm) nextQuery.search = searchTerm;
     if (sourceDomain) nextQuery.source_domain = sourceDomain;
     if (author) nextQuery.author = author;
+    if (topicKey) nextQuery.topic = topicKey;
     if (visibilityFilter) nextQuery.visibility = visibilityFilter;
     if (quickDateFilter) nextQuery.quick_date = quickDateFilter;
     if (publishedStartDate) nextQuery.published_at_start = formatDate(publishedStartDate);
@@ -1081,7 +1037,6 @@ export default function Home({
     initialized,
     routerQuerySignature,
     selectedCategory,
-    selectedTagIds,
     searchTerm,
     sourceDomain,
     author,
@@ -1098,16 +1053,17 @@ export default function Home({
 
   useEffect(() => {
     fetchCategories();
-    fetchTags();
   }, []);
 
   useEffect(() => {
     if (!showFilters && !showMobileFilters) return;
     if (authors.length === 0) {
       fetchAuthors();
+      fetchTopics();
     }
     if (sources.length === 0) {
       fetchSources();
+      fetchTopics();
     }
   }, [showFilters, showMobileFilters, authors.length, sources.length]);
 
@@ -1172,7 +1128,6 @@ export default function Home({
     setCreatedDateRange([null, null]);
     setQuickDateFilter('');
     setSelectedCategory('');
-    setSelectedTagIds([]);
     setVisibilityFilter('');
     setPage(1);
   };
@@ -1247,21 +1202,7 @@ export default function Home({
   const activeFilters = useMemo(() => {
     const filters: string[] = [];
     const categoryName = categories.find((c) => c.id === selectedCategory)?.name;
-    const selectedTagNames = sortTagNames(
-      availableTags
-        .filter((tag) => selectedTagIds.includes(tag.id))
-        .map((tag) => tag.name),
-    );
     if (categoryName) filters.push(`${t('分类')}：${categoryName}`);
-    if (selectedTagIds.length > 0) {
-      filters.push(
-        `${t('标签')}：${
-          selectedTagNames.length > 0
-            ? selectedTagNames.join('、')
-            : `${selectedTagIds.length}${t('个已选标签')}`
-        }`,
-      );
-    }
     if (searchTerm) filters.push(`${t('标题')}：${searchTerm}`);
     if (sourceDomain) filters.push(`${t('来源')}：${sourceDomain}`);
     if (author) filters.push(`${t('作者')}：${author}`);
@@ -1279,9 +1220,7 @@ export default function Home({
     return filters;
   }, [
     categories,
-    availableTags,
     selectedCategory,
-    selectedTagIds,
     searchTerm,
     sourceDomain,
     author,
@@ -1316,9 +1255,6 @@ export default function Home({
           onChange={(value) => { setAuthor(value); setPage(1); }}
           options={[{ value: '', label: t('全部作者') }, ...authors.map((a) => ({ value: a, label: a }))]}
         />
-      </div>
-      <div className="mb-4 lg:hidden">
-        {tagFilterField}
       </div>
       {isMobile && (
         <div className="grid grid-cols-1 gap-4 mb-4">
@@ -1364,9 +1300,12 @@ export default function Home({
         </div>
       )}
       <div className="hidden lg:grid grid-cols-3 gap-4 mb-2">
-        <div>
-          {tagFilterField}
-        </div>
+        <FilterSelect
+          label={t('主题')}
+          value={topicKey}
+          onChange={(value) => { setTopicKey(value); setPage(1); }}
+          options={[{ value: '', label: t('全部主题') }, ...topics.map((item) => ({ value: item.key, label: item.title || item.key }))]}
+        />
         <div>
           <label htmlFor="published-date-range" className="block text-sm text-text-2 mb-1.5">{t('发表时间')}</label>
           <DateRangePicker
@@ -1875,7 +1814,7 @@ export default function Home({
               <div className="flex items-center justify-between mb-4">
                 {!sidebarCollapsed && (
                   <h2 className="font-semibold text-text-1 inline-flex items-center gap-2">
-                    <IconTag className="h-4 w-4" />
+                    <IconSearch className="h-4 w-4" />
                     <span>{t('分类筛选')}</span>
                   </h2>
                 )}
@@ -2173,23 +2112,36 @@ export default function Home({
                                       {article.category.name}
                                     </span>
                                   ) : null,
-								  article.tags.length > 0 ? (
-									<span className="inline-flex flex-wrap items-center gap-2 min-w-0">
-									  {article.tags.slice(0, 2).map((tag) => (
-										<span
-										  key={tag.id}
-                                          className="px-2 py-1 text-xs rounded-sm bg-muted text-text-2"
-                                        >
-                                          {tag.name}
-                                        </span>
-                                      ))}
-                                      {article.tags.length > 2 && (
-                                        <span className="px-2 py-1 text-xs rounded-sm bg-surface text-text-3 border border-border">
-                                          +{article.tags.length - 2}
-                                        </span>
-									  )}
-									</span>
-								  ) : null,
+                                                                  (() => {
+                                                                    const topics = [...(article.topics || [])].sort(
+                                                                      (a, b) =>
+                                                                        String(a.title || a.key || '').length -
+                                                                        String(b.title || b.key || '').length,
+                                                                    );
+                                                                    if (topics.length === 0) return null;
+                                                                    return (
+                                                                      <span className="inline-flex min-w-0 flex-wrap items-center gap-2">
+                                                                        {topics.slice(0, 2).map((topic) => (
+                                                                          <Link
+                                                                            key={topic.key}
+                                                                            href={`/topics/${encodeURIComponent(topic.key)}`}
+                                                                            target="_blank"
+                                                                            rel="noopener noreferrer"
+                                                                            onClick={(e) => e.stopPropagation()}
+                                                                            className="rounded-sm bg-muted px-2 py-1 text-xs text-text-2 transition hover:bg-primary-soft hover:text-primary-ink"
+                                                                            title={topic.summary || topic.title || topic.key}
+                                                                          >
+                                                                            {topic.title || topic.key}
+                                                                          </Link>
+                                                                        ))}
+                                                                        {topics.length > 2 && (
+                                                                          <span className="rounded-sm border border-border bg-surface px-2 py-1 text-xs text-text-3">
+                                                                            +{topics.length - 2}
+                                                                          </span>
+                                                                        )}
+                                                                      </span>
+                                                                    );
+                                                                  })(),
 								  article.author ? <span>{t('作者')}: {article.author}</span> : null,
 								]}
 							  />

@@ -22,7 +22,6 @@ import {
 	getApiBaseUrl,
 	mediaApi,
 	storageSettingsApi,
-	tagApi,
 	normalizeMediaHtml,
 	resolveMediaUrl,
 	type ArticleComment,
@@ -34,10 +33,13 @@ import {
 	type ModelAPIConfig,
 	type PromptConfig,
 	type SimilarArticleItem,
-	type Tag,
 	type VersionedAIContentType,
 } from "@/lib/api";
 import { shouldFetchSimilarArticlesForSlug } from "@/lib/articleDetail";
+import {
+	compileStatusLabel,
+	compileStatusTone,
+} from "@/lib/topicPlaceholders";
 import {
 	applyPrefillToNote,
 	normalizeDigestNoteForDisplay,
@@ -51,8 +53,8 @@ import {
 import AppFooter from "@/components/AppFooter";
 import AppHeader from "@/components/AppHeader";
 import SeoHead from "@/components/SeoHead";
-import ArticleTagBar from "@/components/article/ArticleTagBar";
 import ArticleMetaRow from "@/components/article/ArticleMetaRow";
+import StatusTag from "@/components/ui/StatusTag";
 import ArticleSplitEditorModal from "@/components/article/ArticleSplitEditorModal";
 import CommentSection, {
 	collectCommentDescendantIds,
@@ -62,7 +64,6 @@ import IconButton from "@/components/IconButton";
 import FormField from "@/components/ui/FormField";
 import ModalShell from "@/components/ui/ModalShell";
 import SelectField from "@/components/ui/SelectField";
-import TagSelectField from "@/components/ui/TagSelectField";
 import TextArea from "@/components/ui/TextArea";
 import TextInput from "@/components/ui/TextInput";
 import { useToast } from "@/components/Toast";
@@ -82,6 +83,7 @@ import {
 	IconLock,
 	IconLink,
 	IconList,
+	IconNetwork,
 	IconNote,
 	IconRefresh,
 	IconRobot,
@@ -181,7 +183,6 @@ const hasPendingArticleJob = (article: ArticleDetail | null): boolean => {
 				article.ai_analysis.summary_status,
 				article.ai_analysis.outline_status,
 				article.ai_analysis.quotes_status,
-				article.ai_analysis.tagging_status,
 			]
 		: [];
 
@@ -264,53 +265,7 @@ interface MindMapNode {
 	children?: MindMapNode[];
 }
 
-interface TaggingStatusMeta {
-	label: string;
-	className: string;
-	icon: ReactNode;
-}
 
-const buildSortedTagSignature = (values: string[]): string =>
-	[...values]
-		.map((value) => value.trim())
-		.filter(Boolean)
-		.sort((left, right) => left.localeCompare(right))
-		.join("\u0000");
-
-function getTaggingStatusMeta(
-	t: (key: string) => string,
-	analysis: ArticleDetail["ai_analysis"] | null | undefined,
-): TaggingStatusMeta | null {
-	if (analysis?.tagging_manual_override) {
-		return {
-			label: t("已手动锁定"),
-			className: "text-text-2",
-			icon: <IconLock className="h-3.5 w-3.5" />,
-		};
-	}
-	if (analysis?.tagging_status === "pending") {
-		return {
-			label: t("等待处理"),
-			className: "text-primary",
-			icon: <IconClock className="h-3.5 w-3.5" />,
-		};
-	}
-	if (analysis?.tagging_status === "processing") {
-		return {
-			label: t("处理中"),
-			className: "text-primary",
-			icon: <IconClock className="h-3.5 w-3.5 animate-pulse" />,
-		};
-	}
-	if (analysis?.tagging_status === "failed") {
-		return {
-			label: t("失败"),
-			className: "text-danger-ink",
-			icon: <IconRobot className="h-3.5 w-3.5" />,
-		};
-	}
-	return null;
-}
 
 function normalizeMindMapNode(input: unknown): MindMapNode | null {
 	if (typeof input === "string") {
@@ -365,8 +320,6 @@ function createEmptyAiAnalysis(): NonNullable<ArticleDetail["ai_analysis"]> {
 		quotes_has_history: false,
 		interpretation_status: null,
 		interpretation_error: null,
-		tagging_status: null,
-		tagging_manual_override: false,
 		error_message: null,
 		updated_at: null,
 	};
@@ -1360,9 +1313,7 @@ export default function ArticleDetailPage({
 	const [selectedPromptConfigId, setSelectedPromptConfigId] =
 		useState<string>("");
 	const [categories, setCategories] = useState<Category[]>([]);
-	const [availableTags, setAvailableTags] = useState<Tag[]>([]);
 	const [categoriesLoading, setCategoriesLoading] = useState(false);
-	const [tagsLoading, setTagsLoading] = useState(false);
 
 	const [showEditModal, setShowEditModal] = useState(false);
 	const [editMode, setEditMode] = useState<"original" | "translation">(
@@ -1372,11 +1323,9 @@ export default function ArticleDetailPage({
 	const [editAuthor, setEditAuthor] = useState("");
 	const [editPublishedAt, setEditPublishedAt] = useState("");
 	const [editCategoryId, setEditCategoryId] = useState("");
-	const [editTagNames, setEditTagNames] = useState<string[]>([]);
 	const [editTopImage, setEditTopImage] = useState("");
 	const [editContent, setEditContent] = useState("");
 	const [saving, setSaving] = useState(false);
-	const [tagRegenerating, setTagRegenerating] = useState(false);
 	const [interpretationRegenerating, setInterpretationRegenerating] =
 		useState(false);
 	const [mediaStorageEnabled, setMediaStorageEnabled] = useState(false);
@@ -2011,21 +1960,6 @@ export default function ArticleDetailPage({
 		fetchCategories();
 	}, [showEditModal, categories.length, categoriesLoading]);
 
-	useEffect(() => {
-		if (!showEditModal || availableTags.length > 0 || tagsLoading) return;
-		const fetchTags = async () => {
-			setTagsLoading(true);
-			try {
-				const data = await tagApi.getTags();
-				setAvailableTags(data);
-			} catch (error) {
-				console.error("Failed to fetch tags:", error);
-			} finally {
-				setTagsLoading(false);
-			}
-		};
-		fetchTags();
-	}, [showEditModal, availableTags.length, tagsLoading]);
 
 	/* eslint-disable react-hooks/exhaustive-deps */
 	useEffect(() => {
@@ -2424,38 +2358,6 @@ export default function ArticleDetailPage({
 		}
 	};
 
-	const handleRegenerateTags = async () => {
-		if (!article?.slug) return;
-		setTagRegenerating(true);
-		try {
-			await articleApi.regenerateArticleTags(article.slug);
-			setArticle((prev) =>
-				prev
-					? {
-							...prev,
-							ai_analysis: prev.ai_analysis
-								? {
-										...prev.ai_analysis,
-										tagging_manual_override: false,
-										tagging_status: "pending",
-									}
-								: {
-										...createEmptyAiAnalysis(),
-										tagging_status: "pending",
-										tagging_manual_override: false,
-									},
-						}
-					: prev,
-			);
-			showToast(t("已提交自动打标任务"));
-			await fetchArticle();
-		} catch (error: any) {
-			console.error("Failed to regenerate tags:", error);
-			showToast(error?.response?.data?.detail || t("自动打标提交失败"), "error");
-		} finally {
-			setTagRegenerating(false);
-		}
-	};
 
 	const fetchComments = useCallback(async () => {
 		if (!id) return;
@@ -2862,39 +2764,78 @@ export default function ArticleDetailPage({
 		</>
 	);
 
+	const sortedArticleTopics = [...(article?.topics || [])].sort(
+		(a, b) => {
+			const rank = (item: { topic_type?: string | null }) => {
+				const type = String(item.topic_type || "").toLowerCase();
+				if (type === "entity") return 0;
+				if (type === "concept") return 1;
+				return 2;
+			};
+			const rankDiff = rank(a) - rank(b);
+			if (rankDiff !== 0) return rankDiff;
+			return (
+				String(a.title || a.key || "").length -
+				String(b.title || b.key || "").length
+			);
+		},
+	);
+
 	const aiPanelContent = (
 		<div className="bg-surface rounded-sm shadow-sm border border-border p-4">
-			<div className="flex items-center justify-between mb-4">
-				{tocItems.length > 0 && (
-					<>
-						<h2 className="text-lg font-semibold text-text-1 inline-flex items-center gap-2">
-							<IconList className="h-4 w-4" />
-							<span>{t("目录")}</span>
-						</h2>
-						<button
-							type="button"
-							onClick={() => setTocCollapsed(!tocCollapsed)}
-							className="text-text-3 hover:text-primary transition"
-							title={tocCollapsed ? t("展开目录") : t("收起目录")}
-							aria-label={tocCollapsed ? t("展开目录") : t("收起目录")}
-						>
-							<IconChevronDown
-								className={`h-4 w-4 transition-transform duration-200 ${
-									tocCollapsed ? "" : "rotate-180"
-								}`}
-							/>
-						</button>
-					</>
-				)}
-			</div>
-
 			<div className="space-y-6">
-				{tocItems.length > 0 && !tocCollapsed && (
-					<TableOfContents
-						items={tocItems}
-						activeId={activeTocId}
-						onSelect={setActiveTocId}
-					/>
+				{sortedArticleTopics.length > 0 && (
+					<div>
+						<h2 className="mb-3 text-lg font-semibold text-text-1 inline-flex items-center gap-2">
+							<IconNetwork className="h-4 w-4" />
+							<span>{t("主题")}</span>
+						</h2>
+						<div className="flex max-h-[7.5rem] flex-wrap content-start gap-2 overflow-y-auto overscroll-contain pr-1">
+							{sortedArticleTopics.map((topic) => (
+								<Link
+									key={topic.key}
+									href={`/topics/${encodeURIComponent(topic.key)}`}
+									target="_blank"
+									rel="noopener noreferrer"
+									className="inline-flex max-w-full items-center rounded-sm bg-muted px-2.5 py-1 text-xs text-text-2 transition hover:bg-primary-soft hover:text-primary-ink"
+									title={topic.summary || topic.title || topic.key}
+								>
+									<span className="truncate">{topic.title || topic.key}</span>
+								</Link>
+							))}
+						</div>
+					</div>
+				)}
+
+				{tocItems.length > 0 && (
+					<div>
+						<div className="mb-3 flex items-center justify-between gap-2">
+							<h2 className="text-lg font-semibold text-text-1 inline-flex items-center gap-2">
+								<IconList className="h-4 w-4" />
+								<span>{t("目录")}</span>
+							</h2>
+							<button
+								type="button"
+								onClick={() => setTocCollapsed(!tocCollapsed)}
+								className="text-text-3 hover:text-primary transition"
+								title={tocCollapsed ? t("展开目录") : t("收起目录")}
+								aria-label={tocCollapsed ? t("展开目录") : t("收起目录")}
+							>
+								<IconChevronDown
+									className={`h-4 w-4 transition-transform duration-200 ${
+										tocCollapsed ? "" : "rotate-180"
+									}`}
+								/>
+							</button>
+						</div>
+						{!tocCollapsed && (
+							<TableOfContents
+								items={tocItems}
+								activeId={activeTocId}
+								onSelect={setActiveTocId}
+							/>
+						)}
+					</div>
 				)}
 
 				<div>
@@ -3345,7 +3286,6 @@ export default function ArticleDetailPage({
 						interpretation_status: "pending",
 						interpretation_error: null,
 						classification_status: "pending",
-						tagging_status: "pending",
 						summary_status: "pending",
 						outline_status: "pending",
 						quotes_status: "pending",
@@ -4126,7 +4066,7 @@ export default function ArticleDetailPage({
 				author: article.author || "",
 				publishedAt: toDateInputValue(article.published_at),
 				categoryId: article.category?.id || "",
-				tagNames: article.tags.map((tag) => tag.name),
+				tagNames: [],
 				topImage: article.top_image || "",
 				content:
 					mode === "translation"
@@ -4163,7 +4103,6 @@ export default function ArticleDetailPage({
 			setEditAuthor(draft.author);
 			setEditPublishedAt(draft.publishedAt);
 			setEditCategoryId(draft.categoryId);
-			setEditTagNames(draft.tagNames);
 			setEditTopImage(draft.topImage);
 			setEditContent(draft.content);
 		},
@@ -4228,7 +4167,7 @@ export default function ArticleDetailPage({
 			author: editAuthor,
 			publishedAt: editPublishedAt,
 			categoryId: editCategoryId,
-			tagNames: editTagNames,
+			tagNames: [],
 			topImage: editTopImage,
 			content: editContent,
 		};
@@ -4256,7 +4195,6 @@ export default function ArticleDetailPage({
 		editContent,
 		editMode,
 		editPublishedAt,
-		editTagNames,
 		editTitle,
 		editTopImage,
 		showEditModal,
@@ -4272,7 +4210,7 @@ export default function ArticleDetailPage({
 			author: editAuthor,
 			publishedAt: editPublishedAt,
 			categoryId: editCategoryId,
-			tagNames: editTagNames,
+			tagNames: [],
 			topImage: editTopImage,
 			content: editContent,
 		};
@@ -4291,7 +4229,6 @@ export default function ArticleDetailPage({
 		editContent,
 		editMode,
 		editPublishedAt,
-		editTagNames,
 		editTitle,
 		editTopImage,
 		showEditModal,
@@ -4302,17 +4239,12 @@ export default function ArticleDetailPage({
 		setSaving(true);
 
 		try {
-			const editedTagNames = editTagNames.map((item) => item.trim()).filter(Boolean);
-			const hasTagChanges =
-				buildSortedTagSignature(article.tags.map((tag) => tag.name)) !==
-				buildSortedTagSignature(editedTagNames);
 			const updateData: {
 				title?: string;
 				title_trans?: string | null;
 				author?: string;
 				published_at?: string | null;
 				category_id?: string | null;
-				tag_names?: string[];
 				top_image?: string;
 				content_md?: string;
 				content_trans?: string;
@@ -4322,9 +4254,6 @@ export default function ArticleDetailPage({
 				category_id: editCategoryId || null,
 				top_image: editTopImage,
 			};
-			if (hasTagChanges) {
-				updateData.tag_names = editedTagNames;
-			}
 
 			if (editMode === "translation") {
 				updateData.title_trans = editTitle;
@@ -4435,10 +4364,7 @@ export default function ArticleDetailPage({
 		);
 	}
 
-	const taggingStatusMeta = getTaggingStatusMeta(t, article.ai_analysis);
-	const isTaggingBusy =
-		tagRegenerating || isPendingJobStatus(article.ai_analysis?.tagging_status);
-	const canonicalUrl = buildCanonicalUrl(siteOrigin, `/article/${article.slug}`);
+			const canonicalUrl = buildCanonicalUrl(siteOrigin, `/article/${article.slug}`);
 	const seoDescription = buildMetaDescription(
 		article.ai_analysis?.summary ||
 			article.summary ||
@@ -4649,38 +4575,7 @@ export default function ArticleDetailPage({
 									) : null,
 								]}
 							/>
-							<ArticleTagBar
-								tags={article.tags}
-								className="mt-1.5"
-								actions={
-									isAdmin ? (
-										<span className="inline-flex items-center gap-1">
-											{taggingStatusMeta && (
-												<IconButton
-													size="sm"
-													variant="ghost"
-													title={`${t("自动打标状态")}：${taggingStatusMeta.label}`}
-													className={`cursor-help ${taggingStatusMeta.className}`}
-												>
-													{taggingStatusMeta.icon}
-												</IconButton>
-											)}
-											<IconButton
-												size="sm"
-												variant="ghost"
-												title={t("重新自动打标")}
-												onClick={handleRegenerateTags}
-												loading={tagRegenerating}
-												disabled={isTaggingBusy}
-												className="text-text-3 hover:text-primary"
-											>
-												<IconRefresh className="h-3.5 w-3.5" />
-											</IconButton>
-										</span>
-									) : null
-								}
-							/>
-						</>
+				</>
 					)}
 				</div>
 			</section>
@@ -5335,19 +5230,6 @@ export default function ArticleDetailPage({
 											label: category.name,
 										})),
 									]}
-								/>
-							</FormField>
-							<FormField label={t("标签")}>
-								<TagSelectField
-									tags={availableTags}
-									mode="tags"
-									multiline={false}
-									value={editTagNames}
-									onChange={(value) => setEditTagNames(value.map((item) => item.trim()))}
-									className="w-full"
-									loading={tagsLoading}
-									placeholder={t("输入或选择标签")}
-									maxTagCount="responsive"
 								/>
 							</FormField>
 						</div>

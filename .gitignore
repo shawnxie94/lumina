@@ -29,3 +29,11 @@ graphify-out/
 
 # agent-brain local (personal harness — do not commit)
 .agent/
+
+# local topic bridge runtime
+bridge/.env
+bridge/.bridge/
+
+# local docker layer bust markers
+.build-bust
+**/.build-bust

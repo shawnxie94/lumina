@@ -6,7 +6,6 @@ export type AITaskPromptType =
   | "content_cleaning"
   | "interpretation"
   | "classification"
-  | "tagging"
   | "digest_prefill";
 
 type Translate = (key: string) => string;
@@ -33,13 +32,6 @@ const AI_TASK_META: AITaskMeta[] = [
     labelKey: "分类",
     filterValue: "process_article_classification:classification",
     promptType: "classification",
-  },
-  {
-    taskType: "process_article_tagging",
-    contentType: "tagging",
-    labelKey: "标签",
-    filterValue: "process_article_tagging:tagging",
-    promptType: "tagging",
   },
   {
     taskType: "process_article_interpretation",
@@ -109,7 +101,6 @@ const TASK_TYPE_FALLBACK_LABELS: Record<string, string> = {
   process_article_cleaning: "清洗",
   process_article_classification: "分类",
   process_article_interpretation: "文章解读",
-  process_article_tagging: "标签",
   process_article_translation: "翻译",
   process_article_embedding: "向量化",
   process_ai_content: "AI内容",

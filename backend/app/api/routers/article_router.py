@@ -29,7 +29,7 @@ from app.domain.article_embedding_service import (
 )
 from app.domain.article_query_service import ArticleQueryService
 from app.domain.article_rss_service import ArticleRssService
-from app.domain.article_tag_service import ArticleTagService
+from app.domain.topic_service import topic_service
 from app.domain.article_url_ingest_service import (
     ArticleUrlIngestBadGatewayError,
     ArticleUrlIngestBadRequestError,
@@ -58,12 +58,12 @@ from app.core.note_recommendation import normalize_note_recommendation_level
 from auth import check_is_admin, get_admin_settings, get_current_admin
 from media_service import cleanup_media_assets
 from models import (
+    AIAnalysis,
     Article,
     ArticleComment,
     AIAnalysisVersion,
     ArticleEmbedding,
     Category,
-    article_tags,
     get_db,
     now_str,
 )
@@ -74,7 +74,6 @@ article_rss_service = ArticleRssService()
 ai_task_service = AITaskService()
 article_command_service = ArticleCommandService(ai_task_service=ai_task_service)
 article_embedding_service = ArticleEmbeddingService()
-article_tag_service = ArticleTagService()
 article_ai_version_service = ArticleAIVersionService()
 article_url_ingest_service = ArticleUrlIngestService(
     article_command_service=article_command_service
@@ -89,9 +88,6 @@ def invalidate_public_article_meta_cache() -> None:
     invalidate_public_article_derived_cache()
 
 
-def parse_tag_ids(raw_value: str | None) -> list[str]:
-    if not raw_value:
-        return []
     return [item.strip() for item in raw_value.split(",") if item and item.strip()]
 
 
@@ -195,7 +191,7 @@ async def get_articles(
     page: int = 1,
     size: int = 20,
     category_id: Optional[str] = None,
-    tag_ids: Optional[str] = None,
+    topic: Optional[str] = None,
     search: Optional[str] = None,
     source_domain: Optional[str] = None,
     author: Optional[str] = None,
@@ -215,7 +211,7 @@ async def get_articles(
         page=page,
         size=size,
         category_id=category_id,
-        tag_ids=parse_tag_ids(tag_ids),
+        topic=topic,
         search=search,
         source_domain=source_domain,
         author=author,
@@ -245,7 +241,9 @@ async def get_articles(
                 }
                 if a.category
                 else None,
-                "tags": article_tag_service.serialize_tags(a),
+                                "topics": topic_service.serialize_article_topics(a) if topic_service.is_topics_enabled(db) or is_admin else [],
+                "compile_status": getattr(a, "compile_status", "none") or "none",
+                "compiled_at": getattr(a, "compiled_at", None),
                 "author": a.author,
                 "status": a.status,
                 "source_domain": a.source_domain,
@@ -274,15 +272,12 @@ async def get_articles(
 async def get_articles_rss(
     request: Request,
     category_id: Optional[str] = None,
-    tag_ids: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
     public_base_url = article_rss_service.resolve_public_base_url(request)
-    normalized_tag_ids = article_rss_service.normalize_tag_ids(tag_ids)
     cache_key = article_rss_service.build_cache_key(
         public_base_url,
         category_id=category_id,
-        tag_ids=normalized_tag_ids,
     )
 
     def load_feed() -> str:
@@ -292,7 +287,6 @@ async def get_articles_rss(
             article_query_service=article_query_service,
             public_base_url=public_base_url,
             category_id=category_id,
-            tag_ids=normalized_tag_ids,
         )
 
     content = get_public_cached(cache_key, load_feed)
@@ -369,7 +363,9 @@ async def get_article(
         "category": {"id": article.category.id, "name": article.category.name}
         if article.category
         else None,
-        "tags": article_tag_service.serialize_tags(article),
+                "topics": topic_service.serialize_article_topics(article) if topic_service.is_topics_enabled(db) or is_admin else [],
+        "compile_status": getattr(article, "compile_status", "none") or "none",
+        "compiled_at": getattr(article, "compiled_at", None),
         "author": article.author,
         "status": article.status,
         "is_visible": article.is_visible,
@@ -441,12 +437,6 @@ async def get_article(
             if article.ai_analysis
             else None,
             "classification_status": article.ai_analysis.classification_status
-            if article.ai_analysis
-            else None,
-            "tagging_status": article.ai_analysis.tagging_status
-            if article.ai_analysis
-            else None,
-            "tagging_manual_override": article.ai_analysis.tagging_manual_override
             if article.ai_analysis
             else None,
             "error_message": article.ai_analysis.error_message
@@ -698,13 +688,11 @@ async def delete_article(
     if not article:
         raise HTTPException(status_code=404, detail="文章不存在")
 
-    affected_tag_ids = [tag.id for tag in getattr(article, "tags", []) if getattr(tag, "id", None)]
     cleanup_media_assets(db, [article.id])
     if article.ai_analysis:
         db.delete(article.ai_analysis)
     db.delete(article)
     db.flush()
-    article_tag_service.cleanup_orphan_tags(db, tag_ids=affected_tag_ids)
     db.commit()
     invalidate_public_article_meta_cache()
     return {"message": "删除成功"}
@@ -722,9 +710,14 @@ async def update_article(
         raise HTTPException(status_code=404, detail="文章不存在")
 
     try:
+        title_changed = False
+        body_changed = False
         if article_data.title is not None:
+            title_changed = article.title != article_data.title
             article.title = article_data.title
         if "title_trans" in article_data.__fields_set__:
+            if article.title_trans != article_data.title_trans:
+                title_changed = True
             article.title_trans = article_data.title_trans
         if article_data.author is not None:
             article.author = article_data.author
@@ -733,26 +726,22 @@ async def update_article(
         if article_data.top_image is not None:
             article.top_image = article_data.top_image
         if article_data.content_md is not None:
+            body_changed = (article.content_md or "") != (article_data.content_md or "")
             article.content_md = article_data.content_md
         if article_data.content_trans is not None:
+            body_changed = body_changed or ((article.content_trans or "") != (article_data.content_trans or ""))
             article.content_trans = article_data.content_trans
         if article_data.is_visible is not None:
             article.is_visible = article_data.is_visible
         if "category_id" in article_data.__fields_set__:
             article.category_id = article_data.category_id
-        if "tag_names" in article_data.__fields_set__ and not article_tag_service.has_same_tag_names(
-            article,
-            article_data.tag_names or [],
-        ):
-            article_tag_service.set_article_tags(
-                db,
-                article,
-                article_data.tag_names or [],
-                manual_override=True,
-                tagging_status="completed",
-                source_hash=article_tag_service.get_tagging_source_hash(article),
-            )
 
+        topic_service.mark_article_stale_if_needed(
+            db,
+            article,
+            title_changed=title_changed,
+            body_changed=body_changed,
+        )
         article.updated_at = now_str()
 
         db.commit()
@@ -769,7 +758,9 @@ async def update_article(
             "content_md": article.content_md,
             "content_trans": article.content_trans,
             "is_visible": article.is_visible,
-            "tags": article_tag_service.serialize_tags(article),
+                    "topics": topic_service.serialize_article_topics(article) if topic_service.is_topics_enabled(db) or is_admin else [],
+        "compile_status": getattr(article, "compile_status", "none") or "none",
+        "compiled_at": getattr(article, "compiled_at", None),
             "updated_at": article.updated_at,
         }
     except Exception as e:
@@ -829,65 +820,23 @@ async def batch_delete_articles(
         row[0]
         for row in db.query(Article.id).filter(Article.slug.in_(request.article_slugs)).all()
     ]
-    affected_tag_ids: list[str] = []
     cleanup_media_assets(db, article_ids)
     if article_ids:
-        affected_tag_ids = [
-            row[0]
-            for row in db.query(article_tags.c.tag_id)
-            .filter(article_tags.c.article_id.in_(article_ids))
-            .distinct()
-            .all()
-        ]
         db.query(ArticleComment).filter(ArticleComment.article_id.in_(article_ids)).delete(
             synchronize_session=False
         )
         db.query(ArticleEmbedding).filter(
             ArticleEmbedding.article_id.in_(article_ids)
         ).delete(synchronize_session=False)
-        db.execute(
-            article_tags.delete().where(article_tags.c.article_id.in_(article_ids))
-        )
     deleted = (
         db.query(Article)
         .filter(Article.slug.in_(request.article_slugs))
         .delete(synchronize_session=False)
     )
-    article_tag_service.cleanup_orphan_tags(db, tag_ids=affected_tag_ids)
     db.commit()
     invalidate_public_article_meta_cache()
     return {"deleted": deleted}
 
-
-@router.post("/api/articles/{article_slug}/tags/regenerate")
-async def regenerate_article_tags(
-    article_slug: str,
-    db: Session = Depends(get_db),
-    _: bool = Depends(get_current_admin),
-):
-    article = article_query_service.get_article_by_slug(db, article_slug, include_relations=True)
-    if not article:
-        raise HTTPException(status_code=404, detail="文章不存在")
-    if not article.content_md or not article.content_md.strip():
-        raise HTTPException(status_code=409, detail="文章内容为空，无法生成标签")
-
-    analysis = article_tag_service.ensure_analysis(db, article)
-    analysis.tagging_manual_override = False
-    analysis.tagging_status = "pending"
-    analysis.updated_at = now_str()
-    db.commit()
-
-    task_id = ai_task_service.enqueue_task(
-        db,
-        task_type="process_article_tagging",
-        article_id=article.id,
-        content_type="tagging",
-        payload={
-            "category_id": article.category_id,
-            "force": True,
-        },
-    )
-    return {"success": True, "task_id": task_id}
 
 
 @router.put("/api/articles/{article_slug}/visibility")
@@ -962,16 +911,20 @@ async def regenerate_article_interpretation(
         "summary": enabled_by_default("auto_ai_summary_enabled"),
         "outline": getattr(admin, "auto_ai_outline_enabled", True) is not False,
         "quotes": bool(getattr(admin, "auto_ai_quotes_enabled", False)),
-        "tagging": enabled_by_default("auto_ai_tagging_enabled"),
         "translation": enabled_by_default("auto_translation_enabled"),
     }
     if not any(
         options.get(field)
-        for field in ("classification", "summary", "outline", "quotes", "tagging")
+        for field in ("classification", "summary", "outline", "quotes")
     ):
         raise HTTPException(status_code=409, detail="未启用任何文章 AI 解读字段")
 
-    analysis = article_tag_service.ensure_analysis(db, article)
+    analysis = article.ai_analysis
+    if not analysis:
+        analysis = AIAnalysis(article_id=article.id)
+        db.add(analysis)
+        db.flush()
+        article.ai_analysis = analysis
     analysis.interpretation_status = "pending"
     analysis.interpretation_error = None
     analysis.updated_at = now_str()
@@ -986,8 +939,7 @@ async def regenerate_article_interpretation(
             "category_id": article.category_id,
             "model_config_id": model_config_id,
             "post_process_options": options,
-            "force_tagging": True,
-        },
+                    },
     )
     return {
         "id": article.id,

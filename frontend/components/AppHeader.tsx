@@ -10,7 +10,6 @@ import {
   buildPublicRssUrl,
   buildPublicReviewRssUrl,
   getErrorTaskPollIntervalMs,
-  normalizePublicRssTagIds,
 } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { notificationStore, type NotificationItem } from '@/lib/notifications';
@@ -341,14 +340,10 @@ export default function AppHeader({ hideRss, activeNav }: { hideRss?: boolean; a
       return {};
     }
     const categoryId = getQueryValue(router.query.category_id).trim();
-    const tagIds = normalizePublicRssTagIds(
-      getQueryValue(router.query.tag_ids).split(','),
-    );
     return {
       categoryId: categoryId || undefined,
-      tagIds,
     };
-  }, [router.pathname, router.query.category_id, router.query.tag_ids]);
+  }, [router.pathname, router.query.category_id]);
   const reviewRssFilters = useMemo(() => {
     if (router.pathname !== '/columns' && router.pathname !== '/columns/[slug]') {
       return {};

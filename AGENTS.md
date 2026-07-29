@@ -1,7 +1,7 @@
 # PROJECT KNOWLEDGE BASE
 
-**Updated:** 2026-07-22 18:01 Asia/Shanghai
-**Commit:** 25404b1
+**Updated:** 2026-07-29 17:40 Asia/Shanghai
+**Commit:** local-wip (topics/bridge/cli)
 **Branch:** main
 
 ## OVERVIEW
@@ -13,9 +13,11 @@ Lumina is a content workspace with a Next.js 14 frontend (pages router), FastAPI
 ├── backend/              # FastAPI app, models, worker, migrations (+ local Node Defuddle)
 ├── frontend/             # Next.js pages router app (web UI + API routes)
 ├── extension/            # WXT browser extension (Defuddle capture)
-├── docs/                 # Ops notes, API notes, assets (no active TRD tree)
+├── bridge/               # Local Topic Bridge package (writeback/sync HTTP service)
+├── cli/                  # Lumina CLI (install/start Bridge + knowledge providers)
+├── docs/                 # Ops notes, API notes, TRD drafts under docs/trd/
 ├── deploy/               # Deploy helpers (e.g. nginx)
-├── scripts/              # Repo-level scripts (docker healthcheck, version sync)
+├── scripts/              # Repo-level scripts (docker healthcheck, CLI/Bridge installers)
 └── data/                 # SQLite database + media volume
 ```
 
@@ -45,7 +47,11 @@ Nested agent maps (prefer these for domain detail):
 | Backend embedding batch logic | `backend/app/domain/article_embedding_service.py` | Model/hash skip logic |
 | Backend RSS generation | `backend/app/domain/article_rss_service.py` | Public RSS feed + cache key |
 | Backend backup import/export | `backend/app/api/routers/backup_router.py` `backend/app/domain/backup_service.py` | JSON backup stream |
-| Backend tag APIs | `backend/app/api/routers/tag_router.py` `backend/app/domain/article_tag_service.py` | Tags + orphan cleanup |
+| Backend topic APIs | `backend/app/api/routers/topic_router.py` `backend/app/domain/topic_service.py` | Topics + compile writeback + orphan cleanup |
+| Topic settings | `backend/app/api/routers/settings_router.py` `frontend/components/TopicSettingsPanel.tsx` | Admin “主题解析” + Bridge health/sync |
+| Topic detail page | `frontend/pages/topics/[key].tsx` | Public topic page (entity/concept) |
+| Local Topic Bridge | `bridge/topic_bridge/` `scripts/install-topic-bridge.sh` | Export sources, scan wiki, writeback |
+| Lumina CLI | `cli/lumina_cli/` `scripts/install-lumina-cli.sh` | Local install/start/doctor/sync entrypoint |
 | Backend DB migrations | `backend/alembic/` `backend/scripts/migrate_db.py` | Alembic schema path |
 | Backend unit tests | `backend/tests/unit/` | Pytest core/domain/utils |
 | Route contract baseline | `backend/scripts/route_contract_baseline.json` | Router signature regression |
@@ -72,7 +78,7 @@ Nested agent maps (prefer these for domain detail):
 | Extension extraction | `extension/entrypoints/content.ts` `extension/utils/defuddleExtract.ts` | Defuddle + first-party markdown |
 | Extension shadow flatten | `extension/utils/flattenShadowDom.ts` | Prep for Defuddle |
 | Extension shared helpers | `extension/utils/` | History/error/i18n helpers |
-| Ops notes | `docs/` `docs/api/` | Ops/API notes; no `docs/trd/` tree currently |
+| Ops notes | `docs/` `docs/api/` `docs/trd/` | Ops/API notes + topic/CLI TRD drafts |
 
 ## ARTICLE EXTRACTION BOUNDARY
 - **Browser extension body is final at create time**: plugin-captured `content_html` / `content_md` are stored as-is; do not re-run Jina HTML cleaning on create.
@@ -98,7 +104,7 @@ Nested agent maps (prefer these for domain detail):
 - Backend startup requires `INTERNAL_API_TOKEN`; app/worker fail fast on invalid runtime settings.
 - Backend API routes are served under `/backend/api/*` only.
 - Frontend API base resolves at runtime and defaults to `/backend` in same-origin environments.
-- Public RSS feed is served from `/backend/api/articles/rss.xml` and supports category/tag filtering.
+- Public RSS feed is served from `/backend/api/articles/rss.xml` and supports category/topic filtering.
 - Comment OAuth providers are loaded dynamically by `frontend/pages/api/auth/[...nextauth].ts` from backend comment settings.
 - Header notifications are persisted in browser localStorage via `frontend/lib/notifications.ts`.
 - Markdown rendering uses `remark-math` + `rehype-katex` with `sanitize-html` allowlists.
@@ -173,6 +179,11 @@ docker compose logs api
 ```
 
 ## NOTES
+- Topics (entity/concept) are compiled by local knowledge tools (default: llm_wiki) via Topic Bridge; Lumina web is display + article store.
+- Prefer `~/.lumina/knowledge/<name>` for knowledge projects; avoid macOS Desktop/Documents/Downloads for LaunchAgent Bridge writes.
+- Canonical Bridge installer is `scripts/install-topic-bridge.sh`; `bridge/install.sh` is a thin compatibility wrapper.
+- Topic settings store Bridge URL/token for web connectivity; knowledge provider/path are owned by Lumina CLI config.
+
 - `docker-compose.yml` defines a separate `worker` service with AI polling env vars; local compose file is gitignored (`docker-compose.yml.example` is the template).
 - Compose may also run Neo4j when knowledge-graph features are enabled in the local stack; treat graph services as optional infra unless the task is graph-related.
 - `data/` is a persistent SQLite volume; reset with `docker compose down -v`.

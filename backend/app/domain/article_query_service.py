@@ -7,7 +7,7 @@ from xml.sax.saxutils import escape
 from sqlalchemy import func, literal, or_
 from sqlalchemy.orm import Session, joinedload, load_only
 
-from models import AIAnalysis, Article, ArticleComment, Category, Tag
+from models import AIAnalysis, Article, ArticleComment, ArticleTopic, Category, Topic
 
 
 def _normalize_start_date_bound(value: str | None) -> str | None:
@@ -151,11 +151,6 @@ def _normalize_public_base_url(public_base_url: str | None) -> str:
     return (public_base_url or "").strip().rstrip("/")
 
 
-def _normalize_tag_ids(tag_ids: list[str] | None) -> list[str]:
-    normalized = sorted({tag_id.strip() for tag_id in (tag_ids or []) if tag_id and tag_id.strip()})
-    return normalized
-
-
 def _to_absolute_url(url: str | None, public_base_url: str) -> str:
     value = (url or "").strip()
     if not value:
@@ -174,7 +169,7 @@ def _build_filtered_query(
     *,
     is_admin: bool,
     category_id: str | None = None,
-    tag_ids: list[str] | None = None,
+        topic: str | None = None,
     search: str | None = None,
     source_domain: str | None = None,
     author: str | None = None,
@@ -191,10 +186,15 @@ def _build_filtered_query(
 
     if category_id:
         query = query.filter(Article.category_id == category_id)
-    if tag_ids:
-        normalized_tag_ids = [tag_id.strip() for tag_id in tag_ids if tag_id and tag_id.strip()]
-        if normalized_tag_ids:
-            query = query.filter(Article.tags.any(Tag.id.in_(normalized_tag_ids)))
+    if topic:
+        topic_key = topic.strip()
+        if topic_key:
+            query = (
+                query.join(ArticleTopic, ArticleTopic.article_id == Article.id)
+                .join(Topic, Topic.id == ArticleTopic.topic_id)
+                .filter(Topic.key == topic_key)
+                .filter(Topic.status != "ignored")
+            )
     query = _apply_title_search_filter(query, search)
     if source_domain:
         query = query.filter(Article.source_domain == source_domain)
@@ -322,13 +322,10 @@ def _get_preferred_article_title(article: Article) -> str:
     return article.title or ""
 
 
-def _build_query_string(*, category_id: str | None = None, tag_ids: list[str] | None = None) -> str:
+def _build_query_string(*, category_id: str | None = None) -> str:
     params: dict[str, str] = {}
-    normalized_tag_ids = _normalize_tag_ids(tag_ids)
     if category_id:
         params["category_id"] = category_id
-    if normalized_tag_ids:
-        params["tag_ids"] = ",".join(normalized_tag_ids)
     if not params:
         return ""
     return urlencode(params)
@@ -339,9 +336,8 @@ def _build_public_feed_url(
     path: str,
     *,
     category_id: str | None = None,
-    tag_ids: list[str] | None = None,
-) -> str:
-    query_string = _build_query_string(category_id=category_id, tag_ids=tag_ids)
+    ) -> str:
+    query_string = _build_query_string(category_id=category_id)
     normalized_path = path if path.startswith("/") else f"/{path}"
     url = f"{public_base_url}{normalized_path}" if public_base_url else normalized_path
     if query_string:
@@ -410,7 +406,13 @@ class ArticleQueryService:
         if include_relations:
             query = query.options(
                 joinedload(Article.category).load_only(Category.id, Category.name, Category.color),
-                joinedload(Article.tags).load_only(Tag.id, Tag.name),
+                joinedload(Article.topic_links).joinedload(ArticleTopic.topic).load_only(
+                Topic.id,
+                Topic.key,
+                Topic.title,
+                Topic.topic_type,
+                Topic.status,
+            ),
                 joinedload(Article.ai_analysis).load_only(
                     AIAnalysis.summary,
                     AIAnalysis.summary_status,
@@ -422,8 +424,6 @@ class ArticleQueryService:
                     AIAnalysis.quotes_status,
                     AIAnalysis.current_quotes_version_id,
                     AIAnalysis.classification_status,
-                    AIAnalysis.tagging_status,
-                    AIAnalysis.tagging_manual_override,
                     AIAnalysis.error_message,
                     AIAnalysis.updated_at,
                 ),
@@ -439,7 +439,7 @@ class ArticleQueryService:
         page: int = 1,
         size: int = 20,
         category_id: str | None = None,
-        tag_ids: list[str] | None = None,
+        topic: str | None = None,
         search: str | None = None,
         source_domain: str | None = None,
         author: str | None = None,
@@ -455,7 +455,7 @@ class ArticleQueryService:
             db.query(Article),
             is_admin=is_admin,
             category_id=category_id,
-            tag_ids=tag_ids,
+            topic=topic,
             search=search,
             source_domain=source_domain,
             author=author,
@@ -473,6 +473,7 @@ class ArticleQueryService:
                 Article.id,
                 Article.slug,
                 Article.title,
+                Article.title_trans,
                 Article.top_image,
                 Article.author,
                 Article.status,
@@ -482,9 +483,17 @@ class ArticleQueryService:
                 Article.is_visible,
                 Article.original_language,
                 Article.category_id,
+                Article.compile_status,
+                Article.compiled_at,
             ),
             joinedload(Article.category).load_only(Category.id, Category.name, Category.color),
-            joinedload(Article.tags).load_only(Tag.id, Tag.name),
+            joinedload(Article.topic_links).joinedload(ArticleTopic.topic).load_only(
+                Topic.id,
+                Topic.key,
+                Topic.title,
+                Topic.topic_type,
+                Topic.status,
+            ),
             joinedload(Article.ai_analysis).load_only(AIAnalysis.summary),
         )
 
@@ -554,7 +563,6 @@ class ArticleQueryService:
         db: Session,
         *,
         category_id: str | None = None,
-        tag_ids: list[str] | None = None,
         search: str | None = None,
         source_domain: str | None = None,
         author: str | None = None,
@@ -570,7 +578,6 @@ class ArticleQueryService:
             db.query(Article),
             is_admin=is_admin,
             category_id=category_id,
-            tag_ids=tag_ids,
             search=search,
             source_domain=source_domain,
             author=author,
@@ -586,7 +593,13 @@ class ArticleQueryService:
                 Category.name,
                 Category.sort_order,
             ),
-            joinedload(Article.tags).load_only(Tag.id, Tag.name),
+            joinedload(Article.topic_links).joinedload(ArticleTopic.topic).load_only(
+                Topic.id,
+                Topic.key,
+                Topic.title,
+                Topic.topic_type,
+                Topic.status,
+            ),
             joinedload(Article.ai_analysis).load_only(AIAnalysis.summary),
         ).all()
         return _render_export_markdown(articles, public_base_url=public_base_url)
@@ -596,13 +609,11 @@ class ArticleQueryService:
         db: Session,
         *,
         category_id: str | None = None,
-        tag_ids: list[str] | None = None,
     ) -> list[Article]:
         query = _build_filtered_query(
             db.query(Article),
             is_admin=False,
             category_id=category_id,
-            tag_ids=_normalize_tag_ids(tag_ids),
         )
         query = query.options(
             load_only(
@@ -615,7 +626,6 @@ class ArticleQueryService:
                 Article.created_at,
             ),
             joinedload(Article.category).load_only(Category.name),
-            joinedload(Article.tags).load_only(Tag.name),
             joinedload(Article.ai_analysis).load_only(
                 AIAnalysis.summary,
                 AIAnalysis.quotes,
@@ -633,21 +643,17 @@ class ArticleQueryService:
         site_name: str,
         site_description: str,
         category_id: str | None = None,
-        tag_ids: list[str] | None = None,
     ) -> str:
         base_url = _normalize_public_base_url(public_base_url)
-        normalized_tag_ids = _normalize_tag_ids(tag_ids)
         feed_link = _build_public_feed_url(
             base_url,
             "/list",
             category_id=category_id,
-            tag_ids=normalized_tag_ids,
         )
         feed_self_link = _build_public_feed_url(
             base_url,
             "/backend/api/articles/rss.xml",
             category_id=category_id,
-            tag_ids=normalized_tag_ids,
         )
         safe_site_name = escape(site_name or "Lumina")
         safe_site_description = escape(site_description or "")
@@ -676,11 +682,6 @@ class ArticleQueryService:
                 if article.category
                 else ""
             )
-            tag_names = [
-                (tag.name or "").strip()
-                for tag in (article.tags or [])
-                if (tag.name or "").strip()
-            ]
             summary = article.ai_analysis.summary if article.ai_analysis else ""
             quotes = article.ai_analysis.quotes if article.ai_analysis else ""
             top_image_url = _normalize_public_asset_url(base_url, article.top_image)
@@ -721,8 +722,6 @@ class ArticleQueryService:
                 lines.append(f"<dc:creator>{_wrap_cdata(author)}</dc:creator>")
             if category_name:
                 lines.append(f"<category>{_wrap_cdata(category_name)}</category>")
-            for tag_name in tag_names:
-                lines.append(f"<category>{_wrap_cdata(tag_name)}</category>")
             lines.append("</item>")
 
         lines.extend(["</channel>", "</rss>"])

@@ -23,17 +23,6 @@ class ArticleRssService:
         if not basic_settings.get("rss_enabled"):
             raise HTTPException(status_code=404, detail="RSS未开启")
 
-    def normalize_tag_ids(self, raw_value: str | None) -> list[str]:
-        if not raw_value:
-            return []
-        return sorted(
-            {
-                item.strip()
-                for item in raw_value.split(",")
-                if item and item.strip()
-            }
-        )
-
     def resolve_public_base_url(self, request: Request) -> str:
         origin = (request.headers.get("origin") or "").strip()
         if origin.startswith(("http://", "https://")):
@@ -60,14 +49,12 @@ class ArticleRssService:
         public_base_url: str,
         *,
         category_id: str | None,
-        tag_ids: list[str],
     ) -> str:
         encoded_base = quote(public_base_url or "", safe="")
         encoded_category = quote((category_id or "").strip(), safe="")
-        encoded_tag_ids = quote(",".join(tag_ids), safe="")
         return (
             f"{CACHE_KEY_ARTICLES_RSS_PUBLIC_PREFIX}"
-            f"{encoded_base}:category:{encoded_category}:tags:{encoded_tag_ids}"
+            f"{encoded_base}:category:{encoded_category}"
         )
 
     def build_review_cache_key(
@@ -90,12 +77,10 @@ class ArticleRssService:
         article_query_service: "ArticleQueryService",
         public_base_url: str,
         category_id: str | None,
-        tag_ids: list[str],
     ) -> str:
         articles = article_query_service.get_articles_for_rss(
             db=db,
             category_id=category_id,
-            tag_ids=tag_ids,
         )
         basic_settings = build_basic_settings(get_admin_settings(db))
         return article_query_service.render_articles_rss(
@@ -104,7 +89,6 @@ class ArticleRssService:
             site_name=basic_settings["site_name"],
             site_description=basic_settings["site_description"],
             category_id=category_id,
-            tag_ids=tag_ids,
         )
 
     def build_response(self, content: str) -> FastAPIResponse:

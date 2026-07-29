@@ -56,7 +56,6 @@ test("list SEO marks low-value search combinations as noindex", () => {
 
 test("list SEO marks date filters and mixed facets as noindex", () => {
   const seo = getListPageSeo({
-    tag_ids: "ai,ml",
     author: "Shawn",
     published_at_start: "2026-01-01",
   });

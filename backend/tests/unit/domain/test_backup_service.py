@@ -28,7 +28,6 @@ from models import (
     MediaAsset,
     ModelAPIConfig,
     PromptConfig,
-    Tag,
     now_str,
 )
 
@@ -59,13 +58,6 @@ def _build_archive_fixture(db_session: Session, media_root: Path) -> dict[str, s
         name="Tech",
         sort_order=1,
         created_at=now_str(),
-    )
-    tag = Tag(
-        id=str(uuid.uuid4()),
-        name="AI",
-        normalized_name="ai",
-        created_at=now_str(),
-        updated_at=now_str(),
     )
     model = ModelAPIConfig(
         id=str(uuid.uuid4()),
@@ -119,7 +111,6 @@ def _build_archive_fixture(db_session: Session, media_root: Path) -> dict[str, s
         category_id=category.id,
         top_image="/backend/media/2026/04/top.webp",
     )
-    article.tags.append(tag)
 
     comment = ArticleComment(
         article_id=article.id,
@@ -192,7 +183,6 @@ def _build_archive_fixture(db_session: Session, media_root: Path) -> dict[str, s
     db_session.add_all(
         [
             category,
-            tag,
             model,
             prompt,
             admin,

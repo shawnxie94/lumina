@@ -18,11 +18,15 @@ PUBLIC_CACHE_CONTROL = (
 CACHE_KEY_SETTINGS_BASIC_PUBLIC = "settings:basic:public"
 CACHE_KEY_SETTINGS_COMMENTS_PUBLIC = "settings:comments:public"
 CACHE_KEY_CATEGORIES_PUBLIC = "categories:public"
-CACHE_KEY_TAGS_PUBLIC = "tags:public"
 CACHE_KEY_AUTHORS_PUBLIC = "authors:public"
 CACHE_KEY_SOURCES_PUBLIC = "sources:public"
 CACHE_KEY_ARTICLES_RSS_PUBLIC_PREFIX = "articles:rss:public:"
 CACHE_KEY_REVIEWS_RSS_PUBLIC_PREFIX = "reviews:rss:public:"
+CACHE_KEY_TOPICS_LIST_PREFIX = "topics:list:"
+CACHE_KEY_TOPICS_SETTINGS = "topics:settings"
+CACHE_KEY_TOPICS_ENABLED = "topics:enabled"
+# Topic data only changes after bridge sync/writeback or admin settings updates.
+TOPICS_CACHE_TTL_SECONDS = 1800
 
 T = TypeVar("T")
 
@@ -125,15 +129,27 @@ def invalidate_public_article_derived_cache() -> None:
         CACHE_KEY_AUTHORS_PUBLIC,
         CACHE_KEY_SOURCES_PUBLIC,
         CACHE_KEY_CATEGORIES_PUBLIC,
-        CACHE_KEY_TAGS_PUBLIC,
     )
     invalidate_public_rss_cache()
 
 
-def apply_public_cache_headers(response: Response) -> None:
-    response.headers["Cache-Control"] = PUBLIC_CACHE_CONTROL
+def apply_public_cache_headers(
+    response: Response,
+    *,
+    ttl_seconds: int | None = None,
+) -> None:
+    ttl = PUBLIC_CACHE_TTL_SECONDS if ttl_seconds is None else max(1, int(ttl_seconds))
+    response.headers["Cache-Control"] = (
+        f"public, max-age={ttl}, stale-while-revalidate={ttl}"
+    )
     existing_vary = response.headers.get("Vary", "")
     vary_values = [item.strip() for item in existing_vary.split(",") if item.strip()]
     if "Authorization" not in vary_values:
         vary_values.append("Authorization")
     response.headers["Vary"] = ", ".join(vary_values)
+
+
+def invalidate_topics_caches() -> None:
+    """Drop topic dropdown/settings caches after sync or settings changes."""
+    invalidate_public_cache(CACHE_KEY_TOPICS_SETTINGS, CACHE_KEY_TOPICS_ENABLED)
+    invalidate_public_cache_prefix(CACHE_KEY_TOPICS_LIST_PREFIX)

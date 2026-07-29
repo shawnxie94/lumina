@@ -26,6 +26,7 @@ import SeoHead from "@/components/SeoHead";
 import ConfirmModal from "@/components/ConfirmModal";
 import Button from "@/components/Button";
 import ReviewTemplateSettings from "@/components/ReviewTemplateSettings";
+import TopicSettingsPanel from "@/components/TopicSettingsPanel";
 import DateRangePicker from "@/components/DateRangePicker";
 import FilterInput from "@/components/FilterInput";
 import FilterSelect from "@/components/FilterSelect";
@@ -51,6 +52,7 @@ import {
 	IconList,
 	IconCopy,
 	IconMoney,
+	IconNetwork,
 	IconNote,
 	IconPlug,
 	IconPlus,
@@ -113,7 +115,8 @@ type SettingSection =
 	| "monitoring"
 	| "comments"
 	| "extraction"
-	| "storage";
+	| "storage"
+	| "topics";
 type AISubSection =
 	| "model-api"
 	| "prompt"
@@ -235,6 +238,8 @@ const parseAdminRouteState = (
 			section = "columns";
 		} else if (settingsSection === "storage") {
 			section = "storage";
+		} else if (settingsSection === "topics") {
+			section = "topics";
 		} else if (settingsSection === "extraction") {
 			section = "extraction";
 			const extractionCandidate = segments[2] || "";
@@ -302,6 +307,9 @@ const buildAdminPath = (
 	if (section === "storage") {
 		return "/admin/settings/storage";
 	}
+	if (section === "topics") {
+		return "/admin/settings/topics";
+	}
 	if (section === "extraction") {
 		return `/admin/settings/extraction/${extractionSubSection}`;
 	}
@@ -315,7 +323,6 @@ type PromptType =
 	| "quotes"
 	| "content_cleaning"
 	| "classification"
-	| "tagging"
 	| "digest_prefill";
 
 const createEmptyPromptFormData = (
@@ -355,7 +362,6 @@ const createEmptyPromptFormData = (
 const PROMPT_TYPES = [
 	{ value: "content_cleaning" as PromptType, labelKey: "清洗" },
 	{ value: "classification" as PromptType, labelKey: "分类" },
-	{ value: "tagging" as PromptType, labelKey: "标签" },
 	{ value: "summary" as PromptType, labelKey: "摘要" },
 	{ value: "translation" as PromptType, labelKey: "翻译" },
 	{ value: "outline" as PromptType, labelKey: "大纲" },
@@ -710,7 +716,7 @@ export default function AdminPage() {
 	const router = useRouter();
 	const { showToast } = useToast();
 	const { isAdmin, isLoading: authLoading } = useAuth();
-	const { t } = useI18n();
+	const { t, language } = useI18n();
 	const { basicSettings, updateBasicSettings: updateBasicSettingsContext } =
 		useBasicSettings();
 	const pageTitle = `${t("管理台")} - Lumina`;
@@ -727,6 +733,7 @@ export default function AdminPage() {
 				"comments",
 				"extraction",
 				"storage",
+				"topics",
 			]),
 		[],
 	);
@@ -915,7 +922,6 @@ export default function AdminPage() {
 			auto_ai_summary_enabled: true,
 			auto_ai_outline_enabled: false,
 			auto_ai_quotes_enabled: false,
-			auto_ai_tagging_enabled: true,
 			auto_translation_enabled: true,
 		});
 	const [recommendationSettings, setRecommendationSettings] =
@@ -3368,6 +3374,7 @@ export default function AdminPage() {
 		}
 	};
 
+
 	const handleCopyMaskedValue = async (value: string) => {
 		if (!value) return;
 		try {
@@ -3860,8 +3867,8 @@ export default function AdminPage() {
 												</span>
 											</SelectableButton>
 
-											<SectionToggleButton
-												label={t("内容解析")}
+															<SectionToggleButton
+																label={t("内容解析")}
 												active={activeSection === "extraction"}
 												expanded={!collapsedSettings.extraction}
 												onMainClick={handleToggleExtractionSection}
@@ -3913,7 +3920,19 @@ export default function AdminPage() {
 												</>
 											)}
 
-											<SectionToggleButton
+											
+															<SelectableButton
+																onClick={() => setActiveSection("topics")}
+																active={activeSection === "topics"}
+																variant="menu"
+															>
+																<span className="inline-flex items-center gap-2">
+																	<IconNetwork className="h-4 w-4" />
+																	<span>{t("主题解析")}</span>
+																</span>
+															</SelectableButton>
+
+<SectionToggleButton
 												label={t("AI配置")}
 												active={activeSection === "ai"}
 												expanded={!collapsedSettings.ai}
@@ -4045,7 +4064,7 @@ export default function AdminPage() {
 													<span>{t("文件存储")}</span>
 												</span>
 											</SelectableButton>
-										</>
+																						</>
 									)}
 								</div>
 							</div>
@@ -5707,7 +5726,6 @@ export default function AdminPage() {
 													{[
 														["auto_translation_enabled", t("自动翻译")],
 														["auto_ai_classification_enabled", t("自动分类")],
-														["auto_ai_tagging_enabled", t("自动标签")],
 														["auto_ai_summary_enabled", t("自动摘要")],
 														["auto_ai_outline_enabled", t("自动大纲")],
 														["auto_ai_quotes_enabled", t("自动金句")],
@@ -5965,8 +5983,9 @@ export default function AdminPage() {
 									)}
 								</div>
 							)}
+							{activeSection === "topics" && <TopicSettingsPanel />}
 
-							{activeSection === "monitoring" &&
+{activeSection === "monitoring" &&
 								monitoringSubSection === "tasks" && (
 									<div className="bg-surface rounded-sm shadow-sm border border-border p-6 w-full min-w-0">
 										<div className="mb-6 flex flex-wrap items-start justify-between gap-3">

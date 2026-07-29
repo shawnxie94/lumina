@@ -230,7 +230,6 @@ async def test_regenerate_article_interpretation_creates_bundle_task(
             auto_ai_summary_enabled=True,
             auto_ai_outline_enabled=False,
             auto_ai_quotes_enabled=False,
-            auto_ai_tagging_enabled=True,
             auto_translation_enabled=False,
         ),
     )
@@ -262,7 +261,6 @@ async def test_regenerate_article_interpretation_creates_bundle_task(
     assert captured["task"]["content_type"] == "interpretation"
     assert captured["task"]["payload"]["model_config_id"] == "model-1"
     assert "prompt_config_id" not in captured["task"]["payload"]
-    assert captured["task"]["payload"]["force_tagging"] is True
     assert "interpretation_bundle" not in captured["task"]["payload"][
         "post_process_options"
     ]
@@ -844,7 +842,6 @@ async def test_get_articles_rss_rejects_when_disabled(monkeypatch, db_session):
         await article_router.get_articles_rss(
             request=request,
             category_id=None,
-            tag_ids=None,
             db=db_session,
         )
 

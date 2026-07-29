@@ -4,7 +4,7 @@ import uuid
 from xml.sax.saxutils import escape
 
 from app.domain.article_query_service import ArticleQueryService
-from models import AIAnalysis, Article, ArticleComment, Category, Tag, now_str
+from models import AIAnalysis, Article, ArticleComment, Category, now_str
 
 
 def make_article(
@@ -15,7 +15,6 @@ def make_article(
     created_at: str,
     title_trans: str | None = None,
     category_id: str | None = None,
-    tags: list[Tag] | None = None,
     source_domain: str | None = None,
     author: str | None = None,
     is_visible: bool = True,
@@ -37,8 +36,6 @@ def make_article(
         is_visible=is_visible,
         view_count=view_count,
     )
-    if tags:
-        article.tags = list(tags)
     db_session.add(article)
     db_session.commit()
     db_session.refresh(article)
@@ -57,19 +54,6 @@ def make_category(db_session, name: str, sort_order: int = 0) -> Category:
     db_session.refresh(category)
     return category
 
-
-def make_tag(db_session, name: str) -> Tag:
-    tag = Tag(
-        id=str(uuid.uuid4()),
-        name=name,
-        normalized_name=name.casefold(),
-        created_at=now_str(),
-        updated_at=now_str(),
-    )
-    db_session.add(tag)
-    db_session.commit()
-    db_session.refresh(tag)
-    return tag
 
 
 def make_analysis(
@@ -443,121 +427,6 @@ def test_search_articles_by_title_can_include_hidden_articles_for_admin(db_sessi
     ]
 
 
-def test_get_articles_filters_by_any_selected_tag(db_session):
-    service = ArticleQueryService()
-    ai_tag = make_tag(db_session, "AI")
-    product_tag = make_tag(db_session, "产品")
-    growth_tag = make_tag(db_session, "增长")
-
-    make_article(
-        db_session,
-        title="matched-by-ai",
-        published_at="2026-01-10",
-        created_at="2026-01-11T00:00:00+00:00",
-        tags=[ai_tag],
-    )
-    make_article(
-        db_session,
-        title="matched-by-growth",
-        published_at="2026-01-12",
-        created_at="2026-01-13T00:00:00+00:00",
-        tags=[growth_tag],
-    )
-    make_article(
-        db_session,
-        title="matched-by-product",
-        published_at="2026-01-14",
-        created_at="2026-01-15T00:00:00+00:00",
-        tags=[product_tag],
-    )
-    make_article(
-        db_session,
-        title="unmatched",
-        published_at="2026-01-16",
-        created_at="2026-01-17T00:00:00+00:00",
-    )
-
-    articles, total = service.get_articles(
-        db=db_session,
-        page=1,
-        size=10,
-        tag_ids=[ai_tag.id, product_tag.id],
-        is_admin=True,
-    )
-
-    assert total == 2
-    assert {article.title for article in articles} == {
-        "matched-by-ai",
-        "matched-by-product",
-    }
-
-
-def test_get_articles_for_rss_respects_visibility_category_and_tag_filters(db_session):
-    service = ArticleQueryService()
-    category_a = make_category(db_session, name="分类A", sort_order=1)
-    category_b = make_category(db_session, name="分类B", sort_order=2)
-    tag_ai = make_tag(db_session, "AI")
-    tag_ops = make_tag(db_session, "Ops")
-    tag_other = make_tag(db_session, "Other")
-
-    visible_match = make_article(
-        db_session,
-        title="visible-match",
-        published_at="2026-02-10",
-        created_at="2026-02-11T00:00:00+00:00",
-        category_id=category_a.id,
-        tags=[tag_ai],
-        is_visible=True,
-    )
-    make_analysis(db_session, visible_match, summary="matched summary")
-    visible_second_match = make_article(
-        db_session,
-        title="visible-second-match",
-        published_at="2026-02-09",
-        created_at="2026-02-10T00:00:00+00:00",
-        category_id=category_a.id,
-        tags=[tag_ops],
-        is_visible=True,
-    )
-    make_analysis(db_session, visible_second_match, summary="second summary")
-    make_article(
-        db_session,
-        title="hidden-match",
-        published_at="2026-02-08",
-        created_at="2026-02-09T00:00:00+00:00",
-        category_id=category_a.id,
-        tags=[tag_ai],
-        is_visible=False,
-    )
-    make_article(
-        db_session,
-        title="wrong-category",
-        published_at="2026-02-07",
-        created_at="2026-02-08T00:00:00+00:00",
-        category_id=category_b.id,
-        tags=[tag_ai],
-        is_visible=True,
-    )
-    make_article(
-        db_session,
-        title="wrong-tag",
-        published_at="2026-02-06",
-        created_at="2026-02-07T00:00:00+00:00",
-        category_id=category_a.id,
-        tags=[tag_other],
-        is_visible=True,
-    )
-
-    articles = service.get_articles_for_rss(
-        db_session,
-        category_id=category_a.id,
-        tag_ids=[tag_ops.id, tag_ai.id],
-    )
-
-    assert [item.title for item in articles] == [
-        "visible-match",
-        "visible-second-match",
-    ]
 
 
 def test_get_articles_for_rss_sorts_by_created_at_desc(db_session):
@@ -587,73 +456,6 @@ def test_get_articles_for_rss_sorts_by_created_at_desc(db_session):
     ]
 
 
-def test_get_articles_for_rss_normalizes_tag_id_order(db_session):
-    service = ArticleQueryService()
-    tag_alpha = make_tag(db_session, "Alpha")
-    tag_beta = make_tag(db_session, "Beta")
-    article = make_article(
-        db_session,
-        title="normalized-order",
-        published_at="2026-02-10",
-        created_at="2026-02-10T00:00:00+00:00",
-        tags=[tag_alpha],
-        is_visible=True,
-    )
-    make_analysis(db_session, article, summary="normalized summary")
-
-    left = service.get_articles_for_rss(
-        db_session,
-        tag_ids=[tag_beta.id, tag_alpha.id, tag_alpha.id],
-    )
-    right = service.get_articles_for_rss(
-        db_session,
-        tag_ids=[tag_alpha.id, tag_beta.id],
-    )
-
-    assert [item.title for item in left] == [item.title for item in right] == [
-        "normalized-order"
-    ]
-
-
-def test_render_articles_rss_uses_filtered_links_and_escapes_xml(db_session):
-    service = ArticleQueryService()
-    tag = make_tag(db_session, "AI")
-    article = make_article(
-        db_session,
-        title='AI & "Search" <Guide>',
-        published_at="2026-02-10T08:30:00+00:00",
-        created_at="2026-02-11T00:00:00+00:00",
-        tags=[tag],
-        is_visible=True,
-    )
-    make_analysis(db_session, article, summary="Summary & details <xml>")
-
-    rss = service.render_articles_rss(
-        articles=[article],
-        public_base_url="https://lumina.example.com",
-        site_name="Lumina & Co",
-        site_description="公开订阅 <feed>",
-        category_id="cat-1",
-        tag_ids=[tag.id],
-    )
-
-    assert "<title>Lumina &amp; Co</title>" in rss
-    assert "<description>公开订阅 &lt;feed&gt;</description>" in rss
-    assert "https://lumina.example.com/list?category_id=cat-1&amp;tag_ids=" in rss
-    assert (
-        f"https://lumina.example.com/backend/api/articles/rss.xml?category_id=cat-1&amp;tag_ids={tag.id}"
-        in rss
-    )
-    assert "<title>AI &amp; \"Search\" &lt;Guide&gt;</title>" in rss
-    assert "<![CDATA[" in rss
-    assert "<p>Summary &amp; details &lt;xml&gt;</p>" in rss
-    assert "<h3>信息图</h3>" not in rss
-    assert "<img " not in rss
-    assert (
-        f"<link>https://lumina.example.com/article/{escape(article.slug)}</link>"
-        in rss
-    )
-    assert "<pubDate>Wed, 11 Feb 2026 00:00:00 GMT</pubDate>" in rss
 
 
 def test_render_articles_rss_includes_top_image_and_quotes(

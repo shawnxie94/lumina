@@ -1,3 +1,4 @@
+from app.schemas.topic import TopicSettingsUpdate
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Response
@@ -27,6 +28,7 @@ from app.schemas import (
     StorageSettingsUpdate,
 )
 from auth import get_admin_settings, get_current_admin
+from app.domain.topic_service import topic_service
 from models import ModelAPIConfig, get_db, now_str
 
 router = APIRouter()
@@ -112,7 +114,6 @@ def serialize_extraction_settings(admin) -> dict:
         "auto_ai_quotes_enabled": bool(
             getattr(admin, "auto_ai_quotes_enabled", False)
         ),
-        "auto_ai_tagging_enabled": enabled_by_default("auto_ai_tagging_enabled"),
         "auto_translation_enabled": enabled_by_default("auto_translation_enabled"),
     }
 
@@ -367,8 +368,6 @@ async def update_extraction_settings(
         admin.auto_ai_outline_enabled = bool(payload.auto_ai_outline_enabled)
     if payload.auto_ai_quotes_enabled is not None:
         admin.auto_ai_quotes_enabled = bool(payload.auto_ai_quotes_enabled)
-    if payload.auto_ai_tagging_enabled is not None:
-        admin.auto_ai_tagging_enabled = bool(payload.auto_ai_tagging_enabled)
     if payload.auto_translation_enabled is not None:
         admin.auto_translation_enabled = bool(payload.auto_translation_enabled)
 
@@ -479,3 +478,30 @@ async def rebuild_recommendation_embeddings(
         "queued_tasks": result["queued_tasks"],
         "skipped_articles": result["skipped_articles"],
     }
+
+
+
+@router.get("/api/settings/topics")
+async def get_topic_settings(
+    _: bool = Depends(get_admin_or_internal),
+    db: Session = Depends(get_db),
+):
+    try:
+        return topic_service.get_topic_settings(db)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail="未初始化管理员设置") from exc
+
+
+@router.put("/api/settings/topics")
+async def update_topic_settings(
+    payload: TopicSettingsUpdate,
+    db: Session = Depends(get_db),
+    _: bool = Depends(get_current_admin),
+):
+    try:
+        return topic_service.update_topic_settings(
+            db,
+            payload.model_dump(exclude_unset=True),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail="未初始化管理员设置") from exc

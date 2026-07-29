@@ -25,11 +25,6 @@ def make_request(headers: list[tuple[bytes, bytes]] | None = None) -> Request:
     return Request(scope)
 
 
-def test_normalize_tag_ids_sorts_and_deduplicates():
-    service = ArticleRssService()
-
-    assert service.normalize_tag_ids(" beta,alpha,beta ,,alpha ") == ["alpha", "beta"]
-
 
 def test_resolve_public_base_url_prefers_forwarded_headers_when_origin_missing():
     service = ArticleRssService()
@@ -61,15 +56,13 @@ def test_build_cache_key_uses_normalized_dimensions():
     cache_key = service.build_cache_key(
         "https://lumina.example.com",
         category_id="cat-1",
-        tag_ids=["alpha", "beta"],
     )
 
     assert cache_key.startswith("articles:rss:public:")
     assert "category:cat-1" in cache_key
-    assert "tags:alpha%2Cbeta" in cache_key
 
 
-def test_render_articles_rss_includes_item_author_category_and_tags():
+def test_render_articles_rss_includes_item_author_and_category():
     service = ArticleQueryService()
     article = SimpleNamespace(
         slug="hello-rss",
@@ -80,10 +73,6 @@ def test_render_articles_rss_includes_item_author_category_and_tags():
         published_at="2026-04-10T10:00:00+08:00",
         created_at="2026-04-09T10:00:00+08:00",
         category=SimpleNamespace(name="产品"),
-        tags=[
-            SimpleNamespace(name="RSS"),
-            SimpleNamespace(name="信息流"),
-        ],
         ai_analysis=SimpleNamespace(
             summary="摘要内容",
             quotes="第一条金句\n第二条金句",
@@ -101,5 +90,3 @@ def test_render_articles_rss_includes_item_author_category_and_tags():
     assert 'xmlns:dc="http://purl.org/dc/elements/1.1/"' in content
     assert "<dc:creator><![CDATA[Shawn]]></dc:creator>" in content
     assert "<category><![CDATA[产品]]></category>" in content
-    assert "<category><![CDATA[RSS]]></category>" in content
-    assert "<category><![CDATA[信息流]]></category>" in content

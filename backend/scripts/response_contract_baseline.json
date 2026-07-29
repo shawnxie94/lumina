@@ -5,7 +5,9 @@
     "path": "/api/auth/status",
     "expected_status": 200,
     "body_type": "object",
-    "required_paths": ["/initialized"]
+    "required_paths": [
+      "/initialized"
+    ]
   },
   {
     "name": "auth_verify",
@@ -13,7 +15,10 @@
     "path": "/api/auth/verify",
     "expected_status": 200,
     "body_type": "object",
-    "required_paths": ["/valid", "/role"]
+    "required_paths": [
+      "/valid",
+      "/role"
+    ]
   },
   {
     "name": "articles_list",
@@ -34,7 +39,7 @@
       "/data/0/slug",
       "/data/0/title",
       "/data/0/status",
-      "/data/0/tags",
+      "/data/0/topics",
       "/data/0/view_count",
       "/data/0/comment_count"
     ]
@@ -52,18 +57,6 @@
     "name": "categories",
     "method": "GET",
     "path": "/api/categories",
-    "expected_status": 200,
-    "body_type": "array",
-    "required_when_nonempty_paths": [
-      "/0/id",
-      "/0/name",
-      "/0/article_count"
-    ]
-  },
-  {
-    "name": "tags",
-    "method": "GET",
-    "path": "/api/tags",
     "expected_status": 200,
     "body_type": "array",
     "required_when_nonempty_paths": [
@@ -104,6 +97,8 @@
     "path": "/api/ai-tasks",
     "expected_status": 401,
     "body_type": "object",
-    "required_paths": ["/detail"]
+    "required_paths": [
+      "/detail"
+    ]
   }
 ]

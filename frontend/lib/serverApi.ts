@@ -6,7 +6,6 @@ import type {
 	BasicSettings,
 	ReviewIssue,
 	ReviewIssueListResponse,
-	Tag,
 } from "@/lib/api";
 import { buildAbsoluteUrl } from "@/lib/seo";
 
@@ -162,9 +161,6 @@ export const fetchServerCategoryStats = (
 	const suffix = query.toString() ? `?${query.toString()}` : "";
 	return fetchServerJson<CategoryStatSummary[]>(req, `/api/categories/stats${suffix}`);
 };
-
-export const fetchServerTags = (req?: IncomingMessage) =>
-	fetchServerJson<Tag[]>(req, "/api/tags");
 
 export const fetchServerAuthors = (req?: IncomingMessage) =>
 	fetchServerJson<string[]>(req, "/api/authors");

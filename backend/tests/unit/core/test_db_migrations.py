@@ -107,7 +107,6 @@ def test_default_ai_strategy_migration_enables_default_toggles(tmp_path):
                 auto_ai_cleaning_enabled=True,
                 auto_ai_classification_enabled=False,
                 auto_ai_summary_enabled=False,
-                auto_ai_tagging_enabled=False,
                 auto_translation_enabled=False,
             )
         )
@@ -129,7 +128,6 @@ def test_default_ai_strategy_migration_enables_default_toggles(tmp_path):
                   auto_ai_summary_enabled,
                   auto_ai_outline_enabled,
                   auto_ai_quotes_enabled,
-                  auto_ai_tagging_enabled,
                   auto_translation_enabled
                 FROM admin_settings
                 """
@@ -141,7 +139,6 @@ def test_default_ai_strategy_migration_enables_default_toggles(tmp_path):
         assert row.auto_ai_summary_enabled == 1
         assert row.auto_ai_outline_enabled == 1
         assert row.auto_ai_quotes_enabled == 0
-        assert row.auto_ai_tagging_enabled == 1
         assert row.auto_translation_enabled == 1
     finally:
         session.close()
@@ -326,10 +323,11 @@ def test_prompt_protocol_text_migration_updates_existing_builtin_prompts(tmp_pat
             for row in rows
         }
 
+        assert "classification" in rows_by_type
         assert "仅输出分类 ID" not in rows_by_type["classification"]["prompt"]
         assert "只输出分类 ID" not in rows_by_type["classification"]["system_prompt"]
-        assert "仅输出 JSON 数组" not in rows_by_type["tagging"]["prompt"]
-        assert "只输出 JSON 数组" not in rows_by_type["tagging"]["system_prompt"]
+        # tagging prompts are removed by 20260729_0029 (topics bridge merge)
+        assert "tagging" not in rows_by_type
     finally:
         session.close()
         Base.metadata.drop_all(bind=engine)

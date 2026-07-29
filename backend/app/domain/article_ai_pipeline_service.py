@@ -12,8 +12,6 @@ from ai_client import ConfigurableAIClient, is_english_content
 from media_service import maybe_ingest_article_images_with_stats
 from sqlalchemy import or_
 from app.core.public_cache import (
-    CACHE_KEY_TAGS_PUBLIC,
-    invalidate_public_cache,
     invalidate_public_rss_cache,
 )
 from app.domain.article_embedding_service import ArticleEmbeddingService
@@ -24,7 +22,6 @@ from app.domain.article_digest import (
     join_digest_lines,
     parse_digest_prefill_result,
 )
-from app.domain.article_tag_service import ArticleTagService
 from app.domain.article_ai_version_service import ArticleAIVersionService
 from models import (
     AIAnalysis,
@@ -55,7 +52,16 @@ BOOK_URL_PATTERN = re.compile(
     r"\.(pdf|epub|mobi)(\?.*)?$",
     re.IGNORECASE,
 )
-article_tag_service = ArticleTagService()
+
+
+def _ensure_analysis(db, article):
+    analysis = getattr(article, "ai_analysis", None)
+    if analysis is None:
+        analysis = AIAnalysis(article_id=article.id)
+        db.add(analysis)
+        db.flush()
+        article.ai_analysis = analysis
+    return analysis
 
 
 @dataclass(frozen=True)
@@ -108,7 +114,6 @@ class ArticleAIPipelineService:
     }
     INTERPRETATION_FIELD_MAX_TOKENS = {
         "classification": 200,
-        "tagging": 300,
         "summary": 500,
         "outline": 3000,
         "quotes": 800,
@@ -116,7 +121,6 @@ class ArticleAIPipelineService:
     INTERPRETATION_BASE_MAX_TOKENS = 300
     INTERPRETATION_FIELD_LABELS = {
         "classification": "分类",
-        "tagging": "标签",
         "summary": "摘要",
         "outline": "大纲",
         "quotes": "金句",
@@ -148,11 +152,6 @@ class ArticleAIPipelineService:
             "输出协议：\n"
             "1) 只返回协议要求的分类结果，不要输出解释、Markdown 代码块或额外字段。\n"
             "2) category_id 只能来自分类列表；无合适分类时返回空字符串。"
-        ),
-        "tagging": (
-            "输出协议：\n"
-            "1) 只返回协议要求的标签结果，不要输出解释、Markdown 代码块或额外字段。\n"
-            "2) tags 必须是 3-5 个具体、稳定、可检索的中文标签；无合适标签时返回空数组。"
         ),
     }
     STRUCTURED_OUTPUT_CONTRACTS = {
@@ -206,31 +205,6 @@ class ArticleAIPipelineService:
                 "category_id 必须是字符串；无匹配时返回空字符串；禁止输出解释、Markdown 代码块或额外字段。"
             ),
         ),
-        "tagging": PromptOutputContract(
-            mode="structured_json",
-            response_format={
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "article_tagging_result",
-                    "schema": {
-                        "type": "object",
-                        "properties": {
-                            "tags": {
-                                "type": "array",
-                                "items": {"type": "string"},
-                            }
-                        },
-                        "required": ["tags"],
-                        "additionalProperties": False,
-                    },
-                },
-            },
-            system_instruction=(
-                "固定输出协议：必须返回单个 JSON 对象，且只包含 tags 字段。\n"
-                "示例：{\"tags\": [\"标签1\", \"标签2\", \"标签3\"]}\n"
-                "tags 必须是字符串数组；禁止输出解释、Markdown 代码块或额外字段。"
-            ),
-        ),
     }
 
     def __init__(
@@ -258,7 +232,6 @@ class ArticleAIPipelineService:
                 "summary": True,
                 "outline": True,
                 "quotes": False,
-                "tagging": True,
                 "translation": True,
             }
         return {
@@ -266,7 +239,6 @@ class ArticleAIPipelineService:
             "summary": bool(options.get("summary")),
             "outline": bool(options.get("outline")),
             "quotes": bool(options.get("quotes")),
-            "tagging": bool(options.get("tagging")),
             "translation": bool(options.get("translation")),
         }
 
@@ -284,13 +256,12 @@ class ArticleAIPipelineService:
 
         interpretation_fields = (
             "classification",
-            "tagging",
             "summary",
             "outline",
             "quotes",
         )
         if any(options.get(field) for field in interpretation_fields):
-            analysis = article_tag_service.ensure_analysis(db, article)
+            analysis = _ensure_analysis(db, article)
             analysis.interpretation_status = "pending"
             analysis.interpretation_error = None
             analysis.updated_at = now_str()
@@ -320,14 +291,6 @@ class ArticleAIPipelineService:
             )
             return
 
-        if options.get("tagging"):
-            self._enqueue_task(
-                db,
-                task_type="process_article_tagging",
-                article_id=article.id,
-                content_type="tagging",
-                payload={"category_id": category_id},
-            )
         if options.get("summary"):
             self._enqueue_task(
                 db,
@@ -552,7 +515,7 @@ class ArticleAIPipelineService:
     def _enabled_interpretation_fields(self, options: dict) -> list[str]:
         return [
             field
-            for field in ("classification", "tagging", "summary", "outline", "quotes")
+            for field in ("classification", "summary", "outline", "quotes")
             if options.get(field)
         ]
 
@@ -565,9 +528,6 @@ class ArticleAIPipelineService:
         if "classification" in enabled_fields:
             properties["category_id"] = {"type": "string"}
             required.append("category_id")
-        if "tagging" in enabled_fields:
-            properties["tags"] = {"type": "array", "items": {"type": "string"}}
-            required.append("tags")
         if "summary" in enabled_fields:
             properties["summary"] = {"type": "string"}
             required.append("summary")
@@ -636,8 +596,6 @@ class ArticleAIPipelineService:
         blocks = [str(instruction or "").strip()]
         if content_type == "classification" and categories_payload:
             blocks.append(f"分类列表：\n{categories_payload}")
-        if content_type == "tagging" and category_name:
-            blocks.append(f"参考分类：{category_name}")
         output_protocol = self.SINGLE_OUTPUT_PROTOCOLS.get(content_type)
         if output_protocol:
             blocks.append(output_protocol)
@@ -688,8 +646,6 @@ class ArticleAIPipelineService:
             blocks.append(f"{label}任务要求：\n{instruction}")
             if field == "classification":
                 blocks.append(f"分类列表：\n{categories_payload}")
-            elif field == "tagging" and category_name:
-                blocks.append(f"参考分类：{category_name}")
 
         blocks.append("文章正文：\n{content}")
         return "\n\n".join(block for block in blocks if block)
@@ -808,13 +764,6 @@ class ArticleAIPipelineService:
                 raise TaskDataError("classification.category_id 必须是字符串")
             return {"category_id": category_id}
 
-        if prompt_type == "tagging":
-            tags = parsed.get("tags")
-            if not isinstance(tags, list):
-                raise TaskDataError("tagging.tags 必须是字符串数组")
-            if any(not isinstance(item, str) for item in tags):
-                raise TaskDataError("tagging.tags 必须是字符串数组")
-            return {"tags": tags}
 
         return parsed
 
@@ -878,7 +827,7 @@ class ArticleAIPipelineService:
         field_errors: dict[str, str] = {}
         enabled = set(
             enabled_fields
-            or ("classification", "tagging", "summary", "outline", "quotes")
+            or ("classification", "summary", "outline", "quotes")
         )
 
         category_id = parsed.get("category_id", "")
@@ -887,13 +836,6 @@ class ArticleAIPipelineService:
         if "classification" in enabled and not isinstance(category_id, str):
             field_errors["classification"] = "interpretation.category_id 必须是字符串"
             category_id = ""
-
-        tags = parsed.get("tags", [])
-        if "tagging" in enabled and (
-            not isinstance(tags, list) or any(not isinstance(item, str) for item in tags)
-        ):
-            field_errors["tagging"] = "interpretation.tags 必须是字符串数组"
-            tags = []
 
         summary = parsed.get("summary", "")
         if summary is None:
@@ -923,7 +865,6 @@ class ArticleAIPipelineService:
 
         field_to_status = {
             "category_id": "classification",
-            "tags": "tagging",
             "summary": "summary",
             "outline": "outline",
             "quotes": "quotes",
@@ -934,7 +875,6 @@ class ArticleAIPipelineService:
 
         return {
             "category_id": category_id,
-            "tags": tags,
             "summary": summary,
             "outline": outline,
             "quotes": quotes,
@@ -964,23 +904,14 @@ class ArticleAIPipelineService:
         self,
         analysis: AIAnalysis,
         options: dict,
-        *,
-        force_tagging: bool = False,
     ) -> None:
         status_fields = {
             "classification": "classification_status",
-            "tagging": "tagging_status",
             "summary": "summary_status",
             "outline": "outline_status",
             "quotes": "quotes_status",
         }
         for option_name, status_field in status_fields.items():
-            if (
-                option_name == "tagging"
-                and bool(analysis.tagging_manual_override)
-                and not force_tagging
-            ):
-                continue
             setattr(
                 analysis,
                 status_field,
@@ -996,22 +927,13 @@ class ArticleAIPipelineService:
         analysis: AIAnalysis,
         options: dict,
         error_message: str,
-        *,
-        force_tagging: bool = False,
     ) -> None:
         for option_name, status_field in {
             "classification": "classification_status",
-            "tagging": "tagging_status",
             "summary": "summary_status",
             "outline": "outline_status",
             "quotes": "quotes_status",
         }.items():
-            if (
-                option_name == "tagging"
-                and bool(analysis.tagging_manual_override)
-                and not force_tagging
-            ):
-                continue
             setattr(
                 analysis,
                 status_field,
@@ -1056,7 +978,6 @@ class ArticleAIPipelineService:
         source_task_id: str | None,
         source_model_config_id: str | None,
         source_prompt_config_id: str | dict[str, str] | None,
-        force_tagging: bool = False,
     ) -> dict[str, str]:
         field_statuses: dict[str, str] = {}
         field_errors = parsed_result.get("_field_errors") or {}
@@ -1081,37 +1002,6 @@ class ArticleAIPipelineService:
         else:
             analysis.classification_status = "skipped"
             field_statuses["classification"] = "skipped"
-
-        if options.get("tagging"):
-            if bool(analysis.tagging_manual_override) and not force_tagging:
-                field_statuses["tagging"] = (
-                    "completed"
-                    if analysis.tagging_status == "completed"
-                    else (analysis.tagging_status or "skipped")
-                )
-            elif field_errors.get("tagging"):
-                analysis.tagging_status = "failed"
-                field_statuses["tagging"] = "failed"
-            else:
-                tag_names = article_tag_service.parse_tag_names(parsed_result.get("tags"))
-                if tag_names:
-                    article_tag_service.set_article_tags(
-                        db,
-                        article,
-                        tag_names,
-                        manual_override=False,
-                        tagging_status="completed",
-                        source_hash=article_tag_service.get_tagging_source_hash(article),
-                    )
-                    invalidate_public_cache(CACHE_KEY_TAGS_PUBLIC)
-                    invalidate_public_rss_cache()
-                    field_statuses["tagging"] = "completed"
-                else:
-                    analysis.tagging_status = "failed"
-                    field_statuses["tagging"] = "failed"
-        else:
-            analysis.tagging_status = "skipped"
-            field_statuses["tagging"] = "skipped"
 
         if options.get("summary"):
             summary = (parsed_result.get("summary") or "").strip()
@@ -3121,7 +3011,6 @@ class ArticleAIPipelineService:
         model_config_id: str | None = None,
         prompt_config_id: str | None = None,
         post_process_options: dict | None = None,
-        force_tagging: bool = False,
     ):
         db = SessionLocal()
         try:
@@ -3129,12 +3018,11 @@ class ArticleAIPipelineService:
             if not article:
                 return
 
-            analysis = article_tag_service.ensure_analysis(db, article)
+            analysis = _ensure_analysis(db, article)
             options = self._normalize_post_process_options(post_process_options)
             self._mark_interpretation_fields_processing(
                 analysis,
                 options,
-                force_tagging=force_tagging,
             )
             db.commit()
 
@@ -3144,7 +3032,6 @@ class ArticleAIPipelineService:
                     analysis,
                     options,
                     "文章内容为空，无法生成 AI 解读",
-                    force_tagging=force_tagging,
                 )
                 db.commit()
                 raise TaskDataError("文章内容为空，无法生成 AI 解读")
@@ -3153,7 +3040,7 @@ class ArticleAIPipelineService:
             enabled_fields = self._enabled_interpretation_fields(options)
             prompt_type_priority = [
                 field
-                for field in ("summary", "outline", "quotes", "tagging", "classification")
+                for field in ("summary", "outline", "quotes", "classification")
                 if field in enabled_fields
             ]
             prompt_configs: dict[str, PromptConfig] = {}
@@ -3176,7 +3063,6 @@ class ArticleAIPipelineService:
                     analysis,
                     options,
                     "未配置文章解读任务要求：" + "、".join(missing_prompt_fields),
-                    force_tagging=force_tagging,
                 )
                 db.commit()
                 raise TaskConfigError(
@@ -3227,7 +3113,6 @@ class ArticleAIPipelineService:
                     analysis,
                     options,
                     "未配置AI服务，请先在配置页面设置AI参数",
-                    force_tagging=force_tagging,
                 )
                 db.commit()
                 raise TaskConfigError("未配置AI服务，请先在配置页面设置AI参数")
@@ -3313,7 +3198,6 @@ class ArticleAIPipelineService:
                         field: prompt_config.id
                         for field, prompt_config in prompt_configs.items()
                     },
-                    force_tagging=force_tagging,
                 )
                 response_payload = (
                     result.get("response_payload") if isinstance(result, dict) else None
@@ -3378,7 +3262,6 @@ class ArticleAIPipelineService:
                     analysis,
                     options,
                     "AI生成超时，请稍后重试",
-                    force_tagging=force_tagging,
                 )
                 db.commit()
                 raise TaskTimeoutError("AI生成超时，请稍后重试") from exc
@@ -3401,7 +3284,6 @@ class ArticleAIPipelineService:
                     analysis,
                     options,
                     str(exc),
-                    force_tagging=force_tagging,
                 )
                 db.commit()
                 if isinstance(exc, (TaskConfigError, TaskDataError, TaskExternalError)):
@@ -3663,18 +3545,6 @@ class ArticleAIPipelineService:
             effective_category_id = article.category_id or category_id
             options = self._normalize_post_process_options(post_process_options)
 
-            if options.get("tagging") and not analysis.tagging_manual_override:
-                analysis.tagging_status = "pending"
-                analysis.updated_at = now_str()
-                db.commit()
-                self._enqueue_task(
-                    db,
-                    task_type="process_article_tagging",
-                    article_id=article_id,
-                    content_type="tagging",
-                    payload={"category_id": effective_category_id},
-                )
-
             if options.get("summary"):
                 self._enqueue_task(
                     db,
@@ -3727,217 +3597,9 @@ class ArticleAIPipelineService:
         finally:
             db.close()
 
-    async def process_article_tagging(
-        self,
-        article_id: str,
-        category_id: str | None,
-        force: bool = False,
-        model_config_id: str | None = None,
-        prompt_config_id: str | None = None,
-    ):
-        db = SessionLocal()
-        try:
-            article = db.query(Article).filter(Article.id == article_id).first()
-            if not article:
-                return
-
-            analysis = article_tag_service.ensure_analysis(db, article)
-            if bool(analysis.tagging_manual_override) and not force:
-                analysis.updated_at = now_str()
-                db.commit()
-                return
-
-            _, source_content = self.normalize_source_content(article)
-            if not source_content:
-                analysis.tagging_status = "failed"
-                analysis.updated_at = now_str()
-                db.commit()
-                raise TaskDataError("文章内容为空，无法生成标签")
-
-            source_hash = article_tag_service.get_tagging_source_hash(article)
-            if (
-                not force
-                and analysis.tagging_status == "completed"
-                and analysis.tagging_source_hash == source_hash
-                and len(article.tags) > 0
-            ):
-                return
-
-            analysis.tagging_status = "processing"
-            analysis.updated_at = now_str()
-            db.commit()
-
-            tagging_config = None
-            prompt = None
-
-            if model_config_id:
-                model_config = (
-                    db.query(ModelAPIConfig)
-                    .filter(
-                        ModelAPIConfig.id == model_config_id,
-                        ModelAPIConfig.is_enabled == True,
-                    )
-                    .first()
-                )
-                if not model_config:
-                    raise TaskConfigError("指定模型配置不存在或已禁用")
-                self._assert_general_model(model_config)
-                tagging_config = {
-                    "base_url": model_config.base_url,
-                    "api_key": model_config.api_key,
-                    "model_name": model_config.model_name,
-                    "model_api_config_id": model_config.id,
-                    "price_input_per_1k": model_config.price_input_per_1k,
-                    "price_output_per_1k": model_config.price_output_per_1k,
-                    "currency": model_config.currency,
-                    "context_window_tokens": model_config.context_window_tokens,
-                    "reserve_output_tokens": model_config.reserve_output_tokens,
-                }
-                # 当指定模型但未指定提示词时，获取默认标签提示词
-                if not prompt_config_id:
-                    default_prompt_config = self._get_prompt_config(
-                        db, category_id=category_id, prompt_type="tagging"
-                    )
-                    if default_prompt_config:
-                        prompt = default_prompt_config.prompt
-
-            if prompt_config_id:
-                prompt_config_obj = (
-                    db.query(PromptConfig)
-                    .filter(
-                        PromptConfig.id == prompt_config_id,
-                        PromptConfig.is_enabled == True,
-                        PromptConfig.type == "tagging",
-                    )
-                    .first()
-                )
-                if not prompt_config_obj:
-                    raise TaskConfigError("指定标签提示词不存在、已禁用或类型不匹配")
-                prompt = prompt_config_obj.prompt
-
-            if not tagging_config:
-                tagging_config = self.get_ai_config(db, category_id, prompt_type="tagging")
-
-            if not tagging_config:
-                analysis.tagging_status = "failed"
-                analysis.updated_at = now_str()
-                db.commit()
-                raise TaskConfigError("未配置AI服务，请先在配置页面设置AI参数")
-
-            # 如果 prompt 还没有设置，尝试从 tagging_config 获取
-            if not prompt and tagging_config:
-                prompt = tagging_config.get("prompt_template")
-
-            # 如果没有提示词配置，跳过 AI 调用
-            if not prompt:
-                analysis.tagging_status = "failed"
-                analysis.error_message = "未配置标签提示词，请先在配置页面设置"
-                analysis.updated_at = now_str()
-                db.commit()
-                return
-
-            category_name = article.category.name if article.category else ""
-            prompt = self._build_article_task_prompt(
-                prompt,
-                "tagging",
-                article=article,
-                category_name=category_name,
-                content_placeholder=True,
-            )
-            parameters = self._merge_protocol_parameters(
-                "tagging",
-                tagging_config.get("parameters"),
-            )
-            pricing = {
-                "model_api_config_id": tagging_config.get("model_api_config_id"),
-                "price_input_per_1k": tagging_config.get("price_input_per_1k"),
-                "price_output_per_1k": tagging_config.get("price_output_per_1k"),
-                "currency": tagging_config.get("currency"),
-            }
-
-            try:
-                result = await self.create_ai_client(tagging_config).generate_summary(
-                    source_content,
-                    prompt=prompt,
-                    parameters=parameters,
-                    max_tokens=300,
-                )
-                if isinstance(result, dict):
-                    self._log_ai_usage(
-                        db,
-                        model_config_id=pricing.get("model_api_config_id"),
-                        article_id=article_id,
-                        task_type="process_article_tagging",
-                        content_type="tagging",
-                        usage=result.get("usage"),
-                        latency_ms=result.get("latency_ms"),
-                        status="completed",
-                        error_message=None,
-                        price_input_per_1k=pricing.get("price_input_per_1k"),
-                        price_output_per_1k=pricing.get("price_output_per_1k"),
-                        currency=pricing.get("currency"),
-                        request_payload=result.get("request_payload"),
-                        response_payload=result.get("response_payload"),
-                    )
-                    result = result.get("content")
-
-                parsed_result = self._parse_structured_task_result("tagging", result)
-                tag_names = article_tag_service.parse_tag_names(parsed_result["tags"])
-                article_tag_service.set_article_tags(
-                    db,
-                    article,
-                    tag_names,
-                    manual_override=False,
-                    tagging_status="completed",
-                    source_hash=source_hash,
-                )
-                invalidate_public_cache(CACHE_KEY_TAGS_PUBLIC)
-                invalidate_public_rss_cache()
-                db.commit()
-            except asyncio.TimeoutError:
-                self._log_ai_usage(
-                    db,
-                    model_config_id=pricing.get("model_api_config_id"),
-                    article_id=article_id,
-                    task_type="process_article_tagging",
-                    content_type="tagging",
-                    usage=None,
-                    latency_ms=None,
-                    status="failed",
-                    error_message="AI生成超时，请稍后重试",
-                    price_input_per_1k=pricing.get("price_input_per_1k"),
-                    price_output_per_1k=pricing.get("price_output_per_1k"),
-                    currency=pricing.get("currency"),
-                )
-                analysis = article_tag_service.ensure_analysis(db, article)
-                analysis.tagging_status = "failed"
-                analysis.error_message = "AI生成超时，请稍后重试"
-                analysis.updated_at = now_str()
-                db.commit()
-                raise TaskTimeoutError("AI生成超时，请稍后重试")
-            except Exception as exc:
-                self._log_ai_usage(
-                    db,
-                    model_config_id=pricing.get("model_api_config_id"),
-                    article_id=article_id,
-                    task_type="process_article_tagging",
-                    content_type="tagging",
-                    usage=None,
-                    latency_ms=None,
-                    status="failed",
-                    error_message=str(exc),
-                    price_input_per_1k=pricing.get("price_input_per_1k"),
-                    price_output_per_1k=pricing.get("price_output_per_1k"),
-                    currency=pricing.get("currency"),
-                )
-                analysis = article_tag_service.ensure_analysis(db, article)
-                analysis.tagging_status = "failed"
-                analysis.error_message = str(exc)
-                analysis.updated_at = now_str()
-                db.commit()
-                raise TaskExternalError(str(exc))
-        finally:
-            db.close()
+    async def process_article_tagging(self, article_id, task_id=None, **kwargs):
+        # Tagging feature removed; no-op for legacy queued tasks.
+        return {"status": "skipped", "reason": "tagging_removed"}
 
     async def process_article_translation(
         self,

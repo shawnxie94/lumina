@@ -19,6 +19,7 @@ import Button from "@/components/Button";
 import ConfirmModal from "@/components/ConfirmModal";
 import IconButton from "@/components/IconButton";
 import ReviewReferenceInsertPanel from "@/components/ReviewReferenceInsertPanel";
+import TopicInsertPanel from "@/components/TopicInsertPanel";
 import SeoHead from "@/components/SeoHead";
 import { BackToTop } from "@/components/BackToTop";
 import ArticleMetaRow from "@/components/article/ArticleMetaRow";
@@ -85,6 +86,7 @@ import {
 	formatReviewReferenceInsertion,
 	type ReviewReferenceCommandMatch,
 } from "@/lib/reviewReference";
+import { materializeTopicPlaceholders } from "@/lib/topicPlaceholders";
 import {
 	fetchServerBasicSettings,
 	fetchServerReview,
@@ -527,6 +529,7 @@ export default function ReviewDetailPage({
 	const [mediaStorageLoading, setMediaStorageLoading] = useState(false);
 	const [mediaUploading, setMediaUploading] = useState(false);
 	const [showReferenceInsertPanel, setShowReferenceInsertPanel] = useState(false);
+	const [showTopicInsertPanel, setShowTopicInsertPanel] = useState(false);
 	const [referenceCommandRange, setReferenceCommandRange] =
 		useState<ReviewReferenceCommandMatch | null>(null);
 
@@ -882,18 +885,30 @@ export default function ReviewDetailPage({
 		() => resolveMediaUrl(topImage || siteSettings.site_logo_url || "/logo.png"),
 		[topImage, siteSettings.site_logo_url],
 	);
-	const html = useMemo(
-		() =>
-			renderSafeMarkdown(review.rendered_markdown || review.markdown_content || "", {
-				enableMediaEmbed: true,
-			}),
-		[review.markdown_content, review.rendered_markdown],
-	);
+	const html = useMemo(() => {
+		const materialized = materializeTopicPlaceholders(
+			materializeReviewArticlePlaceholders(
+				review.rendered_markdown || review.markdown_content || "",
+				review.article_sections_markdown,
+				review.article_placeholder_blocks,
+			),
+		);
+		return renderSafeMarkdown(materialized, {
+			enableMediaEmbed: true,
+		});
+	}, [
+		review.article_placeholder_blocks,
+		review.article_sections_markdown,
+		review.markdown_content,
+		review.rendered_markdown,
+	]);
 	const editPreviewMarkdown = useMemo(() => {
-		return materializeReviewArticlePlaceholders(
-			markdownContent || "",
-			review.article_sections_markdown,
-			review.article_placeholder_blocks,
+		return materializeTopicPlaceholders(
+			materializeReviewArticlePlaceholders(
+				markdownContent || "",
+				review.article_sections_markdown,
+				review.article_placeholder_blocks,
+			),
 		);
 	}, [
 		markdownContent,
@@ -1736,6 +1751,9 @@ export default function ReviewDetailPage({
 												<span className="text-xs font-normal text-text-3">
 													{t("输入 /ref 可打开引用插入。")}
 												</span>
+												<span className="text-xs font-normal text-text-3">
+													{t("支持主题占位符 {{topic:key}} / {{topic_article:slug}}。")}
+												</span>
 												{!mediaStorageEnabled ? (
 													<span className="text-xs font-normal text-text-3">
 													{t("未开启本地存储，外链将保持不变")}
@@ -1743,6 +1761,13 @@ export default function ReviewDetailPage({
 											) : null}
 										</div>
 											<div className="flex items-center gap-2">
+												<Button
+													size="sm"
+													variant="secondary"
+													onClick={() => setShowTopicInsertPanel(true)}
+												>
+													{t("按主题取用")}
+												</Button>
 												<IconButton
 													onClick={handleBatchConvertMarkdownImages}
 													disabled={mediaUploading || !mediaStorageEnabled}
@@ -2110,6 +2135,29 @@ export default function ReviewDetailPage({
 				onInsert={handleInsertReference}
 				selectedArticleIds={review.selected_article_ids || []}
 			/>
+			<TopicInsertPanel
+				isOpen={showTopicInsertPanel}
+				onClose={() => setShowTopicInsertPanel(false)}
+				onInsert={(markdown) => {
+					const target = editContentRef.current;
+					if (!target) {
+						setMarkdownContent((prev) => `${prev}${prev.endsWith("\n") ? "" : "\n"}${markdown}`);
+						setShowTopicInsertPanel(false);
+						return;
+					}
+					const start = target.selectionStart ?? target.value.length;
+					const endPos = target.selectionEnd ?? start;
+					const next = `${target.value.slice(0, start)}${markdown}${target.value.slice(endPos)}`;
+					setMarkdownContent(next);
+					setShowTopicInsertPanel(false);
+					window.requestAnimationFrame(() => {
+						const cursor = start + markdown.length;
+						target.focus();
+						target.setSelectionRange(cursor, cursor);
+					});
+				}}
+			/>
+
 
 			{lightboxImage && (
 				<div

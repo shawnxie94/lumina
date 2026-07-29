@@ -105,7 +105,6 @@ def test_create_article_queues_only_enabled_post_processing(db_session):
             auto_ai_summary_enabled=True,
             auto_ai_outline_enabled=True,
             auto_ai_quotes_enabled=True,
-            auto_ai_tagging_enabled=False,
             auto_translation_enabled=False,
         )
     )
@@ -147,7 +146,6 @@ def test_create_article_uses_bundle_for_enabled_interpretation_fields(db_session
             auto_ai_summary_enabled=True,
             auto_ai_outline_enabled=True,
             auto_ai_quotes_enabled=True,
-            auto_ai_tagging_enabled=False,
             auto_translation_enabled=False,
         )
     )

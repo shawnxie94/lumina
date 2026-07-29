@@ -314,13 +314,8 @@ class AITaskService:
         category_id,
         payload: dict,
     ):
-        await pipeline.process_article_tagging(
-            article_id,
-            category_id,
-            force=bool(payload.get("force")),
-            model_config_id=payload.get("model_config_id"),
-            prompt_config_id=payload.get("prompt_config_id"),
-        )
+        # Legacy no-op for queued tagging tasks after tag feature removal.
+        await pipeline.process_article_tagging(article_id)
 
     async def _handle_process_article_translation(
         self,
@@ -351,7 +346,6 @@ class AITaskService:
             model_config_id=payload.get("model_config_id"),
             prompt_config_id=payload.get("prompt_config_id"),
             post_process_options=payload.get("post_process_options"),
-            force_tagging=bool(payload.get("force_tagging")),
         )
 
     async def _handle_process_ai_content(

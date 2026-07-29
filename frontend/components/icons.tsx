@@ -66,6 +66,18 @@ export function IconTag(props: IconProps) {
   );
 }
 
+export function IconNetwork(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <circle cx="6" cy="6" r="2.5" />
+      <circle cx="18" cy="6" r="2.5" />
+      <circle cx="6" cy="18" r="2.5" />
+      <circle cx="18" cy="18" r="2.5" />
+      <path d="M8.5 6h7M6 8.5v7M18 8.5v7M8.5 18h7" />
+    </IconBase>
+  );
+}
+
 export function IconSearch(props: IconProps) {
   return (
     <IconBase {...props}>

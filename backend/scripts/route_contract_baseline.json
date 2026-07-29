@@ -174,6 +174,12 @@
     ]
   },
   {
+    "path": "/api/articles/{article_slug}/interpretation/regenerate",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/articles/{article_slug}/notes",
     "methods": [
       "PUT"
@@ -678,19 +684,7 @@
     ]
   },
   {
-    "path": "/api/review-templates/{template_id}/issues",
-    "methods": [
-      "GET"
-    ]
-  },
-  {
     "path": "/api/review-templates/{template_id}/run-manual",
-    "methods": [
-      "POST"
-    ]
-  },
-  {
-    "path": "/api/review-templates/{template_id}/run-now",
     "methods": [
       "POST"
     ]
@@ -816,13 +810,43 @@
     ]
   },
   {
+    "path": "/api/settings/topics",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/settings/topics",
+    "methods": [
+      "PUT"
+    ]
+  },
+  {
     "path": "/api/sources",
     "methods": [
       "GET"
     ]
   },
   {
-    "path": "/api/tags",
+    "path": "/api/topics",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/topics/compile-results",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
+    "path": "/api/topics/export/articles",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
+    "path": "/api/topics/{topic_key}",
     "methods": [
       "GET"
     ]

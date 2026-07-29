@@ -39,7 +39,7 @@ async def test_create_prompt_config_ignores_response_format_and_hides_it(db_sess
 async def test_update_prompt_config_clears_stored_response_format(db_session):
     existing = PromptConfig(
         name="旧标签提示词",
-        type="tagging",
+        type="summary",
         prompt="旧提示词",
         system_prompt="旧 system",
         is_enabled=True,
@@ -52,7 +52,7 @@ async def test_update_prompt_config_clears_stored_response_format(db_session):
 
     payload = PromptConfigBase(
         name="新标签提示词",
-        type="tagging",
+        type="summary",
         prompt="新提示词",
         system_prompt="新 system",
         response_format="json_object",

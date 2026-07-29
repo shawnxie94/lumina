@@ -24,7 +24,7 @@ REQUIRED_SNAPSHOT_TABLES = {
     "ai_analyses",
     "ai_analysis_versions",
     "article_comments",
-    "article_tags",
+    "article_topics",
     "articles",
     "categories",
     "media_assets",
@@ -34,7 +34,8 @@ REQUIRED_SNAPSHOT_TABLES = {
     "review_issue_articles",
     "review_issues",
     "review_templates",
-    "tags",
+    "topic_claims",
+    "topics",
 }
 SNAPSHOT_DATA_TABLES = REQUIRED_SNAPSHOT_TABLES | {"alembic_version"}
 EXCLUDED_RUNTIME_TABLES = (

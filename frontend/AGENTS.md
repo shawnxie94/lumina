@@ -1,5 +1,5 @@
 # FRONTEND AGENTS
-**Updated:** 2026-07-22 18:01 Asia/Shanghai (`25404b1`)
+**Updated:** 2026-07-29 17:40 Asia/Shanghai
 
 ## OVERVIEW
 Next.js 14 pages-router frontend with Tailwind + Ant Design, shared API helpers, and bilingual UI (`zh-CN`/`en`).
@@ -17,6 +17,11 @@ frontend/
 ```
 
 ## WHERE TO LOOK
+| Topic settings panel | `frontend/components/TopicSettingsPanel.tsx` | Admin “主题解析”: Bridge health, sync, install guidance |
+| Topic detail page | `frontend/pages/topics/[key].tsx` | Public entity/concept page |
+| Topic insert helper | `frontend/components/TopicInsertPanel.tsx` `frontend/lib/topicPlaceholders.ts` | Column/editor topic placeholders |
+| Topic API client | `frontend/lib/api.ts` (`topicApi` / `topicSettingsApi`) | Topics + settings + orphan cleanup |
+
 | Task | Location | Notes |
 |------|----------|-------|
 | API client + token helpers | `frontend/lib/api.ts` | Axios instance + typed modules |

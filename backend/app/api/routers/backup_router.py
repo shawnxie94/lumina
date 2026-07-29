@@ -10,7 +10,6 @@ from app.core.public_cache import (
     CACHE_KEY_SETTINGS_BASIC_PUBLIC,
     CACHE_KEY_SETTINGS_COMMENTS_PUBLIC,
     CACHE_KEY_SOURCES_PUBLIC,
-    CACHE_KEY_TAGS_PUBLIC,
     invalidate_public_cache,
 )
 from app.core.dependencies import get_admin_or_internal
@@ -82,8 +81,7 @@ async def import_backup(
             CACHE_KEY_SETTINGS_BASIC_PUBLIC,
             CACHE_KEY_SETTINGS_COMMENTS_PUBLIC,
             CACHE_KEY_SOURCES_PUBLIC,
-            CACHE_KEY_TAGS_PUBLIC,
-        )
+                )
         return result
     except ValueError as exc:
         db.rollback()

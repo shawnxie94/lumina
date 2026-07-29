@@ -70,7 +70,6 @@ class ArticleCommandService:
                 "summary": False,
                 "outline": False,
                 "quotes": False,
-                "tagging": False,
                 "translation": False,
         }
         requested = article_data.get("post_process_options")
@@ -81,7 +80,6 @@ class ArticleCommandService:
                 "summary": bool(requested.get("summary")),
                 "outline": bool(requested.get("outline")),
                 "quotes": bool(requested.get("quotes")),
-                "tagging": bool(requested.get("tagging")),
                 "translation": bool(requested.get("translation")),
             }
         admin = get_admin_settings(db)
@@ -95,7 +93,6 @@ class ArticleCommandService:
             "summary": enabled_by_default("auto_ai_summary_enabled"),
             "outline": getattr(admin, "auto_ai_outline_enabled", True) is not False,
             "quotes": bool(getattr(admin, "auto_ai_quotes_enabled", False)),
-            "tagging": enabled_by_default("auto_ai_tagging_enabled"),
             "translation": enabled_by_default("auto_translation_enabled"),
         }
 
@@ -178,7 +175,7 @@ class ArticleCommandService:
 
         interpretation_fields = (
             "classification",
-            "tagging",
+            
             "summary",
             "outline",
             "quotes",
@@ -203,31 +200,7 @@ class ArticleCommandService:
             )
             return
 
-        if options.get("tagging"):
-            self.ai_task_service.enqueue_task(
-                db,
-                task_type="process_article_tagging",
-                article_id=article.id,
-                content_type="tagging",
-                payload={"category_id": category_id},
-            )
-        if options.get("summary"):
-            self.ai_task_service.enqueue_task(
-                db,
-                task_type="process_ai_content",
-                article_id=article.id,
-                content_type="summary",
-                payload={"category_id": category_id},
-            )
-        for content_type in ("outline", "quotes"):
-            if options.get(content_type):
-                self.ai_task_service.enqueue_task(
-                    db,
-                    task_type="process_ai_content",
-                    article_id=article.id,
-                    content_type=content_type,
-                    payload={"category_id": category_id},
-                )
+
         if options.get("translation") and article.content_md and is_english_content(
             article.content_md
         ):
