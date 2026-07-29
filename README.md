@@ -4,20 +4,21 @@ English | [中文](./README.zh-CN.md)
 
 ## What is Lumina?
 
-Lumina is an information management workspace that combines a web app, FastAPI backend, and browser extension to help you capture web content, use AI insights, and manage reading efficiently.
+Lumina is an information management workspace that combines a web app, FastAPI backend, and browser extension to help you capture web content, run AI insights, and manage reading efficiently.
 
 ## Core Features
 
-- **Browser capture workflow**: one-click full-page or selection capture via popup/context menu, with built-in recent capture history, error logs, and site-adapter extraction.
-- **Structured article library**: title search plus category/tag/author/source/time filters, with batch category, hide, and delete actions for efficient content management.
-- **Deep reading experience**: detail page supports original/translated views, immersive mode, TOC, article notes, highlight annotations, and rendering for code, math, and common media embeds.
-- **AI insight pipeline**: generate summaries, key points, quotes, outlines, translations, auto-classification, auto-tagging, and similar-article recommendations with monitorable background tasks that also support continuation feedback, repair rounds, cancellation, retry, and chain-based timelines.
-- **Review workflow**: create template-driven periodic reviews, regenerate draft reviews from selected articles, and insert either article placeholders or quoted content references directly inside the review editor.
+- **Browser capture workflow**: one-click full-page or selection capture via popup/context menu, powered by Defuddle, with recent capture history and error logs.
+- **Structured article library**: title search plus category / author / source / time filters, optional topic filter when enabled, and batch category, hide, and delete actions.
+- **Deep reading experience**: detail page supports original/translated views, immersive mode, TOC, article notes, highlight annotations, topic chips, and rendering for code, math, and common media embeds.
+- **AI insight pipeline**: generate summaries, key points, quotes, outlines, translations, auto-classification, and similar-article recommendations with monitorable background tasks that support continuation, repair rounds, cancellation, retry, and chain timelines.
+- **Columns workspace**: publish curated columns, insert article / topic / quote-style references in the editor, and organize longer-form reading paths on top of your library.
+- **Optional topic knowledge**: enable Topic settings, install Lumina CLI locally, connect Bridge to a knowledge project (default provider: llm_wiki), then sync entity/concept topics back to articles and topic detail pages.
 - **Comments and collaboration**: article comments/replies, admin moderation (hide/delete), GitHub/Google OAuth sign-in, and sensitive-word filtering for public discussions.
-- **Admin control center**: configure site basics and home copy, model APIs (general/vector), prompts, recommendation strategy, categories, comments, review templates, and storage settings.
+- **Admin control center**: configure site basics and home copy, model APIs (general/vector), prompts, recommendation strategy, categories, columns-related settings, comments, optional topic/Bridge settings, and storage.
 - **Operations and observability**: monitor AI task timelines, usage metrics (calls/tokens/cost), header notification center for failed tasks/API errors, and key backend health signals.
-- **Content lifecycle management**: local media storage/compression/cleanup, detail-page Markdown export for both articles and reviews, public RSS feeds for articles and reviews, plus background backup generation/download and strict incremental import for migration and recovery.
-- **Localized UI and access model**: built-in Chinese/English UI support, light/dark themes, guest browsing, and admin-authenticated management flows.
+- **Content lifecycle management**: local media storage/compression/cleanup, detail-page Markdown export, public RSS feeds, plus background backup generation/download and strict incremental import for migration and recovery.
+- **Localized UI and access model**: built-in Chinese/English UI, light/dark themes, guest browsing, and admin-authenticated management flows.
 
 ## Product Flow
 
@@ -27,7 +28,11 @@ flowchart LR
     B --> C["Create AI tasks"]
     C --> D["Worker runs AI analysis"]
     D --> E["Read and manage in web app"]
-    E --> F["Export content"]
+    E --> F["Export / columns / RSS"]
+    B -.-> G["Optional: local CLI + Bridge"]
+    G -.-> H["Knowledge compile entities/concepts"]
+    H -.-> I["Write topics back to Lumina"]
+    I -.-> E
 ```
 
 ### RSS Reader
@@ -48,7 +53,7 @@ Android phone RSS reader can use [readrops-lumina](https://github.com/shawnxie94
 
 ### 3) Article detail page
 
-- **Normal mode (default)**: shows original content, full-text annotations, highlights, TOC, AI insights, and recommendations.
+- **Normal mode (default)**: shows original content, full-text annotations, highlights, TOC, AI insights, topics, and recommendations.
 
 ![Article detail](./docs/assets/screenshots/02-article-detail-ai-panel.png)
 
@@ -62,7 +67,7 @@ Android phone RSS reader can use [readrops-lumina](https://github.com/shawnxie94
 
 ![Monitoring module](./docs/assets/screenshots/03-admin-dashboard-monitoring.png)
 
-- **Settings module**: basic, categories, AI, comments, and storage configuration.
+- **Settings module**: basic, categories, AI, comments, storage, and optional topic parsing settings.
 
 ![Settings module](./docs/assets/screenshots/03-admin-dashboard-settings.png)
 
@@ -91,27 +96,27 @@ Android phone RSS reader can use [readrops-lumina](https://github.com/shawnxie94
 
 ![Comments](./docs/assets/screenshots/05-page-comments.png)
 
-- **Content export**: export article title, cover image, and summary by category, and download the current article or review detail page as Markdown.
+- **Content export**: export article title, cover image, and summary by category, and download the current article or column detail page as Markdown.
 
 ![Export](./docs/assets/screenshots/05-page-export.png)
 
-- **Review workspace**: published review pages, template-based review generation, article/content reference insertion, and review comments are available out of the box.
+- **Columns workspace**: published column pages, template-assisted drafting, article/topic/content reference insertion, and column comments.
 
-![Review](./docs/assets/screenshots/05-review.png)
+![Columns](./docs/assets/screenshots/05-review.png)
 
-- **RSS subscription**: public RSS feeds are available for both articles and reviews, with article feeds supporting category and tag filters.
+- **RSS subscription**: public RSS feeds for articles and columns; article feeds support category filters.
 
 ![RSS subscription](./docs/assets/screenshots/05-rss.png)
 
-- **Notification center**: the header aggregates failed AI task chains and API error notifications in one place.
+- **Notification center**: view AI task-chain failures and API error notifications in the page header.
 
 ![Notification center](./docs/assets/screenshots/05-notice.png)
 
-- **Backup operations**: the admin storage panel can trigger the latest backup as a background job, poll progress, and download the generated archive when ready.
+- **Backup operations**: storage settings can start a “latest backup” background job, poll generation status, and download the archive when ready.
 
-![Backup operations](./docs/assets/screenshots/05-backup.png)
+![Backup](./docs/assets/screenshots/05-backup.png)
 
-More features are coming...
+More features are evolving...
 
 ## Quick Start
 
@@ -120,19 +125,19 @@ docker compose up -d
 ./scripts/docker_healthcheck.sh
 ```
 
-Open:
+URLs:
 
 - Web: <http://localhost:3000>
-- API (routes): <http://localhost:8000/backend>
-- API (docs): <http://localhost:8000/docs>
+- API: <http://localhost:8000/backend>
+- API docs: <http://localhost:8000/docs>
 
 ## Production Notes
 
-- Docker Compose files include an API healthcheck against `/backend/`.
-- `./scripts/docker_watchdog.sh` can be run from cron or systemd to restart the API service when the health probe stops responding.
-- For production deployments, serve `/backend/media/` directly from nginx instead of proxying media files through FastAPI. See `deploy/nginx/lumina.conf.example`.
+- The Docker Compose file includes an API healthcheck for `/backend/`.
+- `./scripts/docker_watchdog.sh` can run via cron or systemd and restart the API when the probe fails.
+- In production, prefer nginx serving `/backend/media/` directly instead of proxying media through FastAPI. See `deploy/nginx/lumina.conf.example`.
 
-## Minimal Dev Notes
+## Minimal development notes
 
 ```bash
 # Frontend
@@ -153,24 +158,27 @@ npm run dev
 
 ## FAQ
 
-### Why does API fail to start?
+### Why does the API fail to start?
 
-`INTERNAL_API_TOKEN` is required by backend startup validation. Set it in your environment or Docker config.
+Backend startup validation requires `INTERNAL_API_TOKEN`. Set it in env or Docker config.
 
-### Why can't I log in to the admin panel?
+### Why can’t I log into admin?
 
-On first run, open `/login` and set the admin password before normal login.
+On first use, open `/login` to set the admin password, then sign in normally.
 
-### Why does frontend API return 404 (for example `/api/articles`)?
+### Why do frontend API calls 404 (for example `/api/articles`)?
 
-Backend routes are served under `/backend/api/*` only (unprefixed `/api/*` is not available).
+Backend routes are only served under `/backend/api/*` (bare `/api/*` is not available).
 
-Check `API_BASE_URL`. In same-origin production it should normally be `/backend`; in local split-port setups it can be `http://localhost:8000/backend`.
+Check `API_BASE_URL`. Same-origin setups usually use `/backend`; split local ports may use `http://localhost:8000/backend`.
 
+### Why can’t the extension submit articles?
 
-### Why does the extension fail to submit article?
+Check the extension API base URL and confirm the browser can reach the backend.
 
-Check extension API host settings and confirm backend is reachable from the browser.
+### Why are topics empty?
+
+Topic parsing is optional and off by default. Enable it in admin **Topic parsing** settings, install/run local CLI + Bridge + knowledge compiler, then sync. Public topic pages only show compiled **entities** and **concepts** for now.
 
 ## License
 
