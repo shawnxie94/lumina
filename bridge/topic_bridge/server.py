@@ -30,7 +30,14 @@ from .sync import (
 
 
 class BridgeHandler(BaseHTTPRequestHandler):
-    config: BridgeConfig
+    # Startup snapshot only used for the listen banner; request handlers always
+    # re-load from ~/.lumina/config.yaml (with mtime cache) so URL/token changes
+    # do not require a process restart.
+    startup_config: BridgeConfig
+
+    @property
+    def config(self) -> BridgeConfig:
+        return load_config()
 
     def log_message(self, format: str, *args: Any) -> None:  # noqa: A003
         print(f"[bridge] {self.address_string()} {format % args}")
@@ -130,6 +137,13 @@ class BridgeHandler(BaseHTTPRequestHandler):
                         "actions": setup.get("actions") or [],
                         "commands": setup.get("commands") or {},
                         "notes": setup.get("notes") or [],
+                    },
+                    "config": {
+                        "source": self.config.config_source,
+                        "path": self.config.config_path,
+                        "lumina_base_url": self.config.lumina_base_url,
+                        "has_token": bool(self.config.lumina_internal_token),
+                        "project_path": str(self.config.project_path),
                     },
                     "cursor": {
                         "last_article_sync_at": state.last_article_sync_at,
@@ -251,12 +265,13 @@ class BridgeHandler(BaseHTTPRequestHandler):
 
 
 def main(argv: list[str] | None = None) -> int:
-    config = load_config()
-    BridgeHandler.config = config
+    config = load_config(force_reload=True)
+    BridgeHandler.startup_config = config
     server = ThreadingHTTPServer((config.host, config.port), BridgeHandler)
     print(
         f"[bridge] listening on http://{config.host}:{config.port} "
-        f"project={config.project_path}"
+        f"project={config.project_path} config_source={config.config_source}"
+        + (f" config_path={config.config_path}" if config.config_path else "")
     )
     try:
         server.serve_forever()

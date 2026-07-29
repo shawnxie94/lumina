@@ -26,6 +26,8 @@ class LuminaClient:
         data = None
         headers = {
             "Accept": "application/json",
+            # Cloudflare Bot Fight / WAF may block bare urllib UA with 1010.
+            "User-Agent": "lumina-bridge/0.1",
             "X-Internal-Token": self.config.lumina_internal_token,
         }
         if payload is not None:

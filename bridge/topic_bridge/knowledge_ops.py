@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from .config import BridgeConfig
+from .config import BridgeConfig, load_config
 from .export_body import slugify_filename
 from .state import BridgeState, utc_now_iso
 from .wiki_scan import _parse_frontmatter, scan_wiki_topics
@@ -431,11 +431,14 @@ def schedule_auto_writeback(
         last_inspect: dict[str, Any] = {}
         try:
             while time.time() < deadline:
-                last_inspect = inspect_llm_wiki_compile(config)
+                # Reload CLI config each poll so URL/token/project changes apply
+                # without requiring a bridge process restart.
+                active = load_config()
+                last_inspect = inspect_llm_wiki_compile(active)
                 if last_inspect.get("ready"):
                     with _WRITEBACK_LOCK:
                         _WRITEBACK_JOB["status"] = "writing"
-                    result = writeback_topics_from_wiki(config)
+                    result = writeback_topics_from_wiki(active)
                     with _WRITEBACK_LOCK:
                         _WRITEBACK_JOB.update(
                             {

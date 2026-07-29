@@ -22,8 +22,13 @@ lumina up --install
 lumina sync
 ```
 
-Config: `~/.lumina/config.yaml`
+Config: `~/.lumina/config.yaml` (source of truth for remote URL/token/project)
 Bridge runtime: `~/.lumina/topic-bridge`
+
+Bridge hot-reads the CLI config on each request. Changing `lumina.base_url` /
+`lumina.token` does **not** require `lumina bridge restart`. Restart is only
+needed for listen host/port changes or Bridge code upgrades. Legacy
+`topic-bridge/.env` is fallback only when CLI config is missing.
 
 ## Shell completion
 
