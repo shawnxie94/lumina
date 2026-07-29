@@ -834,6 +834,12 @@
     ]
   },
   {
+    "path": "/api/topics/cleanup-orphans",
+    "methods": [
+      "POST"
+    ]
+  },
+  {
     "path": "/api/topics/compile-results",
     "methods": [
       "POST"
