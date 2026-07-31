@@ -154,6 +154,15 @@ def upgrade() -> None:
         review_issue_columns = _column_names(inspector, "review_issues")
         review_issue_indexes = _index_names(inspector, "review_issues")
         with op.batch_alter_table("review_issues") as batch_op:
+            # Some pre-release databases may already have the review_issues
+            # table from the current ORM metadata while still being stamped
+            # before this migration. Restore the historical window columns
+            # before creating their indexes; the later product-cleanup
+            # migration removes them again.
+            if "window_start" not in review_issue_columns:
+                batch_op.add_column(sa.Column("window_start", sa.String(), nullable=True))
+            if "window_end" not in review_issue_columns:
+                batch_op.add_column(sa.Column("window_end", sa.String(), nullable=True))
             if "top_image" not in review_issue_columns:
                 batch_op.add_column(sa.Column("top_image", sa.String(), nullable=True))
             if "view_count" not in review_issue_columns:
