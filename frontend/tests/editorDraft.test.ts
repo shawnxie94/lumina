@@ -20,7 +20,6 @@ const baseArticle = (): ArticleEditorDraftPayload => ({
   author: "Author",
   publishedAt: "2026-07-21",
   categoryId: "c1",
-  tagNames: ["a", "b"],
   topImage: "https://example.com/a.png",
   content: "# Hello",
 });
@@ -59,6 +58,11 @@ test("builds stable draft keys", () => {
 test("detects dirty article and column drafts", () => {
   const article = baseArticle();
   assert.equal(isArticleEditorDraftDirty(article, article), false);
+  const legacyTagDraft = {
+    ...article,
+    tagNames: ["legacy-tag"],
+  } as ArticleEditorDraftPayload;
+  assert.equal(isArticleEditorDraftDirty(legacyTagDraft, article), false);
   assert.equal(
     isArticleEditorDraftDirty({ ...article, content: "# Hello\n" }, article),
     true,

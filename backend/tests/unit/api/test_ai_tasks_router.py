@@ -73,6 +73,41 @@ async def test_list_ai_tasks_prefers_translated_article_title(db_session):
 
 
 @pytest.mark.anyio
+async def test_retry_skips_removed_tagging_task(db_session):
+    task = AITask(
+        id="removed-tagging-task",
+        task_type="process_article_tagging",
+        content_type="tagging",
+        status="failed",
+        payload="{}",
+        attempts=1,
+        max_attempts=1,
+        run_at="2026-07-30T10:00:00",
+        created_at="2026-07-30T10:00:00",
+        updated_at="2026-07-30T10:01:00",
+        finished_at="2026-07-30T10:01:00",
+    )
+    db_session.add(task)
+    db_session.commit()
+
+    response = await ai_tasks_router.retry_ai_tasks(
+        ai_tasks_router.AITaskRetryRequest(task_ids=[task.id]),
+        db_session,
+        True,
+    )
+
+    db_session.refresh(task)
+    assert response == {
+        "updated": 0,
+        "updated_ids": [],
+        "skipped": 1,
+        "skipped_ids": [task.id],
+        "skipped_reasons": {task.id: "该 AI 能力已下线"},
+    }
+    assert task.status == "failed"
+
+
+@pytest.mark.anyio
 async def test_list_ai_tasks_collapses_same_chain_to_root_row(db_session):
     article = Article(
         title="Chain Aggregation Article",

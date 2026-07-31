@@ -481,6 +481,7 @@ export default function Home({
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createTitle, setCreateTitle] = useState('');
   const [createAuthor, setCreateAuthor] = useState('');
+  const [createPublishedAt, setCreatePublishedAt] = useState(() => formatDate(new Date()));
   const [createCategoryId, setCreateCategoryId] = useState('');
   const [createTopImage, setCreateTopImage] = useState('');
   const [createContent, setCreateContent] = useState('');
@@ -1529,6 +1530,7 @@ export default function Home({
     setShowCreateModal(false);
     setCreateTitle('');
     setCreateAuthor('');
+    setCreatePublishedAt(formatDate(new Date()));
     setCreateCategoryId('');
     setCreateTopImage('');
     setCreateContent('');
@@ -1616,7 +1618,7 @@ export default function Home({
         content_md: originalContent,
         source_url: createSourceUrl.trim() || undefined,
         author: createAuthor.trim() || undefined,
-        published_at: new Date().toISOString(),
+        published_at: createPublishedAt || new Date().toISOString(),
         top_image: createTopImage.trim() || undefined,
         category_id: createCategoryId || undefined,
         skip_ai_processing: true,
@@ -2313,13 +2315,20 @@ export default function Home({
               />
             </FormField>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <FormField label={t('作者')}>
                 <TextInput
                   type="text"
                   value={createAuthor}
                   onChange={(e) => setCreateAuthor(e.target.value)}
                   placeholder={t('请输入作者')}
+                />
+              </FormField>
+              <FormField label={t('发表时间')}>
+                <TextInput
+                  type="date"
+                  value={createPublishedAt}
+                  onChange={(e) => setCreatePublishedAt(e.target.value)}
                 />
               </FormField>
               <FormField label={t('分类')}>

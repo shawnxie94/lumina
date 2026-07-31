@@ -4066,7 +4066,6 @@ export default function ArticleDetailPage({
 				author: article.author || "",
 				publishedAt: toDateInputValue(article.published_at),
 				categoryId: article.category?.id || "",
-				tagNames: [],
 				topImage: article.top_image || "",
 				content:
 					mode === "translation"
@@ -4088,7 +4087,6 @@ export default function ArticleDetailPage({
 				baseline.author,
 				baseline.publishedAt,
 				baseline.categoryId,
-				baseline.tagNames.join("\u0001"),
 				baseline.topImage,
 				baseline.content,
 			].join("\u0002");
@@ -4167,7 +4165,6 @@ export default function ArticleDetailPage({
 			author: editAuthor,
 			publishedAt: editPublishedAt,
 			categoryId: editCategoryId,
-			tagNames: [],
 			topImage: editTopImage,
 			content: editContent,
 		};
@@ -4210,7 +4207,6 @@ export default function ArticleDetailPage({
 			author: editAuthor,
 			publishedAt: editPublishedAt,
 			categoryId: editCategoryId,
-			tagNames: [],
 			topImage: editTopImage,
 			content: editContent,
 		};
@@ -5200,7 +5196,7 @@ export default function ArticleDetailPage({
 							/>
 						</FormField>
 
-						<div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+						<div className="grid grid-cols-1 md:grid-cols-3 gap-3">
 							<FormField label={t("作者")}>
 								<TextInput
 									type="text"
@@ -5215,8 +5211,6 @@ export default function ArticleDetailPage({
 									onChange={(e) => setEditPublishedAt(e.target.value)}
 								/>
 							</FormField>
-						</div>
-						<div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
 							<FormField label={t("分类")}>
 								<SelectField
 									value={editCategoryId}

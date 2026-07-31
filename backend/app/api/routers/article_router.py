@@ -88,9 +88,6 @@ def invalidate_public_article_meta_cache() -> None:
     invalidate_public_article_derived_cache()
 
 
-    return [item.strip() for item in raw_value.split(",") if item and item.strip()]
-
-
 def resolve_current_version_number(db: Session, version_id: str | None) -> int | None:
     if not version_id:
         return None
@@ -758,9 +755,13 @@ async def update_article(
             "content_md": article.content_md,
             "content_trans": article.content_trans,
             "is_visible": article.is_visible,
-                    "topics": topic_service.serialize_article_topics(article) if topic_service.is_topics_enabled(db) or is_admin else [],
-        "compile_status": getattr(article, "compile_status", "none") or "none",
-        "compiled_at": getattr(article, "compiled_at", None),
+            "topics": (
+                topic_service.serialize_article_topics(article)
+                if topic_service.is_topics_enabled(db)
+                else []
+            ),
+            "compile_status": getattr(article, "compile_status", "none") or "none",
+            "compiled_at": getattr(article, "compiled_at", None),
             "updated_at": article.updated_at,
         }
     except Exception as e:

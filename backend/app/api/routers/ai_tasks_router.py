@@ -26,6 +26,7 @@ router = APIRouter()
 ai_call_session_service = AICallSessionService()
 REMOVED_AI_TASK_TYPES = {
     ("process_article_validation", "content_validation"),
+    ("process_article_tagging", "tagging"),
     ("process_ai_content", "key_points"),
     ("process_ai_content", "infographic"),
 }

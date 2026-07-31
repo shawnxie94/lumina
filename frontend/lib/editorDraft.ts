@@ -13,7 +13,6 @@ export type ArticleEditorDraftPayload = {
   author: string;
   publishedAt: string;
   categoryId: string;
-  tagNames: string[];
   topImage: string;
   content: string;
 };
@@ -50,14 +49,6 @@ const safeParseJson = <T,>(raw: string | null): T | null => {
 export const normalizeComparableText = (value?: string | null): string =>
   (value || "").replace(/\r\n/g, "\n");
 
-export const areStringArraysEqual = (
-  left: string[] = [],
-  right: string[] = [],
-): boolean => {
-  if (left.length !== right.length) return false;
-  return left.every((item, index) => item === right[index]);
-};
-
 export const isArticleEditorDraftDirty = (
   draft: ArticleEditorDraftPayload,
   baseline: ArticleEditorDraftPayload,
@@ -71,7 +62,6 @@ export const isArticleEditorDraftDirty = (
       normalizeComparableText(baseline.publishedAt) ||
     normalizeComparableText(draft.categoryId) !==
       normalizeComparableText(baseline.categoryId) ||
-    !areStringArraysEqual(draft.tagNames, baseline.tagNames) ||
     normalizeComparableText(draft.topImage) !==
       normalizeComparableText(baseline.topImage) ||
     normalizeComparableText(draft.content) !==

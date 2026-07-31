@@ -29,6 +29,107 @@ async def test_get_similar_articles_returns_disabled_when_remote_config_unavaila
     assert response == {"status": "disabled", "items": []}
 
 
+def test_article_meta_cache_invalidation_has_no_removed_tag_parser_residue(
+    monkeypatch,
+):
+    calls: list[bool] = []
+    monkeypatch.setattr(
+        article_router,
+        "invalidate_public_article_derived_cache",
+        lambda: calls.append(True),
+    )
+
+    article_router.invalidate_public_article_meta_cache()
+
+    assert calls == [True]
+
+
+@pytest.mark.anyio
+async def test_article_create_returns_after_tag_cache_invalidation(
+    monkeypatch,
+    db_session,
+):
+    created = Article(
+        title="Created mutation article",
+        slug="created-mutation-article",
+        status="completed",
+    )
+
+    async def fake_create_article(_payload, db):
+        db.add(created)
+        db.commit()
+        return created.id
+
+    monkeypatch.setattr(
+        article_router.article_command_service,
+        "create_article",
+        fake_create_article,
+    )
+    monkeypatch.setattr(
+        article_router,
+        "invalidate_public_article_derived_cache",
+        lambda: None,
+    )
+
+    response = await article_router.create_article(
+        article_router.ArticleCreate(title=created.title),
+        db_session,
+        True,
+    )
+
+    assert response == {
+        "id": created.id,
+        "slug": created.slug,
+        "status": created.status,
+    }
+
+
+@pytest.mark.anyio
+async def test_article_update_and_visibility_work_after_tag_removal(
+    monkeypatch,
+    db_session,
+):
+    article = Article(
+        title="Mutation article",
+        slug="mutation-article",
+        content_md="content",
+        status="completed",
+        is_visible=False,
+        created_at=now_str(),
+        updated_at=now_str(),
+    )
+    db_session.add(article)
+    db_session.commit()
+
+    monkeypatch.setattr(
+        article_router,
+        "invalidate_public_article_derived_cache",
+        lambda: None,
+    )
+    monkeypatch.setattr(
+        article_router.topic_service,
+        "is_topics_enabled",
+        lambda db: False,
+    )
+
+    updated = await article_router.update_article(
+        article.slug,
+        article_router.ArticleUpdate(title="Updated mutation article"),
+        db_session,
+        True,
+    )
+    visible = await article_router.update_article_visibility(
+        article.slug,
+        article_router.ArticleVisibilityUpdate(is_visible=True),
+        db_session,
+        True,
+    )
+
+    assert updated["title"] == "Updated mutation article"
+    assert updated["is_visible"] is False
+    assert visible == {"id": article.id, "is_visible": True}
+
+
 @pytest.mark.anyio
 async def test_get_similar_articles_includes_translated_title(db_session, monkeypatch):
     current_article = Article(
