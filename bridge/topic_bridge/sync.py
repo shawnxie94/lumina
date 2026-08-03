@@ -17,6 +17,7 @@ from .knowledge_ops import (
     reset_local_knowledge_data,
     schedule_auto_writeback,
 )
+from .quality import audit_local_knowledge
 from .state import BridgeState, utc_now_iso
 from .wiki_scan import _parse_frontmatter, scan_wiki_topics
 from .writeback import (
@@ -145,6 +146,7 @@ def run_sync(
     rebuild: bool = False,
     article_id: str | None = None,
     dry_run: bool = False,
+    local_only: bool = False,
 ) -> dict[str, Any]:
     requested_mode = (mode or "").strip().lower() or None
     if rebuild:
@@ -194,6 +196,7 @@ def run_sync(
             "rebuild": bool(rebuild),
             "updated_after": updated_after,
             "article_id": article_id,
+            "local_only": bool(local_only),
             "reset": reset_info,
             "would_export_all": updated_after is None and not article_id,
             "would_request_compile": bool(rebuild or effective_mode == "full"),
@@ -282,6 +285,8 @@ def run_sync(
         file_cache=state.wiki_file_cache,
     )
     compiled_at = utc_now_iso()
+    compile_status = inspect_llm_wiki_compile(config)
+    quality = audit_local_knowledge(config, compile_status=compile_status)
 
     # After a destructive rebuild, wiki may still be empty until llm_wiki finishes
     # compiling. Avoid a no-op/empty writeback that could confuse operators.
@@ -290,6 +295,32 @@ def run_sync(
     if not topics and (rebuild or effective_mode in {"full", "article"} or exported > 0):
         state.last_article_sync_at = max_updated_at or compiled_at
         state.save(config.state_path)
+        has_local_quality_failure = bool(
+            set(quality.get("hard_failure_counts") or {}) - {"no_topics", "compile_not_ready"}
+        )
+        if has_local_quality_failure and not compile_status.get("active"):
+            return {
+                "accepted": True,
+                "run_id": f"sync_{uuid.uuid4().hex[:12]}",
+                "mode": effective_mode,
+                "rebuild": bool(rebuild),
+                "local_only": bool(local_only),
+                "reset": reset_info,
+                "compile": compile_info,
+                "exported_articles": exported,
+                "skipped_articles": skipped,
+                "scanned_topics": 0,
+                "writeback_topics": 0,
+                "writeback_topics_changed": 0,
+                "writeback_topics_unchanged": 0,
+                "writeback_articles": 0,
+                "writeback_articles_changed": 0,
+                "writeback_articles_unchanged": 0,
+                "writeback_skipped": True,
+                "quality": quality,
+                "status": "quality_blocked",
+                "hint": "Local knowledge quality gate blocked Lumina writeback.",
+            }
         run_id = f"sync_{uuid.uuid4().hex[:12]}"
         auto_wb = schedule_auto_writeback(config, run_id=run_id)
         return {
@@ -310,7 +341,8 @@ def run_sync(
             "writeback_articles_unchanged": 0,
             "writeback_skipped": True,
             "auto_writeback": auto_wb,
-            "compile_status": inspect_llm_wiki_compile(config),
+            "compile_status": compile_status,
+            "quality": quality,
             "status": "awaiting_compile",
             "hint": (
                 "Local sources were exported and llm_wiki compile is in progress. "
@@ -334,6 +366,39 @@ def run_sync(
     )
 
     writeback_result = None
+    if not quality["ready"] or local_only:
+        state.last_article_sync_at = max_updated_at or compiled_at
+        state.save(config.state_path)
+        return {
+            "accepted": True,
+            "run_id": f"sync_{uuid.uuid4().hex[:12]}",
+            "mode": effective_mode,
+            "rebuild": bool(rebuild),
+            "local_only": bool(local_only),
+            "reset": reset_info,
+            "compile": compile_info,
+            "exported_articles": exported,
+            "skipped_articles": skipped,
+            "scanned_topics": topic_stats["scanned_topics"],
+            "writeback_topics": 0,
+            "writeback_topics_changed": 0,
+            "writeback_topics_unchanged": topic_stats["unchanged_topics"],
+            "writeback_articles": 0,
+            "writeback_articles_changed": 0,
+            "writeback_articles_unchanged": article_stats["unchanged_articles"],
+            "writeback_skipped": True,
+            "quality": quality,
+            "status": "quality_blocked" if not quality["ready"] else "local_only",
+            "hint": (
+                "Lumina writeback was skipped because local quality checks are not ready."
+                if not quality["ready"]
+                else "Local-only sync completed; Lumina writeback was intentionally skipped."
+            ),
+            "raw_dir": str(config.raw_dir),
+            "wiki_dir": str(config.wiki_dir),
+            "state_path": str(config.state_path),
+        }
+
     if changed_topics or article_payload:
         writeback = {
             "compiler": "llm_wiki",
@@ -379,6 +444,7 @@ def run_sync(
         "status": "completed",
         "writeback": writeback_result,
         "writeback_skipped": writeback_result is None,
+        "quality": quality,
         "hint": (
             None
             if (changed_topics or article_payload)

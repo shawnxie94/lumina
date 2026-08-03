@@ -518,8 +518,16 @@ def list_wiki_topic_keys(wiki_dir: Path) -> list[str]:
                 text = path.read_text(encoding="utf-8", errors="ignore")
             except OSError:
                 continue
-            meta, _ = _parse_frontmatter(text)
-            title = str(meta.get("title") or path.stem).strip()
+            meta, body = _parse_frontmatter(text)
+            expected_type = "entity" if sub == "entities" else "concept"
+            if str(meta.get("type") or "").strip().lower() != expected_type:
+                continue
+            tags = meta.get("tags") or []
+            if isinstance(tags, list) and "stub" in {str(tag).strip().lower() for tag in tags}:
+                continue
+            title = str(meta.get("title") or "").strip()
+            if not title or not body.strip():
+                continue
             key = _normalize_key(str(meta.get("key") or title))
             if not key or key in seen:
                 continue
@@ -587,7 +595,14 @@ def scan_wiki_topics(
 
             text = path.read_text(encoding="utf-8", errors="ignore")
             meta, body = _parse_frontmatter(text)
+            if str(meta.get("type") or "").strip().lower() != kind:
+                continue
+            tags = meta.get("tags") or []
+            if isinstance(tags, list) and "stub" in {str(tag).strip().lower() for tag in tags}:
+                continue
             title = str(meta.get("title") or path.stem).strip()
+            if not title or not body.strip():
+                continue
             key = _normalize_key(str(meta.get("key") or title))
             if not key:
                 continue

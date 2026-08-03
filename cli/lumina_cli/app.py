@@ -288,6 +288,73 @@ def build_parser() -> argparse.ArgumentParser:
         x.add_argument("name", nargs="?")
         x.set_defaults(func=cmd_knowledge, knowledge_action="provider", provider_action=name)
     ps.add_parser("status").set_defaults(func=cmd_knowledge, knowledge_action="status")
+    ps.add_parser("audit").set_defaults(func=cmd_knowledge, knowledge_action="audit")
+    sp = ps.add_parser(
+        "repair",
+        help="repair local wiki pages from safe LLM Wiki history snapshots",
+    )
+    sp.add_argument(
+        "--restore-history",
+        action="store_true",
+        help="restore malformed/leaking pages from the latest valid local history",
+    )
+    sp.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="show the restore plan without changing local files",
+    )
+    sp.set_defaults(func=cmd_knowledge, knowledge_action="repair")
+    sp = ps.add_parser(
+        "retry-truncated",
+        help="retry only missing local outputs recorded as truncated",
+    )
+    sp.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="show missing targets without touching raw files or rescanning",
+    )
+    sp.set_defaults(func=cmd_knowledge, knowledge_action="retry-truncated")
+    sp = ps.add_parser(
+        "reingest",
+        help="force local LLM Wiki to re-analyze selected raw source files",
+    )
+    sp.add_argument(
+        "--source",
+        action="append",
+        required=True,
+        help="source path under raw/sources (repeat for multiple files)",
+    )
+    sp.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="show selected sources without changing runtime metadata",
+    )
+    sp.set_defaults(func=cmd_knowledge, knowledge_action="reingest")
+    sp = ps.add_parser(
+        "sanitize-source",
+        help="remove paired model-planning blocks from local source pages",
+    )
+    sp.add_argument(
+        "--source",
+        action="append",
+        help="optional source page under wiki/sources (repeat for selected pages)",
+    )
+    sp.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="show paired <think> blocks without changing source pages",
+    )
+    sp.set_defaults(func=cmd_knowledge, knowledge_action="sanitize-source")
+    sp = ps.add_parser(
+        "quarantine-review-anomalies",
+        help="move structurally malformed review records to a local quarantine",
+    )
+    sp.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="show anomalous records without changing review.json",
+    )
+    sp.set_defaults(func=cmd_knowledge, knowledge_action="quarantine-review-anomalies")
     sp = ps.add_parser("use")
     sp.add_argument("provider_name")
     sp.set_defaults(func=cmd_knowledge, knowledge_action="use")
@@ -308,6 +375,11 @@ def build_parser() -> argparse.ArgumentParser:
     sp = ps.add_parser("full")
     sp.add_argument("--dry-run", action="store_true")
     sp.add_argument(
+        "--local-only",
+        action="store_true",
+        help="export/inspect local knowledge but never write results to Lumina",
+    )
+    sp.add_argument(
         "--rebuild",
         action="store_true",
         help="delete local knowledge data, re-export all sources, then recompile/writeback",
@@ -320,10 +392,20 @@ def build_parser() -> argparse.ArgumentParser:
     sp.set_defaults(func=cmd_sync, sync_action="full")
     sp = ps.add_parser("incremental")
     sp.add_argument("--dry-run", action="store_true")
+    sp.add_argument(
+        "--local-only",
+        action="store_true",
+        help="sync local files but never write results to Lumina",
+    )
     sp.set_defaults(func=cmd_sync, sync_action="incremental")
     sp = ps.add_parser("article")
     sp.add_argument("article_id")
     sp.add_argument("--dry-run", action="store_true")
+    sp.add_argument(
+        "--local-only",
+        action="store_true",
+        help="sync the article locally but never write results to Lumina",
+    )
     sp.set_defaults(func=cmd_sync, sync_action="article")
 
     sub.add_parser("status", help="aggregate local/remote status").set_defaults(func=cmd_status)

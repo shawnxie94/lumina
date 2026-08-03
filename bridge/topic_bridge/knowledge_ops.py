@@ -20,6 +20,7 @@ from .writeback import (
 )
 
 from .client import LuminaClient
+from .quality import audit_local_knowledge
 
 
 def reset_local_knowledge_data(config: BridgeConfig) -> dict[str, Any]:
@@ -305,6 +306,27 @@ def writeback_topics_from_wiki(config: BridgeConfig) -> dict[str, Any]:
             "hint": "No entity/concept pages found yet.",
         }
 
+    quality = audit_local_knowledge(
+        config,
+        compile_status=inspect_llm_wiki_compile(config),
+    )
+    if not quality["ready"]:
+        return {
+            "accepted": True,
+            "status": "quality_blocked",
+            "mode": "writeback",
+            "scanned_topics": len(topics),
+            "writeback_topics": 0,
+            "writeback_topics_changed": 0,
+            "writeback_topics_unchanged": 0,
+            "writeback_articles": 0,
+            "writeback_articles_changed": 0,
+            "writeback_articles_unchanged": 0,
+            "writeback_skipped": True,
+            "quality": quality,
+            "hint": "Local knowledge quality gate blocked Lumina writeback.",
+        }
+
     compiled_at = utc_now_iso()
     changed_topics, next_topic_hashes, topic_stats = filter_changed_topics(
         topics,
@@ -499,4 +521,3 @@ def schedule_auto_writeback(
         "poll_interval_sec": poll_interval_sec,
         "job": get_writeback_job(),
     }
-

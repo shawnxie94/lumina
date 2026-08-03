@@ -55,6 +55,65 @@ lumina knowledge doctor
 
 `lumina sync full` re-exports all remote articles into local sources, but keeps existing wiki pages.
 
+Audit the local knowledge output before any writeback:
+
+```bash
+lumina knowledge audit
+```
+
+The Bridge blocks writeback when canonical entity/concept pages contain malformed
+frontmatter, missing sources, empty bodies, model-planning leakage, lint stubs,
+duplicate titles, or an active/failed compile queue. Unresolved review suggestions
+and ingest warnings are reported separately as non-blocking diagnostics.
+
+For malformed pages or model-planning leakage, first preview a local recovery
+from the latest valid `.llm-wiki/history` snapshot:
+
+```bash
+lumina knowledge repair --restore-history --dry-run
+lumina knowledge repair --restore-history
+```
+
+The repair command only changes local `wiki/entities` and `wiki/concepts`
+pages. It backs up each current page under `.llm-wiki/repair-backups/`, keeps
+history/review files intact, and never calls Lumina or performs writeback.
+
+For a source whose analysis must be rerun, invalidate only its local ingest
+metadata and request a rescan. This preserves the existing wiki pages,
+history, review data, and unrelated source caches:
+
+```bash
+lumina knowledge reingest --source lumina/<source-file>.md --dry-run
+lumina knowledge reingest --source lumina/<source-file>.md
+```
+
+Repeat `--source` for a small serial batch. The runtime metadata is backed up
+under `.llm-wiki/repair-backups/`; wait for the queue to clear before auditing.
+
+If the local review queue contains structurally malformed placeholder records,
+preview and quarantine only those records locally:
+
+```bash
+lumina knowledge quarantine-review-anomalies --dry-run
+lumina knowledge quarantine-review-anomalies
+```
+
+The original `review.json` and the quarantined records are both backed up under
+`.llm-wiki/repair-backups/`. Quarantine does not mark records as resolved and
+does not write anything to Lumina.
+
+Ingest warning handling is tracked locally in
+`.llm-wiki/ingest-dispositions.json`; `lumina knowledge audit` reports raw
+active/stale counts alongside actionable and unclassified counts.
+
+When working locally, use `--local-only` to export/sync without sending compile
+results to Lumina:
+
+```bash
+lumina sync full --local-only
+lumina sync incremental --local-only
+```
+
 True rebuild (destructive):
 
 ```bash

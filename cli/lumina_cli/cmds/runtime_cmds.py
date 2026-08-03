@@ -10,6 +10,13 @@ from ..context import CliContext
 from ..errors import CliError, DependencyError
 from ..http import HttpClient
 from ..knowledge import get_provider, list_providers
+from ..knowledge_repair import (
+    force_reingest_sources,
+    quarantine_review_anomalies,
+    restore_history_pages,
+    retry_missing_truncations,
+    sanitize_source_model_leaks,
+)
 from ..output import emit
 
 
@@ -51,6 +58,7 @@ def cmd_bridge(ctx: CliContext, args: argparse.Namespace) -> int:
     if action == "status":
         emit(rt.status(), output=ctx.output)
         return 0
+
     if action == "logs":
         text = rt.logs(lines=int(args.lines or 100))
         if ctx.output == "json":
@@ -149,6 +157,55 @@ def cmd_knowledge(ctx: CliContext, args: argparse.Namespace) -> int:
             output=ctx.output,
         )
         return 0
+    if action == "audit":
+        result = _runtime(ctx).audit()
+        emit(result, output=ctx.output, ok=bool(result.get("ready")))
+        return 0 if result.get("ready") else 5
+    if action == "repair":
+        if not bool(getattr(args, "restore_history", False)):
+            raise CliError(
+                "knowledge repair requires --restore-history",
+                hint="Use --dry-run first; this operation only restores local wiki pages from .llm-wiki/history.",
+                error_code="repair_mode_required",
+            )
+        result = restore_history_pages(
+            Path(project.path),
+            dry_run=bool(getattr(args, "dry_run", False)),
+        )
+        emit(result, output=ctx.output, ok=bool(result.get("ok")))
+        return 0 if result.get("ok") else 5
+    if action == "retry-truncated":
+        result = retry_missing_truncations(
+            Path(project.path),
+            api_url=str(provider_cfg.options.get("api_url") or "http://127.0.0.1:19828"),
+            dry_run=bool(getattr(args, "dry_run", False)),
+        )
+        emit(result, output=ctx.output, ok=bool(result.get("ok")))
+        return 0 if result.get("ok") else 5
+    if action == "reingest":
+        result = force_reingest_sources(
+            Path(project.path),
+            list(getattr(args, "source", []) or []),
+            api_url=str(provider_cfg.options.get("api_url") or "http://127.0.0.1:19828"),
+            dry_run=bool(getattr(args, "dry_run", False)),
+        )
+        emit(result, output=ctx.output, ok=bool(result.get("ok")))
+        return 0 if result.get("ok") else 5
+    if action == "sanitize-source":
+        result = sanitize_source_model_leaks(
+            Path(project.path),
+            source_files=list(getattr(args, "source", []) or []) or None,
+            dry_run=bool(getattr(args, "dry_run", False)),
+        )
+        emit(result, output=ctx.output, ok=bool(result.get("ok")))
+        return 0 if result.get("ok") else 5
+    if action == "quarantine-review-anomalies":
+        result = quarantine_review_anomalies(
+            Path(project.path),
+            dry_run=bool(getattr(args, "dry_run", False)),
+        )
+        emit(result, output=ctx.output, ok=bool(result.get("ok")))
+        return 0 if result.get("ok") else 5
     if action == "use":
         name = args.provider_name
         get_provider(name)  # validate
@@ -279,6 +336,7 @@ def cmd_sync(ctx: CliContext, args: argparse.Namespace) -> int:
     action = getattr(args, "sync_action", None)
     dry_run = bool(getattr(args, "dry_run", False))
     rebuild = bool(getattr(args, "rebuild", False))
+    local_only = bool(getattr(args, "local_only", False))
 
     if action == "status":
         status = rt.status()
@@ -303,6 +361,7 @@ def cmd_sync(ctx: CliContext, args: argparse.Namespace) -> int:
             mode="article",
             article_id=args.article_id,
             dry_run=dry_run,
+            local_only=local_only,
         )
         emit(result, output=ctx.output, ok=bool(result.get("ok", True) or result.get("accepted", True)))
         return 0 if (result.get("ok", True) is not False and result.get("status") != "failed") else 5
@@ -366,7 +425,12 @@ def cmd_sync(ctx: CliContext, args: argparse.Namespace) -> int:
 
     # After CLI-side wipe, still ask Bridge for full export + compile/writeback.
     # Keep rebuild=true so Bridge also resets its own state cursors and requests compile.
-    result = rt.sync(mode=mode, dry_run=dry_run, rebuild=rebuild)
+    result = rt.sync(
+        mode=mode,
+        dry_run=dry_run,
+        rebuild=rebuild,
+        local_only=local_only,
+    )
     if local_reset is not None and isinstance(result, dict):
         result = {
             **result,

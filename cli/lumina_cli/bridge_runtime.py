@@ -386,6 +386,7 @@ class BridgeRuntime:
         article_id: str | None = None,
         dry_run: bool = False,
         rebuild: bool = False,
+        local_only: bool = False,
     ) -> dict[str, Any]:
         if not self.health().get("online"):
             if self.profile.bridge.autostart:
@@ -402,9 +403,20 @@ class BridgeRuntime:
         if rebuild:
             body["rebuild"] = True
             body["mode"] = body.get("mode") or "full"
+        if local_only:
+            body["local_only"] = True
         resp = self.client().post("/sync", json_body=body or {})
         data = resp.data if isinstance(resp.data, dict) else {"raw": resp.data}
         return data
+
+    def audit(self) -> dict[str, Any]:
+        if not self.health().get("online"):
+            if self.profile.bridge.autostart:
+                self.start()
+            else:
+                raise CliError("bridge offline", hint="Run `lumina bridge start` or `lumina up`")
+        resp = self.client().get("/audit")
+        return resp.data if isinstance(resp.data, dict) else {"raw": resp.data}
 
     def init_project(self, project_path: str | None = None) -> dict[str, Any]:
         if self.health().get("online"):

@@ -27,6 +27,7 @@ from .sync import (
     schedule_auto_writeback,
     writeback_topics_from_wiki,
 )
+from .quality import audit_local_knowledge
 
 
 class BridgeHandler(BaseHTTPRequestHandler):
@@ -174,6 +175,17 @@ class BridgeHandler(BaseHTTPRequestHandler):
                 },
             )
             return
+        if path == "/audit":
+            try:
+                compile_status = inspect_llm_wiki_compile(self.config)
+                self._send(
+                    200,
+                    audit_local_knowledge(self.config, compile_status=compile_status),
+                )
+            except Exception as exc:
+                traceback.print_exc()
+                self._send(500, {"ok": False, "status": "failed", "error": str(exc)})
+            return
         if path == "/doctor":
             report = doctor_report(self.config)
             if isinstance(report.get("health"), dict) and isinstance(report["health"].get("bridge"), dict):
@@ -197,12 +209,14 @@ class BridgeHandler(BaseHTTPRequestHandler):
                     rebuild = bool(payload.get("rebuild"))
                 article_id = payload.get("article_id")
                 dry_run = bool(payload.get("dry_run"))
+                local_only = bool(payload.get("local_only"))
                 result = run_sync(
                     self.config,
                     mode=mode,
                     rebuild=rebuild,
                     article_id=str(article_id) if article_id else None,
                     dry_run=dry_run,
+                    local_only=local_only,
                 )
                 self._send(200, result)
             except Exception as exc:
