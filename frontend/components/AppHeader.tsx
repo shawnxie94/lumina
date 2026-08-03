@@ -23,6 +23,7 @@ import {
   IconSun,
   IconMoon,
   IconMonitor,
+  IconType,
   IconRss,
   IconTrash,
   IconGlobe,
@@ -32,6 +33,22 @@ const DARK_OVERRIDES_HREF = '/styles/dark-overrides.css';
 const LINK_ID = 'dark-overrides-link';
 
 const ERROR_PAGE_SIZE = 50;
+
+type FontSizePreference = 'sm' | 'md' | 'lg' | 'xl';
+
+const FONT_SIZE_STORAGE_KEY = 'font-size';
+const FONT_SIZE_OPTIONS = [
+  { value: 'sm' as const, labelKey: '小' },
+  { value: 'md' as const, labelKey: '中' },
+  { value: 'lg' as const, labelKey: '大' },
+  { value: 'xl' as const, labelKey: '超大' },
+] as const;
+
+const isFontSizePreference = (
+  value: string | null | undefined,
+): value is FontSizePreference =>
+  value === 'sm' || value === 'md' || value === 'lg' || value === 'xl';
+
 
 const getQueryValue = (value: string | string[] | undefined): string => {
   if (Array.isArray(value)) return value[0] || '';
@@ -78,6 +95,9 @@ export default function AppHeader({ hideRss, activeNav }: { hideRss?: boolean; a
   const [theme, setTheme] = useState<'light' | 'dark' | 'system'>('system');
   const [themeMenuOpen, setThemeMenuOpen] = useState(false);
   const themeMenuRef = useRef<HTMLDivElement | null>(null);
+  const [fontSize, setFontSize] = useState<FontSizePreference>('sm');
+  const [fontSizeMenuOpen, setFontSizeMenuOpen] = useState(false);
+  const fontSizeMenuRef = useRef<HTMLDivElement | null>(null);
   const [languageMenuOpen, setLanguageMenuOpen] = useState(false);
   const languageMenuRef = useRef<HTMLDivElement | null>(null);
   const [errorMenuOpen, setErrorMenuOpen] = useState(false);
@@ -110,6 +130,14 @@ export default function AppHeader({ hideRss, activeNav }: { hideRss?: boolean; a
     } else {
       document.documentElement.setAttribute('data-theme', initial);
     }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const stored = localStorage.getItem(FONT_SIZE_STORAGE_KEY);
+    const initial = isFontSizePreference(stored) ? stored : 'sm';
+    setFontSize(initial);
+    document.documentElement.setAttribute('data-font-size', initial);
   }, []);
 
   useEffect(() => {
@@ -154,6 +182,17 @@ export default function AppHeader({ hideRss, activeNav }: { hideRss?: boolean; a
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
   }, [languageMenuOpen]);
+
+  useEffect(() => {
+    if (!fontSizeMenuOpen) return;
+    const handleClick = (event: MouseEvent) => {
+      if (!fontSizeMenuRef.current) return;
+      if (fontSizeMenuRef.current.contains(event.target as Node)) return;
+      setFontSizeMenuOpen(false);
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [fontSizeMenuOpen]);
 
   useEffect(() => {
     if (!errorMenuOpen) return;
@@ -283,6 +322,14 @@ export default function AppHeader({ hideRss, activeNav }: { hideRss?: boolean; a
       }
     }
   };
+
+  const applyFontSize = (nextFontSize: FontSizePreference) => {
+    setFontSize(nextFontSize);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(FONT_SIZE_STORAGE_KEY, nextFontSize);
+      document.documentElement.setAttribute('data-font-size', nextFontSize);
+    }
+  };
   const themeOptions = useMemo(
     () => [
       { value: 'light' as const, label: t('明亮'), icon: IconSun },
@@ -301,7 +348,19 @@ export default function AppHeader({ hideRss, activeNav }: { hideRss?: boolean; a
     [t],
   );
 
+  const fontSizeOptions = useMemo(
+    () =>
+      FONT_SIZE_OPTIONS.map((option) => ({
+        value: option.value,
+        label: t(option.labelKey),
+      })),
+    [t],
+  );
+
   const activeTheme = themeOptions.find((option) => option.value === theme);
+  const activeFontSize =
+    fontSizeOptions.find((option) => option.value === fontSize) ?? fontSizeOptions[0];
+  const activeFontSizeTitle = `${t('字体大小')}：${activeFontSize.label}`;
   const notificationCount = notifications.length;
   const headerIconButtonClass =
     'inline-flex items-center justify-center w-8 h-8 rounded-sm text-text-3 hover:text-text-1 hover:bg-muted transition';
@@ -565,7 +624,12 @@ export default function AppHeader({ hideRss, activeNav }: { hideRss?: boolean; a
             <div className="relative" ref={themeMenuRef}>
               <button
                 type="button"
-                onClick={() => setThemeMenuOpen((prev) => !prev)}
+                onClick={() => {
+                  setThemeMenuOpen((prev) => !prev);
+                  setFontSizeMenuOpen(false);
+                  setLanguageMenuOpen(false);
+                  setErrorMenuOpen(false);
+                }}
                 className={headerIconButtonClass}
                 title={t('切换主题')}
                 aria-label={t('切换主题')}
@@ -599,10 +663,60 @@ export default function AppHeader({ hideRss, activeNav }: { hideRss?: boolean; a
                 </div>
               )}
             </div>
+            <div className="relative" ref={fontSizeMenuRef}>
+              <button
+                type="button"
+                onClick={() => {
+                  setFontSizeMenuOpen((prev) => !prev);
+                  setThemeMenuOpen(false);
+                  setLanguageMenuOpen(false);
+                  setErrorMenuOpen(false);
+                }}
+                className={headerIconButtonClass}
+                title={activeFontSizeTitle}
+                aria-label={t('调整字体大小')}
+              >
+                <IconType className="h-4 w-4" />
+              </button>
+              {fontSizeMenuOpen && (
+                <div className="absolute right-0 mt-2 w-28 rounded-md border border-border bg-surface shadow-md p-1 z-10">
+                  {fontSizeOptions.map((option) => {
+                    const isActive = fontSize === option.value;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => {
+                          applyFontSize(option.value);
+                          setFontSizeMenuOpen(false);
+                        }}
+                        className={`w-full flex items-center justify-between gap-2 px-2 py-1 rounded text-xs transition ${
+                          isActive
+                            ? 'bg-muted text-text-1'
+                            : 'text-text-2 hover:text-text-1 hover:bg-muted'
+                        }`}
+                      >
+                        <span>{option.label}</span>
+                        {isActive ? (
+                          <span aria-hidden="true" className="text-[10px] text-text-3">
+                            {t('当前')}
+                          </span>
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
             <div className="relative" ref={languageMenuRef}>
               <button
                 type="button"
-                onClick={() => setLanguageMenuOpen((prev) => !prev)}
+                onClick={() => {
+                  setLanguageMenuOpen((prev) => !prev);
+                  setThemeMenuOpen(false);
+                  setFontSizeMenuOpen(false);
+                  setErrorMenuOpen(false);
+                }}
                 className={headerIconButtonClass}
                 title={t('语言')}
                 aria-label={t('语言')}

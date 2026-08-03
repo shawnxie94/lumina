@@ -183,6 +183,17 @@ export function IconMonitor(props: IconProps) {
   );
 }
 
+export function IconType(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M4 19V7h8v12" />
+      <path d="M4 12h8" />
+      <path d="M14 19V11h6v8" />
+      <path d="M14 15h6" />
+    </IconBase>
+  );
+}
+
 export function IconBell(props: IconProps) {
   return (
     <IconBase {...props}>

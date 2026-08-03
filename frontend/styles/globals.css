@@ -4,6 +4,23 @@
 
 html {
   scrollbar-gutter: stable;
+  font-size: 16px;
+}
+
+html[data-font-size="sm"] {
+  font-size: 16px;
+}
+
+html[data-font-size="md"] {
+  font-size: 18px;
+}
+
+html[data-font-size="lg"] {
+  font-size: 20px;
+}
+
+html[data-font-size="xl"] {
+  font-size: 22px;
 }
 
 /* 竖图（宽高比小于1）最大宽度限制为一半 - 仅在 LG 及以上屏幕 */
