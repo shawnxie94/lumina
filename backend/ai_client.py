@@ -21,6 +21,44 @@ WHITESPACE_PATTERN = re.compile(r"\s+")
 HAN_CHAR_PATTERN = re.compile(r"[\u4e00-\u9fff]")
 
 
+def validate_response_format(response_format: Dict[str, Any] | str | None) -> None:
+    """Validate provider-facing response formats before sending a request.
+
+    OpenAI-compatible providers validate JSON Schema at request time, and
+    their error messages are often less actionable than a local contract
+    error. Keep this validation intentionally provider-neutral: every JSON
+    Schema array must declare ``items`` so nested output contracts cannot be
+    rejected only after reaching a provider.
+    """
+    if not isinstance(response_format, dict):
+        return
+    if response_format.get("type") != "json_schema":
+        return
+
+    json_schema = response_format.get("json_schema")
+    if not isinstance(json_schema, dict):
+        raise ValueError("response_format.json_schema must be an object")
+    schema = json_schema.get("schema")
+    if not isinstance(schema, dict):
+        raise ValueError("response_format.json_schema.schema must be an object")
+
+    def walk(node: Any, path: str) -> None:
+        if isinstance(node, list):
+            for index, item in enumerate(node):
+                walk(item, f"{path}[{index}]")
+            return
+        if not isinstance(node, dict):
+            return
+
+        if node.get("type") == "array" and "items" not in node:
+            raise ValueError(f"Invalid JSON Schema at {path}: array schema missing items")
+
+        for key, value in node.items():
+            walk(value, f"{path}.{key}")
+
+    walk(schema, "response_format.json_schema.schema")
+
+
 def is_english_content(text: str, threshold: float = 0.7) -> bool:
     """
     Detect if content is primarily English using ASCII ratio heuristic.
@@ -411,6 +449,7 @@ class ConfigurableAIClient:
         if "top_p" in parameters:
             request_params["top_p"] = parameters["top_p"]
         response_format = parameters.get("response_format")
+        validate_response_format(response_format)
         if isinstance(response_format, str):
             request_params["response_format"] = {"type": response_format}
         elif isinstance(response_format, dict):
@@ -453,6 +492,7 @@ class ConfigurableAIClient:
     ) -> Dict[str, Any] | None:
         if not response_format:
             return None
+        validate_response_format(response_format)
         if isinstance(response_format, str):
             if response_format == "text":
                 return None

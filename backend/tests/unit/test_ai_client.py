@@ -1,4 +1,6 @@
-from ai_client import ConfigurableAIClient
+import pytest
+
+from ai_client import ConfigurableAIClient, validate_response_format
 
 
 def test_build_responses_request_uses_list_input_items():
@@ -202,3 +204,68 @@ def test_build_chat_request_respects_explicit_thinking_override():
 
     assert request["extra_body"]["thinking"] == {"type": "adaptive"}
 
+
+def test_validate_response_format_rejects_array_without_items():
+    invalid_array = {"type": "array"}
+    with pytest.raises(ValueError, match="array schema missing items"):
+        validate_response_format(
+            {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "invalid",
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "children": invalid_array,
+                        },
+                    },
+                },
+            }
+        )
+
+
+def test_validate_response_format_walks_nested_array_schemas():
+    validate_response_format(
+        {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "valid",
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "children": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "tags": {
+                                        "type": "array",
+                                        "items": {"type": "string"},
+                                    }
+                                },
+                            },
+                        }
+                    },
+                },
+            },
+        }
+    )
+
+
+def test_build_responses_request_preserves_json_object_format():
+    client = ConfigurableAIClient(
+        base_url="https://api.openai.com/v1",
+        api_key="sk-test",
+        model_name="gpt-5.4",
+        api_type="responses",
+    )
+
+    request = client._build_responses_request(
+        prompt="输出 JSON",
+        system_prompt=None,
+        parameters={"response_format": {"type": "json_object"}},
+        max_tokens=500,
+        temperature=0,
+    )
+
+    assert request["text"] == {"format": {"type": "json_object"}}

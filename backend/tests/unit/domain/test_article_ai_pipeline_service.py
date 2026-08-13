@@ -304,6 +304,10 @@ def test_invoke_generation_uses_list_input_items_for_responses(
             task_type="process_ai_content",
             content_type="summary",
             task_id="task-1",
+            request_context={
+                "parameters": {"response_format": {"type": "json_object"}},
+                "max_tokens": 500,
+            },
         )
     )
 
@@ -314,6 +318,9 @@ def test_invoke_generation_uses_list_input_items_for_responses(
             "content": "user",
         }
     ]
+    assert captured["request"]["text"] == {
+        "format": {"type": "json_object"}
+    }
     assert result["session_info"]["continuation_mode"] == "provider"
 
 
@@ -1027,15 +1034,39 @@ def test_quotes_output_format_is_fixed_by_backend_protocols():
 
     single_protocol = service.SINGLE_OUTPUT_PROTOCOLS["quotes"]
     bundle_contract = service._build_interpretation_output_contract(["quotes"])
-    bundle_schema = bundle_contract.response_format["json_schema"]["schema"]
 
     assert "Markdown 无序列表" in single_protocol
-    assert "不要在字符串内添加列表符号" in bundle_schema["properties"][
-        "quotes"
-    ]["description"]
+    assert bundle_contract.response_format["type"] == "json_schema"
+    bundle_schema = bundle_contract.response_format["json_schema"]["schema"]
+    assert bundle_schema["properties"]["quotes"]["items"] == {"type": "string"}
     assert "禁止在字符串内添加列表符号或编号" in (
         bundle_contract.system_instruction or ""
     )
+
+
+def test_interpretation_bundle_uses_json_object_for_recursive_outline():
+    service = ArticleAIPipelineService()
+
+    contract = service._build_interpretation_output_contract(
+        ["classification", "summary", "outline", "quotes"]
+    )
+
+    assert contract.mode == "json_object"
+    assert contract.response_format == {"type": "json_object"}
+    assert "category_id, summary, outline, quotes" in (
+        contract.system_instruction or ""
+    )
+
+
+def test_interpretation_bundle_keeps_strict_schema_without_recursive_outline():
+    service = ArticleAIPipelineService()
+
+    contract = service._build_interpretation_output_contract(["summary", "quotes"])
+
+    assert contract.mode == "structured_json"
+    schema = contract.response_format["json_schema"]["schema"]
+    assert schema["required"] == ["summary", "quotes"]
+    assert set(schema["properties"]) == {"summary", "quotes"}
 
 
 
@@ -2154,9 +2185,10 @@ def test_process_article_interpretation_builds_prompt_for_enabled_fields_only(
     )
 
     kwargs = captured["kwargs"]
-    schema = kwargs["parameters"]["response_format"]["json_schema"]["schema"]
-    assert schema["required"] == ["summary"]
-    assert set(schema["properties"]) == {"summary"}
+    assert kwargs["parameters"]["response_format"]["type"] == "json_schema"
+    assert kwargs["parameters"]["response_format"]["json_schema"]["schema"][
+        "required"
+    ] == ["summary"]
     assert kwargs["max_tokens"] == 800
     assert "摘要要求：用高信息密度中文概括核心主体、关键动作和结论。" in kwargs[
         "user_prompt"
@@ -2174,6 +2206,3 @@ def test_process_article_interpretation_builds_prompt_for_enabled_fields_only(
     assert persisted_analysis.summary_status == "completed"
     assert persisted_analysis.outline_status == "skipped"
     assert persisted_analysis.quotes_status == "skipped"
-
-
-

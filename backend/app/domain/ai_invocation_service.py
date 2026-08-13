@@ -7,6 +7,7 @@ import time
 from typing import Any
 
 from openai import AsyncOpenAI
+from ai_client import validate_response_format
 from task_state import append_task_event
 
 
@@ -379,6 +380,7 @@ class AIInvocationService:
         for key in ("temperature", "top_p", "response_format"):
             if key in parameters:
                 request_payload[key] = parameters[key]
+        validate_response_format(request_payload.get("response_format"))
         start = time.monotonic()
         response = await self._create_chat_completion(
             base_url=base_url,
@@ -449,6 +451,32 @@ class AIInvocationService:
         for key in ("temperature", "top_p"):
             if key in parameters:
                 request_payload[key] = parameters[key]
+        response_format = parameters.get("response_format")
+        validate_response_format(response_format)
+        if isinstance(response_format, dict):
+            if response_format.get("type") == "json_schema":
+                json_schema = response_format.get("json_schema") or {}
+                request_payload["text"] = {
+                    "format": {
+                        "type": "json_schema",
+                        "name": json_schema.get("name"),
+                        "schema": json_schema.get("schema"),
+                        **(
+                            {"description": json_schema["description"]}
+                            if "description" in json_schema
+                            else {}
+                        ),
+                        **(
+                            {"strict": json_schema["strict"]}
+                            if "strict" in json_schema
+                            else {}
+                        ),
+                    }
+                }
+            else:
+                request_payload["text"] = {"format": response_format}
+        elif isinstance(response_format, str) and response_format != "text":
+            request_payload["text"] = {"format": {"type": response_format}}
         start = time.monotonic()
         response = await self._create_response(
             base_url=base_url,

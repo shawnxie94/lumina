@@ -523,6 +523,38 @@ class ArticleAIPipelineService:
         self,
         enabled_fields: list[str],
     ) -> PromptOutputContract:
+        field_names = ", ".join(
+            {
+                "classification": "category_id",
+                "summary": "summary",
+                "outline": "outline",
+                "quotes": "quotes",
+            }[field]
+            for field in enabled_fields
+        )
+        system_instruction = (
+            "固定输出协议：必须返回单个 JSON 对象，且只包含本次启用字段对应的字段："
+            f"{field_names or '无'}。\n"
+            "未启用字段禁止出现在 JSON 中。禁止解释、Markdown 代码块或额外字段。"
+            "outline 启用时节点只允许 title 和 children。"
+            "quotes 启用时必须返回 3-5 个字符串数组元素；每个元素是一条完整金句，"
+            "禁止在字符串内添加列表符号或编号。"
+        )
+
+        # The outline is a recursive tree. Different OpenAI-compatible
+        # providers support recursive response schemas inconsistently, while
+        # the application already performs recursive validation and
+        # normalization in _normalize_outline_node. Keep bundles containing
+        # outline on the broadly supported JSON-object contract and validate
+        # the payload after parsing instead of sending a fragile recursive
+        # schema.
+        if "outline" in enabled_fields:
+            return PromptOutputContract(
+                mode="json_object",
+                response_format={"type": "json_object"},
+                system_instruction=system_instruction,
+            )
+
         properties: dict[str, Any] = {}
         required: list[str] = []
         if "classification" in enabled_fields:
@@ -531,22 +563,6 @@ class ArticleAIPipelineService:
         if "summary" in enabled_fields:
             properties["summary"] = {"type": "string"}
             required.append("summary")
-        if "outline" in enabled_fields:
-            properties["outline"] = {
-                "anyOf": [
-                    {"type": "null"},
-                    {
-                        "type": "object",
-                        "properties": {
-                            "title": {"type": "string"},
-                            "children": {"type": "array"},
-                        },
-                        "required": ["title", "children"],
-                        "additionalProperties": False,
-                    },
-                ]
-            }
-            required.append("outline")
         if "quotes" in enabled_fields:
             properties["quotes"] = {
                 "type": "array",
@@ -557,8 +573,6 @@ class ArticleAIPipelineService:
                 ),
             }
             required.append("quotes")
-
-        field_names = ", ".join(properties) if properties else "无"
         return PromptOutputContract(
             mode="structured_json",
             response_format={
@@ -573,14 +587,7 @@ class ArticleAIPipelineService:
                     },
                 },
             },
-            system_instruction=(
-                "固定输出协议：必须返回单个 JSON 对象，且只包含本次启用字段对应的字段："
-                f"{field_names}。\n"
-                "未启用字段禁止出现在 JSON 中。禁止解释、Markdown 代码块或额外字段。"
-                "outline 启用时节点只允许 title 和 children。"
-                "quotes 启用时必须返回 3-5 个字符串数组元素；每个元素是一条完整金句，"
-                "禁止在字符串内添加列表符号或编号。"
-            ),
+            system_instruction=system_instruction,
         )
 
     def _build_article_task_prompt(
