@@ -128,6 +128,12 @@ class Article(Base):
         nullable=False,
         default=DEFAULT_NOTE_RECOMMENDATION_LEVEL,
     )
+    note_recommendation_level_order = Column(
+        Integer,
+        nullable=False,
+        default=1,
+        server_default="1",
+    )
     original_language = Column(String, nullable=True)  # 原文语言：zh, en, ja, etc.
     extraction_provider = Column(String, nullable=True)
     extraction_status = Column(String, nullable=True)

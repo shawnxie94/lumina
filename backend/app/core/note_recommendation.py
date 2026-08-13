@@ -13,8 +13,24 @@ NOTE_RECOMMENDATION_LEVEL_VALUES = {
 }
 DEFAULT_NOTE_RECOMMENDATION_LEVEL = NOTE_RECOMMENDATION_LEVEL_NEUTRAL
 
+# Keep the numeric order materialized in articles so list queries can use a
+# normal indexed ORDER BY instead of a CASE expression over every row.
+NOTE_RECOMMENDATION_LEVEL_ORDER = {
+    NOTE_RECOMMENDATION_LEVEL_NOT_RECOMMENDED: 0,
+    NOTE_RECOMMENDATION_LEVEL_NEUTRAL: 1,
+    NOTE_RECOMMENDATION_LEVEL_RECOMMENDED: 2,
+    NOTE_RECOMMENDATION_LEVEL_STRONGLY_RECOMMENDED: 3,
+}
+
 
 def normalize_note_recommendation_level(value: str | None) -> str:
     if value in NOTE_RECOMMENDATION_LEVEL_VALUES:
         return value
     return DEFAULT_NOTE_RECOMMENDATION_LEVEL
+
+
+def get_note_recommendation_level_order(value: str | None) -> int:
+    return NOTE_RECOMMENDATION_LEVEL_ORDER.get(
+        normalize_note_recommendation_level(value),
+        NOTE_RECOMMENDATION_LEVEL_ORDER[DEFAULT_NOTE_RECOMMENDATION_LEVEL],
+    )

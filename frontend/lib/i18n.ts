@@ -357,6 +357,7 @@ const translations: Record<Language, Record<string | number, string>> = {
 		排序: "Sort",
 		发表时间倒序: "Published desc",
 		创建时间倒序: "Created desc",
+		推荐等级倒序: "Recommendation level desc",
 		文章标题: "Article title",
 		模糊匹配标题: "Fuzzy match title",
 		来源: "Source",

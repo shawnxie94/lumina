@@ -159,6 +159,58 @@ def test_get_articles_sort_by_published_desc_falls_back_to_created_at(db_session
     ]
 
 
+def test_get_articles_sort_by_note_recommendation_level_then_created_at(db_session):
+    service = ArticleQueryService()
+    recommended = make_article(
+        db_session,
+        title="recommended-older",
+        published_at="2026-03-20",
+        created_at="2026-03-20T08:00:00+00:00",
+    )
+    recommended.note_recommendation_level = "recommended"
+    recommended.note_recommendation_level_order = 2
+    strongly_recommended = make_article(
+        db_session,
+        title="strongly-recommended-older",
+        published_at="2026-03-20",
+        created_at="2026-03-20T07:00:00+00:00",
+    )
+    strongly_recommended.note_recommendation_level = "strongly_recommended"
+    strongly_recommended.note_recommendation_level_order = 3
+    strongly_recommended_newer = make_article(
+        db_session,
+        title="strongly-recommended-newer",
+        published_at="2026-03-20",
+        created_at="2026-03-20T09:00:00+00:00",
+    )
+    strongly_recommended_newer.note_recommendation_level = "strongly_recommended"
+    strongly_recommended_newer.note_recommendation_level_order = 3
+    neutral = make_article(
+        db_session,
+        title="neutral-newest",
+        published_at="2026-03-20",
+        created_at="2026-03-20T10:00:00+00:00",
+    )
+    neutral.note_recommendation_level = "neutral"
+    db_session.commit()
+
+    articles, total = service.get_articles(
+        db=db_session,
+        page=1,
+        size=10,
+        sort_by="note_recommendation_level_desc",
+        is_admin=True,
+    )
+
+    assert total == 4
+    assert [item.title for item in articles] == [
+        "strongly-recommended-newer",
+        "strongly-recommended-older",
+        "recommended-older",
+        "neutral-newest",
+    ]
+
+
 def test_get_articles_include_view_count_and_public_comment_count(db_session):
     service = ArticleQueryService()
     article = make_article(

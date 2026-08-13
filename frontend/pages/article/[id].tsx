@@ -54,6 +54,7 @@ import AppFooter from "@/components/AppFooter";
 import AppHeader from "@/components/AppHeader";
 import SeoHead from "@/components/SeoHead";
 import ArticleMetaRow from "@/components/article/ArticleMetaRow";
+import RecommendationLevelBadge from "@/components/article/RecommendationLevelBadge";
 import StatusTag from "@/components/ui/StatusTag";
 import ArticleSplitEditorModal from "@/components/article/ArticleSplitEditorModal";
 import CommentSection, {
@@ -1178,19 +1179,6 @@ function normalizeNoteRecommendationLevel(
 	return matched?.value || DEFAULT_NOTE_RECOMMENDATION_LEVEL;
 }
 
-function getNoteRecommendationTone(level: NoteRecommendationLevel): string {
-	if (level === "strongly_recommended") {
-		return "border-success-soft bg-success-soft text-success-ink";
-	}
-	if (level === "recommended") {
-		return "border-info-soft bg-info-soft text-info-ink";
-	}
-	if (level === "not_recommended") {
-		return "border-danger-soft bg-danger-soft text-danger-ink";
-	}
-	return "border-warning-soft bg-warning-soft text-warning-ink";
-}
-
 interface ArticleNeighbor {
 	id: string;
 	slug: string;
@@ -1549,17 +1537,6 @@ export default function ArticleDetailPage({
 		() => modelConfigs.filter((config) => config.model_type !== "vector"),
 		[modelConfigs],
 	);
-	const noteRecommendationLabel = useMemo(() => {
-		const matched = NOTE_RECOMMENDATION_LEVEL_OPTIONS.find(
-			(item) => item.value === noteRecommendationLevel,
-		);
-		return t(matched?.label || "一般");
-	}, [noteRecommendationLevel, t]);
-	const noteRecommendationTone = useMemo(
-		() => getNoteRecommendationTone(noteRecommendationLevel),
-		[noteRecommendationLevel],
-	);
-
 	const activeAnnotation = annotations.find(
 		(item) => item.id === activeAnnotationId,
 	);
@@ -3555,6 +3532,7 @@ export default function ArticleDetailPage({
 				annotations: nextAnnotations,
 				note_recommendation_level: nextRecommendationLevel,
 			});
+			await fetchArticle();
 		} catch (error) {
 			console.error("Failed to save notes:", error);
 			showToast(t("保存失败"), "error");
@@ -4494,6 +4472,9 @@ export default function ArticleDetailPage({
 					</nav>
 					<div className="mb-3 flex justify-center">
 						<div className="inline-flex max-w-full flex-wrap items-center justify-center gap-x-2 gap-y-1">
+							<RecommendationLevelBadge
+								level={article.note_recommendation_level}
+							/>
 							<h1 className="text-2xl font-bold text-text-1 text-center">
 								{displayTitle}
 							</h1>
@@ -4805,14 +4786,7 @@ export default function ArticleDetailPage({
 						{noteContent && !immersiveMode && (
 							<div className="note-panel mb-4 rounded-sm p-4 text-sm text-text-2">
 								<div className="flex items-center justify-between mb-2">
-									<div className="flex items-center gap-2">
-										<div className="note-panel-title text-sm">{t("批注")}</div>
-										<span
-											className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs ${noteRecommendationTone}`}
-										>
-											{noteRecommendationLabel}
-										</span>
-									</div>
+									<div className="note-panel-title text-sm">{t("批注")}</div>
 									{isAdmin && (
 										<IconButton
 											onClick={() => setShowDeleteNoteModal(true)}

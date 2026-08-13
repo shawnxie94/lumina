@@ -54,7 +54,10 @@ from app.core.public_cache import (
     get_public_cached,
     invalidate_public_article_derived_cache,
 )
-from app.core.note_recommendation import normalize_note_recommendation_level
+from app.core.note_recommendation import (
+    get_note_recommendation_level_order,
+    normalize_note_recommendation_level,
+)
 from auth import check_is_admin, get_admin_settings, get_current_admin
 from media_service import cleanup_media_assets
 from models import (
@@ -668,6 +671,9 @@ async def update_article_notes(
     if payload.note_recommendation_level is not None:
         article.note_recommendation_level = normalize_note_recommendation_level(
             payload.note_recommendation_level
+        )
+        article.note_recommendation_level_order = get_note_recommendation_level_order(
+            article.note_recommendation_level
         )
     article.updated_at = now_str()
     db.commit()

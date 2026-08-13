@@ -24,6 +24,7 @@ import AppHeader from '@/components/AppHeader';
 import SeoHead from '@/components/SeoHead';
 import ArticleLanguageTag from '@/components/article/ArticleLanguageTag';
 import ArticleMetaRow from '@/components/article/ArticleMetaRow';
+import RecommendationLevelBadge from '@/components/article/RecommendationLevelBadge';
 import ArticleSplitEditorModal from '@/components/article/ArticleSplitEditorModal';
 import FeedListSkeleton from '@/components/article/FeedListSkeleton';
 import Button from '@/components/Button';
@@ -395,7 +396,9 @@ export default function Home({
       : '';
   const initialQuickDateFilter = parseQuickDateOption(initialQuery.quick_date);
   const initialSortBy =
-    initialQuery.sort_by === 'created_at_desc' || initialQuery.sort_by === 'published_at_desc'
+    initialQuery.sort_by === 'created_at_desc' ||
+    initialQuery.sort_by === 'published_at_desc' ||
+    initialQuery.sort_by === 'note_recommendation_level_desc'
       ? initialQuery.sort_by
       : 'published_at_desc';
   const initialPublishedStart = parseDateQuery(initialQuery.published_at_start || '');
@@ -938,7 +941,9 @@ export default function Home({
     const createdEnd = parseDateQuery(routerQueryState.created_at_end || '');
 
     const quickDateParam = parseQuickDateOption(quickDateRaw);
-    const sortByParam = sortByRaw === 'published_at_desc' || sortByRaw === 'created_at_desc'
+    const sortByParam = sortByRaw === 'published_at_desc' ||
+      sortByRaw === 'created_at_desc' ||
+      sortByRaw === 'note_recommendation_level_desc'
       ? sortByRaw
       : 'published_at_desc';
 
@@ -1218,6 +1223,7 @@ export default function Home({
     }
     if (sortBy === 'published_at_desc') filters.push(`${t('排序')}：${t('发表时间倒序')}`);
     if (sortBy === 'created_at_desc') filters.push(`${t('排序')}：${t('创建时间倒序')}`);
+    if (sortBy === 'note_recommendation_level_desc') filters.push(`${t('排序')}：${t('推荐等级倒序')}`);
     return filters;
   }, [
     categories,
@@ -1296,6 +1302,7 @@ export default function Home({
             options={[
               { value: 'published_at_desc', label: t('发表时间倒序') },
               { value: 'created_at_desc', label: t('创建时间倒序') },
+              { value: 'note_recommendation_level_desc', label: t('推荐等级倒序') },
             ]}
           />
         </div>
@@ -1932,6 +1939,7 @@ export default function Home({
                           options={[
                             { value: 'published_at_desc', label: t('发表时间倒序') },
                             { value: 'created_at_desc', label: t('创建时间倒序') },
+                            { value: 'note_recommendation_level_desc', label: t('推荐等级倒序') },
                           ]}
                         />
                       </div>
@@ -2088,16 +2096,22 @@ export default function Home({
                             )}
                             {mediaBlock}
                             <div className="flex-1 sm:pr-6">
-                              <Link
-                                href={articleHref}
-                                onClick={(e) => e.stopPropagation()}
-                                target={articleLinkTarget}
-                                rel={articleLinkRel}
-                              >
-                                <h3 className="text-xl font-semibold text-text-1 hover:text-primary transition cursor-pointer">
-                                  {displayTitle}
-                                </h3>
-                              </Link>
+                              <div className="flex items-start gap-2">
+                                <RecommendationLevelBadge
+                                  level={article.note_recommendation_level}
+                                />
+                                <Link
+                                  href={articleHref}
+                                  onClick={(e) => e.stopPropagation()}
+                                  target={articleLinkTarget}
+                                  rel={articleLinkRel}
+                                  className="min-w-0"
+                                >
+                                  <h3 className="text-xl font-semibold text-text-1 hover:text-primary transition cursor-pointer">
+                                    {displayTitle}
+                                  </h3>
+                                </Link>
+                              </div>
                               <ArticleMetaRow
                                 className="mt-2"
                                 publishedAt={article.published_at}

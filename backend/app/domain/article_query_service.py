@@ -485,6 +485,8 @@ class ArticleQueryService:
                 Article.category_id,
                 Article.compile_status,
                 Article.compiled_at,
+                Article.note_recommendation_level,
+                Article.note_recommendation_level_order,
             ),
             joinedload(Article.category).load_only(Category.id, Category.name, Category.color),
             joinedload(Article.topic_links).joinedload(ArticleTopic.topic).load_only(
@@ -498,7 +500,17 @@ class ArticleQueryService:
         )
 
         if sort_by == "created_at_desc":
-            query = query.order_by(Article.created_at.desc())
+            query = query.order_by(Article.created_at.desc(), Article.id.desc())
+            articles = query.offset((page - 1) * size).limit(size).all()
+            self.attach_public_comment_counts(db, articles)
+            return articles, total
+
+        if sort_by == "note_recommendation_level_desc":
+            query = query.order_by(
+                Article.note_recommendation_level_order.desc(),
+                Article.created_at.desc(),
+                Article.id.desc(),
+            )
             articles = query.offset((page - 1) * size).limit(size).all()
             self.attach_public_comment_counts(db, articles)
             return articles, total
@@ -507,6 +519,7 @@ class ArticleQueryService:
             query = query.order_by(
                 func.coalesce(Article.published_at, datetime.min).desc(),
                 Article.created_at.desc(),
+                Article.id.desc(),
             )
             articles = query.offset((page - 1) * size).limit(size).all()
             self.attach_public_comment_counts(db, articles)
