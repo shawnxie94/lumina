@@ -185,7 +185,7 @@ docker compose logs api
 - Topic settings store Bridge URL/token for web connectivity; knowledge provider/path are owned by Lumina CLI config.
 
 - `docker-compose.yml` defines a separate `worker` service with AI polling env vars; local compose file is gitignored (`docker-compose.yml.example` is the template).
-- Compose may also run Neo4j when knowledge-graph features are enabled in the local stack; treat graph services as optional infra unless the task is graph-related.
+- The current Compose stack does not include Neo4j or GraphRAG services; topic knowledge uses the local Topic Bridge / knowledge provider path.
 - `data/` is a persistent SQLite volume; reset with `docker compose down -v`.
 - Extension requires manual browser testing via Chrome load unpacked from `.output/chrome-mv3`.
 - `frontend/pages/api/auth/[...nextauth].ts` depends on `BACKEND_API_URL` and `INTERNAL_API_TOKEN` to read comment OAuth settings.
