@@ -2017,6 +2017,11 @@ export default function Home({
                               decoding="async"
                             />
                             <ArticleLanguageTag article={article} className="absolute left-2 top-2 px-2 py-0.5 text-xs" />
+                            <RecommendationLevelBadge
+                              level={article.note_recommendation_level}
+                              variant="image-overlay"
+                              className="absolute right-2 top-2"
+                            />
                             {mediaStatsOverlay}
                           </div>
                         ) : (
@@ -2034,6 +2039,11 @@ export default function Home({
                               decoding="async"
                             />
                             <ArticleLanguageTag article={article} className="absolute left-2 top-2 px-2 py-0.5 text-xs" />
+                            <RecommendationLevelBadge
+                              level={article.note_recommendation_level}
+                              variant="image-overlay"
+                              className="absolute right-2 top-2"
+                            />
                             {mediaStatsOverlay}
                           </Link>
                         )
@@ -2096,22 +2106,16 @@ export default function Home({
                             )}
                             {mediaBlock}
                             <div className="flex-1 sm:pr-6">
-                              <div className="flex items-start gap-2">
-                                <RecommendationLevelBadge
-                                  level={article.note_recommendation_level}
-                                />
-                                <Link
-                                  href={articleHref}
-                                  onClick={(e) => e.stopPropagation()}
-                                  target={articleLinkTarget}
-                                  rel={articleLinkRel}
-                                  className="min-w-0"
-                                >
-                                  <h3 className="text-xl font-semibold text-text-1 hover:text-primary transition cursor-pointer">
-                                    {displayTitle}
-                                  </h3>
-                                </Link>
-                              </div>
+                              <Link
+                                href={articleHref}
+                                onClick={(e) => e.stopPropagation()}
+                                target={articleLinkTarget}
+                                rel={articleLinkRel}
+                              >
+                                <h3 className="text-xl font-semibold text-text-1 hover:text-primary transition cursor-pointer">
+                                  {displayTitle}
+                                </h3>
+                              </Link>
                               <ArticleMetaRow
                                 className="mt-2"
                                 publishedAt={article.published_at}
