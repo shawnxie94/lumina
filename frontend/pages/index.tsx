@@ -310,7 +310,7 @@ export default function HomePage({
   return (
     <div className="min-h-screen bg-app flex flex-col">
       <SeoHead
-        title={`${siteDescription} - Lumina`}
+        title={`${siteName} - ${siteDescription}`}
         description={seoDescription}
         canonicalUrl={canonicalUrl}
         imageUrl={seoImageUrl}

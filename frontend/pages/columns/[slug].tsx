@@ -1525,7 +1525,7 @@ export default function ReviewDetailPage({
 				className={`min-h-screen ${immersiveMode ? "bg-surface" : "bg-app"} flex flex-col`}
 			>
 			<SeoHead
-				title={`${(isEditing ? title : review.title) || review.title} - ${siteName}`}
+				title={`${siteName} - ${(isEditing ? title : review.title) || review.title}`}
 				description={seoDescription}
 				canonicalUrl={canonicalUrl}
 				imageUrl={seoImageUrl}

@@ -22,7 +22,7 @@ export default function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
 
   const isSetupMode = !isInitialized;
-  const pageTitle = `${isSetupMode ? t('设置管理员密码') : t('管理员登录')} - ${basicSettings.site_name || 'Lumina'}`;
+  const pageTitle = `${basicSettings.site_name || 'Lumina'} - ${isSetupMode ? t('设置管理员密码') : t('管理员登录')}`;
   const redirectTarget = useMemo(() => {
     const redirectQuery = Array.isArray(router.query.redirect)
       ? router.query.redirect[0]

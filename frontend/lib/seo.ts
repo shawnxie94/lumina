@@ -214,15 +214,15 @@ const buildListTitle = (
 	const page = Number.parseInt(query.page || "1", 10);
 	const pageLabel = Number.isFinite(page) && page > 1 ? ` - 第 ${page} 页` : "";
 	if (options.topicName || query.topic) {
-		return `${options.topicName || query.topic} - 主题${pageLabel} - ${siteName}`;
+		return `${siteName} - ${options.topicName || query.topic} - 主题${pageLabel}`;
 	}
 	if (options.categoryName || query.category_id) {
-		return `${options.categoryName || query.category_id} - 文章列表${pageLabel} - ${siteName}`;
+		return `${siteName} - ${options.categoryName || query.category_id} - 文章列表${pageLabel}`;
 	}
 	if (options.authorName || query.author) {
-		return `${options.authorName || query.author} - 作者文章${pageLabel} - ${siteName}`;
+		return `${siteName} - ${options.authorName || query.author} - 作者文章${pageLabel}`;
 	}
-	return `文章列表${pageLabel} - ${siteName}`;
+	return `${siteName} - 文章列表${pageLabel}`;
 };
 
 const buildListDescription = (
@@ -283,9 +283,9 @@ const buildReviewListTitle = (
 	const page = Number.parseInt(query.page || "1", 10);
 	const pageLabel = Number.isFinite(page) && page > 1 ? ` - 第 ${page} 页` : "";
 	if (options.templateName || query.template_id) {
-		return `${options.templateName || query.template_id} - 专栏列表${pageLabel} - ${siteName}`;
+		return `${siteName} - ${options.templateName || query.template_id} - 专栏列表${pageLabel}`;
 	}
-	return `专栏列表${pageLabel} - ${siteName}`;
+	return `${siteName} - 专栏列表${pageLabel}`;
 };
 
 const buildReviewListDescription = (

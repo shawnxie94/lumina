@@ -4427,8 +4427,8 @@ export default function ArticleDetailPage({
 			<SeoHead
 				title={
 					displayTitle
-						? `${displayTitle} - ${basicSettings.site_name || "Lumina"}`
-						: `${t("文章详情")} - ${basicSettings.site_name || "Lumina"}`
+						? `${basicSettings.site_name || "Lumina"} - ${displayTitle}`
+						: `${basicSettings.site_name || "Lumina"} - ${t("文章详情")}`
 				}
 				description={seoDescription}
 				canonicalUrl={canonicalUrl}

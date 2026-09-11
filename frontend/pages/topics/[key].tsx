@@ -302,7 +302,7 @@ export default function TopicDetailPage({
 	return (
 		<div className="flex min-h-screen flex-col bg-app text-text-1">
 			<SeoHead
-				title={`${title} - ${siteName}`}
+				title={`${siteName} - ${title}`}
 				description={description}
 				canonicalUrl={canonicalUrl}
 				imageUrl={seoImageUrl}

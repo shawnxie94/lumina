@@ -10,7 +10,7 @@ export default function OfflinePage() {
 	return (
 		<>
 			<SeoHead
-				title={isEnglish ? "Offline | Lumina" : "离线状态 | Lumina"}
+				title={isEnglish ? "Lumina - Offline" : "Lumina - 离线状态"}
 				robots="noindex,nofollow"
 			/>
 			<main className="min-h-screen bg-app px-4 py-10 flex items-center justify-center">

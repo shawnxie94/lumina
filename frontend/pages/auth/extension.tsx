@@ -31,9 +31,9 @@ export default function ExtensionAuthPage() {
     }
     return `/login?redirect=${encodeURIComponent(currentPath)}`;
   }, [router.asPath]);
-  const pageTitle = `${t('扩展授权登录')} - ${basicSettings.site_name || 'Lumina'}`;
-  const authorizedTitle = `${t('授权成功')} - ${basicSettings.site_name || 'Lumina'}`;
-  const grantingTitle = `${t('扩展授权')} - ${basicSettings.site_name || 'Lumina'}`;
+  const pageTitle = `${basicSettings.site_name || 'Lumina'} - ${t('扩展授权登录')}`;
+  const authorizedTitle = `${basicSettings.site_name || 'Lumina'} - ${t('授权成功')}`;
+  const grantingTitle = `${basicSettings.site_name || 'Lumina'} - ${t('扩展授权')}`;
 
   const sendTokenToExtension = useCallback(async () => {
     if (!extension_id) return;
