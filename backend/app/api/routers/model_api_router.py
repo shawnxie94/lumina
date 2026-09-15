@@ -20,6 +20,7 @@ def serialize_model_api_config(config: ModelAPIConfig) -> dict:
         "model_name": config.model_name,
         "model_type": config.model_type or "general",
         "api_type": config.api_type or "chat_completions",
+        "thinking_level": config.thinking_level or "disabled",
         "price_input_per_1k": config.price_input_per_1k,
         "price_output_per_1k": config.price_output_per_1k,
         "currency": config.currency,
@@ -101,6 +102,7 @@ async def update_model_api_config(
         existing_config.model_name = config.model_name
         existing_config.model_type = config.model_type or "general"
         existing_config.api_type = config.api_type or "chat_completions"
+        existing_config.thinking_level = config.thinking_level or "disabled"
         existing_config.price_input_per_1k = config.price_input_per_1k
         existing_config.price_output_per_1k = config.price_output_per_1k
         existing_config.currency = config.currency

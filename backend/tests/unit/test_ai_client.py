@@ -1,6 +1,22 @@
 import pytest
 
-from ai_client import ConfigurableAIClient, validate_response_format
+from ai_client import (
+    ConfigurableAIClient,
+    strip_model_reasoning_noise,
+    validate_response_format,
+)
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("<think>private analysis</think>{\"ok\":true}", "{\"ok\":true}"),
+        ("<thinking reason=\"internal\">analysis</thinking>最终结果", "最终结果"),
+        ("最终结果\n<think>truncated analysis", "最终结果"),
+    ],
+)
+def test_strip_model_reasoning_noise_removes_paired_and_unclosed_blocks(raw, expected):
+    assert strip_model_reasoning_noise(raw) == expected
 
 
 def test_build_responses_request_uses_list_input_items():

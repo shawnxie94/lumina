@@ -805,6 +805,7 @@ export interface ModelAPIConfig {
 	model_name: string;
 	model_type?: string | null;
 	api_type?: "chat_completions" | "responses" | null;
+	thinking_level?: "disabled" | "auto" | "low" | "medium" | "high" | "adaptive" | null;
 	price_input_per_1k?: number | null;
 	price_output_per_1k?: number | null;
 	currency?: string | null;
@@ -1391,6 +1392,7 @@ export const articleApi = {
 		model_name?: string;
 		model_type?: string;
 		api_type?: "chat_completions" | "responses";
+		thinking_level?: "disabled" | "auto" | "low" | "medium" | "high" | "adaptive";
 		price_input_per_1k?: number;
 		price_output_per_1k?: number;
 		currency?: string;
@@ -1413,6 +1415,7 @@ export const articleApi = {
 			model_name?: string;
 			model_type?: string;
 			api_type?: "chat_completions" | "responses";
+			thinking_level?: "disabled" | "auto" | "low" | "medium" | "high" | "adaptive";
 			price_input_per_1k?: number;
 			price_output_per_1k?: number;
 			currency?: string;

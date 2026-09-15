@@ -36,6 +36,7 @@ class ModelAPIConfigBase(BaseModel):
     model_name: str = "gpt-4o"
     model_type: str = "general"
     api_type: str = "chat_completions"
+    thinking_level: Optional[str] = "disabled"
     price_input_per_1k: Optional[float] = None
     price_output_per_1k: Optional[float] = None
     currency: Optional[str] = None
@@ -51,6 +52,14 @@ class ModelAPIConfigBase(BaseModel):
         if not trimmed:
             raise ValueError("模型API配置名称不能为空")
         return trimmed
+
+    @field_validator("thinking_level")
+    @classmethod
+    def validate_thinking_level(cls, value: Optional[str]) -> str:
+        normalized = (value or "disabled").strip().lower()
+        if normalized not in {"disabled", "auto", "low", "medium", "high", "adaptive"}:
+            raise ValueError("思考等级不支持")
+        return normalized
 
     @field_validator("api_type")
     @classmethod

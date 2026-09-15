@@ -8,7 +8,11 @@ from html import unescape
 from typing import Any
 from xml.etree import ElementTree as ET
 
-from ai_client import ConfigurableAIClient, is_english_content
+from ai_client import (
+    ConfigurableAIClient,
+    is_english_content,
+    strip_model_reasoning_noise,
+)
 from media_service import maybe_ingest_article_images_with_stats
 from sqlalchemy import or_
 from app.core.public_cache import (
@@ -445,8 +449,10 @@ class ArticleAIPipelineService:
             "base_url": model_config.base_url,
             "api_key": model_config.api_key,
             "model_name": model_config.model_name,
+            "provider": model_config.provider or "openai",
             "model_api_config_id": model_config.id,
             "api_type": model_config.api_type or "chat_completions",
+            "thinking_level": model_config.thinking_level or "disabled",
             "price_input_per_1k": model_config.price_input_per_1k,
             "price_output_per_1k": model_config.price_output_per_1k,
             "currency": model_config.currency,
@@ -465,6 +471,8 @@ class ArticleAIPipelineService:
             api_key=config["api_key"],
             model_name=config["model_name"],
             api_type=config.get("api_type") or "chat_completions",
+            provider=config.get("provider") or "openai",
+            thinking_level=config.get("thinking_level") or "disabled",
         )
 
     def _get_prompt_output_contract(self, prompt_type: str) -> PromptOutputContract:
@@ -692,30 +700,10 @@ class ArticleAIPipelineService:
 
     def _strip_model_reasoning_noise(self, raw_text: str) -> str:
         """Remove chain-of-thought wrappers and markdown fences from model output."""
-        text = str(raw_text or "").strip()
+        text = strip_model_reasoning_noise(raw_text)
         if not text:
             return ""
-        # Common thinking wrappers from reasoning-capable models.
-        text = re.sub(
-            r"<think>.*?</(?:think|thinking)>",
-            "",
-            text,
-            flags=re.IGNORECASE | re.DOTALL,
-        )
-        text = re.sub(
-            r"<thinking>.*?</thinking>",
-            "",
-            text,
-            flags=re.IGNORECASE | re.DOTALL,
-        )
-        # Unclosed think block (model hit max_tokens mid-reasoning).
-        text = re.sub(
-            r"<think(?:ing)?>.*$",
-            "",
-            text,
-            flags=re.IGNORECASE | re.DOTALL,
-        )
-        text = text.strip()
+        # Structured callers may still receive a markdown JSON fence.
         if text.startswith("```"):
             text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)
             text = re.sub(r"\s*```$", "", text)

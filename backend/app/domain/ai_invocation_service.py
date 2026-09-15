@@ -7,7 +7,7 @@ import time
 from typing import Any
 
 from openai import AsyncOpenAI
-from ai_client import validate_response_format
+from ai_client import strip_model_reasoning_noise, validate_response_format
 from task_state import append_task_event
 
 
@@ -388,7 +388,7 @@ class AIInvocationService:
             **request_payload,
         )
         latency_ms = int((time.monotonic() - start) * 1000)
-        content = response.choices[0].message.content
+        content = strip_model_reasoning_noise(response.choices[0].message.content)
         usage = self._serialize_usage(getattr(response, "usage", None))
         response_payload = {
             "id": getattr(response, "id", None),
@@ -484,7 +484,7 @@ class AIInvocationService:
             **request_payload,
         )
         latency_ms = int((time.monotonic() - start) * 1000)
-        content = self._extract_responses_text(response)
+        content = strip_model_reasoning_noise(self._extract_responses_text(response))
         response_meta = (
             self._extract_event_stream_metadata(response) if isinstance(response, str) else {}
         )
@@ -542,7 +542,7 @@ class AIInvocationService:
             api_key=model_config["api_key"],
             **request_payload,
         )
-        content = self._extract_responses_text(response)
+        content = strip_model_reasoning_noise(self._extract_responses_text(response))
         response_meta = (
             self._extract_event_stream_metadata(response) if isinstance(response, str) else {}
         )

@@ -1289,6 +1289,7 @@ export default function AdminPage() {
 		model_name: "gpt-4o",
 		model_type: "general",
 		api_type: "chat_completions" as "chat_completions" | "responses",
+		thinking_level: "disabled" as "disabled" | "auto" | "low" | "medium" | "high" | "adaptive",
 		price_input_per_1k: "",
 		price_output_per_1k: "",
 		currency: "USD",
@@ -2111,6 +2112,7 @@ export default function AdminPage() {
 			model_name: "gpt-4o",
 			model_type: nextModelType,
 			api_type: "chat_completions",
+			thinking_level: "disabled",
 			price_input_per_1k: "",
 			price_output_per_1k: "",
 			currency: "USD",
@@ -2139,6 +2141,7 @@ export default function AdminPage() {
 			model_name: config.model_name,
 			model_type: config.model_type || "general",
 			api_type: config.api_type || "chat_completions",
+			thinking_level: config.thinking_level || "disabled",
 			price_input_per_1k: config.price_input_per_1k?.toString() || "",
 			price_output_per_1k: config.price_output_per_1k?.toString() || "",
 			currency: config.currency || "USD",
@@ -6874,6 +6877,28 @@ export default function AdminPage() {
 								options={[
 									{ value: "openai", label: t("OpenAI 兼容") },
 									{ value: "jina", label: "JinaAI" },
+								]}
+							/>
+						</FormField>
+
+						<FormField label={t("思考等级")}>
+							<SelectField
+								value={modelAPIFormData.thinking_level}
+								onChange={(value) =>
+									setModelAPIFormData({
+										...modelAPIFormData,
+										thinking_level: value as typeof modelAPIFormData.thinking_level,
+									})
+								}
+								className="w-full"
+								popupClassName="select-modern-dropdown"
+								options={[
+									{ value: "disabled", label: t("关闭") },
+									{ value: "auto", label: t("自动") },
+									{ value: "low", label: "Low" },
+									{ value: "medium", label: "Medium" },
+									{ value: "high", label: "High" },
+									{ value: "adaptive", label: "Adaptive" },
 								]}
 							/>
 						</FormField>

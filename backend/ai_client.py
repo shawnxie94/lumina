@@ -19,6 +19,30 @@ MARKDOWN_LINK_PATTERN = re.compile(r"\[.*?\]\(.*?\)")
 MARKDOWN_SYMBOL_PATTERN = re.compile(r"[#*_\-\[\](){}|>]")
 WHITESPACE_PATTERN = re.compile(r"\s+")
 HAN_CHAR_PATTERN = re.compile(r"[\u4e00-\u9fff]")
+MODEL_REASONING_BLOCK_PATTERN = re.compile(
+    r"<(?:think|thinking)\b[^>]*>.*?</(?:think|thinking)\s*>",
+    re.IGNORECASE | re.DOTALL,
+)
+MODEL_REASONING_UNCLOSED_PATTERN = re.compile(
+    r"<(?:think|thinking)\b[^>]*>.*$",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def strip_model_reasoning_noise(raw_text: Any) -> str:
+    """Remove provider-emitted chain-of-thought blocks from final text.
+
+    Some reasoning models ignore the prompt/disabled-thinking setting and put
+    their private analysis in ``<think>`` or ``<thinking>`` tags.  Do this at
+    the shared provider boundary so every caller (structured or free-form)
+    receives the same cleaned output.
+    """
+    text = str(raw_text or "").strip()
+    if not text:
+        return ""
+    text = MODEL_REASONING_BLOCK_PATTERN.sub("", text)
+    # A length-truncated response may never emit the closing tag.
+    return MODEL_REASONING_UNCLOSED_PATTERN.sub("", text).strip()
 
 
 def validate_response_format(response_format: Dict[str, Any] | str | None) -> None:
@@ -112,6 +136,8 @@ class ConfigurableAIClient:
         api_key: str,
         model_name: str,
         api_type: str = "chat_completions",
+        provider: str = "openai",
+        thinking_level: str | None = "disabled",
     ):
         if not api_key:
             raise ValueError("API key is required")
@@ -121,6 +147,8 @@ class ConfigurableAIClient:
         self.base_url = base_url
         self.api_key = api_key
         self.model_name = model_name
+        self.provider = (provider or "openai").strip().lower()
+        self.thinking_level = (thinking_level or "disabled").strip().lower()
         self.api_type = (api_type or "chat_completions").strip() or "chat_completions"
         self.client = AsyncOpenAI(base_url=base_url, api_key=api_key)
 
@@ -209,7 +237,7 @@ class ConfigurableAIClient:
                 response = await self.client.responses.create(**request_params)
                 latency_ms = int((time.monotonic() - start_time) * 1000)
                 usage_data = self._serialize_usage(getattr(response, "usage", None))
-                content = self._extract_response_text(response)
+                content = strip_model_reasoning_noise(self._extract_response_text(response))
                 response_meta = (
                     self._extract_event_stream_metadata(response)
                     if isinstance(response, str)
@@ -247,8 +275,9 @@ class ConfigurableAIClient:
             response = await self.client.chat.completions.create(**request_params)
             latency_ms = int((time.monotonic() - start_time) * 1000)
             usage_data = self._serialize_usage(getattr(response, "usage", None))
+            content = strip_model_reasoning_noise(response.choices[0].message.content)
             return {
-                "content": response.choices[0].message.content,
+                "content": content,
                 "usage": getattr(response, "usage", None),
                 "model": getattr(response, "model", self.model_name),
                 "finish_reason": getattr(response.choices[0], "finish_reason", None),
@@ -256,7 +285,7 @@ class ConfigurableAIClient:
                 "request_payload": request_params,
                 "response_payload": {
                     "id": getattr(response, "id", None),
-                    "content": response.choices[0].message.content,
+                    "content": content,
                     "model": getattr(response, "model", self.model_name),
                     "usage": usage_data,
                     "finish_reason": getattr(response.choices[0], "finish_reason", None),
@@ -327,7 +356,7 @@ class ConfigurableAIClient:
                 )
                 response = await self.client.responses.create(**request_params)
                 latency_ms = int((time.monotonic() - start_time) * 1000)
-                result = self._extract_response_text(response)
+                result = strip_model_reasoning_noise(self._extract_response_text(response))
                 usage_data = self._serialize_usage(getattr(response, "usage", None))
                 response_meta = (
                     self._extract_event_stream_metadata(response)
@@ -365,7 +394,7 @@ class ConfigurableAIClient:
             )
             response = await self.client.chat.completions.create(**request_params)
             latency_ms = int((time.monotonic() - start_time) * 1000)
-            result = response.choices[0].message.content
+            result = strip_model_reasoning_noise(response.choices[0].message.content)
             usage_data = self._serialize_usage(getattr(response, "usage", None))
             print(
                 f"翻译响应 - 结果长度: {len(result) if result else 0}, 前100字符: {result[:100] if result else 'None'}"
@@ -417,8 +446,16 @@ class ConfigurableAIClient:
 
         if self._is_minimax_provider():
             thinking = parameters.get("thinking")
-            if thinking is None and parameters.get("disable_thinking"):
-                thinking = {"type": "disabled"}
+            if thinking is None:
+                level = str(parameters.get("thinking_level") or self.thinking_level).lower()
+                if level == "disabled":
+                    thinking = {"type": "disabled"}
+                elif level == "adaptive":
+                    thinking = {"type": "adaptive"}
+                elif level in {"auto", "low", "medium", "high"}:
+                    thinking = {"type": "enabled"}
+                elif parameters.get("disable_thinking"):
+                    thinking = {"type": "disabled"}
             if thinking is not None:
                 extra_body["thinking"] = thinking
             if "reasoning_split" in parameters:
@@ -459,6 +496,11 @@ class ConfigurableAIClient:
             request_params["extra_body"] = extra_body
         return request_params
 
+    def _apply_responses_thinking(self, request_params: Dict[str, Any], parameters: Dict[str, Any]) -> None:
+        level = str(parameters.get("thinking_level") or self.thinking_level).lower()
+        if self.provider in {"openai", "azure", "openai-compatible"} and level in {"low", "medium", "high"}:
+            request_params["reasoning"] = {"effort": level}
+
     def _build_responses_request(
         self,
         *,
@@ -482,6 +524,7 @@ class ConfigurableAIClient:
         }
         if "top_p" in parameters:
             request_params["top_p"] = parameters["top_p"]
+        self._apply_responses_thinking(request_params, parameters)
         text_payload = self._build_responses_text_payload(parameters.get("response_format"))
         if text_payload is not None:
             request_params["text"] = text_payload

@@ -427,6 +427,8 @@ class ModelAPIConfig(Base):
     model_name = Column(String, nullable=False, default="gpt-4o")
     model_type = Column(String, nullable=False, default="general")
     api_type = Column(String, nullable=False, default="chat_completions")
+    # Provider-neutral thinking policy: disabled, auto, low, medium, high, adaptive.
+    thinking_level = Column(String, nullable=True, default="disabled")
     price_input_per_1k = Column(Float, nullable=True)
     price_output_per_1k = Column(Float, nullable=True)
     currency = Column(String, nullable=True)
