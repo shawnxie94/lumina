@@ -15,7 +15,7 @@ Lumina is a content workspace with a Next.js 14 frontend (pages router), FastAPI
 ├── extension/            # WXT browser extension (Defuddle capture)
 ├── bridge/               # Local Topic Bridge package (writeback/sync HTTP service)
 ├── cli/                  # Lumina CLI (install/start Bridge + knowledge providers)
-├── docs/                 # Ops notes, API notes, TRD drafts under docs/trd/
+├── docs/                 # Ops notes, API notes, screenshots（TRD 已随 DB-first 收敛）
 ├── deploy/               # Deploy helpers (e.g. nginx)
 ├── scripts/              # Repo-level scripts (docker healthcheck, CLI/Bridge installers)
 └── data/                 # SQLite database + media volume
@@ -78,7 +78,7 @@ Nested agent maps (prefer these for domain detail):
 | Extension extraction | `extension/entrypoints/content.ts` `extension/utils/defuddleExtract.ts` | Defuddle + first-party markdown |
 | Extension shadow flatten | `extension/utils/flattenShadowDom.ts` | Prep for Defuddle |
 | Extension shared helpers | `extension/utils/` | History/error/i18n helpers |
-| Ops notes | `docs/` `docs/api/` `docs/trd/` | Ops/API notes + topic/CLI TRD drafts |
+| Ops notes | `docs/` `docs/api/` | Ops/API notes（TRD 已随 DB-first 收敛） |
 
 ## ARTICLE EXTRACTION BOUNDARY
 - **Browser extension body is final at create time**: plugin-captured `content_html` / `content_md` are stored as-is; do not re-run Jina HTML cleaning on create.
