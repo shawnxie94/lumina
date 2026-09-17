@@ -13,6 +13,7 @@ import {
 	setupGlobalErrorHandler,
 } from "../../utils/errorLogger";
 import { ensureContentScriptLoaded } from "../../utils/contentScript";
+import { addInboxItem } from "../../utils/inbox";
 import {
 	resolveLanguage,
 	setStoredLanguage,
@@ -48,7 +49,6 @@ class PopupController {
 
 			if (!this.#isLoggedIn) {
 				this.showLoginRequired();
-				return;
 			}
 
 			await this.refreshSelectionState();
@@ -114,9 +114,17 @@ class PopupController {
 		const loginBtn = document.getElementById("loginBtn");
 		const logoutBtn = document.getElementById("logoutBtn");
 		const loginStatus = document.getElementById("loginStatus");
+		const collectBtn = document.getElementById("collectBtn");
+		const loginPrompt = document.getElementById("loginPrompt");
 
 		if (loginBtn) loginBtn.classList.toggle("hidden", this.#isLoggedIn);
 		if (logoutBtn) logoutBtn.classList.toggle("hidden", !this.#isLoggedIn);
+		if (collectBtn) {
+			collectBtn.classList.toggle("hidden", !this.#isLoggedIn);
+		}
+		if (loginPrompt) {
+			loginPrompt.classList.toggle("hidden", this.#isLoggedIn);
+		}
 		if (loginStatus) {
 			loginStatus.textContent = this.#isLoggedIn
 				? this.t("已登录")
@@ -126,13 +134,10 @@ class PopupController {
 	}
 
 	showLoginRequired() {
-		const mainContent = document.getElementById("mainContent");
-		const loginPrompt = document.getElementById("loginPrompt");
-
-		if (mainContent) mainContent.classList.add("hidden");
-		if (loginPrompt) loginPrompt.classList.remove("hidden");
-
-		this.updateStatus("warning", this.t("请先登录管理员账号"));
+		this.updateStatus(
+			"warning",
+			this.t("未登录 · 暂存仅保存在浏览器本地，采集需先授权"),
+		);
 	}
 
 	async handleLogin() {
@@ -178,6 +183,14 @@ class PopupController {
 		document
 			.getElementById("collectBtn")
 			?.addEventListener("click", () => this.collectArticle());
+
+		document
+			.getElementById("stashBtn")
+			?.addEventListener("click", () => this.stashCurrentPage());
+
+		document
+			.getElementById("inboxBtn")
+			?.addEventListener("click", () => this.openInbox());
 
 		document
 			.getElementById("configBtn")
@@ -383,6 +396,132 @@ class PopupController {
 				collectBtn.disabled = false;
 			}
 		}
+	}
+
+	/** True when extraction produced real text (html or md), not an empty shell. */
+	hasExtractedText(data) {
+		if (!data) return false;
+		const md = (data.content_md || "").trim();
+		if (md) return md.replace(/\s+/g, " ").length > 0;
+		const html = (data.content_html || "").trim();
+		if (!html) return false;
+		return html
+			.replace(/<script[\s\S]*?<\/script>/gi, " ")
+			.replace(/<style[\s\S]*?<\/style>/gi, " ")
+			.replace(/<[^>]+>/g, " ")
+			.replace(/\s+/g, " ")
+			.trim().length > 0;
+	}
+
+	async stashCurrentPage() {
+		const stashBtn = document.getElementById("stashBtn");
+		if (stashBtn) stashBtn.disabled = true;
+
+		try {
+			const [tab] = await chrome.tabs.query({
+				active: true,
+				currentWindow: true,
+			});
+			this.#currentTab = tab;
+
+			if (!tab?.id) {
+				this.updateStatus("error", this.t("无法获取当前标签页"));
+				return;
+			}
+
+			if (
+				tab.url?.startsWith("chrome://") ||
+				tab.url?.startsWith("chrome-extension://")
+			) {
+				this.updateStatus("error", this.t("无法在此页面提取内容"));
+				return;
+			}
+
+			this.updateStatus("loading", this.t("正在提取内容..."));
+
+			let extracted = null;
+			const scriptLoaded = await ensureContentScriptLoaded(tab.id, {
+				onError: (error) =>
+					logError("popup", error, {
+						action: "injectContentScript",
+						tabId: tab.id,
+					}),
+			});
+
+			if (scriptLoaded) {
+				let hasSelection = this.#selectionAvailable;
+				try {
+					const selectionCheck = await chrome.tabs.sendMessage(tab.id, {
+						type: "CHECK_SELECTION",
+					});
+					hasSelection = Boolean(selectionCheck?.hasSelection);
+					this.#selectionAvailable = hasSelection;
+					this.updateSelectionHint();
+				} catch (err) {
+					console.log("Selection check failed:", err);
+				}
+
+				const capture = async (mode) => {
+					try {
+						return await chrome.tabs.sendMessage(tab.id, {
+							type: "EXTRACT_CAPTURE",
+							mode,
+						});
+					} catch (err) {
+						console.log(`Capture (${mode}) failed:`, err);
+						return null;
+					}
+				};
+
+				if (hasSelection) {
+					extracted = await capture("selection");
+				}
+				if (!this.hasExtractedText(extracted)) {
+					extracted = await capture("article");
+				}
+				if (!this.hasExtractedText(extracted)) {
+					extracted = null;
+				}
+			}
+
+			let domain = "";
+			try {
+				domain = tab.url ? new URL(tab.url).hostname : "";
+			} catch {
+				domain = "";
+			}
+
+			await addInboxItem({
+				url: (extracted?.source_url || tab.url || "").trim(),
+				title:
+					(extracted?.title || tab.title || "").trim() || this.t("(无标题)"),
+				domain,
+				author: extracted?.author || "",
+				publishedAt: extracted?.published_at || "",
+				topImage: extracted?.top_image || null,
+				contentMd: (extracted?.content_md || "").trim(),
+				contentHtml: extracted?.content_html || "",
+				contentStructured: extracted?.content_structured || null,
+				isSelection: Boolean(extracted?.isSelection),
+			});
+
+			this.updateStatus("success", this.t("已暂存到收件箱（本地）"));
+			setTimeout(() => window.close(), 800);
+		} catch (error) {
+			console.error("Failed to stash page:", error);
+			logError("popup", error, {
+				action: "stashCurrentPage",
+				url: this.#currentTab?.url,
+			});
+			this.updateStatus("error", this.t("暂存失败，请重试"));
+		} finally {
+			if (stashBtn) stashBtn.disabled = false;
+		}
+	}
+
+	openInbox() {
+		chrome.tabs.create({ url: chrome.runtime.getURL("inbox.html") });
+		window.close();
 	}
 
 	openConfigModal() {

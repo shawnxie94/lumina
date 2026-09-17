@@ -31,6 +31,12 @@
       <span class="connection-status" id="connectionStatus" title="检测中..." data-i18n="检测中..." data-i18n-attr="title" data-i18n-text="false">
         <span class="status-dot checking"></span>
       </span>
+      <button id="inboxBtn" class="icon-btn" title="暂存箱" aria-label="暂存箱" data-i18n="暂存箱" data-i18n-attr="title,aria-label" data-i18n-text="false">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M22 12h-6l-2 3h-4l-2-3H2" />
+          <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
+        </svg>
+      </button>
       <button id="languageBtn" class="icon-btn" title="语言" aria-label="语言" data-i18n="语言" data-i18n-attr="title,aria-label" data-i18n-text="false">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <circle cx="12" cy="12" r="10" />
@@ -75,6 +81,7 @@
     <div class="error-box hidden" id="errorBox"></div>
 
     <div class="buttons">
+      <button class="btn btn-secondary" id="stashBtn" data-i18n="暂存">暂存</button>
       <button class="btn btn-primary" id="collectBtn" data-i18n="采集">采集</button>
     </div>
 

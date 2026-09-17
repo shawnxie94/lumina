@@ -240,6 +240,10 @@ body {
   cursor: not-allowed;
 }
 
+.btn.hidden {
+  display: none;
+}
+
 .form-group {
   margin-bottom: 16px;
 }

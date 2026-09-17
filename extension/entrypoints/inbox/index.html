@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lumina 暂存箱</title>
+</head>
+<body>
+  <div class="inbox-app">
+    <aside class="inbox-sidebar">
+      <div class="sidebar-header">
+        <img src="icon/48.png" alt="Lumina" class="sidebar-brand-icon" />
+        <span class="sidebar-title" data-i18n="暂存箱">暂存箱</span>
+        <span class="sidebar-count" id="inboxCount">0</span>
+        <button id="clearInboxBtn" class="text-btn" data-i18n="清空">清空</button>
+      </div>
+      <div class="inbox-list" id="inboxList"></div>
+    </aside>
+
+    <main class="inbox-main">
+      <div class="editor-empty" id="editorEmpty">
+        <p class="editor-empty-title" data-i18n="暂存箱为空">暂存箱为空</p>
+        <p class="editor-empty-hint" data-i18n="在网页上点击插件弹窗中的「暂存」，即可把链接和正文保存到这里，阅读后再推送到 Lumina">
+          在网页上点击插件弹窗中的「暂存」，即可把链接和正文保存到这里，阅读后再推送到 Lumina
+        </p>
+      </div>
+
+      <div class="editor-wrap hidden" id="editorWrap">
+        <div class="editor-toolbar">
+          <div class="editor-toolbar-info">
+            <span id="editorSavedAt" class="editor-saved-at"></span>
+            <span id="autosaveStatus" class="autosave-status"></span>
+            <a id="openSourceLink" class="editor-source-link" target="_blank" rel="noreferrer" data-i18n="打开原链接">打开原链接</a>
+          </div>
+          <div class="editor-toolbar-actions">
+            <button id="pushItemBtn" class="btn btn-primary" data-i18n="推送到 Lumina">推送到 Lumina</button>
+            <button id="deleteItemBtn" class="btn btn-danger" data-i18n="删除">删除</button>
+          </div>
+        </div>
+
+        <div id="loginBanner" class="login-banner hidden" data-i18n="未登录 Lumina · 可正常暂存和编辑，授权后可推送到 Lumina">
+          未登录 Lumina · 可正常暂存和编辑，授权后可推送到 Lumina
+        </div>
+
+        <div class="editor-body">
+          <div class="form-grid">
+            <div class="form-field span-2">
+              <label for="fieldTitle"><span data-i18n="标题">标题</span> <em class="required">*</em></label>
+              <input type="text" id="fieldTitle" data-i18n-attr="placeholder" data-i18n-text="false" placeholder="请输入文章标题" />
+            </div>
+            <div class="form-field">
+              <label for="fieldAuthor" data-i18n="作者">作者</label>
+              <input type="text" id="fieldAuthor" data-i18n-attr="placeholder" data-i18n-text="false" placeholder="请输入作者" />
+            </div>
+            <div class="form-field">
+              <label for="fieldPublishedAt" data-i18n="发表时间">发表时间</label>
+              <input type="date" id="fieldPublishedAt" />
+            </div>
+            <div class="form-field">
+              <label for="fieldSourceUrl" data-i18n="来源 URL">来源 URL</label>
+              <input type="text" id="fieldSourceUrl" data-i18n-attr="placeholder" data-i18n-text="false" placeholder="请输入来源链接" />
+            </div>
+            <div class="form-field">
+              <label for="fieldTopImage" data-i18n="头图 URL">头图 URL</label>
+              <input type="text" id="fieldTopImage" data-i18n-attr="placeholder" data-i18n-text="false" placeholder="请输入头图链接" />
+            </div>
+          </div>
+
+          <div class="content-field">
+            <label for="fieldContent">
+              <span data-i18n="内容（Markdown）">内容（Markdown）</span> <em class="required">*</em>
+            </label>
+            <textarea id="fieldContent" spellcheck="false"></textarea>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+
+  <script type="module" src="./main.js"></script>
+</body>
+</html>

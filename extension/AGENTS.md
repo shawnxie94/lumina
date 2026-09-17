@@ -7,8 +7,8 @@ WXT-based browser extension with popup/background/content entrypoints, Defuddle-
 ## STRUCTURE
 ```
 extension/
-├── entrypoints/         # popup + background + content entrypoints
-├── utils/               # API/extraction/history/error/i18n helpers
+├── entrypoints/         # popup + inbox + background + content entrypoints
+├── utils/               # API/extraction/inbox/history/error/i18n helpers
 ├── styles/              # Popup CSS
 ├── public/              # Icons + MAIN-world helper scripts
 ├── types/               # Shared TS request/response types
@@ -20,6 +20,8 @@ extension/
 | Task | Location | Notes |
 |------|----------|-------|
 | Popup UI flow | `extension/entrypoints/popup/main.js` | Main capture flow |
+| Popup stash (暂存) | `extension/entrypoints/popup/main.js` `extension/utils/inbox.ts` | Local inbox stash; works without login |
+| Inbox page | `extension/entrypoints/inbox/` `extension/styles/inbox.css` | Sidebar list + editor; push/save/delete |
 | Background context menu | `extension/entrypoints/background.ts` | One-click capture entry |
 | Content extraction | `extension/entrypoints/content.ts` | Defuddle cascade; empty-only URL fallback |
 | Defuddle adapter | `extension/utils/defuddleExtract.ts` | `defuddle/full` + first-party `contentMarkdown` (no custom turndown) |
@@ -41,6 +43,7 @@ extension/
 - Use `chrome.scripting.executeScript` for extraction; no persistent content scripts.
 - Keep extension-facing strings translatable via `utils/i18n.ts`.
 - DOM capture uses a single `EXTRACT_CAPTURE` message (`auto|selection|article`) and always finalizes via `finalizeExtracted` before createArticle. Default extraction engine uses Defuddle (`defuddle` npm pin), not site adapters or Readability.
+- Inbox items live in `chrome.storage.local` under `staging_inbox` (dedupe by URL, cap 50). The editor auto-saves edits (debounced ~600ms) and works logged out; push with content sends `content_md` only and leaves AI post-processing to admin settings (no `skip_ai_processing`), link-only items push via `report-url`.
 - Plugin-captured body is final at create; do not depend on backend re-cleaning plugin HTML with Jina.
 - For math-heavy pages, keep extraction fallback that retains MathML/MathJax when Defuddle body is empty/weak.
 
