@@ -8,6 +8,7 @@ import { logError } from "../utils/errorLogger";
 import { addToHistory } from "../utils/history";
 import { ensureContentScriptLoaded } from "../utils/contentScript";
 import { resolveLanguage, translate } from "../utils/i18n";
+import { LOGIN_CACHE_KEY, clearSessionCache } from "../utils/sessionCache";
 
 const normalizeUrlCandidate = (value: string): string =>
 	value
@@ -189,6 +190,9 @@ export default defineBackground(() => {
 			if (message.type === "AUTH_TOKEN" && message.token) {
 				try {
 					await ApiClient.saveToken(message.token);
+					// Fresh credential: drop any cached logged-out state so the
+					// next popup open verifies instead of flashing stale UI.
+					await clearSessionCache(LOGIN_CACHE_KEY);
 					const senderTabId = sender.tab?.id;
 					if (typeof senderTabId === "number") {
 						try {

@@ -12,8 +12,17 @@ import {
 	logError,
 	setupGlobalErrorHandler,
 } from "../../utils/errorLogger";
-import { ensureContentScriptLoaded } from "../../utils/contentScript";
+import { ensureContentScriptLoaded, pingContentScript } from "../../utils/contentScript";
 import { addInboxItem } from "../../utils/inbox";
+import {
+	HEALTH_CACHE_KEY,
+	HEALTH_CACHE_TTL_MS,
+	LOGIN_CACHE_KEY,
+	LOGIN_CACHE_TTL_MS,
+	clearSessionCache,
+	getSessionCache,
+	setSessionCache,
+} from "../../utils/sessionCache";
 import {
 	resolveLanguage,
 	setStoredLanguage,
@@ -43,17 +52,20 @@ class PopupController {
 			await this.loadLanguage();
 			this.applyTranslations();
 			await this.loadConfig();
-			await this.setupEventListeners();
-			this.checkApiHealth();
-			await this.checkLoginStatus();
+			this.setupEventListeners();
 
-			if (!this.#isLoggedIn) {
-				this.showLoginRequired();
-			}
+			// Optimistic UI from session cache so controls render before network.
+			await this.applyCachedUiState();
 
-			await this.refreshSelectionState();
-			await this.loadHistory();
-			await this.loadErrorLogs();
+			// Independent startup probes run concurrently; each settles its own
+			// UI slice (login state, selection hint, health dot, local lists).
+			await Promise.all([
+				this.checkLoginStatus(),
+				this.refreshSelectionState(),
+				this.checkApiHealth(),
+				this.loadHistory(),
+				this.loadErrorLogs(),
+			]);
 		} catch (error) {
 			console.error("Failed to initialize popup:", error);
 			logError("popup", error, { action: "init" });
@@ -108,6 +120,28 @@ class PopupController {
 		const result = await this.#apiClient.verifyToken();
 		this.#isLoggedIn = result.valid && result.role === "admin";
 		this.updateLoginUI();
+		if (!this.#isLoggedIn) {
+			this.showLoginRequired();
+		}
+		await setSessionCache(LOGIN_CACHE_KEY, { valid: this.#isLoggedIn });
+	}
+
+	/** Render login/health hints from session cache before network settles. */
+	async applyCachedUiState() {
+		const [login, health] = await Promise.all([
+			getSessionCache(LOGIN_CACHE_KEY, LOGIN_CACHE_TTL_MS),
+			getSessionCache(HEALTH_CACHE_KEY, HEALTH_CACHE_TTL_MS),
+		]);
+		if (login) {
+			this.#isLoggedIn = Boolean(login.valid);
+			this.updateLoginUI();
+			if (!this.#isLoggedIn) {
+				this.showLoginRequired();
+			}
+		}
+		if (health) {
+			this.renderHealthDot(health.ok, health.latency);
+		}
 	}
 
 	updateLoginUI() {
@@ -152,17 +186,22 @@ class PopupController {
 		this.#isLoggedIn = false;
 		this.updateLoginUI();
 		this.showLoginRequired();
+		// Avoid a stale logged-in flash on the next popup open.
+		await clearSessionCache(LOGIN_CACHE_KEY);
 	}
 
 	async checkApiHealth() {
+		const { ok, latency } = await this.#apiClient.checkHealth();
+		this.renderHealthDot(ok, latency);
+		await setSessionCache(HEALTH_CACHE_KEY, { ok, latency });
+	}
+
+	renderHealthDot(ok, latency) {
 		const statusEl = document.getElementById("connectionStatus");
 		const dotEl = statusEl?.querySelector(".status-dot");
 		if (!statusEl || !dotEl) return;
 
-		const { ok, latency } = await this.#apiClient.checkHealth();
-
 		dotEl.classList.remove("checking", "connected", "disconnected");
-
 		if (ok) {
 			dotEl.classList.add("connected");
 			statusEl.title = this.t("已连接 ({latency}ms)").replace(
@@ -250,15 +289,12 @@ class PopupController {
 			});
 			this.#currentTab = tab;
 			if (!tab?.id) return;
-			const scriptLoaded = await ensureContentScriptLoaded(tab.id, {
-				onError: (error) =>
-					logError("popup", error, {
-						action: "injectContentScript",
-						tabId: tab.id,
-					}),
-			});
-			if (!scriptLoaded) {
-				this.updateStatus("error", this.t("无法在此页面提取内容"));
+			// PING-only probe: the heavy content-script injection is deferred to
+			// the capture actions, which run ensureContentScriptLoaded themselves.
+			const scriptReady = await pingContentScript(tab.id);
+			if (!scriptReady) {
+				this.#selectionAvailable = false;
+				this.updateSelectionHint();
 				return;
 			}
 			const selectionCheck = await chrome.tabs.sendMessage(tab.id, {

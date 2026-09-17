@@ -44,6 +44,7 @@ extension/
 - Keep extension-facing strings translatable via `utils/i18n.ts`.
 - DOM capture uses a single `EXTRACT_CAPTURE` message (`auto|selection|article`) and always finalizes via `finalizeExtracted` before createArticle. Default extraction engine uses Defuddle (`defuddle` npm pin), not site adapters or Readability.
 - Inbox items live in `chrome.storage.local` under `staging_inbox` (dedupe by URL, cap 50). The editor auto-saves edits (debounced ~600ms) and works logged out; push with content sends `content_md` only and leaves AI post-processing to admin settings (no `skip_ai_processing`), link-only items push via `report-url`.
+- Popup startup renders cached login/health state from `chrome.storage.session` (TTL 5m/30s, see `utils/sessionCache.ts`) then reconciles all probes in parallel; content-script injection is lazy — init only PINGs, capture actions inject via `ensureContentScriptLoaded`.
 - Plugin-captured body is final at create; do not depend on backend re-cleaning plugin HTML with Jina.
 - For math-heavy pages, keep extraction fallback that retains MathML/MathJax when Defuddle body is empty/weak.
 

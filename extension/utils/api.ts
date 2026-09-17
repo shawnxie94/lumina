@@ -136,10 +136,15 @@ export class ApiClient {
     if (!this.token) {
       return { valid: false, role: 'guest' };
     }
+    // Bound the wait so a hung backend cannot stall popup startup; callers
+    // degrade to logged-out (stash still works without login).
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 2500);
     try {
       const response = await fetch(`${this.baseUrl}${API_PREFIX}/api/auth/verify`, {
         method: 'GET',
         headers: this.getHeaders(),
+        signal: controller.signal,
       });
       if (!response.ok) {
         return { valid: false, role: 'guest' };
@@ -147,6 +152,8 @@ export class ApiClient {
       return await response.json();
     } catch {
       return { valid: false, role: 'guest' };
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
 
