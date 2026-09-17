@@ -200,8 +200,13 @@ body {
 .buttons {
   display: flex;
   gap: 8px;
-  justify-content: flex-end;
   margin-top: 8px;
+}
+
+/* Capture-row buttons split the popup width evenly. */
+.buttons .btn {
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 .btn {
