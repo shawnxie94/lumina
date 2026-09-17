@@ -21,7 +21,7 @@ extension/
 |------|----------|-------|
 | Popup UI flow | `extension/entrypoints/popup/main.js` | Main capture flow |
 | Popup stash (暂存) | `extension/entrypoints/popup/main.js` `extension/utils/inbox.ts` | Local inbox stash; works without login |
-| Inbox page | `extension/entrypoints/inbox/` `extension/styles/inbox.css` | Sidebar list + editor; push/save/delete |
+| Inbox page | `extension/entrypoints/inbox/` `extension/styles/inbox.css` | Sidebar list + editor; push/delete; markdown preview via `marked` + `DOMPurify` |
 | Background context menu | `extension/entrypoints/background.ts` | One-click capture entry |
 | Content extraction | `extension/entrypoints/content.ts` | Defuddle cascade; empty-only URL fallback |
 | Defuddle adapter | `extension/utils/defuddleExtract.ts` | `defuddle/full` + first-party `contentMarkdown` (no custom turndown) |

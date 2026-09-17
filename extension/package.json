@@ -10,7 +10,9 @@
   },
   "dependencies": {
     "canvas-confetti": "^1.9.4",
-    "defuddle": "0.19.1"
+    "defuddle": "0.19.1",
+    "dompurify": "^3.4.15",
+    "marked": "^18.0.13"
   },
   "devDependencies": {
     "@types/chrome": "^0.0.251",

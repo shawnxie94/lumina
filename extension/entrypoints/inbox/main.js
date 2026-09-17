@@ -1,4 +1,6 @@
 import "../../styles/inbox.css";
+import { marked } from "marked";
+import DOMPurify from "dompurify";
 import { ApiClient } from "../../utils/api";
 import { addToHistory, formatHistoryDate } from "../../utils/history";
 import { logError, setupGlobalErrorHandler } from "../../utils/errorLogger";
@@ -10,6 +12,8 @@ import {
 	updateInboxItem,
 } from "../../utils/inbox";
 import { resolveLanguage, translate } from "../../utils/i18n";
+
+marked.setOptions({ gfm: true, breaks: false });
 
 setupGlobalErrorHandler("inbox");
 
@@ -107,10 +111,46 @@ class InboxController {
 		document
 			.getElementById("clearInboxBtn")
 			?.addEventListener("click", () => this.clearAll());
+		document
+			.getElementById("editModeBtn")
+			?.addEventListener("click", () => this.setPreviewMode(false));
+		document
+			.getElementById("previewModeBtn")
+			?.addEventListener("click", () => this.setPreviewMode(true));
 		window.addEventListener("pagehide", () => {
 			// Fire-and-forget flush; storage writes usually complete during unload.
 			this.flushPendingSave();
 		});
+	}
+
+	/** Toggle the markdown editor between raw text and sanitized rendered HTML. */
+	setPreviewMode(on) {
+		const textarea = document.getElementById("fieldContent");
+		const preview = document.getElementById("contentPreview");
+		const editBtn = document.getElementById("editModeBtn");
+		const previewBtn = document.getElementById("previewModeBtn");
+		if (!textarea || !preview || !editBtn || !previewBtn) return;
+
+		if (on) {
+			let html;
+			try {
+				html = DOMPurify.sanitize(marked.parse(textarea.value || ""));
+			} catch (error) {
+				logError("inbox", error, { action: "renderPreview" });
+				html = "";
+			}
+			preview.innerHTML = html;
+			if (!textarea.value.trim()) {
+				preview.innerHTML = `<p class="preview-empty">${this.t("暂无内容")}</p>`;
+			}
+		}
+
+		textarea.classList.toggle("hidden", on);
+		preview.classList.toggle("hidden", !on);
+		editBtn.classList.toggle("active", !on);
+		previewBtn.classList.toggle("active", on);
+		editBtn.setAttribute("aria-selected", String(!on));
+		previewBtn.setAttribute("aria-selected", String(on));
 	}
 
 	bindDirtyTracking() {
@@ -273,6 +313,7 @@ class InboxController {
 		const autosaveEl = document.getElementById("autosaveStatus");
 		if (autosaveEl) autosaveEl.classList.remove("visible");
 		clearTimeout(this.#saveTimer);
+		this.setPreviewMode(false);
 		this.#dirty = false;
 	}
 

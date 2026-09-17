@@ -67,10 +67,17 @@
           </div>
 
           <div class="content-field">
-            <label for="fieldContent">
-              <span data-i18n="内容（Markdown）">内容（Markdown）</span> <em class="required">*</em>
-            </label>
+            <div class="content-label-row">
+              <label for="fieldContent">
+                <span data-i18n="内容（Markdown）">内容（Markdown）</span> <em class="required">*</em>
+              </label>
+              <div class="preview-toggle" role="tablist" aria-label="内容视图切换">
+                <button type="button" id="editModeBtn" class="toggle-btn active" role="tab" aria-selected="true" data-i18n="编辑">编辑</button>
+                <button type="button" id="previewModeBtn" class="toggle-btn" role="tab" aria-selected="false" data-i18n="预览">预览</button>
+              </div>
+            </div>
             <textarea id="fieldContent" spellcheck="false"></textarea>
+            <div id="contentPreview" class="markdown-preview hidden" aria-live="polite"></div>
           </div>
         </div>
       </div>
