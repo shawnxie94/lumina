@@ -5,7 +5,7 @@ import test from "node:test";
 
 test("article version history modal keeps a fixed panel height and scrolls within the modal", () => {
 	const source = readFileSync(
-		join(process.cwd(), "pages/article/[id].tsx"),
+		join(process.cwd(), "components/article/VersionHistoryModal.tsx"),
 		"utf8",
 	);
 

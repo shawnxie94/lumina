@@ -5,9 +5,6 @@ import {
 	useRef,
 	useCallback,
 	useMemo,
-	type ReactNode,
-	type MouseEvent as ReactMouseEvent,
-	type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 
 import { useRouter } from "next/router";
@@ -42,7 +39,6 @@ import {
 } from "@/lib/topicPlaceholders";
 import {
 	applyPrefillToNote,
-	normalizeDigestNoteForDisplay,
 	parseDigestPrefillPayload,
 	extractDigestNoteFromTaskPayload,
 	type DigestLines,
@@ -54,53 +50,53 @@ import AppFooter from "@/components/AppFooter";
 import AppHeader from "@/components/AppHeader";
 import SeoHead from "@/components/SeoHead";
 import ArticleMetaRow from "@/components/article/ArticleMetaRow";
+import AnnotationNotesLayer, {
+	NotePanel,
+} from "@/components/article/AnnotationNotesLayer";
+import VersionHistoryModal from "@/components/article/VersionHistoryModal";
+import {
+	MindMapModal,
+} from "@/components/article/MindMap";
+import { ReadingProgress } from "@/components/article/ReadingProgress";
+import type { TocItem } from "@/components/article/TableOfContents";
+import AiPanel, {
+	AiConfigModal,
+	DeleteAiContentModal,
+	EditAIContentModal,
+	type ConfigModalMode,
+} from "@/components/article/AiPanel";
 import RecommendationLevelBadge from "@/components/article/RecommendationLevelBadge";
 import StatusTag from "@/components/ui/StatusTag";
-import ArticleSplitEditorModal from "@/components/article/ArticleSplitEditorModal";
+import ContentToolbar, {
+	PDF_HEIGHT_SCALE_MAX,
+	PDF_HEIGHT_SCALE_MIN,
+} from "@/components/article/ContentToolbar";
+import ArticleEditModal from "@/components/article/ArticleEditModal";
 import CommentSection, {
 	collectCommentDescendantIds,
 } from "@/components/comment/CommentSection";
-import Button from "@/components/Button";
-import IconButton from "@/components/IconButton";
-import FormField from "@/components/ui/FormField";
 import ModalShell from "@/components/ui/ModalShell";
-import SelectField from "@/components/ui/SelectField";
-import TextArea from "@/components/ui/TextArea";
-import TextInput from "@/components/ui/TextInput";
 import { useToast } from "@/components/Toast";
 import ConfirmModal from "@/components/ConfirmModal";
 import { BackToTop } from "@/components/BackToTop";
 import {
-	IconBolt,
 	IconArrowDown,
 	IconBook,
 	IconCheck,
-	IconClock,
-	IconCopy,
-	IconDoc,
 	IconEdit,
 	IconEye,
 	IconEyeOff,
 	IconLock,
-	IconLink,
-	IconList,
-	IconNetwork,
-	IconNote,
 	IconRefresh,
-	IconRobot,
 	IconTrash,
 	IconReply,
-	IconChevronDown,
 	IconChevronUp,
 	IconChevronRight,
-	IconTag,
-	IconGlobe,
 } from "@/components/icons";
 import { useAuth } from "@/contexts/AuthContext";
 import {
 	buildArticleEditorDraftKey,
 	clearEditorDraft,
-	formatEditorDraftTime,
 	isArticleEditorDraftDirty,
 	isEditorDraftFresh,
 	readEditorDraft,
@@ -110,7 +106,6 @@ import {
 import { useBasicSettings } from "@/contexts/BasicSettingsContext";
 import { useReading } from "@/contexts/ReadingContext";
 import { useI18n } from "@/lib/i18n";
-import { shouldShowAiHistoryButton } from "@/lib/aiHistoryVisibility";
 import {
 	buildCanonicalUrl,
 	buildMetaDescription,
@@ -126,82 +121,52 @@ import {
 	resolveArticleDetailExportMarkdown,
 	resolveDetailExportFilename,
 } from "@/lib/detailMarkdownExport";
-import { renderSafeMarkdown, sanitizeRichHtml } from "@/lib/safeHtml";
+import { sanitizeRichHtml } from "@/lib/safeHtml";
 import { signIn, signOut, useSession } from "next-auth/react";
+import {
+	buildMarkdownFromMediaLink,
+	extractMarkdownImageUrls,
+	extractMediaLinkFromHtml,
+	extractMediaLinkFromText,
+	insertTextAtCursor,
+	replaceMarkdownImageUrl,
+} from "@/lib/articleMedia";
+import {
+	DEFAULT_NOTE_RECOMMENDATION_LEVEL,
+	applyAnnotations,
+	createAnnotationId,
+	getRangeOffsets,
+	getRangeSnippet,
+	normalizeNoteRecommendationLevel,
+	renderMarkdown,
+	type ArticleAnnotation,
+	type NoteRecommendationLevel,
+} from "@/lib/articleAnnotations";
+import {
+	createEmptyAiAnalysis,
+	decodeQueryValue,
+	getArticleViewStorageKey,
+	getPreferredNeighborTitle,
+	getQueryValue,
+	hasPendingArticleJob,
+	isPendingJobStatus,
+	sortAiTabsByContent,
+	splitArticleAuthors,
+	toDateInputValue,
+	type AITabConfig,
+	type AITabKey,
+	type AIContentType,
+	type ArticleNeighbor,
+} from "@/lib/aiTaskStatus";
 
 // 轮询间隔（毫秒）
 const POLLING_INTERVAL = 3000;
 const SIMILAR_ARTICLE_LIMIT = 5;
-const VIEW_COUNT_STORAGE_PREFIX = "article-view::";
 const VIEW_COUNT_DEDUPE_WINDOW_MS = 24 * 60 * 60 * 1000;
-const PENDING_JOB_STATUSES = ["pending", "processing"] as const;
-type PendingJobStatus = (typeof PENDING_JOB_STATUSES)[number];
-type AIContentType =
-	| "summary"
-	| "outline"
-	| "quotes";
-type AITabKey = Exclude<AIContentType, "summary">;
 const DELETABLE_AI_CONTENT_TYPES: readonly AIContentType[] = [
 	"outline",
 	"quotes",
 ];
-type NoteRecommendationLevel =
-	| "strongly_recommended"
-	| "recommended"
-	| "neutral"
-	| "not_recommended";
-type ConfigModalMode =
-	| "generate"
-	| "regenerate_interpretation"
-	| "retry_ai_content"
-	| "retry_cleaning"
-	| "retry_translation";
-
-const DEFAULT_NOTE_RECOMMENDATION_LEVEL: NoteRecommendationLevel = "neutral";
-const NOTE_RECOMMENDATION_LEVEL_OPTIONS: Array<{
-	value: NoteRecommendationLevel;
-	label: string;
-}> = [
-	{ value: "strongly_recommended", label: "强烈推荐" },
-	{ value: "recommended", label: "推荐" },
-	{ value: "neutral", label: "一般" },
-	{ value: "not_recommended", label: "不推荐" },
-];
-
-const isPendingJobStatus = (
-	value?: string | null,
-): value is PendingJobStatus =>
-	PENDING_JOB_STATUSES.includes(value as PendingJobStatus);
-
-const hasPendingArticleJob = (article: ArticleDetail | null): boolean => {
-	if (!article) return false;
-	if (isPendingJobStatus(article.status)) return true;
-	if (isPendingJobStatus(article.translation_status)) return true;
-
-	const statuses = article.ai_analysis
-		? [
-				article.ai_analysis.interpretation_status,
-				article.ai_analysis.summary_status,
-				article.ai_analysis.outline_status,
-				article.ai_analysis.quotes_status,
-			]
-		: [];
-
-	return statuses.some((status) => isPendingJobStatus(status));
-};
-
-const hasAiTabContent = (content: string | null | undefined): boolean =>
-	Boolean(content?.trim());
-
-const canManuallyGenerateAIContent = (
-	status?: string | null,
-	content?: string | null,
-): boolean =>
-	Boolean(content?.trim()) ||
-	!status ||
-	status === "completed" ||
-	status === "failed" ||
-	status === "skipped";
 
 const normalizeQuotesMarkdown = (
 	content: string | null | undefined,
@@ -217,299 +182,12 @@ const normalizeQuotesMarkdown = (
 	return lines.map((line) => `- ${line}`).join("\n");
 };
 
-const sortAiTabsByContent = (tabs: AITabConfig[]): AITabConfig[] =>
-	[...tabs].sort(
-		(left, right) =>
-			Number(hasAiTabContent(right.content)) - Number(hasAiTabContent(left.content)),
-	);
-
-interface AIContentSectionProps {
-	title: string;
-	content: string | null | undefined;
-	status: string | null | undefined;
-	onGenerate: () => void;
-	onCopy: () => void;
-	copyTitle?: string;
-	canEdit?: boolean;
-	canUpdate?: boolean;
-	onUpdate?: (content: string) => void;
-	renderMarkdown?: boolean;
-	renderMindMap?: boolean;
-	onMindMapOpen?: () => void;
-	showStatus?: boolean;
-	statusLink?: string;
-	showHeader?: boolean;
-	canCopy?: boolean;
-	customContent?: ReactNode;
-	extraActions?: ReactNode;
-	footerContent?: ReactNode;
-}
-
-interface AITabConfig {
-	key: AITabKey;
-	label: string;
-	enabled: boolean;
-	content: string | null | undefined;
-	status: string | null | undefined;
-	onGenerate: () => void;
-	onCopy: () => void;
-	copyTitle?: string;
-	canCopy?: boolean;
-	renderMarkdown?: boolean;
-	renderMindMap?: boolean;
-	onMindMapOpen?: () => void;
-	customContent?: ReactNode;
-}
-
-interface MindMapNode {
-	title: string;
-	children?: MindMapNode[];
-}
-
-
-
-function normalizeMindMapNode(input: unknown): MindMapNode | null {
-	if (typeof input === "string") {
-		return { title: input };
-	}
-	if (!input || typeof input !== "object") return null;
-	const record = input as { title?: unknown; children?: unknown };
-	const title = typeof record.title === "string" ? record.title : "";
-	const childrenRaw = Array.isArray(record.children) ? record.children : [];
-	const children = childrenRaw
-		.map((child) => normalizeMindMapNode(child))
-		.filter((node): node is MindMapNode =>
-			Boolean(node && (node.title || node.children?.length)),
-		);
-	return { title, children };
-}
-
-function parseMindMapOutline(content: string): MindMapNode | null {
-	try {
-		const parsed = JSON.parse(content) as unknown;
-		if (Array.isArray(parsed)) {
-			const children = parsed
-				.map((child) => normalizeMindMapNode(child))
-				.filter((node): node is MindMapNode => Boolean(node));
-			return { title: "", children };
-		}
-		return normalizeMindMapNode(parsed);
-	} catch {
-		return null;
-	}
-}
-
-const getArticleViewStorageKey = (slug: string): string =>
-	`${VIEW_COUNT_STORAGE_PREFIX}${slug}`;
-
-function createEmptyAiAnalysis(): NonNullable<ArticleDetail["ai_analysis"]> {
-	return {
-		summary: null,
-		summary_status: null,
-		summary_current_version_id: null,
-		summary_current_version_number: null,
-		summary_has_history: false,
-		outline: null,
-		outline_status: null,
-		outline_current_version_id: null,
-		outline_current_version_number: null,
-		outline_has_history: false,
-		quotes: null,
-		quotes_status: null,
-		quotes_current_version_id: null,
-		quotes_current_version_number: null,
-		quotes_has_history: false,
-		interpretation_status: null,
-		interpretation_error: null,
-		error_message: null,
-		updated_at: null,
-	};
-}
-
-function getAiContentLabel(
-	contentType: AIContentType,
-	t: (key: string) => string,
-): string {
-		switch (contentType) {
-			case "summary":
-				return t("摘要");
-			case "outline":
-				return t("大纲");
-			case "quotes":
-				return t("金句");
-		}
-	}
-
-function formatVersionSourceLabel(
-	value: AIContentVersion["created_by_mode"],
-	t: (key: string) => string,
-): string {
-	return value === "rollback" ? t("回滚") : t("生成");
-}
-
-function toDateInputValue(value?: string | null): string {
-	const raw = (value || "").trim();
-	if (!raw) return "";
-	const match = raw.match(/^(\d{4}-\d{2}-\d{2})/);
-	if (match) return match[1];
-	const parsed = new Date(raw);
-	if (Number.isNaN(parsed.getTime())) return "";
-	const year = parsed.getFullYear();
-	const month = String(parsed.getMonth() + 1).padStart(2, "0");
-	const day = String(parsed.getDate()).padStart(2, "0");
-	return `${year}-${month}-${day}`;
-}
-
-function splitArticleAuthors(value?: string | null): string[] {
-	if (!value) return [];
-	const authors = value
-		.split(",")
-		.map((item) => item.trim())
-		.filter(Boolean);
-	return Array.from(new Set(authors));
-}
-
-type PastedMediaKind = "image" | "video" | "audio" | "book";
-
-interface PastedMediaLink {
-	kind: PastedMediaKind;
-	url: string;
-}
-
-const IMAGE_LINK_PATTERN = /\.(png|jpe?g|gif|webp|svg|bmp|avif)(\?.*)?$/i;
-const VIDEO_LINK_PATTERN = /\.(mp4|webm|mov|m4v|ogv|ogg)(\?.*)?$/i;
-const AUDIO_LINK_PATTERN = /\.(mp3|wav|m4a|aac|ogg|flac|opus)(\?.*)?$/i;
-const BOOK_LINK_PATTERN = /\.(pdf|epub|mobi)(\?.*)?$/i;
-const VIDEO_HOST_PATTERN = /(youtube\.com|youtu\.be|bilibili\.com|vimeo\.com)/i;
 const PDF_FRAME_MIN_HEIGHT_PX = 320;
 const PDF_FRAME_MAX_VIEWPORT_MULTIPLIER = 1.4;
 const PDF_IMMERSIVE_VIEWPORT_OFFSET_PX = 170;
 const PDF_NON_IMMERSIVE_BASE_HEIGHT_PX = 680;
 const PDF_HEIGHT_SCALE_STORAGE_KEY = "pdf_height_scale";
-const PDF_HEIGHT_SCALE_MIN = 0.4;
-const PDF_HEIGHT_SCALE_MAX = 2.2;
 const PDF_HEIGHT_SCALE_STEP = 0.1;
-
-function cleanupPastedUrl(url: string): string {
-	return (url || "")
-		.trim()
-		.replace(/^<|>$/g, "")
-		.replace(/[),.;:!?]+$/, "");
-}
-
-function detectMediaKindFromUrl(url: string): PastedMediaKind | null {
-	const normalized = cleanupPastedUrl(url);
-	if (!normalized || !/^https?:\/\//i.test(normalized)) return null;
-	if (IMAGE_LINK_PATTERN.test(normalized)) return "image";
-	if (AUDIO_LINK_PATTERN.test(normalized)) return "audio";
-	if (VIDEO_LINK_PATTERN.test(normalized)) return "video";
-	if (VIDEO_HOST_PATTERN.test(normalized)) return "video";
-	if (BOOK_LINK_PATTERN.test(normalized)) return "book";
-	return null;
-}
-
-function buildMarkdownFromMediaLink(
-	link: PastedMediaLink,
-	t: (key: string) => string,
-): string {
-	if (link.kind === "image") {
-		return `![](${link.url})`;
-	}
-	if (link.kind === "video") {
-		return `[▶ ${t("视频")}](${link.url})`;
-	}
-	if (link.kind === "audio") {
-		return `[🎧 ${t("音频")}](${link.url})`;
-	}
-	return `[📚 ${t("书籍")}](${link.url})`;
-}
-
-function toPastedMediaLink(url?: string | null): PastedMediaLink | null {
-	const normalized = cleanupPastedUrl(url || "");
-	const kind = detectMediaKindFromUrl(normalized);
-	if (!kind) return null;
-	return { kind, url: normalized };
-}
-
-function extractMediaLinkFromHtml(html: string): PastedMediaLink | null {
-	if (!html) return null;
-	try {
-		const doc = new DOMParser().parseFromString(html, "text/html");
-		const candidates = [
-			doc.querySelector("img")?.getAttribute("src"),
-			doc.querySelector("video")?.getAttribute("src"),
-			doc.querySelector("video source")?.getAttribute("src"),
-			doc.querySelector("audio")?.getAttribute("src"),
-			doc.querySelector("audio source")?.getAttribute("src"),
-			doc.querySelector("iframe")?.getAttribute("src"),
-			doc.querySelector("a")?.getAttribute("href"),
-		];
-		for (const candidate of candidates) {
-			const link = toPastedMediaLink(candidate);
-			if (link) return link;
-		}
-		return null;
-	} catch {
-		return null;
-	}
-}
-
-function extractMediaLinkFromText(text: string): PastedMediaLink | null {
-	if (!text) return null;
-	const trimmed = text.trim();
-	if (!trimmed) return null;
-	if (/!\[[^\]]*\]\([^)]+\)/.test(trimmed)) return null;
-	if (/\[[^\]]+\]\([^)]+\)/.test(trimmed)) return null;
-	const urlMatch = trimmed.match(/https?:\/\/[^\s)]+/);
-	if (!urlMatch?.[0]) return null;
-	return toPastedMediaLink(urlMatch[0]);
-}
-
-function insertTextAtCursor(
-	target: HTMLTextAreaElement,
-	text: string,
-	onChange: (value: string) => void,
-) {
-	const start = target.selectionStart ?? target.value.length;
-	const end = target.selectionEnd ?? target.value.length;
-	const nextValue = `${target.value.slice(0, start)}${text}${target.value.slice(end)}`;
-	onChange(nextValue);
-	requestAnimationFrame(() => {
-		const cursor = start + text.length;
-		target.setSelectionRange(cursor, cursor);
-		target.focus();
-	});
-}
-
-function extractMarkdownImageUrls(markdown: string): string[] {
-	if (!markdown) return [];
-	const pattern = /!\[[^\]]*\]\((\S+?)(?:\s+"[^"]*")?\)/g;
-	const urls: string[] = [];
-	let match: RegExpExecArray | null = null;
-	while ((match = pattern.exec(markdown)) !== null) {
-		const url = match[1];
-		if (url && url.startsWith("http")) {
-			urls.push(url);
-		}
-	}
-	return Array.from(new Set(urls));
-}
-
-function replaceMarkdownImageUrl(
-	markdown: string,
-	originalUrl: string,
-	nextUrl: string,
-): string {
-	const escaped = originalUrl.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-	const pattern = new RegExp(
-		`!\\[([^\\]]*)\\]\\(${escaped}(\\s+\\"[^\\"]*\\")?\\)`,
-		"g",
-	);
-	return markdown.replace(pattern, (_match, alt, titlePart) => {
-		const title = titlePart || "";
-		return `![${alt}](${nextUrl}${title})`;
-	});
-}
 
 async function runWithConcurrency<T>(
 	items: T[],
@@ -529,675 +207,6 @@ async function runWithConcurrency<T>(
 	await Promise.all(workers);
 }
 
-function countOutlineDescendants(node: MindMapNode): number {
-	if (!node.children?.length) return 0;
-	return node.children.reduce(
-		(sum, child) => sum + 1 + countOutlineDescendants(child),
-		0,
-	);
-}
-
-function collectOutlineExpandablePaths(
-	node: MindMapNode,
-	path = "root",
-	acc: string[] = [],
-): string[] {
-	if (node.children?.length) {
-		acc.push(path);
-		node.children.forEach((child, index) => {
-			collectOutlineExpandablePaths(child, `${path}.${index}`, acc);
-		});
-	}
-	return acc;
-}
-
-function buildDefaultOutlineExpandedPaths(
-	node: MindMapNode,
-	defaultExpandedDepth: number,
-	path = "root",
-	depth = 0,
-	acc: Set<string> = new Set(),
-): Set<string> {
-	// Keep children visible through L2 when defaultExpandedDepth=2.
-	if (node.children?.length && depth < defaultExpandedDepth) {
-		acc.add(path);
-		node.children.forEach((child, index) => {
-			buildDefaultOutlineExpandedPaths(
-				child,
-				defaultExpandedDepth,
-				`${path}.${index}`,
-				depth + 1,
-				acc,
-			);
-		});
-	}
-	return acc;
-}
-
-function OutlineTreeNode({
-	node,
-	path,
-	depth,
-	compact,
-	expandedPaths,
-	onToggle,
-}: {
-	node: MindMapNode;
-	path: string;
-	depth: number;
-	compact: boolean;
-	expandedPaths: Set<string>;
-	onToggle: (path: string) => void;
-}) {
-	const { t } = useI18n();
-	const hasTitle = Boolean(node.title && node.title.trim().length > 0);
-	const children = node.children || [];
-	const hasChildren = children.length > 0;
-	const isExpanded = hasChildren && expandedPaths.has(path);
-	const descendantCount = hasChildren ? countOutlineDescendants(node) : 0;
-	const isRootNode = depth === 0;
-
-	const palette = [
-		"border-info-soft bg-info-soft text-info-ink",
-		"border-success-soft bg-success-soft text-success-ink",
-		"border-warning-soft bg-warning-soft text-warning-ink",
-		"border-primary-soft bg-primary-soft text-primary-ink",
-	];
-	const colorClass = palette[depth % palette.length];
-
-	const containerClass = isRootNode
-		? compact
-			? "space-y-2"
-			: "space-y-4"
-		: compact
-			? "pl-3 border-l border-border space-y-2"
-			: "pl-5 border-l border-border space-y-4";
-
-	const chipClass = compact
-		? `inline-flex max-w-full items-center rounded-md border px-2 py-1 text-xs shadow-sm ${colorClass}`
-		: `inline-flex max-w-full items-center rounded-lg border px-3 py-1.5 text-sm shadow-sm ${colorClass}`;
-
-	const handleToggle = (event: ReactMouseEvent | ReactKeyboardEvent) => {
-		event.stopPropagation();
-		if (!hasChildren) return;
-		onToggle(path);
-	};
-
-	return (
-		<div className={containerClass}>
-			{hasTitle && (
-				<div
-					className={
-						isRootNode
-							? "flex items-start gap-1.5"
-							: compact
-								? "flex items-start gap-2 -ml-3"
-								: "flex items-start gap-3 -ml-5"
-					}
-				>
-					{!isRootNode && (
-						<span
-							className={
-								compact
-									? "mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-border"
-									: "mt-2 h-2 w-2 shrink-0 rounded-full bg-border"
-							}
-						/>
-					)}
-					{hasChildren ? (
-						<button
-							type="button"
-							onClick={handleToggle}
-							className={`${chipClass} text-left transition hover:brightness-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35`}
-							aria-expanded={isExpanded}
-							aria-label={isExpanded ? t("全部折叠") : t("全部展开")}
-						>
-							<span className="break-words">{node.title}</span>
-							{!isExpanded && descendantCount > 0 && (
-								<span className="ml-1.5 shrink-0 rounded-full bg-surface/70 px-1.5 py-0.5 text-[10px] font-medium opacity-80">
-									+{descendantCount}
-								</span>
-							)}
-							<span
-								className={`ml-1.5 shrink-0 text-[10px] opacity-70 transition-transform ${
-									isExpanded ? "rotate-90" : ""
-								}`}
-							>
-								▶
-							</span>
-						</button>
-					) : (
-						<span className={`${chipClass} break-words`}>{node.title}</span>
-					)}
-				</div>
-			)}
-			{!hasTitle && hasChildren && (
-				<button
-					type="button"
-					onClick={handleToggle}
-					className="text-xs text-text-3 hover:text-text-1 transition"
-					aria-expanded={isExpanded}
-				>
-					{isExpanded ? t("全部折叠") : `+${descendantCount}`}
-				</button>
-			)}
-			{hasChildren && isExpanded && (
-				<div className={compact ? "space-y-2" : "space-y-5"}>
-					{children.map((child, index) => (
-						<OutlineTreeNode
-							key={`${path}.${index}-${child.title || "node"}`}
-							node={child}
-							path={`${path}.${index}`}
-							depth={depth + 1}
-							compact={compact}
-							expandedPaths={expandedPaths}
-							onToggle={onToggle}
-						/>
-					))}
-				</div>
-			)}
-		</div>
-	);
-}
-
-function MindMapTree({
-	node,
-	compact = false,
-	defaultExpandedDepth = 2,
-	showToolbar = false,
-	onOpenFullscreen,
-}: {
-	node: MindMapNode;
-	compact?: boolean;
-	/** Visible structure through this depth; deeper nodes start collapsed. */
-	defaultExpandedDepth?: number;
-	showToolbar?: boolean;
-	onOpenFullscreen?: () => void;
-}) {
-	const { t } = useI18n();
-	const allExpandablePaths = useMemo(
-		() => collectOutlineExpandablePaths(node),
-		[node],
-	);
-	const defaultExpandedPaths = useMemo(
-		() => buildDefaultOutlineExpandedPaths(node, defaultExpandedDepth),
-		[node, defaultExpandedDepth],
-	);
-	const [expandedPaths, setExpandedPaths] = useState<Set<string>>(
-		() => new Set(defaultExpandedPaths),
-	);
-
-	useEffect(() => {
-		setExpandedPaths(new Set(defaultExpandedPaths));
-	}, [defaultExpandedPaths]);
-
-	const togglePath = useCallback((path: string) => {
-		setExpandedPaths((prev) => {
-			const next = new Set(prev);
-			if (next.has(path)) next.delete(path);
-			else next.add(path);
-			return next;
-		});
-	}, []);
-
-	const expandAll = useCallback(() => {
-		setExpandedPaths(new Set(allExpandablePaths));
-	}, [allExpandablePaths]);
-
-	const collapseToDefault = useCallback(() => {
-		setExpandedPaths(new Set(defaultExpandedPaths));
-	}, [defaultExpandedPaths]);
-
-	const collapseAll = useCallback(() => {
-		// Keep root branch open so the first level stays scannable.
-		const rootOnly = new Set<string>();
-		if (node.children?.length) rootOnly.add("root");
-		setExpandedPaths(rootOnly);
-	}, [node]);
-
-	return (
-		<div className="space-y-2">
-			{showToolbar && (
-				<div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-text-3">
-					<button
-						type="button"
-						onClick={(event) => {
-							event.stopPropagation();
-							expandAll();
-						}}
-						className="hover:text-primary transition"
-					>
-						{t("全部展开")}
-					</button>
-					<span className="text-border">·</span>
-					<button
-						type="button"
-						onClick={(event) => {
-							event.stopPropagation();
-							collapseToDefault();
-						}}
-						className="hover:text-primary transition"
-					>
-						{t("默认层级")}
-					</button>
-					<span className="text-border">·</span>
-					<button
-						type="button"
-						onClick={(event) => {
-							event.stopPropagation();
-							collapseAll();
-						}}
-						className="hover:text-primary transition"
-					>
-						{t("全部折叠")}
-					</button>
-					{onOpenFullscreen && (
-						<button
-							type="button"
-							onClick={(event) => {
-								event.stopPropagation();
-								onOpenFullscreen();
-							}}
-							className="ml-auto text-text-3 hover:text-primary transition"
-						>
-							{t("点击放大")}
-						</button>
-					)}
-				</div>
-			)}
-			<div className={compact ? "space-y-2" : "space-y-4"}>
-				<OutlineTreeNode
-					node={node}
-					path="root"
-					depth={0}
-					compact={compact}
-					expandedPaths={expandedPaths}
-					onToggle={togglePath}
-				/>
-			</div>
-		</div>
-	);
-}
-
-function AIContentSection({
-	title,
-	content,
-	status,
-	onGenerate,
-	onCopy,
-	copyTitle,
-	canEdit = false,
-	canUpdate = false,
-	onUpdate,
-	renderMarkdown = false,
-	renderMindMap = false,
-	onMindMapOpen,
-	showStatus = false,
-	statusLink,
-	showHeader = true,
-	canCopy = true,
-	customContent,
-	extraActions,
-	footerContent,
-}: AIContentSectionProps) {
-	const { t, language } = useI18n();
-	const getStatusBadge = () => {
-		if (!status) return null;
-		const statusConfig: Record<
-			string,
-			{ bg: string; text: string; label: string }
-		> = {
-			pending: { bg: "bg-muted", text: "text-text-2", label: t("等待处理") },
-			processing: {
-				bg: "bg-info-soft",
-				text: "text-info-ink",
-				label: t("生成中..."),
-			},
-			completed: {
-				bg: "bg-success-soft",
-				text: "text-success-ink",
-				label: t("已完成"),
-			},
-			partial_completed: {
-				bg: "bg-warning-soft",
-				text: "text-warning-ink",
-				label: t("部分完成"),
-			},
-			skipped: {
-				bg: "bg-muted",
-				text: "text-text-3",
-				label: t("已跳过"),
-			},
-			failed: {
-				bg: "bg-danger-soft",
-				text: "text-danger-ink",
-				label: t("失败"),
-			},
-		};
-		const config = statusConfig[status];
-		if (!config) return null;
-		return (
-			<span
-				className={`px-2 py-0.5 rounded text-xs ${config.bg} ${config.text}`}
-			>
-				{config.label}
-			</span>
-		);
-	};
-
-	const showGenerateButton =
-		canEdit && canManuallyGenerateAIContent(status, content);
-	const statusBadge = showStatus ? getStatusBadge() : null;
-
-	return (
-		<div>
-			{showHeader && (
-				<div className="flex items-center justify-between gap-4 mb-2">
-					<div className="flex items-center gap-2 pr-2">
-						<h3 className="font-semibold text-text-1">{title}</h3>
-					</div>
-					<div className="flex items-center gap-2">
-						{statusBadge && statusLink ? (
-							<Link href={statusLink} className="hover:opacity-80 transition">
-								{statusBadge}
-							</Link>
-						) : (
-							statusBadge
-						)}
-						{extraActions}
-						{showGenerateButton && (
-							<button
-								onClick={onGenerate}
-								className="text-text-3 hover:text-primary transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
-								title={content ? t("重新生成") : t("生成")}
-								aria-label={content ? t("重新生成") : t("生成")}
-								type="button"
-							>
-								{content ? (
-									<IconRefresh className="h-4 w-4" />
-								) : (
-									<IconBolt className="h-4 w-4" />
-								)}
-							</button>
-						)}
-						{content && canCopy && (
-							<button
-								onClick={onCopy}
-								className="text-text-3 hover:text-primary transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
-								title={copyTitle || t("复制内容")}
-								aria-label={copyTitle || t("复制内容")}
-								type="button"
-							>
-								<IconCopy className="h-4 w-4" />
-							</button>
-						)}
-						{content && canUpdate && onUpdate && (
-							<button
-								onClick={() => onUpdate(content)}
-								className="text-text-3 hover:text-primary transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
-								title={t("编辑内容")}
-								aria-label={t("编辑内容")}
-								type="button"
-							>
-								<IconEdit className="h-4 w-4" />
-							</button>
-						)}
-					</div>
-				</div>
-			)}
-			{content ? (
-				customContent ? (
-					customContent
-				) : renderMindMap ? (
-					(() => {
-						const tree = parseMindMapOutline(content);
-						return tree ? (
-							<div className="rounded-lg border border-border bg-muted p-2">
-								<div className="max-h-[28rem] overflow-auto">
-									<MindMapTree
-										node={tree}
-										compact
-										defaultExpandedDepth={2}
-										showToolbar
-										onOpenFullscreen={onMindMapOpen}
-									/>
-								</div>
-							</div>
-						) : (
-							<div className="text-text-2 text-sm whitespace-pre-wrap">
-								{content}
-							</div>
-						);
-					})()
-				) : renderMarkdown ? (
-					<div
-						className="prose prose-sm max-w-none rounded-lg border border-border bg-muted p-3 text-text-2"
-						dangerouslySetInnerHTML={{ __html: renderSafeMarkdown(content) }}
-					/>
-				) : (
-					<div className="text-text-2 text-sm whitespace-pre-wrap">
-						{content}
-					</div>
-				)
-			) : showStatus ? (
-				<p className="text-text-3 text-sm">
-					{status === "processing" ? t("正在生成...") : t("未生成")}
-				</p>
-			) : null}
-			{footerContent ? <div className="mt-3">{footerContent}</div> : null}
-		</div>
-	);
-}
-
-interface TocItem {
-	id: string;
-	text: string;
-	level: number;
-}
-
-function TableOfContents({
-	items,
-	activeId,
-	onSelect,
-}: {
-	items: TocItem[];
-	activeId: string;
-	onSelect: (id: string) => void;
-}) {
-	if (items.length === 0) return null;
-
-	return (
-		<nav className="border-l-2 border-border pl-2 space-y-1">
-			{items.map((item) => (
-				<a
-					key={item.id}
-					href={`#${item.id}`}
-					onClick={() => onSelect(item.id)}
-					className={`block text-xs truncate rounded px-2 py-1 transition ${
-						activeId === item.id
-							? "text-primary-ink font-semibold bg-primary-soft"
-							: "text-text-2 hover:text-text-1 hover:bg-muted"
-					}`}
-					style={{ paddingLeft: `${(item.level - 1) * 8 + 8}px` }}
-				>
-					{item.text}
-				</a>
-			))}
-		</nav>
-	);
-}
-
-function ReadingProgress() {
-	const [progress, setProgress] = useState(0);
-
-	useEffect(() => {
-		const handleScroll = () => {
-			const scrollTop = window.scrollY;
-			const docHeight =
-				document.documentElement.scrollHeight - window.innerHeight;
-			const scrollPercent = docHeight > 0 ? (scrollTop / docHeight) * 100 : 0;
-			setProgress(Math.min(100, Math.max(0, scrollPercent)));
-		};
-
-		window.addEventListener("scroll", handleScroll, { passive: true });
-		handleScroll();
-		return () => window.removeEventListener("scroll", handleScroll);
-	}, []);
-
-	return (
-		<div className="fixed top-0 left-0 right-0 h-1 bg-muted z-50">
-			<div
-				className="h-full bg-primary transition-all duration-150"
-				style={{ width: `${progress}%` }}
-			/>
-		</div>
-	);
-}
-
-function createAnnotationId() {
-	if (typeof crypto !== "undefined" && crypto.randomUUID) {
-		return crypto.randomUUID();
-	}
-	return `anno_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-}
-
-function getRangeOffsets(root: HTMLElement, range: Range) {
-	const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-	let startOffset = 0;
-	let endOffset = 0;
-	let current = walker.nextNode();
-	let offset = 0;
-
-	while (current) {
-		const textNode = current as Text;
-		const length = textNode.data.length;
-		if (textNode === range.startContainer) {
-			startOffset = offset + range.startOffset;
-		}
-		if (textNode === range.endContainer) {
-			endOffset = offset + range.endOffset;
-			break;
-		}
-		offset += length;
-		current = walker.nextNode();
-	}
-
-	return { start: startOffset, end: endOffset };
-}
-
-function getRangeSnippet(
-	root: HTMLElement,
-	start: number,
-	end: number,
-	context = 40,
-) {
-	if (start >= end) return "";
-	const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-	let current = walker.nextNode();
-	let offset = 0;
-	let fullText = "";
-
-	while (current) {
-		const node = current as Text;
-		fullText += node.data;
-		current = walker.nextNode();
-	}
-
-	const safeStart = Math.max(0, start);
-	const safeEnd = Math.min(fullText.length, end);
-	const left = Math.max(0, safeStart - context);
-	const right = Math.min(fullText.length, safeEnd + context);
-	const prefix = left > 0 ? "…" : "";
-	const suffix = right < fullText.length ? "…" : "";
-	const before = fullText.slice(left, safeStart);
-	const middle = fullText.slice(safeStart, safeEnd);
-	const after = fullText.slice(safeEnd, right);
-	return `${prefix}${before}<mark class="annotation-highlight">${middle}</mark>${after}${suffix}`.trim();
-}
-
-function applyAnnotations(html: string, annotations: ArticleAnnotation[]) {
-	if (!annotations || annotations.length === 0) return html;
-	if (typeof window === "undefined") return html;
-
-	const sorted = [...annotations].sort((a, b) => a.start - b.start);
-	const parser = new DOMParser();
-	const doc = parser.parseFromString(html, "text/html");
-
-	const textNodes: Array<{ node: Text; start: number; end: number }> = [];
-	const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
-	let offset = 0;
-	let current = walker.nextNode();
-	while (current) {
-		const node = current as Text;
-		const length = node.data.length;
-		textNodes.push({ node, start: offset, end: offset + length });
-		offset += length;
-		current = walker.nextNode();
-	}
-
-	sorted.forEach((annotation) => {
-		textNodes.forEach(({ node, start, end }) => {
-			if (end <= annotation.start) return;
-			if (start >= annotation.end) return;
-			if (!node.parentNode) return;
-			const text = node.data;
-			const highlightStart = Math.max(annotation.start - start, 0);
-			const highlightEnd = Math.min(annotation.end - start, text.length);
-			if (highlightStart >= highlightEnd) return;
-			const before = text.slice(0, highlightStart);
-			const middle = text.slice(highlightStart, highlightEnd);
-			const after = text.slice(highlightEnd);
-			const frag = doc.createDocumentFragment();
-			if (before) frag.appendChild(doc.createTextNode(before));
-			const mark = doc.createElement("mark");
-			mark.className = "annotation-highlight";
-			mark.setAttribute("data-annotation-id", annotation.id);
-			mark.textContent = middle;
-			frag.appendChild(mark);
-			if (after) frag.appendChild(doc.createTextNode(after));
-			node.replaceWith(frag);
-		});
-	});
-
-	return doc.body.innerHTML;
-}
-
-function renderMarkdown(
-	content: string,
-	options?: { enableMediaEmbed?: boolean },
-) {
-	return renderSafeMarkdown(content, options);
-}
-
-function normalizeNoteRecommendationLevel(
-	value?: string | null,
-): NoteRecommendationLevel {
-	if (!value) return DEFAULT_NOTE_RECOMMENDATION_LEVEL;
-	const matched = NOTE_RECOMMENDATION_LEVEL_OPTIONS.find(
-		(item) => item.value === value,
-	);
-	return matched?.value || DEFAULT_NOTE_RECOMMENDATION_LEVEL;
-}
-
-interface ArticleNeighbor {
-	id: string;
-	slug: string;
-	title: string;
-	title_trans?: string | null;
-};
-
-const getPreferredNeighborTitle = (article: ArticleNeighbor): string => {
-	const translatedTitle = article.title_trans?.trim();
-	return translatedTitle || article.title;
-};
-
-interface ArticleAnnotation {
-	id: string;
-	start: number;
-	end: number;
-	comment: string;
-}
-
 interface ArticleTaskListItem {
 	id: string;
 	task_type: string;
@@ -1205,20 +214,6 @@ interface ArticleTaskListItem {
 	status: string;
 	created_at: string;
 }
-
-const getQueryValue = (value: string | string[] | undefined): string => {
-	if (Array.isArray(value)) return value[0] || "";
-	return value || "";
-};
-
-const decodeQueryValue = (value: string): string => {
-	if (!value) return "";
-	try {
-		return decodeURIComponent(value);
-	} catch {
-		return value;
-	}
-};
 
 interface ArticleDetailPageProps {
 	initialBasicSettings: BasicSettings;
@@ -1532,10 +527,6 @@ export default function ArticleDetailPage({
 	const editPreviewTopImageUrl = useMemo(
 		() => resolveMediaUrl(editTopImage || basicSettings.site_logo_url || "/logo.png"),
 		[editTopImage, basicSettings.site_logo_url],
-	);
-	const selectableModelConfigs = useMemo(
-		() => modelConfigs.filter((config) => config.model_type !== "vector"),
-		[modelConfigs],
 	);
 	const activeAnnotation = annotations.find(
 		(item) => item.id === activeAnnotationId,
@@ -2453,15 +1444,8 @@ export default function ArticleDetailPage({
 		}
 	};
 
-	const showSummarySection = isAdmin || Boolean(article?.ai_analysis?.summary);
 	const showOutlineSection = isAdmin || Boolean(article?.ai_analysis?.outline);
 	const showQuotesSection = isAdmin || Boolean(article?.ai_analysis?.quotes);
-	const aiUpdatedAt =
-		isAdmin && article?.ai_analysis?.updated_at
-			? new Date(article.ai_analysis.updated_at).toLocaleString(
-					language === "en" ? "en-US" : "zh-CN",
-				)
-			: "";
 
 	const aiTabConfigs: AITabConfig[] = [
 		{
@@ -2667,419 +1651,10 @@ export default function ArticleDetailPage({
 			item.status === "processing" ||
 			item.status === "failed",
 	);
-	const activeStatusBadge = isAdmin
-		? getAiTabStatusBadge(activeTabConfig?.status)
-		: null;
-	const showActiveGenerateButton =
-		isAdmin &&
-		canManuallyGenerateAIContent(
-			activeTabConfig?.status,
-			activeTabConfig?.content,
-		);
-	const showActiveCopyButton =
-		Boolean(activeTabConfig?.content) && activeTabConfig?.canCopy !== false;
-	const showActiveDeleteButton =
-		isAdmin &&
-		Boolean(activeTabConfig?.content) &&
-		Boolean(activeTabConfig?.key) &&
-		!isPendingJobStatus(activeTabConfig?.status);
 	const historyVersions = versionHistories[historyContentType] || [];
 	const selectedPreviewVersionId = previewVersionIds[historyContentType] || null;
 	const previewVersion =
 		historyVersions.find((item) => item.id === selectedPreviewVersionId) || null;
-
-	const renderHistoryPreview = (
-		contentType: AIContentType,
-		version: AIContentVersion | null,
-	) => {
-		if (!version) return null;
-		if (contentType === "outline") {
-			const tree = parseMindMapOutline(version.content_text || "");
-			if (!tree) {
-				return (
-					<div className="max-h-[420px] overflow-auto rounded-lg border border-border bg-surface p-3 text-sm whitespace-pre-wrap text-text-2">
-						{version.content_text || t("暂无内容")}
-					</div>
-				);
-			}
-			return (
-				<div className="max-h-[420px] overflow-auto rounded-lg border border-border bg-surface p-4">
-					<MindMapTree
-						node={tree}
-						compact
-						defaultExpandedDepth={2}
-						showToolbar
-					/>
-				</div>
-			);
-		}
-
-		return (
-			<div
-				className="prose prose-sm max-w-none rounded-lg border border-border bg-surface p-3 text-text-2"
-				dangerouslySetInnerHTML={{
-					__html: renderSafeMarkdown(version.content_text || ""),
-				}}
-			/>
-		);
-	};
-	const buildVersionActions = (contentType: AIContentType) => (
-		<>
-			{shouldShowAiHistoryButton(isAdmin, contentType, article?.ai_analysis) && (
-				<button
-					type="button"
-					onClick={() => {
-						void openVersionHistory(contentType);
-					}}
-					className="text-text-3 hover:text-primary transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
-					title={t("历史")}
-					aria-label={t("历史")}
-				>
-					<IconClock className="h-4 w-4" />
-				</button>
-			)}
-		</>
-	);
-
-	const sortedArticleTopics = [...(article?.topics || [])].sort(
-		(a, b) => {
-			const rank = (item: { topic_type?: string | null }) => {
-				const type = String(item.topic_type || "").toLowerCase();
-				if (type === "entity") return 0;
-				if (type === "concept") return 1;
-				return 2;
-			};
-			const rankDiff = rank(a) - rank(b);
-			if (rankDiff !== 0) return rankDiff;
-			return (
-				String(a.title || a.key || "").length -
-				String(b.title || b.key || "").length
-			);
-		},
-	);
-
-	const aiPanelContent = (
-		<div className="bg-surface rounded-sm shadow-sm border border-border p-4">
-			<div className="space-y-6">
-				{sortedArticleTopics.length > 0 && (
-					<div>
-						<h2 className="mb-3 text-lg font-semibold text-text-1 inline-flex items-center gap-2">
-							<IconNetwork className="h-4 w-4" />
-							<span>{t("主题")}</span>
-						</h2>
-						<div className="flex max-h-[7.5rem] flex-wrap content-start gap-2 overflow-y-auto overscroll-contain pr-1">
-							{sortedArticleTopics.map((topic) => (
-								<Link
-									key={topic.key}
-									href={`/topics/${encodeURIComponent(topic.key)}`}
-									target="_blank"
-									rel="noopener noreferrer"
-									className="inline-flex max-w-full items-center rounded-sm bg-muted px-2.5 py-1 text-xs text-text-2 transition hover:bg-primary-soft hover:text-primary-ink"
-									title={topic.summary || topic.title || topic.key}
-								>
-									<span className="truncate">{topic.title || topic.key}</span>
-								</Link>
-							))}
-						</div>
-					</div>
-				)}
-
-				{tocItems.length > 0 && (
-					<div>
-						<div className="mb-3 flex items-center justify-between gap-2">
-							<h2 className="text-lg font-semibold text-text-1 inline-flex items-center gap-2">
-								<IconList className="h-4 w-4" />
-								<span>{t("目录")}</span>
-							</h2>
-							<button
-								type="button"
-								onClick={() => setTocCollapsed(!tocCollapsed)}
-								className="text-text-3 hover:text-primary transition"
-								title={tocCollapsed ? t("展开目录") : t("收起目录")}
-								aria-label={tocCollapsed ? t("展开目录") : t("收起目录")}
-							>
-								<IconChevronDown
-									className={`h-4 w-4 transition-transform duration-200 ${
-										tocCollapsed ? "" : "rotate-180"
-									}`}
-								/>
-							</button>
-						</div>
-						{!tocCollapsed && (
-							<TableOfContents
-								items={tocItems}
-								activeId={activeTocId}
-								onSelect={setActiveTocId}
-							/>
-						)}
-					</div>
-				)}
-
-				<div>
-					<div className="flex items-center justify-between mb-2">
-						<h2 className="text-lg font-semibold text-text-1 inline-flex items-center gap-2">
-							<IconRobot className="h-4 w-4" />
-							<span>{t("AI解读")}</span>
-						</h2>
-						<div className="flex items-center gap-2">
-							{isAdmin &&
-								(interpretationStatusLink && getAiTabStatusBadge(interpretationStatus) ? (
-									<Link
-										href={interpretationStatusLink}
-										className="hover:opacity-80 transition"
-									>
-										{getAiTabStatusBadge(interpretationStatus)}
-									</Link>
-								) : (
-									getAiTabStatusBadge(interpretationStatus)
-								))}
-							{aiUpdatedAt && (
-								<span className="text-xs text-text-3">{aiUpdatedAt}</span>
-							)}
-							{isAdmin && (
-								<button
-									type="button"
-									onClick={handleRegenerateInterpretation}
-									disabled={
-										interpretationRegenerating ||
-										isPendingJobStatus(interpretationStatus)
-									}
-									className="text-text-3 hover:text-primary transition disabled:opacity-50"
-									title={t("重新生成 AI 解读")}
-									aria-label={t("重新生成 AI 解读")}
-								>
-									<IconRefresh
-										className={`h-4 w-4 ${
-											interpretationRegenerating ? "animate-spin" : ""
-										}`}
-									/>
-								</button>
-							)}
-						</div>
-					</div>
-				</div>
-
-				{isAdmin &&
-					(article?.ai_analysis?.interpretation_error ||
-						article?.ai_analysis?.error_message) && (
-						<div className="p-3 bg-danger-soft border border-danger-soft rounded-lg">
-							<p className="text-danger-ink text-sm whitespace-pre-wrap break-words">
-								{article.ai_analysis.interpretation_error ||
-									article.ai_analysis.error_message}
-							</p>
-						</div>
-					)}
-
-				{showSummarySection && (
-					<AIContentSection
-						title={t("摘要")}
-						content={article?.ai_analysis?.summary}
-						status={summaryStatusValue}
-						onGenerate={() => handleGenerateContent("summary")}
-						onCopy={() => handleCopyContent(article?.ai_analysis?.summary)}
-						canEdit={isAdmin}
-						canUpdate={isAdmin && Boolean(article?.ai_analysis?.summary)}
-						onUpdate={(content) => {
-							setEditAIContentType("summary");
-							setEditAIContentDraft(content);
-							setShowEditAIContentModal(true);
-						}}
-						showStatus={isAdmin}
-						statusLink={summaryStatusLink}
-						extraActions={
-							<>
-								{buildVersionActions("summary")}
-							</>
-						}
-					/>
-				)}
-
-				{(showOutlineSection || showQuotesSection) && (
-					<div className="space-y-4">
-						<div className="flex flex-wrap items-center justify-between gap-2">
-							<div className="relative min-w-0 flex-1">
-								<div className="flex items-center gap-1.5 overflow-x-auto pb-1 pr-3">
-									{visibleAiTabs.map((tab) => (
-										<button
-											key={tab.key}
-											type="button"
-											onClick={() => handleSelectAiTab(tab.key)}
-											className={`shrink-0 min-w-[3.9rem] whitespace-nowrap px-2.5 py-1.5 text-base font-semibold text-center rounded-sm transition ${
-												activeAiTab === tab.key
-													? "bg-muted text-text-1"
-													: "text-text-2 hover:text-text-1 hover:bg-muted"
-											}`}
-										>
-											{tab.label}
-										</button>
-									))}
-								</div>
-								<div className="pointer-events-none absolute right-0 top-0 h-full w-8 ai-tab-fade" />
-							</div>
-							<div className="ml-auto flex shrink-0 items-center gap-1.5 pr-1">
-								{activeStatusBadge && activeStatusLink ? (
-									<Link
-										href={activeStatusLink}
-										className="hover:opacity-80 transition"
-									>
-										{activeStatusBadge}
-									</Link>
-								) : (
-									activeStatusBadge
-								)}
-								{activeTabConfig
-									? buildVersionActions(activeTabConfig.key)
-									: null}
-								{showActiveGenerateButton && activeTabConfig && (
-									<button
-										onClick={activeTabConfig.onGenerate}
-										className="text-text-3 hover:text-primary transition"
-										title={activeTabConfig.content ? t("重新生成") : t("生成")}
-										aria-label={
-											activeTabConfig.content ? t("重新生成") : t("生成")
-										}
-										type="button"
-									>
-										{activeTabConfig.content ? (
-											<IconRefresh className="h-4 w-4" />
-										) : (
-											<IconBolt className="h-4 w-4" />
-										)}
-									</button>
-								)}
-								{showActiveCopyButton && activeTabConfig && (
-									<button
-										onClick={activeTabConfig.onCopy}
-										className="text-text-3 hover:text-primary transition"
-										title={activeTabConfig.copyTitle || t("复制内容")}
-										aria-label={activeTabConfig.copyTitle || t("复制内容")}
-										type="button"
-									>
-										<IconCopy className="h-4 w-4" />
-									</button>
-								)}
-								{showActiveDeleteButton && activeTabConfig && (
-									<button
-										onClick={() => {
-											setPendingDeleteAiContentType(activeTabConfig.key);
-											setShowDeleteAiContentModal(true);
-										}}
-										className="text-text-3 hover:text-danger-ink transition"
-										title={t("删除内容")}
-										aria-label={t("删除内容")}
-										type="button"
-									>
-										<IconTrash className="h-4 w-4" />
-									</button>
-								)}
-							</div>
-						</div>
-
-						{activeTabConfig && (
-							<AIContentSection
-								title={activeTabConfig.label}
-								content={activeTabConfig.content}
-								status={activeTabConfig.status}
-								onGenerate={activeTabConfig.onGenerate}
-								onCopy={activeTabConfig.onCopy}
-								copyTitle={activeTabConfig.copyTitle}
-								canEdit={isAdmin}
-								renderMarkdown={activeTabConfig.renderMarkdown}
-								renderMindMap={activeTabConfig.renderMindMap}
-								onMindMapOpen={activeTabConfig.onMindMapOpen}
-								canCopy={activeTabConfig.canCopy}
-								customContent={activeTabConfig.customContent}
-								showStatus={isAdmin}
-								statusLink={activeStatusLink}
-								showHeader={false}
-							/>
-						)}
-					</div>
-				)}
-
-				{(isAdmin ||
-					similarLoading ||
-					similarStatus === "pending" ||
-					similarStatus === "disabled" ||
-					similarArticles.length > 0) && (
-					<div className="pt-4 border-t border-border">
-						<div className="flex items-center justify-between mb-2">
-							<h2 className="text-lg font-semibold text-text-1 inline-flex items-center gap-2">
-								<IconTag className="h-4 w-4" />
-								<span>{t("推荐阅读")}</span>
-							</h2>
-							{isAdmin && (
-								<button
-									onClick={handleRefreshEmbedding}
-									className="text-text-3 hover:text-primary transition disabled:opacity-50"
-									title={t("重新生成向量")}
-									aria-label={t("重新生成向量")}
-									type="button"
-									disabled={embeddingRefreshing}
-								>
-									<IconRefresh className="h-4 w-4" />
-								</button>
-							)}
-						</div>
-						{similarLoading ? (
-							<div
-								className="inline-flex items-center gap-2 text-sm text-text-3"
-								aria-live="polite"
-							>
-								<IconRefresh className="h-3.5 w-3.5 animate-spin" />
-								<span>{t("文章加载中...")}</span>
-							</div>
-						) : similarStatus === "pending" ? (
-							<div className="text-sm text-text-3" aria-live="polite">
-								{t("文章生成中...")}
-							</div>
-						) : similarStatus === "disabled" ? (
-							<div className="text-sm text-text-3" aria-live="polite">
-								{t("文章推荐暂不可用")}
-							</div>
-						) : similarArticles.length === 0 ? (
-							<div className="text-sm text-text-3" aria-live="polite">
-								{t("暂无推荐文章")}
-							</div>
-						) : (
-								<div className="space-y-2 text-sm text-text-2">
-									{similarArticles.map((item) => {
-										const displayTitle = item.title_trans?.trim() || item.title;
-										return (
-											<div key={item.id} className="flex items-start gap-2">
-												<span className="text-text-3">·</span>
-												<div className="min-w-0 flex items-center gap-2">
-													{item.category_name && (
-														<span
-															className="shrink-0 rounded px-2 py-0.5 text-xs"
-															style={{
-																backgroundColor: item.category_color
-																	? `${item.category_color}20`
-																	: "var(--bg-muted)",
-																color: item.category_color || "var(--text-2)",
-															}}
-														>
-															{item.category_name}
-														</span>
-													)}
-													<Link
-														href={buildArticleHref(item.slug)}
-														className="hover:text-text-1 transition truncate"
-														title={displayTitle}
-													>
-														{displayTitle}
-													</Link>
-												</div>
-											</div>
-										);
-								})}
-							</div>
-						)}
-					</div>
-				)}
-			</div>
-		</div>
-	);
 
 	useEffect(() => {
 		const handleSelection = () => {
@@ -3110,50 +1685,6 @@ export default function ArticleDetailPage({
 			document.removeEventListener("selectionchange", handleSelection);
 		};
 	}, []);
-
-	function getAiTabStatusBadge(status?: string | null) {
-		if (!status) return null;
-		const statusConfig: Record<
-			string,
-			{ bg: string; text: string; label: string }
-		> = {
-			pending: { bg: "bg-muted", text: "text-text-2", label: t("等待处理") },
-			processing: {
-				bg: "bg-info-soft",
-				text: "text-info-ink",
-				label: t("生成中..."),
-			},
-			completed: {
-				bg: "bg-success-soft",
-				text: "text-success-ink",
-				label: t("已完成"),
-			},
-			partial_completed: {
-				bg: "bg-warning-soft",
-				text: "text-warning-ink",
-				label: t("部分完成"),
-			},
-			skipped: {
-				bg: "bg-muted",
-				text: "text-text-3",
-				label: t("已跳过"),
-			},
-			failed: {
-				bg: "bg-danger-soft",
-				text: "text-danger-ink",
-				label: t("失败"),
-			},
-		};
-		const config = statusConfig[status];
-		if (!config) return null;
-		return (
-			<span
-				className={`px-2 py-0.5 rounded text-xs ${config.bg} ${config.text}`}
-			>
-				{config.label}
-			</span>
-		);
-	}
 
 	useEffect(() => {
 		hasManuallySelectedAiTabRef.current = false;
@@ -4566,246 +3097,35 @@ export default function ArticleDetailPage({
 					<div
 						className={`flex-1 min-w-0 w-full bg-surface ${immersiveMode ? "" : "rounded-sm shadow-sm border border-border p-4 sm:p-6 max-w-4xl mx-auto lg:mx-0"}`}
 					>
-						{!immersiveMode && (
-							<div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-								<div className="flex flex-wrap items-center gap-2">
-									<h2 className="text-lg font-semibold text-text-1 inline-flex items-center gap-2">
-										<IconDoc className="h-4 w-4" />
-										<span>{t("内容")}</span>
-									</h2>
-									{isAdmin &&
-										contentTaskStatusItems.map((item) => {
-											const statusLabel =
-												item.status === "pending"
-													? t("等待处理")
-													: item.status === "processing"
-														? t("处理中")
-														: item.status === "failed"
-															? t("失败")
-															: item.status || t("未知");
-											const statusClassName =
-												item.status === "pending"
-													? "bg-muted text-text-2"
-													: item.status === "processing"
-														? "bg-info-soft text-info-ink"
-														: item.status === "failed"
-															? "bg-danger-soft text-danger-ink"
-															: "bg-muted text-text-2";
-											const badgeNode = (
-												<span
-													className={`px-2 py-0.5 rounded text-xs ${statusClassName}`}
-												>
-													{item.label}：{statusLabel}
-												</span>
-											);
-											return item.link ? (
-												<Link
-													key={item.key}
-													href={item.link}
-													className="hover:opacity-80 transition"
-												>
-													{badgeNode}
-												</Link>
-											) : (
-												<span key={item.key}>{badgeNode}</span>
-											);
-										})}
-									{isAdmin && article.translation_status === "failed" && (
-										<button
-											type="button"
-											onClick={handleRetryTranslation}
-											className="flex items-center gap-1 px-2 py-0.5 rounded text-xs text-warning-ink bg-warning-soft hover:bg-warning-soft transition"
-											title={article.translation_error || t("重新翻译")}
-											aria-label={t("翻译失败")}
-										>
-											<IconRefresh className="h-3.5 w-3.5" />
-											{t("翻译失败")}
-										</button>
-									)}
-								</div>
-									<div className="flex flex-wrap items-center gap-2">
-										{isAdmin && (
-											<IconButton
-												onClick={handleRetryCleaning}
-												disabled={isCleaningBusy}
-												loading={isCleaningBusy}
-												variant="ghost"
-												size="md"
-												title={
-													isCleaningBusy
-														? t("优化中")
-														: article.ai_analysis?.error_message ||
-															t("AI 优化正文")
-												}
-												aria-label={t("AI 优化正文")}
-												className="rounded-sm"
-											>
-												<IconBolt className="h-4 w-4" />
-											</IconButton>
-										)}
-										{article.content_trans && (
-											<button
-												type="button"
-												onClick={() => setShowTranslation(!showTranslation)}
-												className="flex items-center justify-center w-8 h-8 rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
-												title={showTranslation ? t("显示原文") : t("显示译文")}
-												aria-label={
-													showTranslation ? t("显示原文") : t("显示译文")
-												}
-											>
-												<IconGlobe className="h-4 w-4" />
-											</button>
-										)}
-										<button
-											type="button"
-											onClick={() => setImmersiveMode(!immersiveMode)}
-											className="flex items-center justify-center w-8 h-8 rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
-											title={
-												immersiveMode ? t("退出沉浸模式") : t("进入沉浸模式")
-											}
-											aria-label={
-												immersiveMode ? t("退出沉浸模式") : t("进入沉浸模式")
-											}
-										>
-											<IconBook className="h-4 w-4" />
-										</button>
-										{immersiveMode && hasPdfEmbed && (
-											<div className="inline-flex h-8 items-center rounded-sm border border-border bg-muted text-text-2">
-												<button
-													type="button"
-													onClick={decreasePdfHeight}
-													disabled={pdfHeightScale <= PDF_HEIGHT_SCALE_MIN}
-													className="h-full px-2 text-sm hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50 transition"
-													title={t("缩短PDF高度")}
-													aria-label={t("缩短PDF高度")}
-												>
-													−
-												</button>
-												<span className="min-w-[52px] px-1 text-center text-xs tabular-nums">
-													{Math.round(pdfHeightScale * 100)}%
-												</span>
-												<button
-													type="button"
-													onClick={increasePdfHeight}
-													disabled={pdfHeightScale >= PDF_HEIGHT_SCALE_MAX}
-													className="h-full px-2 text-sm hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50 transition"
-													title={t("拉长PDF高度")}
-													aria-label={t("拉长PDF高度")}
-												>
-													+
-												</button>
-												<button
-													type="button"
-													onClick={resetPdfHeight}
-													className="h-full border-l border-border px-2 text-xs hover:bg-surface transition"
-													title={t("重置PDF高度")}
-													aria-label={t("重置PDF高度")}
-												>
-													{t("重置")}
-												</button>
-											</div>
-										)}
-										{isAdmin && (
-											<button
-												type="button"
-												onClick={openNoteModal}
-												className="flex items-center justify-center w-8 h-8 rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
-												title={t("编辑批注")}
-												aria-label={t("编辑批注")}
-											>
-												<IconNote className="h-4 w-4" />
-											</button>
-										)}
-										{isAdmin && (
-											<button
-												type="button"
-												onClick={() => {
-													setShowMoreActions(false);
-													openEditModal(
-														showTranslation && article.content_trans
-															? "translation"
-															: "original",
-													);
-												}}
-												className="flex items-center justify-center w-8 h-8 rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
-												title={t("编辑文章")}
-												aria-label={t("编辑文章")}
-											>
-												<IconEdit className="h-4 w-4" />
-											</button>
-										)}
-										{article && moreActionItems.length > 0 && (
-											<div className="relative" ref={moreActionsRef}>
-												<button
-													type="button"
-													onClick={() => setShowMoreActions((prev) => !prev)}
-													className="inline-flex items-center gap-1 h-8 px-2 rounded-sm text-text-2 hover:text-text-1 hover:bg-muted transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
-													aria-haspopup="menu"
-													aria-expanded={showMoreActions}
-													aria-label={t("更多")}
-													title={t("更多")}
-												>
-													<span className="text-xs">{t("更多")}</span>
-													<IconChevronDown
-														className={`h-3.5 w-3.5 transition-transform ${
-															showMoreActions ? "rotate-180" : ""
-														}`}
-													/>
-												</button>
-												{showMoreActions && (
-													<div
-														role="menu"
-														className="absolute right-0 top-10 min-w-[156px] rounded-sm border border-border bg-surface shadow-md p-1 z-20"
-													>
-														{moreActionItems.map((item) => (
-															<button
-																key={item.key}
-																type="button"
-																role="menuitem"
-																onClick={() => {
-																	setShowMoreActions(false);
-																	item.onClick();
-																}}
-																className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-sm text-sm transition ${
-																	item.danger
-																		? "text-danger-ink hover:bg-danger-soft"
-																		: "text-text-2 hover:text-text-1 hover:bg-muted"
-																}`}
-															>
-																{item.icon}
-																<span>{item.label}</span>
-															</button>
-														))}
-													</div>
-												)}
-											</div>
-										)}
-									</div>
-								</div>
-						)}
+						<ContentToolbar
+							immersiveMode={immersiveMode}
+							setImmersiveMode={setImmersiveMode}
+							isAdmin={isAdmin}
+							contentTaskStatusItems={contentTaskStatusItems}
+							article={article}
+							handleRetryTranslation={handleRetryTranslation}
+							handleRetryCleaning={handleRetryCleaning}
+							isCleaningBusy={isCleaningBusy}
+							showTranslation={showTranslation}
+							setShowTranslation={setShowTranslation}
+							hasPdfEmbed={hasPdfEmbed}
+							pdfHeightScale={pdfHeightScale}
+							decreasePdfHeight={decreasePdfHeight}
+							increasePdfHeight={increasePdfHeight}
+							resetPdfHeight={resetPdfHeight}
+							openNoteModal={openNoteModal}
+							showMoreActions={showMoreActions}
+							setShowMoreActions={setShowMoreActions}
+							openEditModal={openEditModal}
+							moreActionItems={moreActionItems}
+							moreActionsRef={moreActionsRef}
+						/>
 						{noteContent && !immersiveMode && (
-							<div className="note-panel mb-4 rounded-sm p-4 text-sm text-text-2">
-								<div className="flex items-center justify-between mb-2">
-									<div className="note-panel-title text-sm">{t("批注")}</div>
-									{isAdmin && (
-										<IconButton
-											onClick={() => setShowDeleteNoteModal(true)}
-											variant="ghost"
-											size="sm"
-											title={t("删除批注")}
-											className="rounded-full"
-										>
-											<IconTrash className="h-3.5 w-3.5" />
-										</IconButton>
-									)}
-								</div>
-								<div
-									className="prose prose-sm max-w-none"
-									dangerouslySetInnerHTML={{
-										__html: renderMarkdown(normalizeDigestNoteForDisplay(noteContent)),
-									}}
-								/>
-							</div>
+							<NotePanel
+								noteContent={noteContent}
+								isAdmin={isAdmin}
+								setShowDeleteNoteModal={setShowDeleteNoteModal}
+							/>
 						)}
 						<div
 							ref={contentRef}
@@ -4906,727 +3226,174 @@ export default function ArticleDetailPage({
 					{!immersiveMode && (
 						<aside className="flex-shrink-0 w-full lg:w-[420px]">
 							<div className="max-h-none overflow-visible lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">
-								{aiPanelContent}
+								<AiPanel
+									article={article}
+									isAdmin={isAdmin}
+									tocItems={tocItems}
+									activeTocId={activeTocId}
+									setActiveTocId={setActiveTocId}
+									tocCollapsed={tocCollapsed}
+									setTocCollapsed={setTocCollapsed}
+									visibleAiTabs={visibleAiTabs}
+									activeAiTab={activeAiTab}
+									handleSelectAiTab={handleSelectAiTab}
+									activeTabConfig={activeTabConfig}
+									activeStatusLink={activeStatusLink}
+									showOutlineSection={showOutlineSection}
+									showQuotesSection={showQuotesSection}
+									summaryStatusValue={summaryStatusValue}
+									summaryStatusLink={summaryStatusLink}
+									interpretationStatus={interpretationStatus}
+									interpretationStatusLink={interpretationStatusLink}
+									interpretationRegenerating={interpretationRegenerating}
+									handleRegenerateInterpretation={handleRegenerateInterpretation}
+									handleGenerateContent={handleGenerateContent}
+									handleCopyContent={handleCopyContent}
+									setEditAIContentType={setEditAIContentType}
+									setEditAIContentDraft={setEditAIContentDraft}
+									setShowEditAIContentModal={setShowEditAIContentModal}
+									setPendingDeleteAiContentType={setPendingDeleteAiContentType}
+									setShowDeleteAiContentModal={setShowDeleteAiContentModal}
+									openVersionHistory={openVersionHistory}
+									similarLoading={similarLoading}
+									similarStatus={similarStatus}
+									similarArticles={similarArticles}
+									embeddingRefreshing={embeddingRefreshing}
+									handleRefreshEmbedding={handleRefreshEmbedding}
+									buildArticleHref={buildArticleHref}
+								/>
 							</div>
 						</aside>
 					)}
 				</div>
 			</div>
 
-				{showVersionHistoryModal && (
-					<ModalShell
-						isOpen={showVersionHistoryModal}
-						onClose={() => setShowVersionHistoryModal(false)}
-						title={`${getAiContentLabel(historyContentType, t)} · ${t("版本历史")}`}
-						widthClassName="max-w-4xl"
-						panelClassName="flex h-[min(90vh,48rem)] flex-col"
-						bodyClassName="min-h-0 flex-1 overflow-hidden p-4"
-					>
-						<div className="grid h-full min-h-0 gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
-							<div className="min-h-0 overflow-y-auto space-y-3">
-								<div className="text-xs text-text-3">
-									{versionHistoryLoading[historyContentType]
-										? t("加载中")
-										: historyVersions.length > 0
-											? `${historyVersions.length} ${t("个版本")}`
-											: t("暂无历史版本")}
-								</div>
-								<div className="space-y-2">
-									{historyVersions.map((version) => {
-										const isPreview =
-											previewVersionIds[historyContentType] === version.id;
-										return (
-											<div
-												key={version.id}
-												onClick={() =>
-													setPreviewVersionIds((prev) => ({
-														...prev,
-														[historyContentType]: version.id,
-													}))
-												}
-												onKeyDown={(event) => {
-													if (event.key === "Enter" || event.key === " ") {
-														event.preventDefault();
-														setPreviewVersionIds((prev) => ({
-															...prev,
-															[historyContentType]: version.id,
-														}));
-													}
-												}}
-												role="button"
-												tabIndex={0}
-												className={`cursor-pointer rounded-lg border p-3 transition ${
-													version.is_current
-														? "border-success-soft bg-success-soft"
-														: isPreview
-															? "border-primary/35 bg-primary-soft/20"
-															: "border-border bg-muted"
-												}`}
-											>
-												<div className="flex items-center justify-between gap-2">
-													<div>
-														<div className="text-sm font-medium text-text-1">
-															v{version.version_number}
-															{version.is_current ? ` · ${t("当前版本")}` : ""}
-														</div>
-														<div className="mt-1 text-xs text-text-3">
-															{formatVersionSourceLabel(
-																version.created_by_mode,
-																t,
-															)} ·{" "}
-															{new Date(version.created_at).toLocaleString(
-																language === "en" ? "en-US" : "zh-CN",
-															)}
-														</div>
-													</div>
-													{!version.is_current && (
-														<button
-															type="button"
-															onClick={(event) => {
-																event.stopPropagation();
-																setPendingRollbackVersion({
-																	contentType: historyContentType,
-																	versionId: version.id,
-																});
-																setShowRollbackVersionModal(true);
-															}}
-															className="text-text-3 hover:text-primary transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
-															title={t("回滚为当前版本")}
-															aria-label={t("回滚为当前版本")}
-														>
-															<IconRefresh className="h-4 w-4" />
-														</button>
-													)}
-												</div>
-											</div>
-										);
-									})}
-								</div>
-							</div>
-							<div className="min-h-0 overflow-y-auto rounded-lg border border-border bg-muted p-4">
-								{previewVersion ? (
-									<div className="space-y-3">
-										<div className="flex items-center justify-between gap-2">
-											<h3 className="text-sm font-medium text-text-1">
-												{t("预览")} · v{previewVersion.version_number}
-											</h3>
-											<span className="text-xs text-text-3">
-												{formatVersionSourceLabel(
-													previewVersion.created_by_mode,
-													t,
-												)}
-											</span>
-										</div>
-										{renderHistoryPreview(historyContentType, previewVersion)}
-									</div>
-								) : (
-									<div className="flex h-full min-h-[240px] items-center justify-center text-sm text-text-3">
-										{t("选择一个历史版本进行预览")}
-									</div>
-								)}
-							</div>
-						</div>
-					</ModalShell>
-				)}
+				<VersionHistoryModal
+					showVersionHistoryModal={showVersionHistoryModal}
+					setShowVersionHistoryModal={setShowVersionHistoryModal}
+					historyContentType={historyContentType}
+					versionHistoryLoading={versionHistoryLoading}
+					historyVersions={historyVersions}
+					previewVersionIds={previewVersionIds}
+					setPreviewVersionIds={setPreviewVersionIds}
+					previewVersion={previewVersion}
+					setPendingRollbackVersion={setPendingRollbackVersion}
+					setShowRollbackVersionModal={setShowRollbackVersionModal}
+				/>
 
 				{showConfigModal && (
-					<ModalShell
-						isOpen={showConfigModal}
-						onClose={() => setShowConfigModal(false)}
-						title={
-							configModalMode === "generate"
-								? t("选择生成配置")
-								: configModalMode === "retry_ai_content"
-									? t("选择重试配置")
-									: configModalMode === "regenerate_interpretation"
-										? t("选择文章解读配置")
-										: configModalMode === "retry_cleaning"
-											? t("选择清洗重试配置")
-											: t("选择翻译重试配置")
-						}
-						widthClassName="max-w-md"
-						footer={
-							<div className="flex justify-end gap-2">
-								<Button
-									type="button"
-									variant="secondary"
-									onClick={() => setShowConfigModal(false)}
-								>
-									{t("取消")}
-								</Button>
-								<Button
-									type="button"
-									variant="primary"
-									onClick={handleConfigModalSubmit}
-								>
-									{configModalMode === "generate"
-										? t("生成")
-										: configModalMode === "regenerate_interpretation"
-											? t("重新生成")
-											: t("提交重试")}
-								</Button>
-							</div>
-						}
-					>
-					<div className="space-y-4">
-						<FormField label={t("模型配置")}>
-							<SelectField
-								value={selectedModelConfigId}
-								onChange={(value) => setSelectedModelConfigId(value)}
-								className="w-full"
-									options={[
-										{ value: "", label: t("使用默认配置") },
-										...selectableModelConfigs.map((config) => ({
-											value: config.id,
-											label: `${config.name} (${config.model_name}) · ${
-												config.model_type === "vector" ? t("向量") : t("通用")
-											}`,
-										})),
-									]}
-								/>
-							</FormField>
-
-						{configModalMode !== "regenerate_interpretation" && (
-							<FormField label={t("提示词配置")}>
-								<SelectField
-									value={selectedPromptConfigId}
-									onChange={(value) => setSelectedPromptConfigId(value)}
-									className="w-full"
-									options={[
-										{ value: "", label: t("使用默认配置") },
-										...promptConfigs.map((config) => ({
-											value: config.id,
-											label: config.name,
-										})),
-									]}
-								/>
-							</FormField>
-						)}
-					</div>
-				</ModalShell>
-			)}
-
-			<ArticleSplitEditorModal
-				isOpen={showEditModal}
-				title={t("编辑文章")}
-				titleAddon={
-					articleDraftHint || articleDraftSavedAt ? (
-						<div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
-							{articleDraftHint ? (
-								<>
-									<span className="min-w-0 text-xs text-text-3 sm:text-sm">
-										{t("发现未保存的本地草稿")}
-										{` · ${formatEditorDraftTime(articleDraftHint.updatedAt, language)}`}
-									</span>
-									<div className="flex items-center gap-2">
-										<Button
-											variant="secondary"
-											size="sm"
-											onClick={() => {
-												clearArticleEditorDraftState(editMode);
-												showToast(t("已丢弃本地草稿"));
-											}}
-										>
-											{t("丢弃本地草稿")}
-										</Button>
-										<Button
-											variant="primary"
-											size="sm"
-											onClick={() => {
-												applyArticleEditorDraft(articleDraftHint.payload);
-												setArticleDraftSavedAt(articleDraftHint.updatedAt);
-												setArticleDraftHint(null);
-												showToast(t("已恢复本地草稿"));
-											}}
-										>
-											{t("恢复本地草稿")}
-										</Button>
-									</div>
-								</>
-							) : (
-								<span className="text-xs text-text-3 sm:text-sm">
-									{t("已自动暂存")}
-									{articleDraftSavedAt
-										? ` · ${formatEditorDraftTime(articleDraftSavedAt, language)}`
-										: ""}
-								</span>
-							)}
-						</div>
-					) : null
-				}
-				closeAriaLabel={t("关闭编辑弹窗")}
-				onClose={() => {
-					setShowEditModal(false);
-					setArticleDraftHint(null);
-				}}
-				onSave={handleSaveEdit}
-				topFields={(
-					<>
-						<FormField label={t("标题")}>
-							<TextInput
-								type="text"
-								value={editTitle}
-								onChange={(e) => setEditTitle(e.target.value)}
-							/>
-						</FormField>
-
-						<div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-							<FormField label={t("作者")}>
-								<TextInput
-									type="text"
-									value={editAuthor}
-									onChange={(e) => setEditAuthor(e.target.value)}
-								/>
-							</FormField>
-							<FormField label={t("发表时间")}>
-								<TextInput
-									type="date"
-									value={editPublishedAt}
-									onChange={(e) => setEditPublishedAt(e.target.value)}
-								/>
-							</FormField>
-							<FormField label={t("分类")}>
-								<SelectField
-									value={editCategoryId}
-									onChange={(value) => setEditCategoryId(value)}
-									className="w-full"
-									loading={categoriesLoading}
-									options={[
-										{ value: "", label: t("未分类") },
-										...categories.map((category) => ({
-											value: category.id,
-											label: category.name,
-										})),
-									]}
-								/>
-							</FormField>
-						</div>
-						<div>
-							<FormField
-								label={
-									<span className="inline-flex items-center gap-2">
-										<span>{t("头图 URL")}</span>
-										{!mediaStorageEnabled && (
-											<span className="text-xs font-normal text-text-3">
-												{t("未开启本地存储，头图将保持外链")}
-											</span>
-										)}
-									</span>
-								}
-								htmlFor="edit-top-image"
-							>
-								<div className="flex gap-2">
-									<TextInput
-										id="edit-top-image"
-										type="text"
-										value={editTopImage}
-										onChange={(e) => setEditTopImage(e.target.value)}
-										onPaste={handleTopImagePaste}
-										className="flex-1"
-										placeholder={t("输入图片 URL")}
-									/>
-									<IconButton
-										onClick={handleConvertTopImage}
-										disabled={
-											mediaStorageLoading ||
-											mediaUploading ||
-											!mediaStorageEnabled
-										}
-										title={
-											mediaStorageEnabled
-												? t("转存为本地文件")
-												: t("未开启本地图片存储")
-										}
-										variant="ghost"
-										size="md"
-										className="hover:bg-muted"
-									>
-										<IconLink className="h-4 w-4" />
-									</IconButton>
-								</div>
-							</FormField>
-						</div>
-					</>
-				)}
-				contentValue={editContent}
-				onContentChange={setEditContent}
-				onContentPaste={handleEditPaste}
-				extraEditorActions={
-					<IconButton
-						onClick={handleBatchConvertMarkdownImages}
-						disabled={mediaUploading || !mediaStorageEnabled}
-						title={
-							mediaStorageEnabled
-								? t("扫描并转存外链图片")
-								: t("未开启本地图片存储")
-						}
-						variant="ghost"
-						size="md"
-						className="hover:bg-muted"
-					>
-						<IconLink className="h-4 w-4" />
-					</IconButton>
-				}
-				contentLabelAddon={
-					!mediaStorageEnabled ? (
-						<span className="text-xs font-normal text-text-3">
-							{t("未开启本地存储，外链将保持不变")}
-						</span>
-					) : null
-				}
-				saveText={t("保存")}
-				savingText={t("保存中...")}
-				isSaving={saving}
-				previewImageUrl={editPreviewTopImageUrl || fallbackTopImageUrl || ""}
-				previewImageAlt={editTitle}
-				previewHtml={normalizeMediaHtml(renderSafeMarkdown(editContent || "", {
-					enableMediaEmbed: true,
-				}))}
-			/>
-
-			{showSelectionToolbar && selectionToolbarPos && isAdmin && (
-				<div
-					className="fixed z-40"
-					style={{ left: selectionToolbarPos.x, top: selectionToolbarPos.y }}
-				>
-					<button
-						type="button"
-						onClick={handleStartAnnotation}
-						className="w-7 h-7 flex items-center justify-center border border-border text-primary rounded-full bg-surface/80 hover:bg-primary-soft transition"
-					>
-						<IconEdit className="h-3.5 w-3.5" />
-					</button>
-				</div>
-			)}
-
-			{hoverAnnotationId && hoverTooltipPos && (
-				<div
-					className="fixed z-40 pointer-events-none"
-					style={{ left: hoverTooltipPos.x, top: hoverTooltipPos.y }}
-				>
-					<div
-						className="annotation-tooltip w-max max-w-[30rem] rounded-md text-xs px-3 py-2 shadow-lg backdrop-blur"
-						style={{ transform: "translate(-50%, calc(-100% - 8px))" }}
-					>
-						<div className="max-h-[4.5rem] overflow-hidden">
-							<div
-								className="prose prose-sm max-w-none text-text-1"
-								style={{
-									display: "-webkit-box",
-									WebkitLineClamp: 3,
-									WebkitBoxOrient: "vertical",
-									overflow: "hidden",
-									whiteSpace: "normal",
-									wordBreak: "break-word",
-									overflowWrap: "anywhere",
-								}}
-								dangerouslySetInnerHTML={{
-									__html:
-										renderMarkdown(
-											annotations.find((item) => item.id === hoverAnnotationId)
-												?.comment || "",
-										) || "",
-								}}
-							/>
-						</div>
-					</div>
-				</div>
-			)}
-
-			{showAnnotationView && activeAnnotation && (
-				<ModalShell
-					isOpen={showAnnotationView}
-					onClose={() => setShowAnnotationView(false)}
-					title={t("划线批注内容")}
-					widthClassName="max-w-lg"
-					footer={
-						isAdmin ? (
-							<div className="flex justify-end gap-2">
-								<Button
-									type="button"
-									variant="secondary"
-									onClick={() => {
-										setActiveAnnotationId(activeAnnotation.id);
-										setPendingAnnotationRange({
-											start: activeAnnotation.start,
-											end: activeAnnotation.end,
-										});
-										setPendingAnnotationText(activeAnnotationText || "");
-										setPendingAnnotationComment(activeAnnotation.comment);
-										setShowAnnotationView(false);
-										setShowAnnotationModal(true);
-									}}
-								>
-									{t("编辑")}
-								</Button>
-								<Button
-									type="button"
-									variant="danger"
-									onClick={() => {
-										setPendingDeleteAnnotationId(activeAnnotation.id);
-										setShowDeleteAnnotationModal(true);
-										setShowAnnotationView(false);
-									}}
-								>
-									{t("删除")}
-								</Button>
-							</div>
-						) : null
-					}
-				>
-					<div className="text-sm text-text-2">
-						{activeAnnotationText && (
-							<div
-								className="mb-3 rounded-sm border border-border bg-muted p-3 text-xs text-text-3"
-								dangerouslySetInnerHTML={{
-									__html: sanitizeRichHtml(activeAnnotationText),
-								}}
-							/>
-						)}
-						<div
-							className="prose prose-sm max-w-none"
-							style={{
-								wordBreak: "break-word",
-								overflowWrap: "anywhere",
-								whiteSpace: "normal",
-							}}
-							dangerouslySetInnerHTML={{
-								__html: renderMarkdown(activeAnnotation.comment),
-							}}
-						/>
-					</div>
-				</ModalShell>
-			)}
-
-			{showNoteModal && (
-				<ModalShell
-					isOpen={showNoteModal}
-					onClose={closeNoteModal}
-					title={t("批注内容")}
-					widthClassName="max-w-lg"
-					footer={
-						<div className="flex justify-end gap-2">
-							{isAdmin && noteContent && (
-								<Button
-									type="button"
-									variant="danger"
-									onClick={() => setShowDeleteNoteModal(true)}
-								>
-									{t("删除")}
-								</Button>
-							)}
-							<Button
-								type="button"
-								variant="secondary"
-								onClick={closeNoteModal}
-							>
-								{t("取消")}
-							</Button>
-							<Button
-								type="button"
-								variant="primary"
-								onClick={handleSaveNoteContent}
-							>
-								{t("保存")}
-							</Button>
-						</div>
-					}
-				>
-					<div className="space-y-3">
-						<FormField label={t("推荐等级")}>
-							<SelectField
-								value={noteRecommendationDraftLevel}
-								onChange={(value) =>
-									setNoteRecommendationDraftLevel(
-										normalizeNoteRecommendationLevel(String(value)),
-									)
-								}
-								className="w-full"
-								options={NOTE_RECOMMENDATION_LEVEL_OPTIONS.map((item) => ({
-									value: item.value,
-									label: t(item.label),
-								}))}
-								showSearch={false}
-							/>
-						</FormField>
-						<div>
-							<div className="mb-1.5 flex items-center justify-between gap-2">
-								<label className="block text-sm text-text-2">
-									{t("批注正文")}
-								</label>
-								<button
-									type="button"
-									onClick={() => void handleDigestPrefill()}
-									disabled={digestPrefilling}
-									className="flex items-center justify-center w-8 h-8 rounded-sm text-text-2 hover:text-primary hover:bg-muted transition disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
-									title={
-										digestPrefilling ? t("生成中...") : t("AI 生成批注")
-									}
-									aria-label={
-										digestPrefilling ? t("生成中...") : t("AI 生成批注")
-									}
-								>
-									{digestPrefilling ? (
-										<IconRefresh className="h-4 w-4 animate-spin" />
-									) : (
-										<IconBolt className="h-4 w-4" />
-									)}
-								</button>
-							</div>
-							<TextArea
-								value={noteDraft}
-								onChange={(e) => {
-									setNoteDraft(e.target.value);
-									setNoteDraftDirty(true);
-								}}
-								rows={10}
-								placeholder={
-									digestPrefilling
-										? t("批注生成中，可先关闭弹窗，完成后会保留草稿")
-										: t("输入批注内容，支持 Markdown")
-								}
-								disabled={digestPrefilling}
-							/>
-						</div>
-					</div>
-				</ModalShell>
-			)}
-
-			{showAnnotationModal && (
-				<ModalShell
-					isOpen={showAnnotationModal}
-					onClose={() => setShowAnnotationModal(false)}
-					title={t("添加划线批注")}
-					widthClassName="max-w-lg"
-					footer={
-						<div className="flex justify-end gap-2">
-							<Button
-								type="button"
-								variant="secondary"
-								onClick={() => setShowAnnotationModal(false)}
-							>
-								{t("取消")}
-							</Button>
-							<Button
-								type="button"
-								variant="primary"
-								onClick={handleConfirmAnnotation}
-							>
-								{activeAnnotationId ? t("保存") : t("添加")}
-							</Button>
-						</div>
-					}
-				>
-					<div className="space-y-3">
-						<div className="text-xs text-text-3">{t("已选内容")}：</div>
-						<div className="rounded-sm border border-border bg-muted p-3 text-sm text-text-2">
-							{pendingAnnotationText || t("（无）")}
-						</div>
-						<FormField label={t("划线批注内容")}>
-							<TextArea
-								value={pendingAnnotationComment}
-								onChange={(e) => setPendingAnnotationComment(e.target.value)}
-								rows={4}
-								placeholder={t("输入划线批注内容")}
-							/>
-						</FormField>
-					</div>
-				</ModalShell>
-			)}
-
-			<ConfirmModal
-				isOpen={showDeleteNoteModal}
-				title={t("删除批注")}
-				message={t("确定要删除文章开头批注吗？此操作不可撤销。")}
-				confirmText={t("删除")}
-				cancelText={t("取消")}
-				onConfirm={async () => {
-					await handleDeleteNoteContent();
-					setShowDeleteNoteModal(false);
-				}}
-				onCancel={() => setShowDeleteNoteModal(false)}
-			/>
-
-			<ConfirmModal
-				isOpen={showDeleteAnnotationModal}
-				title={t("删除批注")}
-				message={t("确定要删除这条划线批注吗？此操作不可撤销。")}
-				confirmText={t("删除")}
-				cancelText={t("取消")}
-				onConfirm={async () => {
-					if (pendingDeleteAnnotationId) {
-						await handleDeleteAnnotation(pendingDeleteAnnotationId);
-					}
-					setShowDeleteAnnotationModal(false);
-					setPendingDeleteAnnotationId(null);
-				}}
-				onCancel={() => {
-					setShowDeleteAnnotationModal(false);
-					setPendingDeleteAnnotationId(null);
-				}}
-			/>
-
-			<ConfirmModal
-				isOpen={showDeleteAiContentModal}
-				title={t("删除 AI 解读")}
-				message={t("确定要删除当前 AI 解读内容吗？此操作不可撤销。")}
-				confirmText={t("删除")}
-				cancelText={t("取消")}
-				onConfirm={async () => {
-					if (pendingDeleteAiContentType) {
-						await handleDeleteAIContent(pendingDeleteAiContentType);
-					}
-					setShowDeleteAiContentModal(false);
-					setPendingDeleteAiContentType(null);
-				}}
-				onCancel={() => {
-					setShowDeleteAiContentModal(false);
-					setPendingDeleteAiContentType(null);
-				}}
-			/>
-
-			<ModalShell
-				isOpen={showEditAIContentModal}
-				onClose={() => {
-					setShowEditAIContentModal(false);
-					setEditAIContentType(null);
-				}}
-				title={t("编辑内容")}
-				widthClassName="max-w-2xl"
-			>
-				<div className="space-y-4">
-					<TextArea
-						value={editAIContentDraft}
-						onChange={(e) => setEditAIContentDraft(e.target.value)}
-						placeholder={t("请输入内容")}
-						rows={10}
-						className="w-full"
+					<AiConfigModal
+						showConfigModal={showConfigModal}
+						setShowConfigModal={setShowConfigModal}
+						configModalMode={configModalMode}
+						handleConfigModalSubmit={handleConfigModalSubmit}
+						selectedModelConfigId={selectedModelConfigId}
+						setSelectedModelConfigId={setSelectedModelConfigId}
+						selectedPromptConfigId={selectedPromptConfigId}
+						setSelectedPromptConfigId={setSelectedPromptConfigId}
+						modelConfigs={modelConfigs}
+						promptConfigs={promptConfigs}
 					/>
-					<div className="flex justify-end gap-2">
-						<Button
-							variant="secondary"
-							onClick={() => {
-								setShowEditAIContentModal(false);
-								setEditAIContentType(null);
-							}}
-						>
-							{t("取消")}
-						</Button>
-						<Button
-							variant="primary"
-							onClick={async () => {
-								if (editAIContentType && editAIContentDraft.trim()) {
-									await handleUpdateAIContent(editAIContentType, editAIContentDraft.trim());
-									setShowEditAIContentModal(false);
-									setEditAIContentType(null);
-								}
-							}}
-						>
-							{t("保存")}
-						</Button>
-					</div>
-				</div>
-			</ModalShell>
+				)}
+
+			<ArticleEditModal
+				showEditModal={showEditModal}
+				setShowEditModal={setShowEditModal}
+				editMode={editMode}
+				editTitle={editTitle}
+				setEditTitle={setEditTitle}
+				editAuthor={editAuthor}
+				setEditAuthor={setEditAuthor}
+				editPublishedAt={editPublishedAt}
+				setEditPublishedAt={setEditPublishedAt}
+				editCategoryId={editCategoryId}
+				setEditCategoryId={setEditCategoryId}
+				editTopImage={editTopImage}
+				setEditTopImage={setEditTopImage}
+				editContent={editContent}
+				setEditContent={setEditContent}
+				saving={saving}
+				categories={categories}
+				categoriesLoading={categoriesLoading}
+				mediaStorageEnabled={mediaStorageEnabled}
+				mediaStorageLoading={mediaStorageLoading}
+				mediaUploading={mediaUploading}
+				articleDraftHint={articleDraftHint}
+				articleDraftSavedAt={articleDraftSavedAt}
+				setArticleDraftHint={setArticleDraftHint}
+				setArticleDraftSavedAt={setArticleDraftSavedAt}
+				applyArticleEditorDraft={applyArticleEditorDraft}
+				clearArticleEditorDraftState={clearArticleEditorDraftState}
+				handleSaveEdit={handleSaveEdit}
+				handleEditPaste={handleEditPaste}
+				handleConvertTopImage={handleConvertTopImage}
+				handleTopImagePaste={handleTopImagePaste}
+				handleBatchConvertMarkdownImages={handleBatchConvertMarkdownImages}
+				editPreviewTopImageUrl={editPreviewTopImageUrl}
+				fallbackTopImageUrl={fallbackTopImageUrl}
+				showToast={showToast}
+			/>
+
+			<AnnotationNotesLayer
+				showSelectionToolbar={showSelectionToolbar}
+				selectionToolbarPos={selectionToolbarPos}
+				isAdmin={isAdmin}
+				handleStartAnnotation={handleStartAnnotation}
+				hoverAnnotationId={hoverAnnotationId}
+				hoverTooltipPos={hoverTooltipPos}
+				annotations={annotations}
+				showAnnotationView={showAnnotationView}
+				activeAnnotation={activeAnnotation}
+				setShowAnnotationView={setShowAnnotationView}
+				setActiveAnnotationId={setActiveAnnotationId}
+				setPendingAnnotationRange={setPendingAnnotationRange}
+				activeAnnotationText={activeAnnotationText}
+				setPendingAnnotationText={setPendingAnnotationText}
+				setPendingAnnotationComment={setPendingAnnotationComment}
+				setShowAnnotationModal={setShowAnnotationModal}
+				setPendingDeleteAnnotationId={setPendingDeleteAnnotationId}
+				setShowDeleteAnnotationModal={setShowDeleteAnnotationModal}
+				showNoteModal={showNoteModal}
+				closeNoteModal={closeNoteModal}
+				noteContent={noteContent}
+				setShowDeleteNoteModal={setShowDeleteNoteModal}
+				handleSaveNoteContent={handleSaveNoteContent}
+				noteRecommendationDraftLevel={noteRecommendationDraftLevel}
+				setNoteRecommendationDraftLevel={setNoteRecommendationDraftLevel}
+				handleDigestPrefill={handleDigestPrefill}
+				digestPrefilling={digestPrefilling}
+				noteDraft={noteDraft}
+				setNoteDraft={setNoteDraft}
+				setNoteDraftDirty={setNoteDraftDirty}
+				showAnnotationModal={showAnnotationModal}
+				handleConfirmAnnotation={handleConfirmAnnotation}
+				activeAnnotationId={activeAnnotationId}
+				pendingAnnotationText={pendingAnnotationText}
+				pendingAnnotationComment={pendingAnnotationComment}
+				showDeleteNoteModal={showDeleteNoteModal}
+				handleDeleteNoteContent={handleDeleteNoteContent}
+				showDeleteAnnotationModal={showDeleteAnnotationModal}
+				pendingDeleteAnnotationId={pendingDeleteAnnotationId}
+				handleDeleteAnnotation={handleDeleteAnnotation}
+			/>
+
+				<DeleteAiContentModal
+					showDeleteAiContentModal={showDeleteAiContentModal}
+					pendingDeleteAiContentType={pendingDeleteAiContentType}
+					handleDeleteAIContent={handleDeleteAIContent}
+					setShowDeleteAiContentModal={setShowDeleteAiContentModal}
+					setPendingDeleteAiContentType={setPendingDeleteAiContentType}
+				/>
+
+				<EditAIContentModal
+					showEditAIContentModal={showEditAIContentModal}
+					setShowEditAIContentModal={setShowEditAIContentModal}
+					editAIContentType={editAIContentType}
+					setEditAIContentType={setEditAIContentType}
+					editAIContentDraft={editAIContentDraft}
+					setEditAIContentDraft={setEditAIContentDraft}
+					handleUpdateAIContent={handleUpdateAIContent}
+				/>
 
 			<ConfirmModal
 				isOpen={showRollbackVersionModal}
@@ -5716,30 +3483,11 @@ export default function ArticleDetailPage({
 				</div>
 			)}
 
-			{mindMapOpen &&
-				article?.ai_analysis?.outline &&
-				(() => {
-					const tree = parseMindMapOutline(article.ai_analysis?.outline || "");
-					if (!tree) return null;
-					return (
-						<ModalShell
-							isOpen={mindMapOpen}
-							onClose={() => setMindMapOpen(false)}
-							title={t("大纲")}
-							widthClassName="max-w-6xl"
-							panelClassName="max-h-[90vh]"
-							bodyClassName="p-0"
-						>
-							<div className="h-[80vh] overflow-auto p-6">
-								<MindMapTree
-									node={tree}
-									defaultExpandedDepth={2}
-									showToolbar
-								/>
-							</div>
-						</ModalShell>
-					);
-				})()}
+			<MindMapModal
+				open={mindMapOpen}
+				outline={article?.ai_analysis?.outline}
+				onClose={() => setMindMapOpen(false)}
+			/>
 
 			<AppFooter />
 			<BackToTop />
@@ -5764,7 +3512,42 @@ export default function ArticleDetailPage({
 							headerClassName="border-b border-border px-4 py-3"
 							bodyClassName="flex-1 min-h-0 overflow-y-auto overscroll-y-contain p-4 [-webkit-overflow-scrolling:touch]"
 						>
-							{aiPanelContent}
+							<AiPanel
+								article={article}
+								isAdmin={isAdmin}
+								tocItems={tocItems}
+								activeTocId={activeTocId}
+								setActiveTocId={setActiveTocId}
+								tocCollapsed={tocCollapsed}
+								setTocCollapsed={setTocCollapsed}
+								visibleAiTabs={visibleAiTabs}
+								activeAiTab={activeAiTab}
+								handleSelectAiTab={handleSelectAiTab}
+								activeTabConfig={activeTabConfig}
+								activeStatusLink={activeStatusLink}
+								showOutlineSection={showOutlineSection}
+								showQuotesSection={showQuotesSection}
+								summaryStatusValue={summaryStatusValue}
+								summaryStatusLink={summaryStatusLink}
+								interpretationStatus={interpretationStatus}
+								interpretationStatusLink={interpretationStatusLink}
+								interpretationRegenerating={interpretationRegenerating}
+								handleRegenerateInterpretation={handleRegenerateInterpretation}
+								handleGenerateContent={handleGenerateContent}
+								handleCopyContent={handleCopyContent}
+								setEditAIContentType={setEditAIContentType}
+								setEditAIContentDraft={setEditAIContentDraft}
+								setShowEditAIContentModal={setShowEditAIContentModal}
+								setPendingDeleteAiContentType={setPendingDeleteAiContentType}
+								setShowDeleteAiContentModal={setShowDeleteAiContentModal}
+								openVersionHistory={openVersionHistory}
+								similarLoading={similarLoading}
+								similarStatus={similarStatus}
+								similarArticles={similarArticles}
+								embeddingRefreshing={embeddingRefreshing}
+								handleRefreshEmbedding={handleRefreshEmbedding}
+								buildArticleHref={buildArticleHref}
+							/>
 						</ModalShell>
 				</>
 			)}
