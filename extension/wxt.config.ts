@@ -18,9 +18,8 @@ export default defineConfig({
     version: '1.0.0',
     permissions: ['activeTab', 'scripting', 'storage', 'contextMenus', 'notifications'],
     host_permissions: ['<all_urls>'],
-    externally_connectable: {
-      matches: connectableMatches,
-    },
+    // WXT 0.17 的 manifest 类型未收录 externally_connectable，但构建时会原样透传。
+    ...({ externally_connectable: { matches: connectableMatches } } as Record<string, unknown>),
     action: {
       default_popup: 'popup.html',
       default_icon: {
@@ -43,9 +42,6 @@ export default defineConfig({
   },
   runner: {
     disabled: false,
-  },
-  devtools: {
-    enabled: true,
   },
   vite: () => ({
     build: {

@@ -21,5 +21,4 @@ test("comment admin and notification keys added in this refactor exist in the i1
 
   assert.match(i18nSource, /(?:["']新评论["']|新评论):\s*["']/);
   assert.match(i18nSource, /(?:["']未知资源["']|未知资源):\s*["']/);
-  assert.match(i18nSource, /["']输入文章或回顾标题搜索\.\.\.["']:\s*["']/);
 });

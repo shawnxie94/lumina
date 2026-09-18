@@ -8,6 +8,7 @@ import { logError } from "../utils/errorLogger";
 import { addToHistory } from "../utils/history";
 import { ensureContentScriptLoaded } from "../utils/contentScript";
 import { resolveLanguage, translate } from "../utils/i18n";
+import type { ExtensionLanguage } from "../utils/i18n";
 import { LOGIN_CACHE_KEY, clearSessionCache } from "../utils/sessionCache";
 
 const normalizeUrlCandidate = (value: string): string =>
@@ -96,7 +97,7 @@ export default defineBackground(() => {
 	// and otherwise throw "Cannot create item with duplicate id collect-article".
 	let contextMenuResetChain: Promise<void> = Promise.resolve();
 
-	const resetCollectContextMenu = (language: string): Promise<void> => {
+	const resetCollectContextMenu = (language: ExtensionLanguage): Promise<void> => {
 		const run = async () => {
 			const t = (key: string) => translate(language, key);
 			const title = t("采集到 Lumina");

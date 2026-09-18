@@ -51,6 +51,7 @@ for (const file of files) {
   const raw = readFileSync(file);
   // Fail fast if not valid UTF-8.
   const text = raw.toString("utf8");
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: 检测整个 ASCII 区间正是本脚本的目的
   if (/[^\x00-\x7F]/.test(text)) {
     const ascii = toAsciiJs(text);
     writeFileSync(file, ascii, { encoding: "utf8" });

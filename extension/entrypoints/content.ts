@@ -450,7 +450,7 @@ function findArticleInJsonLd(
 		"ScholarlyArticle",
 	];
 
-	if (data["@type"] && articleTypes.includes(data["@type"])) {
+	if ("@type" in data && data["@type"] && articleTypes.includes(data["@type"])) {
 		return data as JsonLdArticle;
 	}
 

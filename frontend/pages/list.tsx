@@ -682,7 +682,9 @@ export default function Home({
       }
       console.error('Failed to fetch articles:', error);
     } finally {
+      // 过期请求不重置 loading，交给持有最新 requestId 的那次请求收尾。
       if (requestId !== articleRequestIdRef.current) {
+        // biome-ignore lint/correctness/noUnsafeFinally: 有意用 return 跳过过期请求的状态复位
         return;
       }
       setLoading(false);

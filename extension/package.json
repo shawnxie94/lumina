@@ -6,7 +6,8 @@
     "dev": "wxt",
     "build": "wxt build && node scripts/ensure-js-ascii.mjs",
     "zip": "wxt zip",
-    "verify:extraction": "node scripts/verify-extraction-fixtures.mjs"
+    "verify:extraction": "node scripts/verify-extraction-fixtures.mjs",
+    "typecheck": "wxt prepare && tsc --noEmit"
   },
   "dependencies": {
     "canvas-confetti": "^1.9.4",
@@ -16,6 +17,7 @@
   },
   "devDependencies": {
     "@types/chrome": "^0.0.251",
+    "typescript": "^5.9.3",
     "wxt": "^0.17.0"
   }
 }

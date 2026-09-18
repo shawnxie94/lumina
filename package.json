@@ -1,0 +1,13 @@
+{
+  "name": "lumina",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Repo-level tooling (biome lint across frontend/extension/scripts); app code lives in frontend/, extension/, backend/.",
+  "scripts": {
+    "lint": "biome lint .",
+    "lint:fix": "biome lint --write ."
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.14"
+  }
+}

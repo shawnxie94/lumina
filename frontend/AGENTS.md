@@ -43,7 +43,7 @@ frontend/
 - Markdown is rendered through `renderSafeMarkdown`; keep KaTeX and sanitize allowlists in sync when adding tags.
 - Tailwind colors/radii/shadows are mapped to CSS variables in `frontend/styles/globals.css`.
 - Font family is `LXGW WenKai Mono` loaded from `frontend/public/fonts/LXGWWenKaiMono.ttf`.
-- Frontend currently has no built-in automated test script; prefer targeted manual verification for page changes.
+- Frontend has a node:test suite (`npm test`, `frontend/tests/`) and `npm run typecheck`; run both plus `npm run lint` before handing off page changes. Large pages have no component-level tests, so keep targeted manual verification for behavior.
 
 ## ANTI-PATTERNS
 - Do not hardcode backend origin; use helpers in `frontend/lib/api.ts`.

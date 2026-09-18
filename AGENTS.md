@@ -108,10 +108,10 @@ Nested agent maps (prefer these for domain detail):
 - Comment OAuth providers are loaded dynamically by `frontend/pages/api/auth/[...nextauth].ts` from backend comment settings.
 - Header notifications are persisted in browser localStorage via `frontend/lib/notifications.ts`.
 - Markdown rendering uses `remark-math` + `rehype-katex` with `sanitize-html` allowlists.
-- WXT manifest enables `<all_urls>` host permissions and devtools; build target `esnext`; output under `.output/`.
-- Biome disables `noUnknownAtRules` in `biome.json` and `frontend/biome.json` (Tailwind).
+- WXT manifest enables `<all_urls>` host permissions; build target `esnext`; output under `.output/`.
+- Biome 2.x config lives at root `biome.json` only (vcs-aware, `noUnknownAtRules` off for Tailwind CSS); run `npm run lint` at repo root. A11y / hooks-deps / `noExplicitAny` rules are warn-level baselines — tighten opportunistically, never merge with error-level findings.
 - UI language supports `zh-CN` and `en`, with `ui_language` stored client-side.
-- Backend has pytest unit tests under `backend/tests/unit/`; frontend currently has no built-in test scripts; extension has fixture verify script.
+- Backend has pytest unit tests under `backend/tests/unit/`; frontend has a node:test suite (`cd frontend && npm test`) plus `npm run typecheck`; extension has `npm run typecheck` (runs `wxt prepare && tsc --noEmit`) and fixture verify script; `.github/workflows/ci.yml` gates all of the above on push/PR.
 
 ## ANTI-PATTERNS (THIS PROJECT)
 - Avoid broad refactors in very large files (`frontend/pages/admin.tsx`, `frontend/pages/article/[id].tsx`, `frontend/pages/list.tsx`, `extension/entrypoints/content.ts`) unless task-scoped.
@@ -142,6 +142,8 @@ npm install
 npm run dev
 npm run build
 npm run lint
+npm run typecheck
+npm test
 
 # Backend
 cd backend
@@ -159,11 +161,14 @@ cd extension
 npm install
 npm run dev
 npm run build
+npm run typecheck
 npm run verify:extraction
 npm run zip
 # Load unpacked: extension/.output/chrome-mv3
 
 # Repo checks
+npm install   # root tooling (biome)
+npm run lint
 python3 scripts/check_defuddle_version_sync.py
 
 # Docker

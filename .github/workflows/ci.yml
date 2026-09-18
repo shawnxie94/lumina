@@ -1,0 +1,88 @@
+name: CI
+
+# check_response_contract.py 需要活后端，不进 CI，由 scripts/docker_healthcheck.sh 在部署侧把关。
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    name: biome lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install root deps
+        run: npm ci
+      - name: Lint (frontend + extension + scripts)
+        run: npm run lint
+
+  frontend:
+    name: frontend typecheck / lint / test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install deps
+        run: npm ci
+        working-directory: frontend
+      - name: Typecheck
+        run: npm run typecheck
+        working-directory: frontend
+      - name: Lint
+        run: npm run lint
+        working-directory: frontend
+      - name: Unit tests
+        run: npm test
+        working-directory: frontend
+
+  backend:
+    name: backend pytest / route contract
+    runs-on: ubuntu-latest
+    env:
+      INTERNAL_API_TOKEN: ci-check-token
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+      - name: Sync deps
+        run: uv sync
+        working-directory: backend
+      - name: Unit tests
+        run: uv run pytest tests/unit -q
+        working-directory: backend
+      - name: Route contract baseline
+        run: uv run python scripts/check_route_coverage.py
+        working-directory: backend
+
+  extension:
+    name: extension typecheck / build / fixtures
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: extension/package-lock.json
+      - name: Install deps
+        run: npm ci
+        working-directory: extension
+      - name: Typecheck
+        run: npm run typecheck
+        working-directory: extension
+      - name: Build
+        run: npm run build
+        working-directory: extension
+      - name: Extraction fixtures
+        run: npm run verify:extraction
+        working-directory: extension

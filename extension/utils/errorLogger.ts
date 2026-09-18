@@ -1,7 +1,7 @@
 export interface ErrorLogEntry {
   id: string;
   timestamp: string;
-  source: 'popup' | 'inbox' | 'background' | 'content';
+  source: 'popup' | 'inbox' | 'background' | 'content' | 'api';
   type: 'error' | 'warning' | 'info';
   message: string;
   stack?: string;

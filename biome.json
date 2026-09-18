@@ -1,10 +1,53 @@
 {
-  "$schema": "https://biomejs.dev/schemas/1.8.3/schema.json",
-  "linter": {
-    "rules": {
-      "suspicious": {
-        "noUnknownAtRules": "off"
-      }
-    }
-  }
+	"$schema": "https://biomejs.dev/schemas/2.5.14/schema.json",
+	"vcs": {
+		"enabled": true,
+		"clientKind": "git",
+		"useIgnoreFile": true
+	},
+	"files": {
+		"includes": [
+			"**",
+			"!**/.venv",
+			"!**/.next",
+			"!**/.output",
+			"!**/.wxt",
+			"!**/node_modules",
+			"!**/data"
+		]
+	},
+	"linter": {
+		"rules": {
+			"recommended": true,
+			"a11y": {
+				"noLabelWithoutControl": "warn",
+				"noStaticElementInteractions": "warn",
+				"noSvgWithoutTitle": "warn",
+				"useAriaPropsSupportedByRole": "warn",
+				"useButtonType": "warn",
+				"useKeyWithClickEvents": "warn",
+				"useKeyWithMouseEvents": "warn",
+				"useSemanticElements": "warn",
+				"useValidAnchor": "warn"
+			},
+			"complexity": {
+				"noImportantStyles": "warn"
+			},
+			"correctness": {
+				"noUnusedVariables": "warn",
+				"useExhaustiveDependencies": "warn",
+				"useJsxKeyInIterable": "warn"
+			},
+			"security": {
+				"noDangerouslySetInnerHtml": "warn"
+			},
+			"suspicious": {
+				"noArrayIndexKey": "warn",
+				"noAssignInExpressions": "warn",
+				"noExplicitAny": "warn",
+				"noUnknownAtRules": "off",
+				"useIterableCallbackReturn": "warn"
+			}
+		}
+	}
 }

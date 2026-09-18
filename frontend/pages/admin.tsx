@@ -1951,8 +1951,6 @@ export default function AdminPage() {
 			} else if (aiSubSection === "prompt") {
 				fetchModelAPIConfigs();
 				fetchPromptConfigs();
-			} else if (false) {
-				return;
 			} else if (aiSubSection === "recommendations") {
 				fetchRecommendationSettings();
 				fetchModelAPIConfigs();

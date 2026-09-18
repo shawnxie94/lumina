@@ -82,7 +82,7 @@ export class ApiClient {
 
   static async loadApiHost(): Promise<string> {
     return new Promise((resolve) => {
-      chrome.storage.local.get([STORAGE_KEY], (result: StorageData) => {
+      chrome.storage.local.get([STORAGE_KEY], (result) => {
         resolve(result.apiHost || DEFAULT_API_HOST);
       });
     });
