@@ -187,6 +187,7 @@ docker compose logs api
 - Topics (entity/concept) are compiled by local knowledge tools (default: llm_wiki) via Topic Bridge; Lumina web is display + article store.
 - Prefer `~/.lumina/knowledge/<name>` for knowledge projects; avoid macOS Desktop/Documents/Downloads for LaunchAgent Bridge writes.
 - Canonical Bridge installer is `scripts/install-topic-bridge.sh`; `bridge/install.sh` is a thin compatibility wrapper.
+- `~/.lumina` defaults live in TWO files that must stay in sync (`bridge/topic_bridge/config.py` + `cli/lumina_cli/config.py`, packages install independently); HTTP clients exist in THREE copies (`bridge/topic_bridge/client.py`, `cli/lumina_cli/http.py`, `cli/lumina_cli/knowledge_repair.py`) — protocol changes must update all three.
 - Topic settings store Bridge URL/token for web connectivity; knowledge provider/path are owned by Lumina CLI config.
 
 - `docker-compose.yml` defines a separate `worker` service with AI polling env vars; local compose file is gitignored (`docker-compose.yml.example` is the template).

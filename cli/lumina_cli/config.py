@@ -15,9 +15,11 @@ except Exception:  # noqa: BLE001
     yaml = None
 
 
+# 默认值与 bridge/topic_bridge/config.py 双向同步（两包独立安装，不能相互 import）。
 DEFAULT_HOME = Path.home() / ".lumina"
 DEFAULT_CONFIG_PATH = DEFAULT_HOME / "config.yaml"
 DEFAULT_BRIDGE_ROOT = DEFAULT_HOME / "topic-bridge"
+DEFAULT_KNOWLEDGE_PROJECT = DEFAULT_HOME / "knowledge" / "Lumina-Knowledge"
 
 
 def mask_secret(value: str | None) -> str:
@@ -60,7 +62,7 @@ class Profile:
 @dataclass
 class Project:
     provider: str = "llm_wiki"
-    path: str = str(Path.home() / ".lumina" / "knowledge" / "Lumina-Knowledge")
+    path: str = str(DEFAULT_KNOWLEDGE_PROJECT)
     name: str = "Lumina-Knowledge"
     options: dict[str, Any] = field(default_factory=dict)
     linked_profile: str = "default"
@@ -171,7 +173,7 @@ def _from_dict(data: dict[str, Any]) -> AppConfig:
     for name, item in (data.get("projects") or {}).items():
         projects[name] = Project(
             provider=str(item.get("provider") or "llm_wiki"),
-            path=str(item.get("path") or Path.home() / ".lumina" / "knowledge" / "Lumina-Knowledge"),
+            path=str(item.get("path") or DEFAULT_KNOWLEDGE_PROJECT),
             name=str(item.get("name") or name),
             options=dict(item.get("options") or {}),
             linked_profile=str(item.get("linked_profile") or data.get("active_profile") or "default"),

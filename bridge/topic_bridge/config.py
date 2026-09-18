@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 
+# 默认值与 cli/lumina_cli/config.py 双向同步（两包独立安装，不能相互 import）。
 DEFAULT_HOME = Path.home() / ".lumina"
 DEFAULT_CLI_CONFIG = DEFAULT_HOME / "config.yaml"
 DEFAULT_PROJECT = DEFAULT_HOME / "knowledge" / "Lumina-Knowledge"
