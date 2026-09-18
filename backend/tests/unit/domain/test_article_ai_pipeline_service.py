@@ -848,7 +848,7 @@ def test_process_article_translation_also_updates_translated_title(
             return {"content": "这是一篇测试文章。"}
 
     fake_client = FakeClient()
-    monkeypatch.setattr(article_ai_pipeline_module, "SessionLocal", lambda: db_session)
+    monkeypatch.setattr(article_ai_pipeline_module.common, "SessionLocal", lambda: db_session)
     monkeypatch.setattr(
         service,
         "get_ai_config",
@@ -938,7 +938,7 @@ def test_process_article_translation_enqueues_next_chunk_task(
             return {"content": f"译文 {content}", "finish_reason": "stop"}
 
     fake_client = FakeClient()
-    monkeypatch.setattr(article_ai_pipeline_module, "SessionLocal", lambda: db_session)
+    monkeypatch.setattr(article_ai_pipeline_module.common, "SessionLocal", lambda: db_session)
     monkeypatch.setattr(
         service,
         "get_ai_config",
@@ -1189,7 +1189,7 @@ def test_process_ai_content_outline_normalizes_json_payload(
                 "response_payload": {},
             }
 
-    monkeypatch.setattr(article_ai_pipeline_module, "SessionLocal", lambda: db_session)
+    monkeypatch.setattr(article_ai_pipeline_module.common, "SessionLocal", lambda: db_session)
     monkeypatch.setattr(
         service,
         "get_ai_config",
@@ -1268,7 +1268,7 @@ def test_process_ai_content_outline_accepts_top_level_array_payload(
                 "response_payload": {},
             }
 
-    monkeypatch.setattr(article_ai_pipeline_module, "SessionLocal", lambda: db_session)
+    monkeypatch.setattr(article_ai_pipeline_module.common, "SessionLocal", lambda: db_session)
     monkeypatch.setattr(
         service,
         "get_ai_config",
@@ -1358,7 +1358,7 @@ def test_process_article_classification_uses_structured_category_id(
                 "response_payload": {},
             }
 
-    monkeypatch.setattr(article_ai_pipeline_module, "SessionLocal", lambda: db_session)
+    monkeypatch.setattr(article_ai_pipeline_module.common, "SessionLocal", lambda: db_session)
     monkeypatch.setattr(
         service,
         "get_ai_config",
@@ -1433,7 +1433,7 @@ def test_process_article_classification_failure_raises_after_followups(
         async def generate_summary(self, content, **kwargs):
             raise RuntimeError("provider rejected response format")
 
-    monkeypatch.setattr(article_ai_pipeline_module, "SessionLocal", lambda: db_session)
+    monkeypatch.setattr(article_ai_pipeline_module.common, "SessionLocal", lambda: db_session)
     monkeypatch.setattr(
         service,
         "get_ai_config",
@@ -1514,7 +1514,7 @@ def test_process_ai_content_creates_summary_version_snapshot(db_session, monkeyp
                 "response_payload": {},
             }
 
-    monkeypatch.setattr(article_ai_pipeline_module, "SessionLocal", lambda: db_session)
+    monkeypatch.setattr(article_ai_pipeline_module.common, "SessionLocal", lambda: db_session)
     monkeypatch.setattr(
         service,
         "get_ai_config",
@@ -1537,7 +1537,7 @@ def test_process_ai_content_creates_summary_version_snapshot(db_session, monkeyp
         lambda db, **kwargs: None,
     )
     monkeypatch.setattr(
-        article_ai_pipeline_module.ArticleEmbeddingService,
+        article_ai_pipeline_module.common.ArticleEmbeddingService,
         "has_available_remote_config",
         lambda self, db: False,
     )
@@ -1600,7 +1600,7 @@ def test_process_ai_content_uses_invocation_service_and_persists_session(
             },
         }
 
-    monkeypatch.setattr(article_ai_pipeline_module, "SessionLocal", lambda: db_session)
+    monkeypatch.setattr(article_ai_pipeline_module.common, "SessionLocal", lambda: db_session)
     monkeypatch.setattr(
         service,
         "get_ai_config",
@@ -1623,7 +1623,7 @@ def test_process_ai_content_uses_invocation_service_and_persists_session(
         fake_generation,
     )
     monkeypatch.setattr(
-        article_ai_pipeline_module.ArticleEmbeddingService,
+        article_ai_pipeline_module.common.ArticleEmbeddingService,
         "has_available_remote_config",
         lambda self, db: False,
     )
@@ -1669,7 +1669,7 @@ def test_process_ai_content_reraises_generation_failures_after_logging(
     async def fake_generation(**kwargs):
         raise RuntimeError("Error code: 400 - {'detail': 'Input must be a list'}")
 
-    monkeypatch.setattr(article_ai_pipeline_module, "SessionLocal", lambda: db_session)
+    monkeypatch.setattr(article_ai_pipeline_module.common, "SessionLocal", lambda: db_session)
     monkeypatch.setattr(
         service,
         "get_ai_config",
@@ -1692,7 +1692,7 @@ def test_process_ai_content_reraises_generation_failures_after_logging(
         fake_generation,
     )
     monkeypatch.setattr(
-        article_ai_pipeline_module.ArticleEmbeddingService,
+        article_ai_pipeline_module.common.ArticleEmbeddingService,
         "has_available_remote_config",
         lambda self, db: False,
     )
@@ -1762,7 +1762,7 @@ def test_process_ai_content_preserves_responses_api_type_for_explicit_model_conf
             },
         }
 
-    monkeypatch.setattr(article_ai_pipeline_module, "SessionLocal", lambda: db_session)
+    monkeypatch.setattr(article_ai_pipeline_module.common, "SessionLocal", lambda: db_session)
     monkeypatch.setattr(
         service,
         "get_ai_config",
@@ -1790,7 +1790,7 @@ def test_process_ai_content_preserves_responses_api_type_for_explicit_model_conf
         fake_generation,
     )
     monkeypatch.setattr(
-        article_ai_pipeline_module.ArticleEmbeddingService,
+        article_ai_pipeline_module.common.ArticleEmbeddingService,
         "has_available_remote_config",
         lambda self, db: False,
     )
@@ -1841,7 +1841,7 @@ def _install_interpretation_test_config(
             },
         }
 
-    monkeypatch.setattr(article_ai_pipeline_module, "SessionLocal", lambda: db_session)
+    monkeypatch.setattr(article_ai_pipeline_module.common, "SessionLocal", lambda: db_session)
     prompt_configs = {
         "classification": SimpleNamespace(
             id="prompt-classification",
@@ -1948,7 +1948,7 @@ def test_process_article_interpretation_falls_back_to_content_html_when_md_missi
     )
     _install_interpretation_test_config(service, db_session, monkeypatch, content)
     monkeypatch.setattr(
-        article_ai_pipeline_module.ArticleEmbeddingService,
+        article_ai_pipeline_module.common.ArticleEmbeddingService,
         "has_available_remote_config",
         lambda self, db: False,
     )
@@ -2018,7 +2018,7 @@ def test_process_article_interpretation_persists_bundle_versions_and_embedding(
         lambda db, **kwargs: enqueued.append(kwargs),
     )
     monkeypatch.setattr(
-        article_ai_pipeline_module.ArticleEmbeddingService,
+        article_ai_pipeline_module.common.ArticleEmbeddingService,
         "has_available_remote_config",
         lambda self, db: True,
     )
@@ -2102,7 +2102,7 @@ def test_process_article_interpretation_supports_partial_success(
     )
     _install_interpretation_test_config(service, db_session, monkeypatch, content)
     monkeypatch.setattr(
-        article_ai_pipeline_module.ArticleEmbeddingService,
+        article_ai_pipeline_module.common.ArticleEmbeddingService,
         "has_available_remote_config",
         lambda self, db: False,
     )
@@ -2165,7 +2165,7 @@ def test_process_article_interpretation_builds_prompt_for_enabled_fields_only(
         captured=captured,
     )
     monkeypatch.setattr(
-        article_ai_pipeline_module.ArticleEmbeddingService,
+        article_ai_pipeline_module.common.ArticleEmbeddingService,
         "has_available_remote_config",
         lambda self, db: False,
     )
