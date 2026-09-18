@@ -1,12 +1,24 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 const frontendRoot = process.cwd();
 
 function readPageSource(relativePath: string) {
   return readFileSync(join(frontendRoot, relativePath), "utf8");
+}
+
+// admin 页面按 section 拆分到 components/admin/ 后，源码结构断言应覆盖全部 admin 源文件。
+function readAdminSources() {
+  const adminDir = join(frontendRoot, "components", "admin");
+  const files = [
+    join(frontendRoot, "pages", "admin.tsx"),
+    ...readdirSync(adminDir)
+      .filter((name) => name.endsWith(".tsx"))
+      .map((name) => join(adminDir, name)),
+  ];
+  return files.map((file) => readFileSync(file, "utf8")).join("\n");
 }
 
 test("app header routes review comment notifications to review detail pages", () => {
@@ -17,7 +29,7 @@ test("app header routes review comment notifications to review detail pages", ()
 });
 
 test("admin monitoring comments page routes delete through the admin comment api", () => {
-  const source = readPageSource("pages/admin.tsx");
+  const source = readAdminSources();
 
   assert.match(source, /reviewCommentApi\.toggleHidden/);
   assert.match(source, /commentAdminApi\.delete\(comment\.id,\s*comment\.resource_type\)/);
@@ -68,7 +80,7 @@ test("review detail page removes deleted reply descendants from local comment st
 });
 
 test("admin comments filter uses a generic title search and target column only shows 查看", () => {
-  const source = readPageSource("pages/admin.tsx");
+  const source = readAdminSources();
 
   assert.match(source, /label=\{t\("标题"\)\}/);
   assert.doesNotMatch(source, /label=\{t\("文章 \/ 回顾"\)\}/);

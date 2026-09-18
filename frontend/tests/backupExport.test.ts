@@ -82,12 +82,19 @@ test("canDownloadBackupExport only allows completed jobs", () => {
 });
 
 test("admin backup actions place download latest backup before generate backup", () => {
-	const adminPageSource = fs.readFileSync(
+	// admin 存储区已拆分到 components/admin/，断言覆盖页面与全部 admin 组件源码。
+	const adminDir = path.join(process.cwd(), "components", "admin");
+	const adminSources = [
 		path.join(process.cwd(), "pages", "admin.tsx"),
-		"utf8",
-	);
-	const backupSectionIndex = adminPageSource.indexOf("数据备份与恢复");
-	const backupSectionSource = adminPageSource.slice(backupSectionIndex, backupSectionIndex + 6000);
+		...fs
+			.readdirSync(adminDir)
+			.filter((name) => name.endsWith(".tsx"))
+			.map((name) => path.join(adminDir, name)),
+	]
+		.map((file) => fs.readFileSync(file, "utf8"))
+		.join("\n");
+	const backupSectionIndex = adminSources.indexOf("数据备份与恢复");
+	const backupSectionSource = adminSources.slice(backupSectionIndex, backupSectionIndex + 6000);
 	const downloadIndex = backupSectionSource.indexOf("下载最新备份");
 	const generateIndex = backupSectionSource.indexOf("生成备份");
 	const importIndex = backupSectionSource.lastIndexOf("导入备份");
