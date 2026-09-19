@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, useRef, ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, useRef, type ReactNode } from 'react';
 import { useI18n } from '@/lib/i18n';
 
 type ToastType = 'success' | 'error' | 'info';
@@ -77,6 +77,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             </span>
             <span className="flex-1">{t(toast.message)}</span>
             <button
+              type="button"
               onClick={() => removeToast(toast.id)}
               className="text-white/80 hover:text-white"
               aria-label={t('关闭')}

@@ -5,7 +5,7 @@ import {
   useEffect,
   useCallback,
   useRef,
-  ReactNode,
+  type ReactNode,
 } from "react";
 
 import { authApi, clearLegacyWebAdminToken } from "@/lib/api";

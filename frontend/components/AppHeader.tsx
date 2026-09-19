@@ -16,7 +16,6 @@ import { notificationStore, type NotificationItem } from '@/lib/notifications';
 import { extractCommentBody } from '@/components/comment/CommentSection';
 import {
   IconBell,
-  IconGithub,
   IconLock,
   IconLogout,
   IconSettings,

@@ -23,8 +23,10 @@ test("review detail page no longer exposes regenerate action in toolbar", () => 
 test("review detail page updates the browser slug after publish changes the canonical review url", () => {
 	const source = readFileSync(join(process.cwd(), "pages/columns/[slug].tsx"), "utf8");
 	assert.ok(
-		source.includes("const next = await refreshAdminReview(review.id);") &&
-			source.includes("await router.replace(`/columns/${next.slug}`)"),
+			source.includes("const next = await refreshAdminReview(review.id);") &&
+			source.includes(
+				`await router.replace(\`/columns/\${next.slug}\`)`,
+			),
 		"expected publish flow to replace the review detail url when slug changes",
 	);
 });

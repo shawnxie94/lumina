@@ -34,10 +34,6 @@ import {
 } from "@/lib/api";
 import { shouldFetchSimilarArticlesForSlug } from "@/lib/articleDetail";
 import {
-	compileStatusLabel,
-	compileStatusTone,
-} from "@/lib/topicPlaceholders";
-import {
 	applyPrefillToNote,
 	parseDigestPrefillPayload,
 	extractDigestNoteFromTaskPayload,
@@ -66,7 +62,6 @@ import AiPanel, {
 	type ConfigModalMode,
 } from "@/components/article/AiPanel";
 import RecommendationLevelBadge from "@/components/article/RecommendationLevelBadge";
-import StatusTag from "@/components/ui/StatusTag";
 import ContentToolbar, {
 	PDF_HEIGHT_SCALE_MAX,
 	PDF_HEIGHT_SCALE_MIN,
@@ -82,15 +77,10 @@ import { BackToTop } from "@/components/BackToTop";
 import {
 	IconArrowDown,
 	IconBook,
-	IconCheck,
 	IconEdit,
 	IconEye,
 	IconEyeOff,
-	IconLock,
-	IconRefresh,
 	IconTrash,
-	IconReply,
-	IconChevronUp,
 	IconChevronRight,
 } from "@/components/icons";
 import { useAuth } from "@/contexts/AuthContext";
@@ -253,7 +243,7 @@ export default function ArticleDetailPage({
 	const router = useRouter();
 	const { showToast } = useToast();
 	const { isAdmin } = useAuth();
-	const { t, language } = useI18n();
+	const { t } = useI18n();
 	const { basicSettings } = useBasicSettings();
 	const { addArticle, setIsHidden } = useReading();
 	const { data: session } = useSession();
@@ -261,7 +251,7 @@ export default function ArticleDetailPage({
 	const listReturnHref = useMemo(() => {
 		const rawFrom = getQueryValue(router.query.from);
 		const decodedFrom = decodeQueryValue(rawFrom);
-		if (!decodedFrom || !decodedFrom.startsWith("/list")) {
+		if (!decodedFrom?.startsWith("/list")) {
 			return "/list";
 		}
 		return decodedFrom;
@@ -280,7 +270,6 @@ export default function ArticleDetailPage({
 	const [articleTasks, setArticleTasks] = useState<ArticleTaskListItem[]>([]);
 	const [loading, setLoading] = useState(false);
 	const [showTranslation, setShowTranslation] = useState(true);
-	const [analysisCollapsed, setAnalysisCollapsed] = useState(false);
 	const [activeAiTab, setActiveAiTab] = useState<AITabKey>("outline");
 	const hasManuallySelectedAiTabRef = useRef(false);
 
@@ -356,7 +345,6 @@ export default function ArticleDetailPage({
 	const [pendingAnnotationComment, setPendingAnnotationComment] = useState("");
 	const [showAnnotationModal, setShowAnnotationModal] = useState(false);
 	const [activeAnnotationText, setActiveAnnotationText] = useState("");
-	const [annotationEditDraft, setAnnotationEditDraft] = useState("");
 	const [showSelectionToolbar, setShowSelectionToolbar] = useState(false);
 	const [selectionToolbarPos, setSelectionToolbarPos] = useState<{
 		x: number;
@@ -542,12 +530,14 @@ export default function ArticleDetailPage({
 	const showTitleViewStat = (article?.view_count ?? 0) > 0;
 	const showTitleCommentStat = displayCommentCount > 0;
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: id 是刻意信号，切换文章时收起移动端 AI 面板
 	useEffect(() => {
 		if (isMobile) {
 			setShowAiPanel(false);
 		}
 	}, [id, isMobile]);
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: id 是刻意信号，切换文章时收起更多操作菜单
 	useEffect(() => {
 		setShowMoreActions(false);
 	}, [id]);
@@ -661,6 +651,8 @@ export default function ArticleDetailPage({
 		showRollbackVersionModal,
 		showVersionHistoryModal,
 		showDeleteModal,
+		showToast,
+		t,
 	]);
 
 	useEffect(() => {
@@ -708,6 +700,7 @@ export default function ArticleDetailPage({
 		);
 	}, [pdfHeightScale]);
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: renderedHtml 是刻意信号，内容重渲染后重新探测图片排版
 	useEffect(() => {
 		if (!article) return;
 		const detectImageLayout = () => {
@@ -784,6 +777,7 @@ export default function ArticleDetailPage({
 		setTimeout(detectImageLayout, 300);
 	}, [article, renderedHtml]);
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: renderedHtml 是刻意信号，内容变化后需重算 PDF 嵌入高度
 	useEffect(() => {
 		if (!contentRef.current) return;
 		const embeds = Array.from(
@@ -835,6 +829,7 @@ export default function ArticleDetailPage({
 	}, [immersiveMode, renderedHtml, pdfHeightScale]);
 
 	/* eslint-disable react-hooks/exhaustive-deps */
+	// biome-ignore lint/correctness/useExhaustiveDependencies: 仅按 slug 拉取一次并清理轮询，补 article/fetchArticle 会在任意文章状态更新时重触发
 	useEffect(() => {
 		if (id && (!article || article.slug !== id)) {
 			fetchArticle();
@@ -851,6 +846,7 @@ export default function ArticleDetailPage({
 	/* eslint-enable react-hooks/exhaustive-deps */
 
 	/* eslint-disable react-hooks/exhaustive-deps */
+	// biome-ignore lint/correctness/useExhaustiveDependencies: 轮询由 slug+状态驱动，补 article/fetchSimilarArticles 会使轮询定时器随任意文章更新重建
 	useEffect(() => {
 		if (!article?.slug) return;
 		if (similarPollingRef.current) {
@@ -899,6 +895,7 @@ export default function ArticleDetailPage({
 	}, [article?.slug]);
 
 	/* eslint-disable react-hooks/exhaustive-deps */
+	// biome-ignore lint/correctness/useExhaustiveDependencies: 评论设置就绪后按文章拉取一次，fetchComments 非稳定引用
 	useEffect(() => {
 		if (id && commentsEnabled && commentSettingsLoaded) {
 			fetchComments();
@@ -907,6 +904,7 @@ export default function ArticleDetailPage({
 	/* eslint-enable react-hooks/exhaustive-deps */
 
 	/* eslint-disable react-hooks/exhaustive-deps */
+	// biome-ignore lint/correctness/useExhaustiveDependencies: 仅初始化拉取一次评论设置，fetchCommentSettings 非稳定引用
 	useEffect(() => {
 		fetchCommentSettings();
 	}, []);
@@ -930,6 +928,7 @@ export default function ArticleDetailPage({
 
 
 	/* eslint-disable react-hooks/exhaustive-deps */
+	// biome-ignore lint/correctness/useExhaustiveDependencies: 打开编辑弹窗时按需拉取一次存储设置，fetchStorageSettings 非稳定引用
 	useEffect(() => {
 		if (!showEditModal || !isAdmin) return;
 		fetchStorageSettings();
@@ -937,6 +936,7 @@ export default function ArticleDetailPage({
 	/* eslint-enable react-hooks/exhaustive-deps */
 
 	/* eslint-disable react-hooks/exhaustive-deps */
+	// biome-ignore lint/correctness/useExhaustiveDependencies: 轮询定时器由 article 驱动，补 fetchArticleTasks 会使定时器每渲染重建、轮询失效
 	useEffect(() => {
 		if (pollingRef.current) {
 			clearInterval(pollingRef.current);
@@ -973,6 +973,7 @@ export default function ArticleDetailPage({
 		}
 	}, [article?.id, article?.slug, article?.title, article?.title_trans, addArticle]);
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: renderedHtml 是刻意信号，内容渲染后从 DOM 重建目录
 	useEffect(() => {
 		if (loading) return;
 		if (!contentRef.current) return;
@@ -992,7 +993,7 @@ export default function ArticleDetailPage({
 				items.push({
 					id,
 					text: heading.textContent || "",
-					level: parseInt(heading.tagName[1]),
+					level: parseInt(heading.tagName[1], 10),
 				});
 			});
 
@@ -1130,7 +1131,7 @@ export default function ArticleDetailPage({
 						}
 					}
 					const note = extractDigestNoteFromTaskPayload(payload);
-					if (note && note.trim()) {
+					if (note?.trim()) {
 						return note.trim();
 					}
 				}
@@ -1377,7 +1378,7 @@ export default function ArticleDetailPage({
 					: [];
 				const uniqueImages = Array.from(new Set(imageList));
 				const images = uniqueImages.length > 0 ? uniqueImages : [clickedSrc];
-				const index = Math.max(0, images.findIndex((src) => src === clickedSrc));
+				const index = Math.max(0, images.indexOf(clickedSrc));
 				setLightboxImages(images);
 				setLightboxIndex(index);
 			}
@@ -1404,7 +1405,6 @@ export default function ArticleDetailPage({
 							),
 						),
 					);
-					setAnnotationEditDraft(annotation.comment);
 				} else {
 					setActiveAnnotationText("");
 				}
@@ -1686,6 +1686,7 @@ export default function ArticleDetailPage({
 		};
 	}, []);
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: article?.slug 是刻意信号，切换文章时重置手动选 tab 标记
 	useEffect(() => {
 		hasManuallySelectedAiTabRef.current = false;
 	}, [article?.slug]);
@@ -2252,18 +2253,6 @@ export default function ArticleDetailPage({
 		}
 		await saveNotes(noteContent, next, noteRecommendationLevel);
 		showToast(t("已删除划线批注"));
-	};
-
-	const handleUpdateAnnotation = async () => {
-		if (!activeAnnotation) return;
-		const next = annotations.map((item) =>
-			item.id === activeAnnotation.id
-				? { ...item, comment: annotationEditDraft.trim() }
-				: item,
-		);
-		setAnnotations(next);
-		await saveNotes(noteContent, next, noteRecommendationLevel);
-		showToast(t("已更新划线批注"));
 	};
 
 	const handleSubmitComment = async (
@@ -3031,8 +3020,7 @@ export default function ArticleDetailPage({
 						<div className="mx-auto mt-3 w-full max-w-4xl border-t border-border-strong" />
 					) : null}
 					{!immersiveMode && (
-						<>
-							<ArticleMetaRow
+						<ArticleMetaRow
 								className="justify-center gap-4 pb-3"
 								publishedAt={article.published_at}
 								createdAt={article.created_at}
@@ -3083,7 +3071,6 @@ export default function ArticleDetailPage({
 									) : null,
 								]}
 							/>
-				</>
 					)}
 				</div>
 			</section>

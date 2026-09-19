@@ -219,10 +219,11 @@ export default function CommentMonitorSection({
 					]}
 				/>
 				<div>
-					<label className="block text-sm text-text-2 mb-1.5">
+					<label htmlFor="comment-date-range" className="block text-sm text-text-2 mb-1.5">
 						{t("日期范围")}
 					</label>
 					<DateRangePicker
+						id="comment-date-range"
 						value={toDayjsRangeFromDateStrings(
 							commentStart,
 							commentEnd,

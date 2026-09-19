@@ -395,12 +395,14 @@ export default function AiUsageSection({
 											{log.task_id ? (
 												<button
 													type="button"
-													onClick={() =>
-														handleOpenUsageRelatedTask(
-															log.task_id!,
-															log.id,
-														)
-													}
+													onClick={() => {
+														if (log.task_id) {
+															handleOpenUsageRelatedTask(
+																log.task_id,
+																log.id,
+															);
+														}
+													}}
 													className="text-primary hover:text-primary-ink"
 												>
 													{t("查看任务")}

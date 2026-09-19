@@ -16,12 +16,12 @@ import {
 	IconRefresh,
 	IconTrash,
 } from "@/components/icons";
-import {
-	type AITaskTimelineEvent,
-	type AITaskTimelineResponse,
-	type AITaskTimelineUsage,
-	type ModelAPIConfig,
-	type PromptConfig,
+import type {
+	AITaskTimelineEvent,
+	AITaskTimelineResponse,
+	AITaskTimelineUsage,
+	ModelAPIConfig,
+	PromptConfig,
 } from "@/lib/api";
 import { getAITaskFilterOptions, getAITaskLabel } from "@/lib/aiTaskMeta";
 import { useI18n } from "@/lib/i18n";

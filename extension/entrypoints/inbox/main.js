@@ -245,7 +245,7 @@ class InboxController {
 		for (const item of this.#items) {
 			const itemEl = document.createElement("div");
 			itemEl.className =
-				"inbox-item" + (item.id === this.#selectedId ? " active" : "");
+				`inbox-item${item.id === this.#selectedId ? " active" : ""}`;
 			itemEl.onclick = () => this.maybeSelectItem(item.id);
 
 			const snippetText = getInboxItemSnippet(item);

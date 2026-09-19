@@ -251,7 +251,6 @@ export default function HomePage({
   ];
 
   const renderReviewCard = (review: ReviewIssue) => {
-    const template = (review as any).template;
     const href = `/columns/${review.slug}`;
     const displayTitle = review.title;
     const topImage = resolveMediaUrl(review.top_image || logoUrl) || fallbackTopImageUrl;

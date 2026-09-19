@@ -81,8 +81,9 @@ export default function RecommendationSettingsSection({
 								{t("基于向量相似度生成相似文章列表")}
 							</div>
 						</div>
-						<label className="inline-flex items-center gap-2 text-sm text-text-2 cursor-pointer">
+						<label htmlFor="recommendation-enabled" className="inline-flex items-center gap-2 text-sm text-text-2 cursor-pointer">
 							<CheckboxInput
+								id="recommendation-enabled"
 								checked={
 									recommendationSettings.recommendations_enabled
 								}
@@ -103,7 +104,7 @@ export default function RecommendationSettingsSection({
 					</div>
 
 					<div>
-						<label className="block text-sm text-text-2 mb-1">
+						<label htmlFor="recommendation-vector-model" className="block text-sm text-text-2 mb-1">
 							{t("向量化模型")}
 						</label>
 						{modelAPIConfigs.filter(
@@ -117,6 +118,7 @@ export default function RecommendationSettingsSection({
 							</div>
 						)}
 						<SelectField
+							id="recommendation-vector-model"
 							value={
 								recommendationSettings.recommendation_model_config_id ||
 								""

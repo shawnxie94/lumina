@@ -117,7 +117,7 @@ const translations: Record<ExtensionLanguage, Record<string, string>> = {
 export const translate = (language: ExtensionLanguage, key: string): string => {
 	if (language === "zh-CN") return key;
 	const map = translations.en;
-	return Object.prototype.hasOwnProperty.call(map, key) ? map[key] : key;
+	return Object.hasOwn(map, key) ? map[key] : key;
 };
 
 export const getSystemLanguage = (): ExtensionLanguage | null => {

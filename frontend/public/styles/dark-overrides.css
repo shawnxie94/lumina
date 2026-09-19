@@ -241,6 +241,11 @@ textarea::placeholder {
   color: var(--text-1);
 }
 
+.select-modern-antd .ant-select-selector {
+  background: var(--bg-surface);
+  border-color: var(--border-strong);
+}
+
 .ant-select:not(.ant-select-customize-input) .ant-select-selector {
   background: var(--bg-surface);
   border-color: var(--border-strong);
@@ -249,11 +254,6 @@ textarea::placeholder {
 
 .ant-select:not(.ant-select-customize-input) .ant-select-selector:hover {
   background: var(--bg-muted);
-  border-color: var(--border-strong);
-}
-
-.select-modern-antd .ant-select-selector {
-  background: var(--bg-surface);
   border-color: var(--border-strong);
 }
 

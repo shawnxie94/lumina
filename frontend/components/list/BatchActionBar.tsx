@@ -3,7 +3,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import Button from '@/components/Button';
 import CheckboxInput from '@/components/ui/CheckboxInput';
 import SelectField from '@/components/ui/SelectField';
-import { Category } from '@/lib/api';
+import type { Category } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 
 interface BatchActionBarProps {

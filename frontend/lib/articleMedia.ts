@@ -109,7 +109,7 @@ export function extractMarkdownImageUrls(markdown: string): string[] {
 	let match: RegExpExecArray | null = null;
 	while ((match = pattern.exec(markdown)) !== null) {
 		const url = match[1];
-		if (url && url.startsWith("http")) {
+		if (url?.startsWith("http")) {
 			urls.push(url);
 		}
 	}

@@ -65,6 +65,7 @@ export default function ArticleSplitEditorModal({
   const previewRef = useRef<HTMLDivElement>(null);
   const [previewImageHidden, setPreviewImageHidden] = useState(false);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: previewImageUrl 是刻意信号，切换预览图时重置隐藏状态
   useEffect(() => {
     setPreviewImageHidden(false);
   }, [previewImageUrl]);

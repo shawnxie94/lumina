@@ -90,8 +90,9 @@ export default function CommentSettingsSection({
 										{t("关闭后访客评论入口将隐藏")}
 									</div>
 								</div>
-								<label className="inline-flex items-center gap-2 text-sm text-text-2 cursor-pointer">
+								<label htmlFor="comment-comments-enabled" className="inline-flex items-center gap-2 text-sm text-text-2 cursor-pointer">
 									<CheckboxInput
+										id="comment-comments-enabled"
 										checked={commentSettings.comments_enabled}
 										onChange={(e) =>
 											setCommentSettings((prev) => ({
@@ -111,10 +112,11 @@ export default function CommentSettingsSection({
 
 							<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 								<div>
-									<label className="block text-sm text-text-2 mb-1">
-										GitHub Client ID
-									</label>
-									<TextInput
+								<label htmlFor="comment-github-client-id" className="block text-sm text-text-2 mb-1">
+									GitHub Client ID
+								</label>
+								<TextInput
+									id="comment-github-client-id"
 										value={commentSettings.github_client_id}
 										onChange={(e) =>
 											setCommentSettings((prev) => ({
@@ -126,11 +128,12 @@ export default function CommentSettingsSection({
 									/>
 								</div>
 								<div>
-									<label className="block text-sm text-text-2 mb-1">
-										GitHub Client Secret
-									</label>
-									<div className="flex flex-wrap items-center gap-2">
-										<TextInput
+								<label htmlFor="comment-github-client-secret" className="block text-sm text-text-2 mb-1">
+									GitHub Client Secret
+								</label>
+								<div className="flex flex-wrap items-center gap-2">
+									<TextInput
+										id="comment-github-client-secret"
 											type="password"
 											value={commentSettings.github_client_secret}
 											onChange={(e) =>
@@ -163,10 +166,11 @@ export default function CommentSettingsSection({
 									</div>
 								</div>
 								<div>
-									<label className="block text-sm text-text-2 mb-1">
-										Google Client ID
-									</label>
-									<TextInput
+								<label htmlFor="comment-google-client-id" className="block text-sm text-text-2 mb-1">
+									Google Client ID
+								</label>
+								<TextInput
+									id="comment-google-client-id"
 										value={commentSettings.google_client_id}
 										onChange={(e) =>
 											setCommentSettings((prev) => ({
@@ -178,11 +182,12 @@ export default function CommentSettingsSection({
 									/>
 								</div>
 								<div>
-									<label className="block text-sm text-text-2 mb-1">
-										Google Client Secret
-									</label>
-									<div className="flex flex-wrap items-center gap-2">
-										<TextInput
+								<label htmlFor="comment-google-client-secret" className="block text-sm text-text-2 mb-1">
+									Google Client Secret
+								</label>
+								<div className="flex flex-wrap items-center gap-2">
+									<TextInput
+										id="comment-google-client-secret"
 											type="password"
 											value={commentSettings.google_client_secret}
 											onChange={(e) =>
@@ -217,11 +222,12 @@ export default function CommentSettingsSection({
 							</div>
 
 							<div>
-								<label className="block text-sm text-text-2 mb-1">
+								<label htmlFor="comment-nextauth-secret" className="block text-sm text-text-2 mb-1">
 									NextAuth Secret
 								</label>
 								<div className="flex gap-2">
 									<TextInput
+										id="comment-nextauth-secret"
 										type="password"
 										value={commentSettings.nextauth_secret}
 										onChange={(e) =>
@@ -271,8 +277,9 @@ export default function CommentSettingsSection({
 										{t("启用后将拦截包含敏感词的评论")}
 									</div>
 								</div>
-								<label className="inline-flex items-center gap-2 text-sm text-text-2 cursor-pointer">
+								<label htmlFor="comment-sensitive-filter-enabled" className="inline-flex items-center gap-2 text-sm text-text-2 cursor-pointer">
 									<CheckboxInput
+										id="comment-sensitive-filter-enabled"
 										checked={
 											commentSettings.sensitive_filter_enabled
 										}
@@ -294,7 +301,7 @@ export default function CommentSettingsSection({
 
 							<div>
 								<div className="flex items-center gap-2 mb-1">
-									<label className="block text-sm text-text-2">
+									<label htmlFor="comment-sensitive-words" className="block text-sm text-text-2">
 										{t("敏感词列表")}
 									</label>
 									<div className="relative group">
@@ -307,6 +314,7 @@ export default function CommentSettingsSection({
 									</div>
 								</div>
 								<TextArea
+									id="comment-sensitive-words"
 									value={commentSettings.sensitive_words}
 									onChange={(e) =>
 										setCommentSettings((prev) => ({

@@ -80,42 +80,42 @@ function tryParseRelativeDate(str: string): string {
 
   const minutesMatch = str.match(/(\d+)\s*分钟前|(\d+)\s*minutes?\s*ago/i);
   if (minutesMatch) {
-    const minutes = parseInt(minutesMatch[1] || minutesMatch[2]);
+    const minutes = parseInt(minutesMatch[1] || minutesMatch[2], 10);
     now.setMinutes(now.getMinutes() - minutes);
     return formatDate(now);
   }
 
   const hoursMatch = str.match(/(\d+)\s*小时前|(\d+)\s*hours?\s*ago/i);
   if (hoursMatch) {
-    const hours = parseInt(hoursMatch[1] || hoursMatch[2]);
+    const hours = parseInt(hoursMatch[1] || hoursMatch[2], 10);
     now.setHours(now.getHours() - hours);
     return formatDate(now);
   }
 
   const daysMatch = str.match(/(\d+)\s*天前|(\d+)\s*days?\s*ago/i);
   if (daysMatch) {
-    const days = parseInt(daysMatch[1] || daysMatch[2]);
+    const days = parseInt(daysMatch[1] || daysMatch[2], 10);
     now.setDate(now.getDate() - days);
     return formatDate(now);
   }
 
   const weeksMatch = str.match(/(\d+)\s*周前|(\d+)\s*weeks?\s*ago/i);
   if (weeksMatch) {
-    const weeks = parseInt(weeksMatch[1] || weeksMatch[2]);
+    const weeks = parseInt(weeksMatch[1] || weeksMatch[2], 10);
     now.setDate(now.getDate() - weeks * 7);
     return formatDate(now);
   }
 
   const monthsMatch = str.match(/(\d+)\s*个?月前|(\d+)\s*months?\s*ago/i);
   if (monthsMatch) {
-    const months = parseInt(monthsMatch[1] || monthsMatch[2]);
+    const months = parseInt(monthsMatch[1] || monthsMatch[2], 10);
     now.setMonth(now.getMonth() - months);
     return formatDate(now);
   }
 
   const yearsMatch = str.match(/(\d+)\s*年前|(\d+)\s*years?\s*ago/i);
   if (yearsMatch) {
-    const years = parseInt(yearsMatch[1] || yearsMatch[2]);
+    const years = parseInt(yearsMatch[1] || yearsMatch[2], 10);
     now.setFullYear(now.getFullYear() - years);
     return formatDate(now);
   }
@@ -140,9 +140,9 @@ function tryParseCommonFormats(str: string): string {
       }
       if (order) {
         const [year, month, day] = order.map(i => match[i]);
-        const y = parseInt(year);
-        const m = parseInt(month);
-        const d = parseInt(day);
+        const y = parseInt(year, 10);
+        const m = parseInt(month, 10);
+        const d = parseInt(day, 10);
         if (y > 1900 && y < 2100 && m >= 1 && m <= 12 && d >= 1 && d <= 31) {
           return `${year}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
         }
@@ -170,8 +170,8 @@ const MONTH_MAP: Record<string, number> = {
 
 function parseEnglishMonth(match: RegExpMatchArray): string {
   const monthStr = match[1].toLowerCase();
-  const day = parseInt(match[2]);
-  const year = parseInt(match[3]);
+  const day = parseInt(match[2], 10);
+  const year = parseInt(match[3], 10);
   const month = MONTH_MAP[monthStr];
   
   if (month && day >= 1 && day <= 31 && year > 1900 && year < 2100) {
@@ -181,9 +181,9 @@ function parseEnglishMonth(match: RegExpMatchArray): string {
 }
 
 function parseEnglishMonthAlt(match: RegExpMatchArray): string {
-  const day = parseInt(match[1]);
+  const day = parseInt(match[1], 10);
   const monthStr = match[2].toLowerCase();
-  const year = parseInt(match[3]);
+  const year = parseInt(match[3], 10);
   const month = MONTH_MAP[monthStr];
   
   if (month && day >= 1 && day <= 31 && year > 1900 && year < 2100) {

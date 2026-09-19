@@ -328,7 +328,7 @@ function AnnotationNotesLayer({
 						</FormField>
 						<div>
 							<div className="mb-1.5 flex items-center justify-between gap-2">
-								<label className="block text-sm text-text-2">
+								<label htmlFor="annotation-note-content" className="block text-sm text-text-2">
 									{t("批注正文")}
 								</label>
 								<button
@@ -351,6 +351,7 @@ function AnnotationNotesLayer({
 								</button>
 							</div>
 							<TextArea
+								id="annotation-note-content"
 								value={noteDraft}
 								onChange={(e) => {
 									setNoteDraft(e.target.value);

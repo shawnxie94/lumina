@@ -135,8 +135,9 @@ export default function StorageSection({
 								{t("启用后会将外链图片转存为本地文件")}
 							</div>
 						</div>
-						<label className="inline-flex items-center gap-2 text-sm text-text-2 cursor-pointer">
+						<label htmlFor="storage-media-enabled" className="inline-flex items-center gap-2 text-sm text-text-2 cursor-pointer">
 							<CheckboxInput
+								id="storage-media-enabled"
 								checked={storageSettings.media_storage_enabled}
 								onChange={(e) =>
 									setStorageSettings((prev) => ({
@@ -155,10 +156,11 @@ export default function StorageSection({
 					</div>
 					<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 						<div>
-							<label className="block text-sm text-text-2 mb-1">
+							<label htmlFor="storage-media-compress-threshold" className="block text-sm text-text-2 mb-1">
 								{t("压缩阈值 (KB)")}
 							</label>
 							<TextInput
+								id="storage-media-compress-threshold"
 								type="number"
 								min={256}
 								value={Math.round(
@@ -176,10 +178,11 @@ export default function StorageSection({
 							/>
 						</div>
 						<div>
-							<label className="block text-sm text-text-2 mb-1">
+							<label htmlFor="storage-media-max-dim" className="block text-sm text-text-2 mb-1">
 								{t("最长边 (px)")}
 							</label>
 							<TextInput
+								id="storage-media-max-dim"
 								type="number"
 								min={600}
 								value={storageSettings.media_max_dim}
@@ -196,10 +199,11 @@ export default function StorageSection({
 							/>
 						</div>
 						<div>
-							<label className="block text-sm text-text-2 mb-1">
+							<label htmlFor="storage-media-webp-quality" className="block text-sm text-text-2 mb-1">
 								{t("WEBP 质量 (30-95)")}
 							</label>
 							<TextInput
+								id="storage-media-webp-quality"
 								type="number"
 								min={30}
 								max={95}

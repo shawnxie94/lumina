@@ -628,8 +628,9 @@ export default function ModelApiSettingsSection({
 				)}
 
 				<div className="flex items-center gap-4">
-					<label className="flex flex-wrap items-center gap-2">
+					<label htmlFor="modelapi-is-enabled" className="flex flex-wrap items-center gap-2">
 						<CheckboxInput
+							id="modelapi-is-enabled"
 							checked={modelAPIFormData.is_enabled}
 							onChange={(e) =>
 								setModelAPIFormData({
@@ -642,8 +643,9 @@ export default function ModelApiSettingsSection({
 					</label>
 
 					{modelAPIFormData.model_type !== "vector" && (
-						<label className="flex flex-wrap items-center gap-2">
+						<label htmlFor="modelapi-is-default" className="flex flex-wrap items-center gap-2">
 							<CheckboxInput
+								id="modelapi-is-default"
 								checked={modelAPIFormData.is_default}
 								onChange={(e) =>
 									setModelAPIFormData({
@@ -705,9 +707,9 @@ export default function ModelApiSettingsSection({
 				</FormField>
 
 				<div>
-					<label className="mb-2 block text-sm font-medium text-text-2">
+					<div className="mb-2 block text-sm font-medium text-text-2">
 						{t("返回结果")}
-					</label>
+					</div>
 					<div className="min-h-[120px] w-full rounded-lg border border-border bg-muted p-4 text-sm text-text-1 whitespace-pre-wrap">
 						{modelAPITestLoading
 							? t("调用中...")
@@ -719,9 +721,9 @@ export default function ModelApiSettingsSection({
 
 				{modelAPITestError && (
 					<div>
-						<label className="mb-2 block text-sm font-medium text-text-2">
+						<div className="mb-2 block text-sm font-medium text-text-2">
 							{t("原始响应")}
-						</label>
+						</div>
 						<pre className="max-h-64 w-full overflow-y-auto rounded-lg border border-border bg-muted p-4 text-xs text-text-1 whitespace-pre-wrap">
 							{modelAPITestRaw || t("暂无原始响应")}
 						</pre>

@@ -22,29 +22,45 @@
 			"a11y": {
 				"noLabelWithoutControl": "warn",
 				"noStaticElementInteractions": "warn",
-				"noSvgWithoutTitle": "warn",
 				"useAriaPropsSupportedByRole": "warn",
-				"useButtonType": "warn",
 				"useKeyWithClickEvents": "warn",
 				"useKeyWithMouseEvents": "warn",
-				"useSemanticElements": "warn",
-				"useValidAnchor": "warn"
+				"useSemanticElements": "warn"
 			},
 			"complexity": {
-				"noImportantStyles": "warn"
+				"noAdjacentSpacesInRegex": "error",
+				"noImportantStyles": "warn",
+				"noUselessCatch": "error",
+				"noUselessEscapeInRegex": "error",
+				"noUselessFragments": "error",
+				"useIndexOf": "error",
+				"useLiteralKeys": "error",
+				"useOptionalChain": "error"
 			},
 			"correctness": {
-				"noUnusedVariables": "warn",
-				"useExhaustiveDependencies": "warn",
-				"useJsxKeyInIterable": "warn"
+				"noUnusedImports": "error",
+				"noUnusedVariables": "error",
+				"useJsxKeyInIterable": "warn",
+				"useParseIntRadix": "error"
 			},
 			"security": {
 				"noDangerouslySetInnerHtml": "warn"
 			},
+			"style": {
+				"noDescendingSpecificity": "error",
+				"noNonNullAssertion": "error",
+				"useConst": "error",
+				"useImportType": "error",
+				"useNodejsImportProtocol": "error",
+				"useTemplate": "error"
+			},
 			"suspicious": {
 				"noArrayIndexKey": "warn",
 				"noAssignInExpressions": "warn",
+				"noConfusingVoidType": "error",
 				"noExplicitAny": "warn",
+				"noPrototypeBuiltins": "error",
+				"noTemplateCurlyInString": "error",
 				"noUnknownAtRules": "off",
 				"useIterableCallbackReturn": "warn"
 			}

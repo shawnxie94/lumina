@@ -65,7 +65,6 @@ export function getRangeSnippet(
 	if (start >= end) return "";
 	const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
 	let current = walker.nextNode();
-	let offset = 0;
 	let fullText = "";
 
 	while (current) {

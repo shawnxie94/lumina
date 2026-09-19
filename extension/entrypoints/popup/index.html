@@ -7,7 +7,7 @@
 </head>
 <body>
   <div class="header">
-    <a href="#" id="homeLink" class="brand-link" aria-label="打开 Lumina 首页" data-i18n="打开 Lumina 首页" data-i18n-attr="aria-label">
+    <a href="/" id="homeLink" class="brand-link" aria-label="打开 Lumina 首页" data-i18n="打开 Lumina 首页" data-i18n-attr="aria-label">
       <img src="icon/48.png" alt="Lumina" style="width: 20px; height: 20px; vertical-align: -3px; margin-right: 6px;" />
       Lumina
     </a>
@@ -15,13 +15,13 @@
         <span class="login-status logged-out" id="loginStatus" data-i18n="Lumina 未授权">
           Lumina 未授权
         </span>
-      <button id="loginBtn" class="login-btn" title="授权" data-i18n="授权" data-i18n-attr="title" data-i18n-text="false">
+      <button type="button" id="loginBtn" class="login-btn" title="授权" data-i18n="授权" data-i18n-attr="title" data-i18n-text="false">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <rect x="3" y="11" width="18" height="11" rx="2" />
           <path d="M7 11V7a5 5 0 0 1 10 0v4" />
         </svg>
       </button>
-      <button id="logoutBtn" class="login-btn hidden" title="取消授权" data-i18n="取消授权" data-i18n-attr="title" data-i18n-text="false">
+      <button type="button" id="logoutBtn" class="login-btn hidden" title="取消授权" data-i18n="取消授权" data-i18n-attr="title" data-i18n-text="false">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
           <path d="M16 17l5-5-5-5" />
@@ -31,13 +31,13 @@
       <span class="connection-status" id="connectionStatus" title="检测中..." data-i18n="检测中..." data-i18n-attr="title" data-i18n-text="false">
         <span class="status-dot checking"></span>
       </span>
-      <button id="inboxBtn" class="icon-btn" title="暂存箱" aria-label="暂存箱" data-i18n="暂存箱" data-i18n-attr="title,aria-label" data-i18n-text="false">
+      <button type="button" id="inboxBtn" class="icon-btn" title="暂存箱" aria-label="暂存箱" data-i18n="暂存箱" data-i18n-attr="title,aria-label" data-i18n-text="false">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M22 12h-6l-2 3h-4l-2-3H2" />
           <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
         </svg>
       </button>
-      <button id="languageBtn" class="icon-btn" title="语言" aria-label="语言" data-i18n="语言" data-i18n-attr="title,aria-label" data-i18n-text="false">
+      <button type="button" id="languageBtn" class="icon-btn" title="语言" aria-label="语言" data-i18n="语言" data-i18n-attr="title,aria-label" data-i18n-text="false">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <circle cx="12" cy="12" r="10" />
           <path d="M2 12h20" />
@@ -45,13 +45,13 @@
           <path d="M12 2a15 15 0 0 0 0 20" />
         </svg>
       </button>
-      <button id="configBtn" class="icon-btn" title="设置" aria-label="设置" data-i18n="设置" data-i18n-attr="title,aria-label" data-i18n-text="false">
+      <button type="button" id="configBtn" class="icon-btn" title="设置" aria-label="设置" data-i18n="设置" data-i18n-attr="title,aria-label" data-i18n-text="false">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <circle cx="12" cy="12" r="3" />
           <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.04.04a2 2 0 0 1-1.42 3.42h-.1a1.7 1.7 0 0 0-1.66 1.18l-.02.07a2 2 0 0 1-3.83 0l-.02-.07a1.7 1.7 0 0 0-1.66-1.18h-.1a2 2 0 0 1-1.42-3.42l.04-.04A1.7 1.7 0 0 0 4.6 15a2 2 0 0 1 0-6 1.7 1.7 0 0 0-.34-1.87l-.04-.04A2 2 0 0 1 5.64 3.67h.1a1.7 1.7 0 0 0 1.66-1.18l.02-.07a2 2 0 0 1 3.83 0l.02.07a1.7 1.7 0 0 0 1.66 1.18h.1a2 2 0 0 1 1.42 3.42l-.04.04A1.7 1.7 0 0 0 19.4 9a2 2 0 0 1 0 6Z" />
         </svg>
       </button>
-      <button id="closeBtn" class="close-btn" title="关闭" data-i18n="关闭" data-i18n-attr="title" data-i18n-text="false">×</button>
+      <button type="button" id="closeBtn" class="close-btn" title="关闭" data-i18n="关闭" data-i18n-attr="title" data-i18n-text="false">×</button>
     </div>
   </div>
 
@@ -59,15 +59,15 @@
     <div class="login-prompt-content">
       <p>
         <span class="icon" aria-hidden="true">
-          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <rect x="3" y="11" width="18" height="11" rx="2" />
             <path d="M7 11V7a5 5 0 0 1 10 0v4" />
           </svg>
         </span>
         <span data-i18n="需要 Lumina 管理员权限才能采集文章">需要 Lumina 管理员权限才能采集文章</span>
       </p>
-      <button id="loginPromptBtn" class="btn btn-primary" data-i18n="去授权">去授权</button>
-      <button id="loginPromptConfigBtn" class="btn btn-secondary" data-i18n="修改 API 地址">修改 API 地址</button>
+      <button type="button" id="loginPromptBtn" class="btn btn-primary" data-i18n="去授权">去授权</button>
+      <button type="button" id="loginPromptConfigBtn" class="btn btn-secondary" data-i18n="修改 API 地址">修改 API 地址</button>
     </div>
   </div>
 
@@ -81,21 +81,21 @@
     <div class="error-box hidden" id="errorBox"></div>
 
     <div class="buttons">
-      <button class="btn btn-secondary" id="stashBtn" data-i18n="暂存">暂存</button>
-      <button class="btn btn-primary" id="collectBtn" data-i18n="采集">采集</button>
+      <button type="button" class="btn btn-secondary" id="stashBtn" data-i18n="暂存">暂存</button>
+      <button type="button" class="btn btn-primary" id="collectBtn" data-i18n="采集">采集</button>
     </div>
 
     <div class="history-section hidden" id="historySection">
       <div class="history-header">
         <span data-i18n="最近采集">最近采集</span>
-        <button id="clearHistoryBtn" class="clear-history-btn" data-i18n="清空">清空</button>
+        <button type="button" id="clearHistoryBtn" class="clear-history-btn" data-i18n="清空">清空</button>
       </div>
       <div class="history-list" id="historyList"></div>
     </div>
     <div class="error-log hidden" id="errorLog">
       <div class="error-log-header">
         <span data-i18n="错误记录">错误记录</span>
-        <button id="clearErrorLogBtn" class="clear-history-btn" data-i18n="清空">清空</button>
+        <button type="button" id="clearErrorLogBtn" class="clear-history-btn" data-i18n="清空">清空</button>
       </div>
       <div class="error-log-list" id="errorLogList"></div>
     </div>
@@ -105,7 +105,7 @@
     <div class="modal-content">
       <h2>
         <span class="icon" aria-hidden="true">
-          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <circle cx="12" cy="12" r="3" />
             <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.04.04a2 2 0 0 1-1.42 3.42h-.1a1.7 1.7 0 0 0-1.66 1.18l-.02.07a2 2 0 0 1-3.83 0l-.02-.07a1.7 1.7 0 0 0-1.66-1.18h-.1a2 2 0 0 1-1.42-3.42l.04-.04A1.7 1.7 0 0 0 4.6 15a2 2 0 0 1 0-6 1.7 1.7 0 0 0-.34-1.87l-.04-.04A2 2 0 0 1 5.64 3.67h.1a1.7 1.7 0 0 0 1.66-1.18l.02-.07a2 2 0 0 1 3.83 0l.02.07a1.7 1.7 0 0 0 1.66 1.18h.1a2 2 0 0 1 1.42 3.42l-.04.04A1.7 1.7 0 0 0 19.4 9a2 2 0 0 1 0 6Z" />
           </svg>
@@ -121,8 +121,8 @@
       </div>
 
       <div class="modal-buttons">
-        <button id="saveConfigBtn" class="btn btn-primary" data-i18n="保存">保存</button>
-        <button id="cancelConfigBtn" class="btn btn-secondary" data-i18n="取消">取消</button>
+        <button type="button" id="saveConfigBtn" class="btn btn-primary" data-i18n="保存">保存</button>
+        <button type="button" id="cancelConfigBtn" class="btn btn-secondary" data-i18n="取消">取消</button>
       </div>
     </div>
   </div>

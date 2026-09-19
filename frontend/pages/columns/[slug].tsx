@@ -236,12 +236,12 @@ export default function ReviewDetailPage({
 					: [];
 				const uniqueImages = Array.from(new Set(imageList));
 				const images = uniqueImages.length > 0 ? uniqueImages : [clickedSrc];
-				const index = Math.max(0, images.findIndex((src) => src === clickedSrc));
+				const index = Math.max(0, images.indexOf(clickedSrc));
 				setLightboxImages(images);
 				setLightboxIndex(index);
 			}
 		}
-	}, [contentRef]);
+	}, []);
 
 	useEffect(() => {
 		if (!lightboxImage) return;
@@ -267,6 +267,7 @@ export default function ReviewDetailPage({
 		setIsEditing(false);
 	}, [initialReview]);
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: 仅在 edit 参数出现时进入编辑态一次，补齐 initialReview/router 全量依赖会重复进入并反复改写 URL
 	useEffect(() => {
 		if (!isAdmin || !router.isReady) return;
 		const editQuery = router.query.edit;
@@ -454,6 +455,7 @@ export default function ReviewDetailPage({
 		};
 	}, [commentSettingsLoaded, commentsEnabled, review.slug, review.status, showToast, t]);
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: review.id/内容字段是刻意信号，正文渲染后从 DOM 重建目录
 	useEffect(() => {
 		if (!contentRef.current) return;
 		const rafId = requestAnimationFrame(() => {

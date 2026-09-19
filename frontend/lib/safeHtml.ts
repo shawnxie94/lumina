@@ -477,7 +477,7 @@ const isStandaloneParagraphLink = (
 	parent: TreeNode | undefined,
 ): boolean => {
 	if (typeof index !== "number") return false;
-	if (!parent || parent.type !== "paragraph") return false;
+	if (parent?.type !== "paragraph") return false;
 	if (!Array.isArray(parent.children)) return false;
 	const meaningfulChildren = parent.children.filter((child) => {
 		if (child.type !== "text") return true;

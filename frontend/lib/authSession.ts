@@ -132,9 +132,6 @@ export const decideAuthCheckFailure = ({
   previousIsAdmin: boolean;
   cachedSnapshot: AuthSessionSnapshot | null;
 }): AuthCheckFailureDecision => {
-  const silenceNotification =
-    isCanceledRequestError(error) || isTransientAuthNetworkError(error);
-
   if (isCanceledRequestError(error)) {
     return {
       keepPreviousAdmin: true,

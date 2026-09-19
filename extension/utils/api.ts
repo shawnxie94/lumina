@@ -4,7 +4,6 @@ import type {
   CreateArticleResult,
   ReportArticleByUrlDuplicateResponse,
   ReportArticleByUrlRequest,
-  StorageData,
 } from '../types';
 import { logError } from './errorLogger';
 
@@ -75,7 +74,7 @@ export class ApiClient {
       'Content-Type': 'application/json',
     };
     if (this.token) {
-      headers['Authorization'] = `Bearer ${this.token}`;
+      headers.Authorization = `Bearer ${this.token}`;
     }
     return headers;
   }

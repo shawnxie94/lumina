@@ -10,9 +10,7 @@ import { signIn, signOut } from "next-auth/react";
 import type { NextRouter } from "next/router";
 
 import IconButton from "@/components/IconButton";
-import CommentSection, {
-	collectCommentDescendantIds,
-} from "@/components/comment/CommentSection";
+import CommentSection from "@/components/comment/CommentSection";
 import {
 	IconArrowDown,
 	IconBook,

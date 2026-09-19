@@ -219,9 +219,6 @@ const summarizeTopicSyncResult = (result: Record<string, unknown> | null | undef
 		const writebackArticlesChanged = Number(
 			result?.writeback_articles_changed ?? result?.writeback_articles ?? 0,
 		);
-		const writebackArticlesUnchanged = Number(
-			result?.writeback_articles_unchanged ?? 0,
-		);
 		const writebackSkipped = Boolean(result?.writeback_skipped);
 		const hint =
 			typeof result?.hint === "string" && result.hint.trim()
@@ -723,6 +720,7 @@ const summarizeTopicSyncResult = (result: Record<string, unknown> | null | undef
 		}
 	};
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: 仅挂载时拉取一次配置，fetchTopicSettings 非稳定引用
 	useEffect(() => {
 		void fetchTopicSettings();
 		// eslint-disable-next-line react-hooks/exhaustive-deps
@@ -925,8 +923,9 @@ const summarizeTopicSyncResult = (result: Record<string, unknown> | null | undef
 												)}
 											</div>
 										</div>
-										<label className="inline-flex cursor-pointer items-center gap-2 text-sm text-text-2">
+										<label htmlFor="topic-enabled" className="inline-flex cursor-pointer items-center gap-2 text-sm text-text-2">
 											<CheckboxInput
+												id="topic-enabled"
 												checked={topicSettings.enabled}
 												onChange={(e) =>
 													setTopicSettings((prev) => ({
@@ -944,10 +943,11 @@ const summarizeTopicSyncResult = (result: Record<string, unknown> | null | undef
 
 									<div className="grid grid-cols-1 gap-4 md:grid-cols-2">
 										<div>
-											<label className="mb-1 block text-sm text-text-2">
+											<label htmlFor="topic-bridge-url" className="mb-1 block text-sm text-text-2">
 												{t("Bridge 地址")}
 											</label>
 											<TextInput
+												id="topic-bridge-url"
 												value={topicSettings.bridge_base_url}
 												onChange={(e) =>
 													setTopicSettings((prev) => ({
@@ -959,10 +959,11 @@ const summarizeTopicSyncResult = (result: Record<string, unknown> | null | undef
 											/>
 										</div>
 										<div>
-											<label className="mb-1 block text-sm text-text-2">
+											<label htmlFor="topic-bridge-token" className="mb-1 block text-sm text-text-2">
 												{t("Bridge Token")}
 											</label>
 											<TextInput
+												id="topic-bridge-token"
 												value={topicBridgeTokenInput}
 												onChange={(e) => setTopicBridgeTokenInput(e.target.value)}
 												placeholder={

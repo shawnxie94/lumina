@@ -56,7 +56,7 @@ function AIContentSection({
 	extraActions,
 	footerContent,
 }: AIContentSectionProps) {
-	const { t, language } = useI18n();
+	const { t } = useI18n();
 	const getStatusBadge = () => {
 		if (!status) return null;
 		const statusConfig: Record<

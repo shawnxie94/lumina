@@ -13,7 +13,7 @@ async function commentsEnabled(): Promise<boolean> {
     if (!response.ok) return true;
     const data = await response.json();
     return Boolean(data.comments_enabled);
-  } catch (error) {
+  } catch {
     return true;
   }
 }
@@ -46,7 +46,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     try {
       const { response, data } = await fetchComment(id);
       res.status(response.status).json(data);
-    } catch (error) {
+    } catch {
       res.status(500).json({ message: '获取评论失败' });
     }
     return;
@@ -91,7 +91,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
       const data = await response.json();
       res.status(response.status).json(data);
-    } catch (error) {
+    } catch {
       res.status(500).json({ message: '更新评论失败' });
     }
     return;
@@ -125,7 +125,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
       const data = await response.json();
       res.status(response.status).json(data);
-    } catch (error) {
+    } catch {
       res.status(500).json({ message: '删除评论失败' });
     }
     return;

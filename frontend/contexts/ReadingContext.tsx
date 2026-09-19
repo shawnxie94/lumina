@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
 
 interface ReadingArticle {
   id: string;
@@ -94,7 +94,7 @@ export function ReadingProvider({ children }: { children: ReactNode }) {
   const clearArticles = useCallback(() => {
     setRecentArticles([]);
     setIsCollapsed(true);
-  }, [setIsCollapsed]);
+  }, []);
 
   return (
     <ReadingContext.Provider value={{ recentArticles, addArticle, removeArticle, clearArticles, isCollapsed, setIsCollapsed, isHidden, setIsHidden }}>

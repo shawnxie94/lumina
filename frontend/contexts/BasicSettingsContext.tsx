@@ -122,7 +122,7 @@ export function BasicSettingsProvider({
 	useEffect(() => {
 		if (languagePreference) return;
 		setLanguage(resolveLanguage(null, basicSettings));
-	}, [basicSettings.default_language, languagePreference]);
+	}, [basicSettings, languagePreference]);
 
 	const setLanguagePreference = useCallback(
 		(next: LanguageOption) => {
@@ -137,7 +137,7 @@ export function BasicSettingsProvider({
 			setLanguagePreferenceState(next);
 			setLanguage(next);
 		},
-		[basicSettings.default_language],
+		[basicSettings],
 	);
 
 	const value = useMemo(

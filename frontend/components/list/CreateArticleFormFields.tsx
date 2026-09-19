@@ -3,7 +3,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import FormField from '@/components/ui/FormField';
 import SelectField from '@/components/ui/SelectField';
 import TextInput from '@/components/ui/TextInput';
-import { Category } from '@/lib/api';
+import type { Category } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 
 interface CreateArticleFormFieldsProps {

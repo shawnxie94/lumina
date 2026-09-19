@@ -17,7 +17,7 @@ function readStdin() {
 }
 
 function fail(message, code = 1) {
-  process.stderr.write(String(message || "defuddle_extract failed") + "\n");
+  process.stderr.write(`${String(message || "defuddle_extract failed")}\n`);
   process.exit(code);
 }
 

@@ -62,7 +62,7 @@ async function getCommentAuthSettings(): Promise<CommentAuthSettings> {
           }
         : undefined,
     });
-  } catch (error) {
+  } catch {
     throw new Error('无法连接后端评论配置接口');
   }
 
@@ -150,7 +150,7 @@ export default async function auth(req: any, res: any) {
     ensureNextAuthUrl(req);
     const authOptions = await getAuthOptions();
     return NextAuth(req, res, authOptions);
-  } catch (error) {
+  } catch {
     return res.status(503).json({ error: '评论登录配置不可用，请检查后端设置' });
   }
 }

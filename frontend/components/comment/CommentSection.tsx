@@ -219,7 +219,7 @@ interface CommentSectionProps {
   onSubmitComment: (
     content: string,
     replyToId?: string | null,
-  ) => Promise<CommentType | void>;
+  ) => Promise<CommentType | undefined>;
   onUpdateComment: (commentId: string, content: string) => Promise<void>;
   onDeleteComment: (commentId: string) => Promise<void>;
   onToggleHidden?: (commentId: string, isHidden: boolean) => Promise<void>;
@@ -532,6 +532,7 @@ export default function CommentSection({
     }
   }, [commentPage, totalCommentPages]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: comments 是刻意信号，评论异步加载完成后重试定位锚点评论
   useEffect(() => {
     if (typeof document === "undefined" || !pendingScrollId) return;
     const target = document.getElementById(`comment-${pendingScrollId}`);

@@ -6,7 +6,7 @@ const RobotsPage = () => null;
 
 export const getServerSideProps: GetServerSideProps = async ({ req, res }) => {
 	const origin = resolveRequestOrigin(req);
-	let sitemapUrl = `${origin}/sitemap.xml`;
+	const sitemapUrl = `${origin}/sitemap.xml`;
 
 	try {
 		await fetchServerBasicSettings(req);

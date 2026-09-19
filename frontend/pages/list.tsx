@@ -10,10 +10,10 @@ import {
   mediaApi,
   storageSettingsApi,
   topicApi,
-  Article,
-  BasicSettings,
-  Category,
-  TopicSummary,
+  type Article,
+  type BasicSettings,
+  type Category,
+  type TopicSummary,
   normalizeMediaHtml,
   resolveMediaUrl,
 } from '@/lib/api';
@@ -355,6 +355,7 @@ export default function Home({
     searchTerm,
     sourceDomain,
     author,
+    topicKey,
     visibilityFilter,
     quickDateFilter,
     publishedStartDate,
@@ -608,6 +609,7 @@ export default function Home({
     };
   }, [showCreateModal, isAdmin]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 数据量/分页值是刻意信号，列表数据更新后再揭示内容，补删会改变揭示时机
   useEffect(() => {
     if (shouldHoldListView) {
       setListContentReady(false);
@@ -625,6 +627,7 @@ export default function Home({
     };
   }, [shouldHoldListView, articles.length, total, page, pageSize]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 筛选值是刻意的防抖重新拉取信号，去重守卫依赖首帧跳过逻辑
   useEffect(() => {
     if (!initialized || authLoading) return;
     if (skipInitialFilterFetchRef.current) {
@@ -665,6 +668,7 @@ export default function Home({
     fetchCategoryStats,
   ]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 筛选值是刻意信号，任一过滤条件变化时清空批量勾选
   useEffect(() => {
     setSelectedArticleSlugs(new Set());
   }, [
@@ -687,6 +691,7 @@ export default function Home({
     );
   }, [createContent, createPendingMedia.length]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: page/pageSize 是刻意信号，且受竞态守卫 ref 控制，补删依赖会改变翻页拉取语义
   useEffect(() => {
     if (!initialized || authLoading) return;
     if (skipInitialPageFetchRef.current) {
@@ -847,6 +852,7 @@ export default function Home({
     searchTerm,
     sourceDomain,
     author,
+    topicKey,
     visibilityFilter,
     quickDateFilter,
     publishedStartDate,
@@ -858,10 +864,12 @@ export default function Home({
     pageSize,
   ]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 仅初始化拉取一次分类，fetchCategories 非稳定引用
   useEffect(() => {
     fetchCategories();
   }, []);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 展开筛选面板时按需懒加载一次，fetch 函数非稳定引用且由数量守卫
   useEffect(() => {
     if (!showFilters && !showMobileFilters) return;
     if (authors.length === 0) {
@@ -889,6 +897,7 @@ export default function Home({
     return () => media.removeEventListener('change', handleChange);
   }, []);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: articles.length 是刻意信号，追加加载后需重挂 IntersectionObserver
   useEffect(() => {
     if (!isMobile) return;
     if (!listContentReady) return;
@@ -1200,7 +1209,7 @@ export default function Home({
   };
 
   const handleJumpToPage = () => {
-    const pageNum = parseInt(jumpToPage);
+    const pageNum = parseInt(jumpToPage, 10);
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
     if (pageNum >= 1 && pageNum <= totalPages) {
       suppressNextPageFetchRef.current = false;
@@ -1364,7 +1373,7 @@ export default function Home({
       }
     } catch (error: unknown) {
       const errMsg = error instanceof Error ? error.message : String(error);
-      showToast(t('创建失败') + ': ' + errMsg, 'error');
+      showToast(`${t('创建失败')}: ${errMsg}`, 'error');
     } finally {
       setCreateSaving(false);
     }

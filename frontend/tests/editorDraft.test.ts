@@ -34,7 +34,7 @@ const baseColumn = (): ColumnEditorDraftPayload => ({
 class MemoryStorage {
   private store = new Map<string, string>();
   getItem(key: string) {
-    return this.store.has(key) ? this.store.get(key)! : null;
+    return this.store.get(key) ?? null;
   }
   setItem(key: string, value: string) {
     this.store.set(key, String(value));

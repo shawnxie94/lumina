@@ -12,7 +12,7 @@
         <img src="icon/48.png" alt="Lumina" class="sidebar-brand-icon" />
         <span class="sidebar-title" data-i18n="暂存箱">暂存箱</span>
         <span class="sidebar-count" id="inboxCount">0</span>
-        <button id="clearInboxBtn" class="text-btn" data-i18n="清空">清空</button>
+        <button type="button" id="clearInboxBtn" class="text-btn" data-i18n="清空">清空</button>
       </div>
       <div class="inbox-list" id="inboxList"></div>
     </aside>
@@ -30,11 +30,11 @@
           <div class="editor-toolbar-info">
             <span id="editorSavedAt" class="editor-saved-at"></span>
             <span id="autosaveStatus" class="autosave-status"></span>
-            <a id="openSourceLink" class="editor-source-link" target="_blank" rel="noreferrer" data-i18n="打开原链接">打开原链接</a>
+            <a id="openSourceLink" class="editor-source-link" href="about:blank" target="_blank" rel="noreferrer" data-i18n="打开原链接">打开原链接</a>
           </div>
           <div class="editor-toolbar-actions">
-            <button id="pushItemBtn" class="btn btn-primary" data-i18n="推送到 Lumina">推送到 Lumina</button>
-            <button id="deleteItemBtn" class="btn btn-danger" data-i18n="删除">删除</button>
+            <button type="button" id="pushItemBtn" class="btn btn-primary" data-i18n="推送到 Lumina">推送到 Lumina</button>
+            <button type="button" id="deleteItemBtn" class="btn btn-danger" data-i18n="删除">删除</button>
           </div>
         </div>
 

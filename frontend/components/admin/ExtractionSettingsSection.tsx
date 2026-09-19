@@ -60,10 +60,11 @@ export default function ExtractionSettingsSection({
 					{extractionSubSection === "parser" && (
 						<div className="space-y-5">
 							<div>
-								<label className="block text-sm text-text-2 mb-1">
+								<label htmlFor="extraction-prefer-mode" className="block text-sm text-text-2 mb-1">
 									{t("解析优先级")}
 								</label>
 								<SelectField
+									id="extraction-prefer-mode"
 									value={extractionSettings.jina_reader_prefer_mode}
 									onChange={(value) => {
 										const preferMode =
@@ -87,10 +88,11 @@ export default function ExtractionSettingsSection({
 
 							<div className="grid grid-cols-1 md:grid-cols-4 gap-4">
 								<div>
-									<label className="block text-sm text-text-2 mb-1">
+									<label htmlFor="extraction-jina-base-url" className="block text-sm text-text-2 mb-1">
 										{t("Jina Reader 地址")}
 									</label>
 									<TextInput
+										id="extraction-jina-base-url"
 										value={extractionSettings.jina_reader_base_url}
 										onChange={(e) =>
 											setExtractionSettings((prev) => ({
@@ -102,10 +104,11 @@ export default function ExtractionSettingsSection({
 									/>
 								</div>
 								<div>
-									<label className="block text-sm text-text-2 mb-1">
+									<label htmlFor="extraction-jina-api-key" className="block text-sm text-text-2 mb-1">
 										{t("Jina API Key")}
 									</label>
 									<TextInput
+										id="extraction-jina-api-key"
 										type="password"
 										value={extractionSettings.jina_reader_api_key}
 										onChange={(e) =>
@@ -118,10 +121,11 @@ export default function ExtractionSettingsSection({
 									/>
 								</div>
 								<div>
-									<label className="block text-sm text-text-2 mb-1">
+									<label htmlFor="extraction-jina-timeout" className="block text-sm text-text-2 mb-1">
 										{t("超时秒数")}
 									</label>
 									<TextInput
+										id="extraction-jina-timeout"
 										type="number"
 										min={3}
 										max={60}
@@ -138,10 +142,11 @@ export default function ExtractionSettingsSection({
 									/>
 								</div>
 								<div>
-									<label className="block text-sm text-text-2 mb-1">
+									<label htmlFor="extraction-jina-token-budget" className="block text-sm text-text-2 mb-1">
 										{t("Token 上限")}
 									</label>
 									<TextInput
+										id="extraction-jina-token-budget"
 										type="number"
 										min={0}
 										value={extractionSettings.jina_reader_token_budget ?? ""}
@@ -171,10 +176,12 @@ export default function ExtractionSettingsSection({
 							].map(([key, label]) => (
 								<label
 									key={key}
+									htmlFor={`extraction-toggle-${key}`}
 									className="flex items-center justify-between rounded-sm border border-border bg-surface px-3 py-2 text-sm text-text-2"
 								>
 									<span>{label}</span>
 									<CheckboxInput
+										id={`extraction-toggle-${key}`}
 										checked={Boolean(
 											extractionSettings[
 												key as keyof ExtractionSettings

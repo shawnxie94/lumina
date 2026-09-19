@@ -478,6 +478,7 @@ export default defineBackground(() => {
 			// --- Primary path: single DOM capture entry (always finalized) ---
 			let extractedData: DomExtractPayload | null = null;
 			if (canExtractDom && typeof tab.id === "number") {
+				const tabId = tab.id;
 				const scriptLoaded = await ensureContentScriptLoaded(tab.id, {
 					onError: (error) =>
 						logError("background", error, {
@@ -492,7 +493,7 @@ export default defineBackground(() => {
 					const runCapture = async (
 						captureMode: "selection" | "article",
 					): Promise<DomExtractPayload | null> => {
-						const captureData = (await chrome.tabs.sendMessage(tab.id!, {
+						const captureData = (await chrome.tabs.sendMessage(tabId, {
 							type: "EXTRACT_CAPTURE",
 							mode: captureMode,
 						})) as DomExtractPayload | null;
@@ -532,8 +533,8 @@ export default defineBackground(() => {
 						extractedData = null;
 					}
 
-					if (hasDomContent(extractedData)) {
-						await collectViaDomCreate(apiClient, extractedData!, tab, t);
+					if (extractedData && hasDomContent(extractedData)) {
+						await collectViaDomCreate(apiClient, extractedData, tab, t);
 						return;
 					}
 				}
@@ -541,7 +542,6 @@ export default defineBackground(() => {
 
 			// --- Secondary path: backend URL report only when DOM extracted nothing ---
 			if (reportUrl) {
-				try {
 					await collectViaUrlReport(
 						apiClient,
 						reportUrl,
@@ -549,9 +549,6 @@ export default defineBackground(() => {
 						t,
 					);
 					return;
-				} catch (error) {
-					throw error;
-				}
 			}
 
 			chrome.notifications.create({

@@ -239,7 +239,7 @@ export default function ReviewListPage({
 	const router = useRouter();
 	const { basicSettings } = useBasicSettings();
 	const { isAdmin } = useAuth();
-	const { t, language } = useI18n();
+	const { t } = useI18n();
 	const showAdminControls = initialIsAdmin || isAdmin;
 	const [searchTerm, setSearchTerm] = useState(initialQuery.search || "");
 	const [visibilityFilter, setVisibilityFilter] = useState(initialQuery.visibility || "");
@@ -389,6 +389,7 @@ export default function ReviewListPage({
 			}),
 		);
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: 防抖竞态守卫 effect，pageSize 为刻意信号，补删依赖都会改变防抖取消时机
 	useEffect(() => {
 		if (!router.isReady) return;
 		const filterSignature = JSON.stringify({

@@ -62,7 +62,7 @@ test("review detail page keeps total comment count when reusing CommentSection",
 
   assert.match(
     source,
-    /import CommentSection,\s*\{\s*collectCommentDescendantIds,\s*\}\s*from "@\/components\/comment\/CommentSection";/,
+    /import CommentSection from ["']@\/components\/comment\/CommentSection["'];/,
   );
   assert.match(source, /<CommentSection[\s\S]*displayCommentCount=\{displayCommentCount\}/);
 });

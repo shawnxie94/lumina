@@ -36,6 +36,7 @@ export default function ReviewReferenceSelectionPreview({
 		[markdown],
 	);
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: articleSlug/markdown 是刻意的重置信号，切换文章或内容时清空选区状态
 	useEffect(() => {
 		setSelectedText("");
 		setToolbarPos(null);

@@ -8,7 +8,7 @@ import RecommendationLevelBadge from '@/components/article/RecommendationLevelBa
 import IconButton from '@/components/IconButton';
 import CheckboxInput from '@/components/ui/CheckboxInput';
 import { IconEdit, IconEye, IconEyeOff, IconTrash } from '@/components/icons';
-import { Article, resolveMediaUrl } from '@/lib/api';
+import { type Article, resolveMediaUrl } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 
 interface ArticleCardProps {

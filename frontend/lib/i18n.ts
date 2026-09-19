@@ -1100,7 +1100,7 @@ const translations: Record<Language, Record<string | number, string>> = {
 export const translate = (language: Language, key: string): string => {
 	if (language === "zh-CN") return key;
 	const map = translations.en;
-	return Object.prototype.hasOwnProperty.call(map, key) ? map[key] : key;
+	return Object.hasOwn(map, key) ? map[key] : key;
 };
 
 export function useI18n() {

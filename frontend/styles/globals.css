@@ -645,6 +645,10 @@ body {
   color: var(--text-2);
 }
 
+.select-modern-antd .ant-select-selection-placeholder {
+  color: var(--text-3);
+}
+
 .select-modern-antd-multiline.ant-select-multiple {
   height: auto !important;
   min-height: 36px;
@@ -745,10 +749,6 @@ body {
 
 .select-modern-antd-singleline-multiple.ant-select-multiple .ant-select-selection-placeholder {
   line-height: 28px;
-}
-
-.select-modern-antd .ant-select-selection-placeholder {
-  color: var(--text-3);
 }
 
 .select-modern-antd .ant-select-arrow {
@@ -1095,6 +1095,11 @@ body {
     color: var(--text-1);
   }
 
+  .select-modern-antd .ant-select-selector {
+    background: var(--bg-surface);
+    border-color: var(--border-strong);
+  }
+
   .ant-select:not(.ant-select-customize-input) .ant-select-selector {
     background: var(--bg-surface);
     border-color: var(--border-strong);
@@ -1103,11 +1108,6 @@ body {
 
   .ant-select:not(.ant-select-customize-input) .ant-select-selector:hover {
     background: var(--bg-muted);
-    border-color: var(--border-strong);
-  }
-
-  .select-modern-antd .ant-select-selector {
-    background: var(--bg-surface);
     border-color: var(--border-strong);
   }
 

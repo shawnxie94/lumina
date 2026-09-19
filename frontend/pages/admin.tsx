@@ -53,7 +53,6 @@ import IconButton from "@/components/IconButton";
 import ModalShell from "@/components/ui/ModalShell";
 import SectionToggleButton from "@/components/ui/SectionToggleButton";
 import SelectableButton from "@/components/ui/SelectableButton";
-import { ArticleSearchSelect } from "@/components/ArticleSearchSelect";
 import {
 	IconDoc,
 	IconArrowDown,
@@ -65,10 +64,8 @@ import {
 	IconNetwork,
 	IconNote,
 	IconPlug,
-	IconPlus,
 	IconRobot,
 	IconSettings,
-	IconRefresh,
 	IconSearch,
 	IconTag,
 	IconFilter,
@@ -83,7 +80,6 @@ import {
 import { useI18n } from "@/lib/i18n";
 import { useLatestBackupExportJob } from "@/lib/useLatestBackupExportJob";
 import {
-	type AIUsageListResponse,
 	type AIUsageLogItem,
 	type AIUsageSummaryResponse,
 	type AITaskTimelineResponse,
@@ -323,7 +319,7 @@ export default function AdminPage() {
 	const router = useRouter();
 	const { showToast } = useToast();
 	const { isAdmin, isLoading: authLoading } = useAuth();
-	const { t, language } = useI18n();
+	const { t } = useI18n();
 	const { basicSettings, updateBasicSettings: updateBasicSettingsContext } =
 		useBasicSettings();
 	const pageTitle = `${basicSettings.site_name || "Lumina"} - ${t("管理台")}`;
@@ -431,8 +427,6 @@ export default function AdminPage() {
 		useState<UsageCostBreakdown | null>(null);
 	const showUsageView =
 		activeSection === "monitoring" && monitoringSubSection === "ai-usage";
-	const showCommentListView =
-		activeSection === "monitoring" && monitoringSubSection === "comments";
 	const prevActiveSectionRef = useRef<SettingSection | null>(null);
 	const prevMonitoringSubSectionRef = useRef<MonitoringSubSection | null>(null);
 	const [collapsedSettings, setCollapsedSettings] = useState<{
@@ -666,10 +660,6 @@ export default function AdminPage() {
 		);
 	}, [taskTimelineNodes, selectedTaskEventId]);
 
-	const selectedTaskTimelineUsageNode =
-		selectedTaskTimelineNode?.kind === "usage"
-			? selectedTaskTimelineNode.usage || null
-			: null;
 	const [editingModelAPIConfig, setEditingModelAPIConfig] =
 		useState<ModelAPIConfig | null>(null);
 	const [editingPromptConfig, setEditingPromptConfig] =
@@ -1542,6 +1532,7 @@ export default function AdminPage() {
 		// request fan-out while this page coordinates section-driven loading.
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	/* eslint-disable react-hooks/exhaustive-deps */
+	// biome-ignore lint/correctness/useExhaustiveDependencies: fetch 函数为普通函数且按分区加载，补依赖会导致每渲染重新触发请求扇出
 	useEffect(() => {
 		if (!routeInitialized) return;
 		if (activeSection === "categories") {
@@ -1600,15 +1591,18 @@ export default function AdminPage() {
 	]);
 	/* eslint-enable react-hooks/exhaustive-deps */
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: 懒加载守卫由 showPromptModal/长度条件控制，fetch 函数非稳定引用
 	useEffect(() => {
 		if (!showPromptModal || modelLoading || modelAPIConfigs.length > 0) return;
 		void fetchModelAPIConfigs();
 	}, [showPromptModal, modelLoading, modelAPIConfigs.length]);
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: commentSubSection 是刻意信号，切换评论子分区时清空校验结果
 	useEffect(() => {
 		setCommentValidationResult(null);
 	}, [commentSubSection]);
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: reset 过滤器函数为普通函数，分区切换重置属一次性语义，补依赖会重复重置
 	useEffect(() => {
 		const prevSection = prevActiveSectionRef.current;
 		const prevMonitoringSubSection = prevMonitoringSubSectionRef.current;
@@ -1646,6 +1640,7 @@ export default function AdminPage() {
 	}, [activeSection, monitoringSubSection]);
 
 	/* eslint-disable react-hooks/exhaustive-deps */
+	// biome-ignore lint/correctness/useExhaustiveDependencies: 筛选值是刻意的重新拉取信号，fetchTasks/routeInitialized 非稳定引用，补齐会改变触发语义
 	useEffect(() => {
 		if (!routeInitialized) return;
 		if (activeSection !== "monitoring" || monitoringSubSection !== "tasks")
@@ -1664,6 +1659,7 @@ export default function AdminPage() {
 	/* eslint-enable react-hooks/exhaustive-deps */
 
 	/* eslint-disable react-hooks/exhaustive-deps */
+	// biome-ignore lint/correctness/useExhaustiveDependencies: usage 筛选值是刻意的重新拉取信号，fetch/routeInitialized 非稳定引用，补齐会改变触发语义
 	useEffect(() => {
 		if (!routeInitialized) return;
 		if (activeSection !== "monitoring" || monitoringSubSection !== "ai-usage") {
@@ -1685,6 +1681,7 @@ export default function AdminPage() {
 	/* eslint-enable react-hooks/exhaustive-deps */
 
 	/* eslint-disable react-hooks/exhaustive-deps */
+	// biome-ignore lint/correctness/useExhaustiveDependencies: 评论筛选值是刻意的重新拉取信号，fetchCommentList/routeInitialized 非稳定引用
 	useEffect(() => {
 		if (!routeInitialized) return;
 		if (activeSection !== "monitoring" || monitoringSubSection !== "comments") {

@@ -203,12 +203,6 @@ body {
   margin-top: 8px;
 }
 
-/* Capture-row buttons split the popup width evenly. */
-.buttons .btn {
-  flex: 1 1 0;
-  min-width: 0;
-}
-
 .btn {
   flex: 0 0 auto;
   padding: 8px 14px;
@@ -219,6 +213,12 @@ body {
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
+}
+
+/* Capture-row buttons split the popup width evenly. */
+.buttons .btn {
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 .btn-secondary {

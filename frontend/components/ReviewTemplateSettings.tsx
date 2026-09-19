@@ -181,6 +181,7 @@ export default function ReviewTemplateSettings() {
 		setNextSortOrder(maxSort);
 	};
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: 仅初始化加载一次，loadData 每次渲染重建，补依赖会导致重复请求
 	useEffect(() => {
 		let active = true;
 		const bootstrap = async () => {

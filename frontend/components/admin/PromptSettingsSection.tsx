@@ -627,8 +627,9 @@ export default function PromptSettingsSection({
 				</FormField>
 
 				<div className="flex items-center gap-4">
-					<label className="flex flex-wrap items-center gap-2">
+					<label htmlFor="prompt-is-enabled" className="flex flex-wrap items-center gap-2">
 						<CheckboxInput
+							id="prompt-is-enabled"
 							checked={promptFormData.is_enabled}
 							onChange={(e) =>
 								setPromptFormData({
@@ -640,8 +641,9 @@ export default function PromptSettingsSection({
 						<span className="text-sm text-text-2">{t("启用此配置")}</span>
 					</label>
 
-					<label className="flex flex-wrap items-center gap-2">
+					<label htmlFor="prompt-is-default" className="flex flex-wrap items-center gap-2">
 						<CheckboxInput
+							id="prompt-is-default"
 							checked={promptFormData.is_default}
 							onChange={(e) =>
 								setPromptFormData({
@@ -716,18 +718,18 @@ export default function PromptSettingsSection({
 					</div>
 
 					<div>
-						<label className="mb-2 block text-sm font-medium text-text-2">
+						<div className="mb-2 block text-sm font-medium text-text-2">
 							{t("系统提示词")}
-						</label>
+						</div>
 						<pre className="w-full rounded-lg border border-border bg-muted p-4 text-sm text-text-1 whitespace-pre-wrap font-mono">
 							{showPromptPreview.system_prompt || t("未设置（必填）")}
 						</pre>
 					</div>
 
 					<div>
-						<label className="mb-2 block text-sm font-medium text-text-2">
+						<div className="mb-2 block text-sm font-medium text-text-2">
 							{t("提示词")}
-						</label>
+						</div>
 						<pre className="w-full rounded-lg border border-border bg-muted p-4 text-sm text-text-1 whitespace-pre-wrap font-mono">
 							{showPromptPreview.prompt}
 						</pre>

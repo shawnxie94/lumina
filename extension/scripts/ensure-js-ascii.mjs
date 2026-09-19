@@ -29,7 +29,7 @@ function toAsciiJs(source) {
       continue;
     }
     if (code <= 0xffff) {
-      out += "\\u" + code.toString(16).padStart(4, "0");
+      out += `\\u${code.toString(16).padStart(4, "0")}`;
       continue;
     }
     // Escape non-BMP as UTF-16 surrogate pair escapes (JS string semantics).

@@ -12,7 +12,7 @@ function pickBestUrlFromSrcset(srcset) {
 }
 
 function escapeAlt(alt) {
-  return (alt || '').replace(/[\[\]]/g, '').trim()
+  return (alt || '').replace(/[[\]]/g, '').trim()
 }
 
 function createTurndown() {

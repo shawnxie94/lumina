@@ -109,7 +109,7 @@ Nested agent maps (prefer these for domain detail):
 - Header notifications are persisted in browser localStorage via `frontend/lib/notifications.ts`.
 - Markdown rendering uses `remark-math` + `rehype-katex` with `sanitize-html` allowlists.
 - WXT manifest enables `<all_urls>` host permissions; build target `esnext`; output under `.output/`.
-- Biome 2.x config lives at root `biome.json` only (vcs-aware, `noUnknownAtRules` off for Tailwind CSS); run `npm run lint` at repo root. A11y / hooks-deps / `noExplicitAny` rules are warn-level baselines — tighten opportunistically, never merge with error-level findings.
+- Biome 2.x config lives at root `biome.json` only (vcs-aware, `noUnknownAtRules` off for Tailwind CSS); run `npm run lint` at repo root. Unused vars/imports, parseInt radix, import type, hooks-deps (`useExhaustiveDependencies`), and a11y button/svg/anchor rules are **error-level gates**; remaining warn baselines: `noExplicitAny`, `noImportantStyles`, `noDangerouslySetInnerHtml`, `noImgElement`, interaction/label a11y rules — tighten opportunistically, never merge with new error-level findings.
 - UI language supports `zh-CN` and `en`, with `ui_language` stored client-side.
 - Backend has pytest unit tests under `backend/tests/unit/`; frontend has a node:test suite (`cd frontend && npm test`) plus `npm run typecheck`; extension has `npm run typecheck` (runs `wxt prepare && tsc --noEmit`) and fixture verify script; `.github/workflows/ci.yml` gates all of the above on push/PR.
 

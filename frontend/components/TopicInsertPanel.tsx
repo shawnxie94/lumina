@@ -199,8 +199,7 @@ export default function TopicInsertPanel({
 					)}
 				</>
 			) : (
-				<>
-					{articlesLoading ? (
+				articlesLoading ? (
 						<div className="rounded-sm border border-border bg-muted/20 px-4 py-6 text-sm text-text-3">
 							{t("加载中")}
 						</div>
@@ -241,8 +240,7 @@ export default function TopicInsertPanel({
 								);
 							})}
 						</div>
-					)}
-				</>
+					)
 			)}
 		</ModalShell>
 	);

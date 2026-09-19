@@ -218,7 +218,7 @@ function readListSources() {
 
 test("login page keeps noindex head in the loading branch", () => {
   const source = readPageSource("pages/login.tsx");
-  const loadingBranch = source.match(/if \(isLoading\) \{([\s\S]*?)\n  \}/);
+  const loadingBranch = source.match(/if \(isLoading\) \{([\s\S]*?)\n {2}\}/);
 
   assert.ok(loadingBranch, "expected to find login loading branch");
   assert.match(loadingBranch[1], /<SeoHead[\s\S]*robots="noindex,nofollow"/);
@@ -226,8 +226,8 @@ test("login page keeps noindex head in the loading branch", () => {
 
 test("extension auth page keeps noindex head in loading and setup branches", () => {
   const source = readPageSource("pages/auth/extension.tsx");
-  const loadingBranch = source.match(/if \(isLoading\) \{([\s\S]*?)\n  \}/);
-  const setupBranch = source.match(/if \(!isInitialized\) \{([\s\S]*?)\n  \}/);
+  const loadingBranch = source.match(/if \(isLoading\) \{([\s\S]*?)\n {2}\}/);
+  const setupBranch = source.match(/if \(!isInitialized\) \{([\s\S]*?)\n {2}\}/);
 
   assert.ok(loadingBranch, "expected to find extension loading branch");
   assert.ok(setupBranch, "expected to find extension setup branch");

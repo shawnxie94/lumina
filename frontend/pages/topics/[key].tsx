@@ -245,6 +245,7 @@ export default function TopicDetailPage({
 		[topic?.content_md],
 	);
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: contentHtml 是刻意信号，正文渲染后从 DOM 重建目录
 	useEffect(() => {
 		if (loading) return;
 		if (!contentRef.current) return;

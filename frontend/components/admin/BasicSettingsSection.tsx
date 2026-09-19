@@ -65,10 +65,11 @@ export default function BasicSettingsSection({
 				<div className="space-y-6">
 					<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 						<div>
-							<label className="block text-sm text-text-2 mb-1">
+							<label htmlFor="basic-home-badge-text" className="block text-sm text-text-2 mb-1">
 								{t("首页顶部标语")}
 							</label>
 							<TextInput
+								id="basic-home-badge-text"
 								value={basicSettingsForm.home_badge_text}
 								onChange={(e) =>
 									setBasicSettingsForm((prev) => ({
@@ -82,10 +83,11 @@ export default function BasicSettingsSection({
 							/>
 						</div>
 						<div>
-							<label className="block text-sm text-text-2 mb-1">
+							<label htmlFor="basic-site-name" className="block text-sm text-text-2 mb-1">
 								{t("站点名称")}
 							</label>
 							<TextInput
+								id="basic-site-name"
 								value={basicSettingsForm.site_name}
 								onChange={(e) =>
 									setBasicSettingsForm((prev) => ({
@@ -99,10 +101,11 @@ export default function BasicSettingsSection({
 					</div>
 					<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 						<div>
-							<label className="block text-sm text-text-2 mb-1">
+							<label htmlFor="basic-site-description" className="block text-sm text-text-2 mb-1">
 								{t("站点描述")}
 							</label>
 							<TextInput
+								id="basic-site-description"
 								value={basicSettingsForm.site_description}
 								onChange={(e) =>
 									setBasicSettingsForm((prev) => ({
@@ -114,10 +117,11 @@ export default function BasicSettingsSection({
 							/>
 						</div>
 						<div>
-							<label className="block text-sm text-text-2 mb-1">
+							<label htmlFor="basic-home-tagline-text" className="block text-sm text-text-2 mb-1">
 								{t("首页补充文案")}
 							</label>
 							<TextInput
+								id="basic-home-tagline-text"
 								value={basicSettingsForm.home_tagline_text}
 								onChange={(e) =>
 									setBasicSettingsForm((prev) => ({
@@ -133,10 +137,11 @@ export default function BasicSettingsSection({
 					</div>
 					<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 						<div>
-							<label className="block text-sm text-text-2 mb-1">
+							<label htmlFor="basic-home-primary-button-text" className="block text-sm text-text-2 mb-1">
 								{t("首页主按钮文案")}
 							</label>
 							<TextInput
+								id="basic-home-primary-button-text"
 								value={basicSettingsForm.home_primary_button_text}
 								onChange={(e) =>
 									setBasicSettingsForm((prev) => ({
@@ -148,10 +153,11 @@ export default function BasicSettingsSection({
 							/>
 						</div>
 						<div>
-							<label className="block text-sm text-text-2 mb-1">
+							<label htmlFor="basic-home-primary-button-url" className="block text-sm text-text-2 mb-1">
 								{t("首页主按钮链接")}
 							</label>
 							<TextInput
+								id="basic-home-primary-button-url"
 								value={basicSettingsForm.home_primary_button_url}
 								onChange={(e) =>
 									setBasicSettingsForm((prev) => ({
@@ -167,10 +173,11 @@ export default function BasicSettingsSection({
 					</div>
 					<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 						<div>
-							<label className="block text-sm text-text-2 mb-1">
+							<label htmlFor="basic-home-secondary-button-text" className="block text-sm text-text-2 mb-1">
 								{t("首页副按钮文案")}
 							</label>
 							<TextInput
+								id="basic-home-secondary-button-text"
 								value={basicSettingsForm.home_secondary_button_text}
 								onChange={(e) =>
 									setBasicSettingsForm((prev) => ({
@@ -182,10 +189,11 @@ export default function BasicSettingsSection({
 							/>
 						</div>
 						<div>
-							<label className="block text-sm text-text-2 mb-1">
+							<label htmlFor="basic-home-secondary-button-url" className="block text-sm text-text-2 mb-1">
 								{t("首页副按钮链接")}
 							</label>
 							<TextInput
+								id="basic-home-secondary-button-url"
 								value={basicSettingsForm.home_secondary_button_url}
 								onChange={(e) =>
 									setBasicSettingsForm((prev) => ({
@@ -201,10 +209,11 @@ export default function BasicSettingsSection({
 					</div>
 					<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 						<div>
-							<label className="block text-sm text-text-2 mb-1">
+							<label htmlFor="basic-site-logo-url" className="block text-sm text-text-2 mb-1">
 								{t("站点Logo地址")}
 							</label>
 							<TextInput
+								id="basic-site-logo-url"
 								value={basicSettingsForm.site_logo_url}
 								onChange={(e) =>
 									setBasicSettingsForm((prev) => ({
@@ -216,10 +225,11 @@ export default function BasicSettingsSection({
 							/>
 						</div>
 						<div>
-							<label className="block text-sm text-text-2 mb-1">
+							<label htmlFor="basic-default-language" className="block text-sm text-text-2 mb-1">
 								{t("默认语言")}
 							</label>
 							<SelectField
+								id="basic-default-language"
 								value={basicSettingsForm.default_language}
 								onChange={(value) =>
 									setBasicSettingsForm((prev) => ({
@@ -320,8 +330,9 @@ export default function BasicSettingsSection({
 								{t("关闭后将不再暴露公开 RSS 地址")}
 							</div>
 						</div>
-						<label className="inline-flex cursor-pointer items-center gap-2 text-sm text-text-2">
+						<label htmlFor="basic-rss-enabled" className="inline-flex cursor-pointer items-center gap-2 text-sm text-text-2">
 							<CheckboxInput
+								id="basic-rss-enabled"
 								checked={basicSettingsForm.rss_enabled}
 								onChange={(e) =>
 									setBasicSettingsForm((prev) => ({

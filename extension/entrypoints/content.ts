@@ -906,7 +906,7 @@ function extractFallbackContent(): string {
 	let articleElement: Element | null = null;
 	for (const selector of selectorsToTry) {
 		const el = document.querySelector(selector);
-		if (el && el.textContent && el.textContent.trim().length > 200) {
+		if (el?.textContent && el.textContent.trim().length > 200) {
 			articleElement = el;
 			break;
 		}
