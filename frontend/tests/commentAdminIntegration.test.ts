@@ -21,6 +21,18 @@ function readAdminSources() {
   return files.map((file) => readFileSync(file, "utf8")).join("\n");
 }
 
+// 专栏详情页按编辑器/正文/侧栏拆分到 components/columns/ 后，源码结构断言应覆盖页面与拆分组件的拼接源码。
+function readColumnDetailSources() {
+  const columnsDir = join(frontendRoot, "components", "columns");
+  const files = [
+    join(frontendRoot, "pages", "columns", "[slug].tsx"),
+    ...readdirSync(columnsDir)
+      .filter((name) => name.endsWith(".tsx"))
+      .map((name) => join(columnsDir, name)),
+  ];
+  return files.map((file) => readFileSync(file, "utf8")).join("\n");
+}
+
 test("app header routes review comment notifications to review detail pages", () => {
   const source = readPageSource("components/AppHeader.tsx");
 
@@ -46,7 +58,7 @@ test("review detail page uses admin-compatible delete path for review comments",
 });
 
 test("review detail page keeps total comment count when reusing CommentSection", () => {
-  const source = readPageSource("pages/columns/[slug].tsx");
+  const source = readColumnDetailSources();
 
   assert.match(
     source,

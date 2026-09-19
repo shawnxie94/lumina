@@ -1,7 +1,19 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+
+// 专栏详情页按编辑器/正文/侧栏拆分到 components/columns/ 后，源码结构断言应覆盖页面与拆分组件的拼接源码。
+function readColumnDetailSources() {
+	const columnsDir = join(process.cwd(), "components/columns");
+	const files = [
+		join(process.cwd(), "pages/columns/[slug].tsx"),
+		...readdirSync(columnsDir)
+			.filter((name) => name.endsWith(".tsx"))
+			.map((name) => join(columnsDir, name)),
+	];
+	return files.map((file) => readFileSync(file, "utf8")).join("\n");
+}
 
 import {
 	buildReviewArticlePlaceholder,
@@ -187,10 +199,7 @@ test("review reference selection preview focuses on full-width article content s
 });
 
 test("review detail page wires review reference panel into the markdown editor", () => {
-	const source = readFileSync(
-		join(process.cwd(), "pages/columns/[slug].tsx"),
-		"utf8",
-	);
+	const source = readColumnDetailSources();
 
 	assert.match(source, /detectReviewReferenceCommand/);
 	assert.match(source, /<ReviewReferenceInsertPanel/);

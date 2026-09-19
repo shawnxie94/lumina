@@ -1,7 +1,19 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+
+// 专栏详情页按编辑器/正文/侧栏拆分到 components/columns/ 后，源码结构断言应覆盖页面与拆分组件的拼接源码。
+function readColumnDetailSources() {
+	const columnsDir = join(process.cwd(), "components/columns");
+	const files = [
+		join(process.cwd(), "pages/columns/[slug].tsx"),
+		...readdirSync(columnsDir)
+			.filter((name) => name.endsWith(".tsx"))
+			.map((name) => join(columnsDir, name)),
+	];
+	return files.map((file) => readFileSync(file, "utf8")).join("\n");
+}
 
 import {
 	resolveArticleDetailExportMarkdown,
@@ -129,10 +141,7 @@ test("article detail page wires markdown export into the content toolbar", () =>
 });
 
 test("review detail page wires markdown export into the content toolbar", () => {
-	const source = readFileSync(
-		join(process.cwd(), "pages/columns/[slug].tsx"),
-		"utf8",
-	);
+	const source = readColumnDetailSources();
 
 	assert.match(source, /resolveReviewDetailExportMarkdown/);
 	assert.match(source, /resolveDetailExportFilename/);
