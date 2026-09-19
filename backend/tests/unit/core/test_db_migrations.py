@@ -1,17 +1,50 @@
 from pathlib import Path
 import uuid
 
+import pytest
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
 from app.core.db_migrations import (
+    find_unknown_alembic_revision,
     migration_lock,
     resolve_database_url,
+    run_db_migrations,
     sqlite_database_path,
 )
 from models import AdminSettings, Base, PromptConfig, now_str
+
+BACKEND_DIR = Path(__file__).resolve().parents[3]
+
+
+def _alembic_head_revision() -> str:
+    config = Config(str(BACKEND_DIR / "alembic.ini"))
+    return ScriptDirectory.from_config(config).get_current_head()
+
+
+def _seed_dangling_alembic_version(db_path: Path, revision: str) -> None:
+    engine = create_engine(
+        f"sqlite:///{db_path}",
+        connect_args={"check_same_thread": False},
+    )
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                "CREATE TABLE IF NOT EXISTS alembic_version "
+                "(version_num VARCHAR(32) NOT NULL)"
+            )
+        )
+        conn.execute(
+            text("DELETE FROM alembic_version"),
+        )
+        conn.execute(
+            text("INSERT INTO alembic_version (version_num) VALUES (:revision)"),
+            {"revision": revision},
+        )
+    engine.dispose()
 
 
 def test_resolve_database_url_prefers_explicit_override():
@@ -868,3 +901,83 @@ def test_ai_continuation_migration_backfills_existing_task_chain_and_api_type(tm
     assert row.root_task_id == "task-1"
 
     engine.dispose()
+
+
+def test_find_unknown_alembic_revision_detects_dangling_version(tmp_path):
+    db_path = tmp_path / "dangling.db"
+    _seed_dangling_alembic_version(db_path, "20260820_0034")
+
+    assert (
+        find_unknown_alembic_revision(f"sqlite:///{db_path}", base_dir=BACKEND_DIR)
+        == "20260820_0034"
+    )
+
+
+def test_find_unknown_alembic_revision_returns_none_for_fresh_or_known(tmp_path):
+    fresh_path = tmp_path / "fresh.db"
+    assert (
+        find_unknown_alembic_revision(f"sqlite:///{fresh_path}", base_dir=BACKEND_DIR)
+        is None
+    )
+
+    known_path = tmp_path / "known.db"
+    _seed_dangling_alembic_version(known_path, _alembic_head_revision())
+    assert (
+        find_unknown_alembic_revision(f"sqlite:///{known_path}", base_dir=BACKEND_DIR)
+        is None
+    )
+
+
+def _create_legacy_like_db(db_path: Path) -> None:
+    engine = create_engine(
+        f"sqlite:///{db_path}",
+        connect_args={"check_same_thread": False},
+    )
+    Base.metadata.create_all(bind=engine)
+    engine.dispose()
+    _seed_dangling_alembic_version(db_path, "20260820_0034")
+
+
+def test_run_db_migrations_blocks_on_unknown_revision(tmp_path):
+    db_path = tmp_path / "legacy-blocked.db"
+    _create_legacy_like_db(db_path)
+
+    with pytest.raises(RuntimeError, match="20260820_0034"):
+        run_db_migrations(f"sqlite:///{db_path}")
+
+    engine = create_engine(
+        f"sqlite:///{db_path}",
+        connect_args={"check_same_thread": False},
+    )
+    with engine.begin() as conn:
+        version = conn.execute(
+            text("SELECT version_num FROM alembic_version")
+        ).scalar_one()
+    engine.dispose()
+    assert version == "20260820_0034"
+
+
+def test_run_db_migrations_stamp_recovers_dangling_version(tmp_path):
+    db_path = tmp_path / "legacy-recovered.db"
+    _create_legacy_like_db(db_path)
+
+    run_db_migrations(f"sqlite:///{db_path}", stamp_revision="20260813_0031")
+
+    engine = create_engine(
+        f"sqlite:///{db_path}",
+        connect_args={"check_same_thread": False},
+    )
+    with engine.begin() as conn:
+        version = conn.execute(
+            text("SELECT version_num FROM alembic_version")
+        ).scalar_one()
+        thinking_level = conn.execute(
+            text(
+                "SELECT count(*) FROM pragma_table_info('model_api_configs') "
+                "WHERE name = 'thinking_level'"
+            )
+        ).scalar_one()
+    engine.dispose()
+
+    assert version == _alembic_head_revision()
+    assert thinking_level == 1

@@ -20,12 +20,22 @@ def main() -> int:
         default=None,
         help="Override DATABASE_URL for this migration run",
     )
+    parser.add_argument(
+        "--stamp",
+        dest="stamp_revision",
+        default=None,
+        metavar="REV",
+        help=(
+            "把 alembic_version 对齐到指定已知版本后再升级到 head。"
+            "用于版本指向已从链上删除的历史迁移（悬空版本）时的手动恢复。"
+        ),
+    )
     args = parser.parse_args()
 
     if args.database_url:
         os.environ["DATABASE_URL"] = args.database_url
 
-    run_db_migrations(args.database_url)
+    run_db_migrations(args.database_url, stamp_revision=args.stamp_revision)
     print("Migration upgrade complete: head")
     return 0
 
