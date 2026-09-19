@@ -3,7 +3,6 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import type { GetServerSideProps } from 'next';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
-import dayjs, { type Dayjs } from 'dayjs';
 
 import {
   articleApi,
@@ -22,30 +21,24 @@ import { buildArticleHref as buildNavigableArticleHref } from '@/lib/articlePrev
 import AppFooter from '@/components/AppFooter';
 import AppHeader from '@/components/AppHeader';
 import SeoHead from '@/components/SeoHead';
-import ArticleLanguageTag from '@/components/article/ArticleLanguageTag';
-import ArticleMetaRow from '@/components/article/ArticleMetaRow';
-import RecommendationLevelBadge from '@/components/article/RecommendationLevelBadge';
 import ArticleSplitEditorModal from '@/components/article/ArticleSplitEditorModal';
 import FeedListSkeleton from '@/components/article/FeedListSkeleton';
-import Button from '@/components/Button';
-import DateRangePicker from '@/components/DateRangePicker';
-import FilterInput from '@/components/FilterInput';
-import FilterSelect from '@/components/FilterSelect';
-import FilterSelectInline from '@/components/FilterSelectInline';
+import CategorySidebar from '@/components/list/CategorySidebar';
+import PaginationBar from '@/components/list/PaginationBar';
+import AdvancedFilters, { FilterSummary } from '@/components/list/AdvancedFilters';
+import FilterToolbar from '@/components/list/FilterToolbar';
+import MobileFilterDrawer from '@/components/list/MobileFilterDrawer';
+import ArticleCard from '@/components/list/ArticleCard';
+import BatchActionBar, { SelectAllBar } from '@/components/list/BatchActionBar';
+import CreateArticleFormFields from '@/components/list/CreateArticleFormFields';
 import ConfirmModal from '@/components/ConfirmModal';
-import IconButton from '@/components/IconButton';
-import CheckboxInput from '@/components/ui/CheckboxInput';
-import FormField from '@/components/ui/FormField';
-import SelectField from '@/components/ui/SelectField';
-import TextInput from '@/components/ui/TextInput';
 import { useToast } from '@/components/Toast';
 import { BackToTop } from '@/components/BackToTop';
-import { IconEdit, IconEye, IconEyeOff, IconSearch, IconTrash, IconPlus } from '@/components/icons';
 import { useAuth } from '@/contexts/AuthContext';
 import { useBasicSettings } from '@/contexts/BasicSettingsContext';
 import { resolveCreateArticlePatch, type CreatePendingMedia } from '@/lib/createArticleMedia';
 import { useI18n } from '@/lib/i18n';
-import { parseQuickDateOption, quickDateOptions, type QuickDateOption } from '@/lib/listFilters';
+import { parseQuickDateOption, type QuickDateOption } from '@/lib/listFilters';
 import { buildCanonicalUrl, buildPathWithQuery, getListPageSeo, resolveSeoAssetUrl } from '@/lib/seo';
 import {
   fetchServerAuthState,
@@ -57,211 +50,23 @@ import {
 } from '@/lib/serverApi';
 import { shouldRefreshListAfterAuthResolution } from '@/lib/listAuthSync';
 import { renderSafeMarkdown } from '@/lib/safeHtml';
-
-const formatDate = (date: Date | null): string => {
-  if (!date) return '';
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
-
-const toDayjsRange = (range: [Date | null, Date | null]): [Dayjs | null, Dayjs | null] => [
-  range[0] ? dayjs(range[0]) : null,
-  range[1] ? dayjs(range[1]) : null,
-];
-
-type PastedMediaKind = 'image' | 'video' | 'audio' | 'book';
-
-interface PastedMediaLink {
-  kind: PastedMediaKind;
-  url: string;
-}
-
-const IMAGE_LINK_PATTERN = /\.(png|jpe?g|gif|webp|svg|bmp|avif)(\?.*)?$/i;
-const VIDEO_LINK_PATTERN = /\.(mp4|webm|mov|m4v|ogv|ogg)(\?.*)?$/i;
-const AUDIO_LINK_PATTERN = /\.(mp3|wav|m4a|aac|ogg|flac|opus)(\?.*)?$/i;
-const BOOK_LINK_PATTERN = /\.(pdf|epub|mobi)(\?.*)?$/i;
-const VIDEO_HOST_PATTERN = /(youtube\.com|youtu\.be|bilibili\.com|vimeo\.com)/i;
-
-const insertTextAtCursor = (
-  target: HTMLTextAreaElement,
-  text: string,
-  onChange: (value: string) => void,
-) => {
-  const start = target.selectionStart ?? target.value.length;
-  const end = target.selectionEnd ?? target.value.length;
-  const nextValue = `${target.value.slice(0, start)}${text}${target.value.slice(end)}`;
-  onChange(nextValue);
-  requestAnimationFrame(() => {
-    const cursor = start + text.length;
-    target.setSelectionRange(cursor, cursor);
-    target.focus();
-  });
-};
-
-const cleanupPastedUrl = (url: string): string =>
-  (url || '')
-    .trim()
-    .replace(/^<|>$/g, '')
-    .replace(/[),.;:!?]+$/, '');
-
-const detectMediaKindFromUrl = (url: string): PastedMediaKind | null => {
-  const normalized = cleanupPastedUrl(url);
-  if (!normalized || !/^https?:\/\//i.test(normalized)) return null;
-  if (IMAGE_LINK_PATTERN.test(normalized)) return 'image';
-  if (AUDIO_LINK_PATTERN.test(normalized)) return 'audio';
-  if (VIDEO_LINK_PATTERN.test(normalized)) return 'video';
-  if (VIDEO_HOST_PATTERN.test(normalized)) return 'video';
-  if (BOOK_LINK_PATTERN.test(normalized)) return 'book';
-  return null;
-};
-
-const toPastedMediaLink = (url?: string | null): PastedMediaLink | null => {
-  const normalized = cleanupPastedUrl(url || '');
-  const kind = detectMediaKindFromUrl(normalized);
-  if (!kind) return null;
-  return { kind, url: normalized };
-};
-
-const extractMediaLinkFromHtml = (html: string): PastedMediaLink | null => {
-  if (!html) return null;
-  try {
-    const doc = new DOMParser().parseFromString(html, 'text/html');
-    const candidates = [
-      doc.querySelector('img')?.getAttribute('src'),
-      doc.querySelector('video')?.getAttribute('src'),
-      doc.querySelector('video source')?.getAttribute('src'),
-      doc.querySelector('audio')?.getAttribute('src'),
-      doc.querySelector('audio source')?.getAttribute('src'),
-      doc.querySelector('iframe')?.getAttribute('src'),
-      doc.querySelector('a')?.getAttribute('href'),
-    ];
-    for (const candidate of candidates) {
-      const link = toPastedMediaLink(candidate);
-      if (link) return link;
-    }
-    return null;
-  } catch {
-    return null;
-  }
-};
-
-const extractMediaLinkFromText = (text: string): PastedMediaLink | null => {
-  if (!text) return null;
-  const trimmed = text.trim();
-  if (!trimmed) return null;
-  if (/!\[[^\]]*\]\([^)]+\)/.test(trimmed)) return null;
-  if (/\[[^\]]+\]\([^)]+\)/.test(trimmed)) return null;
-  const urlMatch = trimmed.match(/https?:\/\/[^\s)]+/);
-  if (!urlMatch?.[0]) return null;
-  return toPastedMediaLink(urlMatch[0]);
-};
-
-const buildMarkdownFromMediaLink = (
-  link: PastedMediaLink,
-  t: (key: string) => string,
-): string => {
-  if (link.kind === 'image') {
-    return `![](${link.url})`;
-  }
-  if (link.kind === 'video') {
-    return `[▶ ${t('视频')}](${link.url})`;
-  }
-  if (link.kind === 'audio') {
-    return `[🎧 ${t('音频')}](${link.url})`;
-  }
-  return `[📚 ${t('书籍')}](${link.url})`;
-};
-
-const buildCreateMediaToken = (): string =>
-  `__LUMINA_CREATE_MEDIA_${Date.now()}_${Math.random().toString(36).slice(2, 10)}__`;
-
-
-const getDateRangeFromQuickOption = (option: QuickDateOption): [Date | null, Date | null] => {
-  if (!option) return [null, null];
-  
-  const now = new Date();
-  const startDate = new Date();
-  
-  switch (option) {
-    case '1d':
-      startDate.setDate(now.getDate() - 1);
-      break;
-    case '3d':
-      startDate.setDate(now.getDate() - 3);
-      break;
-    case '1w':
-      startDate.setDate(now.getDate() - 7);
-      break;
-    case '1m':
-      startDate.setMonth(now.getMonth() - 1);
-      break;
-    case '3m':
-      startDate.setMonth(now.getMonth() - 3);
-      break;
-    case '6m':
-      startDate.setMonth(now.getMonth() - 6);
-      break;
-    case '1y':
-      startDate.setFullYear(now.getFullYear() - 1);
-      break;
-  }
-  
-  return [startDate, now];
-};
+import {
+  extractMediaLinkFromHtml,
+  extractMediaLinkFromText,
+  buildMarkdownFromMediaLink,
+  insertTextAtCursor,
+} from '@/lib/articleMedia';
+import { buildCreateMediaToken } from '@/lib/createPasteMedia';
+import {
+  formatDate,
+  getDateRangeFromQuickOption,
+  parseDateQuery,
+  serializeQuery,
+  pickListQuery,
+} from '@/lib/listQuery';
 
 const FILTER_FETCH_DEBOUNCE_MS = 500;
 const TITLE_SEARCH_FETCH_DEBOUNCE_MS = 900;
-
-const getQueryValue = (value: string | string[] | undefined): string => {
-  if (Array.isArray(value)) return value[0] || '';
-  return value || '';
-};
-
-const parseDateQuery = (value: string): Date | null => {
-  if (!value) return null;
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date;
-};
-
-
-
-const serializeQuery = (query: Record<string, string>): string =>
-  Object.entries(query)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([key, value]) => `${key}=${value}`)
-    .join('&');
-
-const LIST_QUERY_KEYS = [
-  'category_id',
-  'search',
-  'source_domain',
-  'author',
-  'topic',
-  'visibility',
-  'quick_date',
-  'sort_by',
-  'published_at_start',
-  'published_at_end',
-  'created_at_start',
-  'created_at_end',
-  'page',
-  'size',
-] as const;
-
-const pickListQuery = (
-  query: Record<string, string | string[] | undefined>,
-): Record<string, string> => {
-  const picked: Record<string, string> = {};
-  LIST_QUERY_KEYS.forEach((key) => {
-    const value = getQueryValue(query[key]);
-    if (value) {
-      picked[key] = value;
-    }
-  });
-  return picked;
-};
 
 interface ListPageProps {
   initialBasicSettings: BasicSettings;
@@ -522,10 +327,6 @@ export default function Home({
     () => serializeQuery(routerQueryState),
     [routerQueryState],
   );
-  const defaultTopImageUrl = useMemo(
-    () => resolveMediaUrl(basicSettings.site_logo_url || '/logo.png'),
-    [basicSettings.site_logo_url],
-  );
 
   const currentListPath = useMemo(() => {
     const asPath = router.asPath || '/list';
@@ -637,8 +438,6 @@ export default function Home({
       from,
     });
   };
-  const articleLinkTarget = isMobile ? undefined : '_blank';
-  const articleLinkRel = isMobile ? undefined : 'noopener noreferrer';
 
   const fetchArticles = useCallback(async () => {
     const requestId = articleRequestIdRef.current + 1;
@@ -1207,169 +1006,52 @@ export default function Home({
     });
   };
 
-  const activeFilters = useMemo(() => {
-    const filters: string[] = [];
-    const categoryName = categories.find((c) => c.id === selectedCategory)?.name;
-    if (categoryName) filters.push(`${t('分类')}：${categoryName}`);
-    if (searchTerm) filters.push(`${t('标题')}：${searchTerm}`);
-    if (sourceDomain) filters.push(`${t('来源')}：${sourceDomain}`);
-    if (author) filters.push(`${t('作者')}：${author}`);
-    if (isAdmin && visibilityFilter) {
-      filters.push(visibilityFilter === 'visible' ? `${t('可见')}：${t('是')}` : `${t('可见')}：${t('否')}`);
-    }
-    if (publishedStartDate || publishedEndDate) {
-      filters.push(`${t('发表')}：${formatDate(publishedStartDate)} ~ ${formatDate(publishedEndDate)}`.trim());
-    }
-    if (createdStartDate || createdEndDate) {
-      filters.push(`${t('创建')}：${formatDate(createdStartDate)} ~ ${formatDate(createdEndDate)}`.trim());
-    }
-    if (sortBy === 'published_at_desc') filters.push(`${t('排序')}：${t('发表时间倒序')}`);
-    if (sortBy === 'created_at_desc') filters.push(`${t('排序')}：${t('创建时间倒序')}`);
-    if (sortBy === 'note_recommendation_level_desc') filters.push(`${t('排序')}：${t('推荐等级倒序')}`);
-    return filters;
-  }, [
-    categories,
-    selectedCategory,
-    searchTerm,
-    sourceDomain,
-    author,
-    publishedStartDate,
-    publishedEndDate,
-    createdStartDate,
-    createdEndDate,
-    sortBy,
-    isAdmin,
-    visibilityFilter,
-    t,
-  ]);
-
   const advancedFiltersBody = (
-    <>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-        <FilterInput
-          label={t('文章标题')}
-          value={searchTerm}
-          onChange={(value) => { setSearchTerm(value); setPage(1); }}
-          placeholder={t('模糊匹配标题')}
-        />
-        <FilterSelect
-          label={t('来源')}
-          value={sourceDomain}
-          onChange={(value) => { setSourceDomain(value); setPage(1); }}
-          options={[{ value: '', label: t('全部来源') }, ...sources.map((s) => ({ value: s, label: s }))]}
-        />
-        <FilterSelect
-          label={t('作者')}
-          value={author}
-          onChange={(value) => { setAuthor(value); setPage(1); }}
-          options={[{ value: '', label: t('全部作者') }, ...authors.map((a) => ({ value: a, label: a }))]}
-        />
-      </div>
-      {isMobile && (
-        <div className="grid grid-cols-1 gap-4 mb-4">
-          <FilterSelect
-            label={t('创建时间')}
-            value={quickDateFilter}
-            onChange={(value) => handleQuickDateChange(value as QuickDateOption)}
-            showSearch={false}
-            options={[
-              { value: '', label: t('全部') },
-              { value: '1d', label: t('1天内') },
-              { value: '3d', label: t('3天内') },
-              { value: '1w', label: t('1周内') },
-              { value: '1m', label: t('1个月') },
-              { value: '3m', label: t('3个月') },
-              { value: '6m', label: t('6个月') },
-              { value: '1y', label: t('1年内') },
-            ]}
-          />
-          {isAdmin && (
-            <FilterSelect
-              label={t('可见性')}
-              value={visibilityFilter}
-              onChange={(value) => { setVisibilityFilter(value); setPage(1); }}
-              showSearch={false}
-              options={[
-                { value: '', label: t('全部') },
-                { value: 'visible', label: t('可见') },
-                { value: 'hidden', label: t('隐藏') },
-              ]}
-            />
-          )}
-          <FilterSelect
-            label={t('排序')}
-            value={sortBy}
-            onChange={(value) => { setSortBy(value); setPage(1); }}
-            showSearch={false}
-            options={[
-              { value: 'published_at_desc', label: t('发表时间倒序') },
-              { value: 'created_at_desc', label: t('创建时间倒序') },
-              { value: 'note_recommendation_level_desc', label: t('推荐等级倒序') },
-            ]}
-          />
-        </div>
-      )}
-      <div className="hidden lg:grid grid-cols-3 gap-4 mb-2">
-        <FilterSelect
-          label={t('主题')}
-          value={topicKey}
-          onChange={(value) => { setTopicKey(value); setPage(1); }}
-          options={[{ value: '', label: t('全部主题') }, ...topics.map((item) => ({ value: item.key, label: item.title || item.key }))]}
-        />
-        <div>
-          <label htmlFor="published-date-range" className="block text-sm text-text-2 mb-1.5">{t('发表时间')}</label>
-          <DateRangePicker
-            id="published-date-range"
-            value={toDayjsRange(publishedDateRange)}
-            onChange={(values) => {
-              const [start, end] = values || [];
-              setPublishedDateRange([start ? start.toDate() : null, end ? end.toDate() : null]);
-              setPage(1);
-            }}
-            className="w-full"
-          />
-        </div>
-        <div>
-          <label htmlFor="created-date-range" className="block text-sm text-text-2 mb-1.5">{t('创建时间')}</label>
-          <DateRangePicker
-            id="created-date-range"
-            value={toDayjsRange(createdDateRange)}
-            onChange={(values) => {
-              const [start, end] = values || [];
-              setCreatedDateRange([start ? start.toDate() : null, end ? end.toDate() : null]);
-              setQuickDateFilter('');
-              setPage(1);
-            }}
-            className="w-full"
-          />
-        </div>
-      </div>
-    </>
+    <AdvancedFilters
+      isAdmin={isAdmin}
+      isMobile={isMobile}
+      searchTerm={searchTerm}
+      setSearchTerm={setSearchTerm}
+      sourceDomain={sourceDomain}
+      setSourceDomain={setSourceDomain}
+      sources={sources}
+      author={author}
+      setAuthor={setAuthor}
+      authors={authors}
+      topicKey={topicKey}
+      setTopicKey={setTopicKey}
+      topics={topics}
+      visibilityFilter={visibilityFilter}
+      setVisibilityFilter={setVisibilityFilter}
+      sortBy={sortBy}
+      setSortBy={setSortBy}
+      quickDateFilter={quickDateFilter}
+      setQuickDateFilter={setQuickDateFilter}
+      handleQuickDateChange={handleQuickDateChange}
+      publishedDateRange={publishedDateRange}
+      setPublishedDateRange={setPublishedDateRange}
+      createdDateRange={createdDateRange}
+      setCreatedDateRange={setCreatedDateRange}
+      setPage={setPage}
+    />
   );
 
   const filterSummary = (
-    <div className="flex flex-wrap items-center gap-2">
-      {activeFilters.length === 0 ? (
-        <span className="text-sm text-text-3">{t('暂无筛选条件')}</span>
-      ) : (
-        activeFilters.map((filter) => (
-          <span
-            key={filter}
-            className="filter-chip px-2.5 py-1 text-sm rounded-sm"
-          >
-            {filter}
-          </span>
-        ))
-      )}
-      <button
-        type="button"
-        onClick={handleClearFilters}
-        className={`ml-auto px-3 py-1 text-sm rounded-sm transition ${activeFilters.length === 0 ? 'bg-muted text-text-3 cursor-not-allowed' : 'bg-surface text-text-2 hover:bg-muted hover:text-text-1'}`}
-        disabled={activeFilters.length === 0}
-      >
-        {t('清除筛选')}
-      </button>
-    </div>
+    <FilterSummary
+      categories={categories}
+      selectedCategory={selectedCategory}
+      searchTerm={searchTerm}
+      sourceDomain={sourceDomain}
+      author={author}
+      isAdmin={isAdmin}
+      visibilityFilter={visibilityFilter}
+      publishedStartDate={publishedStartDate}
+      publishedEndDate={publishedEndDate}
+      createdStartDate={createdStartDate}
+      createdEndDate={createdEndDate}
+      sortBy={sortBy}
+      handleClearFilters={handleClearFilters}
+    />
   );
 
 
@@ -1690,80 +1372,18 @@ export default function Home({
 
 
   const batchActions = (
-    <div className="mt-4 pt-4 border-t border-border">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-3">
-          <span className="text-sm text-text-2">{t('已选')} {selectedArticleSlugs.size} {t('篇')}</span>
-          <Button
-            type="button"
-            onClick={handleExport}
-            disabled={batchActionPending}
-            variant="ghost"
-            size="sm"
-            className="min-w-[104px]"
-          >
-            {batchAction === 'export' ? t('导出中...') : `${t('导出选中')} (${selectedArticleSlugs.size})`}
-          </Button>
-        </div>
-        {isAdmin && (
-          <div className="flex flex-wrap items-center gap-3">
-            <Button
-              type="button"
-              onClick={() => handleBatchVisibility(true)}
-              disabled={batchActionPending}
-              variant="ghost"
-              size="sm"
-              className="min-w-[88px]"
-            >
-              {batchAction === 'visibility' ? t('处理中...') : t('设为可见')}
-            </Button>
-            <Button
-              type="button"
-              onClick={() => handleBatchVisibility(false)}
-              disabled={batchActionPending}
-              variant="ghost"
-              size="sm"
-              className="min-w-[88px]"
-            >
-              {batchAction === 'visibility' ? t('处理中...') : t('设为隐藏')}
-            </Button>
-            <div className="flex items-center gap-2">
-              <SelectField
-                value={batchCategoryId}
-                onChange={(value) => setBatchCategoryId(value)}
-                className="w-36"
-                disabled={batchActionPending}
-                options={[
-                  { value: '', label: t('选择分类') },
-                  { value: '__clear__', label: t('清空分类') },
-                  ...categories.map((category) => ({ value: category.id, label: category.name })),
-                ]}
-              />
-              <Button
-                type="button"
-                onClick={handleBatchCategory}
-                disabled={batchActionPending}
-                variant="ghost"
-                size="sm"
-                className="min-w-[88px]"
-              >
-                {batchAction === 'category' ? t('处理中...') : t('应用分类')}
-              </Button>
-            </div>
-            <Button
-              type="button"
-              onClick={handleBatchDelete}
-              disabled={batchActionPending}
-              variant="danger"
-              size="sm"
-              className="min-w-[96px]"
-            >
-              {batchAction === 'delete' ? t('删除中...') : t('批量删除')}
-            </Button>
-          </div>
-        )}
-      </div>
-    </div>
+    <BatchActionBar
+      selectedCount={selectedArticleSlugs.size}
+      batchAction={batchAction}
+      isAdmin={isAdmin}
+      categories={categories}
+      batchCategoryId={batchCategoryId}
+      setBatchCategoryId={setBatchCategoryId}
+      handleExport={handleExport}
+      handleBatchVisibility={handleBatchVisibility}
+      handleBatchCategory={handleBatchCategory}
+      handleBatchDelete={handleBatchDelete}
+    />
   );
   const skeletonCount = isMobile ? 4 : 6;
   const listSkeleton = <FeedListSkeleton count={skeletonCount} showAdminDesktop={showAdminDesktop} />;
@@ -1820,147 +1440,38 @@ export default function Home({
       <div className="flex-1">
         <div className="max-w-7xl mx-auto px-4 py-6 sm:py-8">
           <div className="flex flex-col lg:flex-row gap-6">
-          <aside className={`hidden lg:block flex-shrink-0 w-full transition-all duration-300 ${sidebarCollapsed ? 'lg:w-12' : 'lg:w-56'}`}>
-            <div className="panel-raised rounded-sm border border-border p-4 max-h-none overflow-visible lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">
-              <div className="flex items-center justify-between mb-4">
-                {!sidebarCollapsed && (
-                  <h2 className="font-semibold text-text-1 inline-flex items-center gap-2">
-                    <IconSearch className="h-4 w-4" />
-                    <span>{t('分类筛选')}</span>
-                  </h2>
-                )}
-                <button
-                  type="button"
-                  onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-                  className="text-text-3 hover:text-text-2 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
-                  title={sidebarCollapsed ? t('展开') : t('收起')}
-                  aria-label={sidebarCollapsed ? t('展开分类筛选') : t('收起分类筛选')}
-                >
-                  {sidebarCollapsed ? '»' : '«'}
-                </button>
-              </div>
-              {!sidebarCollapsed && (
-                <div className="space-y-2">
-                  <Link
-                    href={buildCategoryHref(undefined)}
-                    aria-current={selectedCategory === '' ? 'page' : undefined}
-                    className={`block w-full text-left px-3 py-2 rounded-sm transition ${
-                      selectedCategory === '' ? 'bg-primary-soft text-primary-ink' : 'hover:bg-muted'
-                    }`}
-                  >
-                    {t('全部文章')} ({categoryStats.reduce((sum, c) => sum + c.article_count, 0)})
-                  </Link>
-                  {categoryStats.map((category) => (
-                    <Link
-                      href={buildCategoryHref(category.id)}
-                      key={category.id}
-                      aria-current={selectedCategory === category.id ? 'page' : undefined}
-                      className={`block w-full text-left px-3 py-2 rounded-sm transition ${
-                        selectedCategory === category.id ? 'bg-primary-soft text-primary-ink' : 'hover:bg-muted'
-                      }`}
-                    >
-                      {category.name} ({category.article_count})
-                    </Link>
-                  ))}
-                </div>
-              )}
-            </div>
-          </aside>
+          <CategorySidebar
+            categoryStats={categoryStats}
+            selectedCategory={selectedCategory}
+            buildCategoryHref={buildCategoryHref}
+            sidebarCollapsed={sidebarCollapsed}
+            setSidebarCollapsed={setSidebarCollapsed}
+          />
 
           <main className="flex-1" aria-busy={!listContentReady}>
             <div className="sr-only">
               <h1 className="text-2xl font-semibold text-text-1">{pageHeading}</h1>
               <p className="mt-2 text-sm text-text-2">{listSeo.description}</p>
             </div>
-            {!isMobile && (
-              <div className="panel-raised rounded-sm border border-border p-4 sm:p-6 mb-6">
-                {!isMobile && (
-                  <>
-                    <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-                      <div className="flex items-center gap-2">
-                        <button
-                            type="button"
-                            onClick={() => setShowFilters(!showFilters)}
-                            className={`hidden lg:inline-flex whitespace-nowrap px-4 py-1 text-sm rounded-sm transition ${showFilters ? 'bg-primary-soft text-primary-ink' : 'bg-muted text-text-2 hover:bg-surface'}`}
-                          >
-                            <span className="inline-flex items-center gap-2">
-                              <IconSearch className="h-4 w-4" />
-                              <span>{t('高级筛选')}</span>
-                            </span>
-                          </button>
-                        {isAdmin && (
-                          <Button
-                            type="button"
-                            onClick={() => setShowCreateModal(true)}
-                            variant="primary"
-                            size="sm"
-                            className="hidden lg:inline-flex whitespace-nowrap"
-                          >
-                            <span className="inline-flex items-center gap-2">
-                              <IconPlus className="h-4 w-4" />
-                              <span>{t('创建文章')}</span>
-                            </span>
-                          </Button>
-                        )}
-                      </div>
-                      <div className="hidden lg:flex flex-wrap items-center gap-4 lg:justify-end">
-                        <FilterSelectInline
-                          label={`${t('创建时间')}：`}
-                          value={quickDateFilter}
-                          onChange={(value) => handleQuickDateChange(value as QuickDateOption)}
-                          showSearch={false}
-                          options={[
-                            { value: '', label: t('全部') },
-                            { value: '1d', label: t('1天内') },
-                            { value: '3d', label: t('3天内') },
-                            { value: '1w', label: t('1周内') },
-                            { value: '1m', label: t('1个月') },
-                            { value: '3m', label: t('3个月') },
-                            { value: '6m', label: t('6个月') },
-                            { value: '1y', label: t('1年内') },
-                          ]}
-                        />
-                        {isAdmin && (
-                          <FilterSelectInline
-                            label={`${t('可见性')}：`}
-                            value={visibilityFilter}
-                            onChange={(value) => { setVisibilityFilter(value); setPage(1); }}
-                            showSearch={false}
-                            options={[
-                              { value: '', label: t('全部') },
-                              { value: 'visible', label: t('可见') },
-                              { value: 'hidden', label: t('隐藏') },
-                            ]}
-                          />
-                        )}
-                        <FilterSelectInline
-                          label={`${t('排序')}：`}
-                          value={sortBy}
-                          onChange={(value) => { setSortBy(value); setPage(1); }}
-                          showSearch={false}
-                          options={[
-                            { value: 'published_at_desc', label: t('发表时间倒序') },
-                            { value: 'created_at_desc', label: t('创建时间倒序') },
-                            { value: 'note_recommendation_level_desc', label: t('推荐等级倒序') },
-                          ]}
-                        />
-                      </div>
-                    </div>
-
-                    {showFilters && (
-                      <div className="mt-4 pt-4 border-t border-border">
-                        {advancedFiltersBody}
-                      </div>
-                    )}
-
-                    <div className="mt-4 pt-4 border-t border-border">
-                      {filterSummary}
-                    </div>
-                  </>
-                )}
-                {showAdminDesktop && selectedArticleSlugs.size > 0 && batchActions}
-              </div>
-            )}
+            <FilterToolbar
+              isMobile={isMobile}
+              showFilters={showFilters}
+              setShowFilters={setShowFilters}
+              isAdmin={isAdmin}
+              setShowCreateModal={setShowCreateModal}
+              quickDateFilter={quickDateFilter}
+              handleQuickDateChange={handleQuickDateChange}
+              visibilityFilter={visibilityFilter}
+              setVisibilityFilter={setVisibilityFilter}
+              sortBy={sortBy}
+              setSortBy={setSortBy}
+              setPage={setPage}
+              showAdminDesktop={showAdminDesktop}
+              selectedArticleSlugs={selectedArticleSlugs}
+              advancedFiltersBody={advancedFiltersBody}
+              filterSummary={filterSummary}
+              batchActions={batchActions}
+            />
 
             {!listContentReady ? (
               listSkeleton
@@ -1969,294 +1480,49 @@ export default function Home({
              ) : (
                 <> 
                   {showAdminDesktop && (
-                    <div className="mb-4">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <CheckboxInput
-                          checked={selectedArticleSlugs.size === articles.length}
-                          onChange={handleSelectAll}
-                        />
-                        <span className="text-sm text-text-2">
-                          {t('全选')} ({selectedArticleSlugs.size}/{articles.length})
-                        </span>
-                      </div>
-                    </div>
+                    <SelectAllBar
+                      selectedCount={selectedArticleSlugs.size}
+                      totalCount={articles.length}
+                      onSelectAll={handleSelectAll}
+                    />
                   )}
                   <div className="space-y-4">
-                    {articles.map((article) => {
-                      const articleHref = buildArticleHref(article.slug);
-                      const displayTitle = article.title_trans?.trim() || article.title;
-                      const selected = showAdminDesktop && selectedArticleSlugs.has(article.slug);
-                      const cardTopImageUrl = resolveMediaUrl(article.top_image || basicSettings.site_logo_url || '/logo.png');
-                      const showViewStat = (article.view_count ?? 0) > 0;
-                      const showCommentStat = (article.comment_count ?? 0) > 0;
-                      const mediaStatsOverlay = (showViewStat || showCommentStat) ? (
-                        <div
-                          className="absolute inset-x-2 bottom-1.5 flex items-center justify-end gap-2 pointer-events-none text-[11px] font-semibold leading-none text-white"
-                          style={{ textShadow: '0 1px 8px rgba(0, 0, 0, 0.88)' }}
-                        >
-                          {showViewStat ? (
-                            <span className="inline-flex items-center gap-0.5">
-                              <IconEye className="h-4 w-4 shrink-0 drop-shadow-[0_1px_6px_rgba(0,0,0,0.92)]" />
-                              <span>{article.view_count}</span>
-                            </span>
-                          ) : null}
-                          {showCommentStat ? (
-                            <span className="inline-flex items-center gap-0.5">
-                              <IconEdit className="h-4 w-4 shrink-0 drop-shadow-[0_1px_6px_rgba(0,0,0,0.92)]" />
-                              <span>{article.comment_count}</span>
-                            </span>
-                          ) : null}
-                        </div>
-                      ) : null;
-                      const mediaBlock = (
-                        showAdminDesktop ? (
-                          <div className="relative w-full sm:w-40 aspect-video sm:aspect-square overflow-hidden rounded-lg bg-muted">
-                            <img
-                              src={cardTopImageUrl || defaultTopImageUrl}
-                              alt={displayTitle}
-                              className="absolute inset-0 h-full w-full object-cover"
-                              loading="lazy"
-                              decoding="async"
-                            />
-                            <ArticleLanguageTag article={article} className="absolute left-2 top-2 px-2 py-0.5 text-xs" />
-                            <RecommendationLevelBadge
-                              level={article.note_recommendation_level}
-                              variant="image-overlay"
-                              className="absolute right-2 top-2"
-                            />
-                            {mediaStatsOverlay}
-                          </div>
-                        ) : (
-                          <Link
-                            href={articleHref}
-                            target={articleLinkTarget}
-                            rel={articleLinkRel}
-                            className="relative block w-full sm:w-40 aspect-video sm:aspect-square overflow-hidden rounded-lg bg-muted"
-                          >
-                            <img
-                              src={cardTopImageUrl || defaultTopImageUrl}
-                              alt={displayTitle}
-                              className="absolute inset-0 h-full w-full object-cover"
-                              loading="lazy"
-                              decoding="async"
-                            />
-                            <ArticleLanguageTag article={article} className="absolute left-2 top-2 px-2 py-0.5 text-xs" />
-                            <RecommendationLevelBadge
-                              level={article.note_recommendation_level}
-                              variant="image-overlay"
-                              className="absolute right-2 top-2"
-                            />
-                            {mediaStatsOverlay}
-                          </Link>
-                        )
-                      );
-
-                      return (
-                        <article
-                          key={article.slug}
-                          id={`article-${article.slug}`}
-                          onClick={showAdminDesktop ? (event) => handleOpenArticle(event, article) : undefined}
-                          onKeyDown={showAdminDesktop ? (event) => handleArticleCardKeyDown(event, article) : undefined}
-                          role={showAdminDesktop ? 'button' : undefined}
-                          tabIndex={showAdminDesktop ? 0 : undefined}
-                          aria-label={showAdminDesktop ? t('选择文章') : undefined}
-                          aria-pressed={showAdminDesktop ? selected : undefined}
-                          className={`panel-raised rounded-lg border border-border p-4 sm:p-6 min-h-[184px] transition relative scroll-mt-24 ${
-                            showAdminDesktop
-                              ? 'cursor-pointer hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40'
-                              : 'hover:shadow-md'
-                          } ${!article.is_visible && isAdmin ? 'opacity-60' : ''} ${selected ? 'ring-2 ring-primary/70 ring-offset-2 bg-primary-soft/25' : ''}`}
-                        >
-                          {showAdminDesktop && (
-                            <div className="absolute top-3 right-3 flex items-center gap-1">
-                              <IconButton
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleToggleVisibility(article.slug, article.is_visible);
-                                }}
-                                variant="default"
-                                size="sm"
-                                title={article.is_visible ? t('点击隐藏') : t('点击显示')}
-                              >
-                                {article.is_visible ? (
-                                  <IconEye className="h-4 w-4" />
-                                ) : (
-                                  <IconEyeOff className="h-4 w-4" />
-                                )}
-                              </IconButton>
-                              <IconButton
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleDelete(article.slug);
-                                }}
-                                variant="danger"
-                                size="sm"
-                                title={t('删除')}
-                              >
-                                <IconTrash className="h-4 w-4" />
-                              </IconButton>
-                            </div>
-                          )}
-                          <div className="flex flex-col sm:flex-row gap-4">
-                            {showAdminDesktop && (
-                              <CheckboxInput
-                                checked={selected}
-                                onChange={() => handleToggleSelect(article.slug)}
-                                onClick={(e) => e.stopPropagation()}
-                                className="mt-1"
-                              />
-                            )}
-                            {mediaBlock}
-                            <div className="flex-1 sm:pr-6">
-                              <Link
-                                href={articleHref}
-                                onClick={(e) => e.stopPropagation()}
-                                target={articleLinkTarget}
-                                rel={articleLinkRel}
-                              >
-                                <h3 className="text-xl font-semibold text-text-1 hover:text-primary transition cursor-pointer">
-                                  {displayTitle}
-                                </h3>
-                              </Link>
-                              <ArticleMetaRow
-                                className="mt-2"
-                                publishedAt={article.published_at}
-                                createdAt={article.created_at}
-                                items={[
-                                  article.category ? (
-                                    <span
-                                      className="category-chip px-2 py-1 rounded-sm"
-                                      style={{
-                                        backgroundColor: article.category.color ? `${article.category.color}20` : 'var(--bg-muted)',
-                                        color: article.category.color || 'var(--text-2)',
-                                      }}
-                                    >
-                                      {article.category.name}
-                                    </span>
-                                  ) : null,
-                                                                  (() => {
-                                                                    const topics = [...(article.topics || [])].sort(
-                                                                      (a, b) =>
-                                                                        String(a.title || a.key || '').length -
-                                                                        String(b.title || b.key || '').length,
-                                                                    );
-                                                                    if (topics.length === 0) return null;
-                                                                    return (
-                                                                      <span className="inline-flex min-w-0 flex-wrap items-center gap-2">
-                                                                        {topics.slice(0, 2).map((topic) => (
-                                                                          <Link
-                                                                            key={topic.key}
-                                                                            href={`/topics/${encodeURIComponent(topic.key)}`}
-                                                                            target="_blank"
-                                                                            rel="noopener noreferrer"
-                                                                            onClick={(e) => e.stopPropagation()}
-                                                                            className="rounded-sm bg-muted px-2 py-1 text-xs text-text-2 transition hover:bg-primary-soft hover:text-primary-ink"
-                                                                            title={topic.summary || topic.title || topic.key}
-                                                                          >
-                                                                            {topic.title || topic.key}
-                                                                          </Link>
-                                                                        ))}
-                                                                        {topics.length > 2 && (
-                                                                          <span className="rounded-sm border border-border bg-surface px-2 py-1 text-xs text-text-3">
-                                                                            +{topics.length - 2}
-                                                                          </span>
-                                                                        )}
-                                                                      </span>
-                                                                    );
-                                                                  })(),
-								  article.author ? <span>{t('作者')}: {article.author}</span> : null,
-								]}
-							  />
-                              {article.summary && (
-                                <p className="mt-2 text-text-2 line-clamp-3">
-                                  {article.summary}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                        </article>
-                      );
-                    })}
-                  </div>
-
-                {!isMobile && (
-                  <div className="mt-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                    <div className="flex flex-wrap items-center gap-2 text-sm text-text-2">
-                      <span>{t('每页显示')}</span>
-                      <SelectField
-                        value={pageSize}
-                        onChange={(value) => {
-                          suppressNextPageFetchRef.current = false;
-                          setPageSize(Number(value));
-                          setPage(1);
-                        }}
-                        className="w-20"
-                        options={[
-                          { value: 10, label: '10' },
-                          { value: 20, label: '20' },
-                          { value: 50, label: '50' },
-                          { value: 100, label: '100' },
-                        ]}
+                    {articles.map((article) => (
+                      <ArticleCard
+                        key={article.slug}
+                        article={article}
+                        articleHref={buildArticleHref(article.slug)}
+                        selected={showAdminDesktop && selectedArticleSlugs.has(article.slug)}
+                        showAdminDesktop={showAdminDesktop}
+                        isAdmin={isAdmin}
+                        isMobile={isMobile}
+                        siteLogoUrl={basicSettings.site_logo_url}
+                        onOpenArticle={handleOpenArticle}
+                        onCardKeyDown={handleArticleCardKeyDown}
+                        onToggleSelect={handleToggleSelect}
+                        onToggleVisibility={handleToggleVisibility}
+                        onDelete={handleDelete}
                       />
-                      <span>{t('条')}，{t('共')} {total} {t('条')}</span>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      {page > 1 ? (
-                        <Link
-                          href={buildPaginationHref(Math.max(1, page - 1))}
-                          className="inline-flex items-center justify-center rounded-sm transition font-medium focus:outline-none px-3 py-1.5 text-sm border border-border bg-surface text-text-2 hover:bg-muted"
-                        >
-                          {t('上一页')}
-                        </Link>
-                      ) : (
-                        <span className="inline-flex items-center justify-center rounded-sm px-3 py-1.5 text-sm border border-border bg-muted text-text-3">
-                          {t('上一页')}
-                        </span>
-                      )}
-                      <span className="px-4 py-2 text-sm bg-surface border border-border rounded-sm text-text-2">
-                        {t('第')} {page} / {totalPages} {t('页')}
-                      </span>
-                      {page < totalPages ? (
-                        <Link
-                          href={buildPaginationHref(page + 1)}
-                          className="inline-flex items-center justify-center rounded-sm transition font-medium focus:outline-none px-3 py-1.5 text-sm border border-border bg-surface text-text-2 hover:bg-muted"
-                        >
-                          {t('下一页')}
-                        </Link>
-                      ) : (
-                        <span className="inline-flex items-center justify-center rounded-sm px-3 py-1.5 text-sm border border-border bg-muted text-text-3">
-                          {t('下一页')}
-                        </span>
-                      )}
-                      <div className="ml-2 flex flex-none items-center gap-1 whitespace-nowrap">
-                        <TextInput
-                          type="number"
-                          value={jumpToPage}
-                          onChange={(e) => setJumpToPage(e.target.value)}
-                          onKeyDown={(e) => e.key === 'Enter' && handleJumpToPage()}
-                          className="w-16 text-center"
-                          compact
-                          min={1}
-                          max={totalPages}
-                        />
-                        <Button
-                          onClick={handleJumpToPage}
-                          variant="primary"
-                          size="sm"
-                          className="whitespace-nowrap"
-                        >
-                          {t('跳转')}
-                        </Button>
-                      </div>
-                    </div>
+                    ))}
                   </div>
-                )}
-                {isMobile && (
-                  <div className="mt-6 text-center text-sm text-text-3">
-                    {loadingMore ? t('加载中...') : hasMore ? t('上拉加载更多') : t('没有更多了')}
-                    <div ref={loadMoreRef} className="h-6" />
-                  </div>
-                )}
+
+                <PaginationBar
+                  isMobile={isMobile}
+                  page={page}
+                  totalPages={totalPages}
+                  total={total}
+                  pageSize={pageSize}
+                  jumpToPage={jumpToPage}
+                  setJumpToPage={setJumpToPage}
+                  setPage={setPage}
+                  setPageSize={setPageSize}
+                  suppressNextPageFetchRef={suppressNextPageFetchRef}
+                  buildPaginationHref={buildPaginationHref}
+                  handleJumpToPage={handleJumpToPage}
+                  loadingMore={loadingMore}
+                  hasMore={hasMore}
+                  loadMoreRef={loadMoreRef}
+                />
               </>
             )}
           </main>
@@ -2276,118 +1542,36 @@ export default function Home({
         }}
         onCancel={() => setConfirmState((prev) => ({ ...prev, isOpen: false }))}
       />
-      {isMobile && (
-        <>
-          <button
-            type="button"
-            onClick={() => {
-              setShowFilters(true);
-              setShowMobileFilters(true);
-            }}
-            className="fixed right-4 top-24 flex items-center justify-center w-10 h-10 rounded-full bg-surface border border-border shadow-lg text-text-2 hover:text-text-1 hover:bg-muted transition z-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
-            title={t('高级筛选')}
-            aria-label={t('打开高级筛选')}
-          >
-            <IconSearch className="h-4 w-4" />
-          </button>
-          {showMobileFilters && (
-            <div
-              className="fixed inset-0 z-50 bg-black/40 flex justify-end"
-              onClick={() => setShowMobileFilters(false)}
-            >
-              <div
-                className="h-full w-[86vw] max-w-sm bg-surface shadow-xl overflow-y-auto"
-                onClick={(event) => event.stopPropagation()}
-              >
-                <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-surface">
-                  <span className="text-sm font-semibold text-text-1">
-                    {t('高级筛选')}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setShowMobileFilters(false)}
-                    className="text-text-3 hover:text-text-1 transition text-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35"
-                    aria-label={t('关闭')}
-                  >
-                    ×
-                  </button>
-                </div>
-                <div className="p-4">{advancedFiltersBody}</div>
-              </div>
-            </div>
-          )}
-        </>
-      )}
+      <MobileFilterDrawer
+        isMobile={isMobile}
+        showMobileFilters={showMobileFilters}
+        setShowFilters={setShowFilters}
+        setShowMobileFilters={setShowMobileFilters}
+        advancedFiltersBody={advancedFiltersBody}
+      />
       <ArticleSplitEditorModal
         isOpen={showCreateModal}
         title={t('创建文章')}
         closeAriaLabel={t('关闭创建文章弹窗')}
         onClose={() => setShowCreateModal(false)}
         onSave={handleCreateArticle}
-        topFields={(
-          <>
-            <FormField label={t('标题')} required>
-              <TextInput
-                type="text"
-                value={createTitle}
-                onChange={(e) => setCreateTitle(e.target.value)}
-                placeholder={t('请输入文章标题')}
-              />
-            </FormField>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <FormField label={t('作者')}>
-                <TextInput
-                  type="text"
-                  value={createAuthor}
-                  onChange={(e) => setCreateAuthor(e.target.value)}
-                  placeholder={t('请输入作者')}
-                />
-              </FormField>
-              <FormField label={t('发表时间')}>
-                <TextInput
-                  type="date"
-                  value={createPublishedAt}
-                  onChange={(e) => setCreatePublishedAt(e.target.value)}
-                />
-              </FormField>
-              <FormField label={t('分类')}>
-                <SelectField
-                  value={createCategoryId}
-                  onChange={(value) => setCreateCategoryId(value)}
-                  className="w-full"
-                  options={[
-                    { value: '', label: t('未分类') },
-                    ...categories.map((category) => ({
-                      value: category.id,
-                      label: category.name,
-                    })),
-                  ]}
-                />
-              </FormField>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <FormField label={t('来源 URL')}>
-                <TextInput
-                  type="text"
-                  value={createSourceUrl}
-                  onChange={(e) => setCreateSourceUrl(e.target.value)}
-                  placeholder={t('请输入来源链接')}
-                />
-              </FormField>
-
-              <FormField label={t('头图 URL')}>
-                <TextInput
-                  type="text"
-                  value={createTopImage}
-                  onChange={(e) => setCreateTopImage(e.target.value)}
-                  placeholder={t('输入图片 URL')}
-                />
-              </FormField>
-            </div>
-          </>
-        )}
+        topFields={
+          <CreateArticleFormFields
+            createTitle={createTitle}
+            setCreateTitle={setCreateTitle}
+            createAuthor={createAuthor}
+            setCreateAuthor={setCreateAuthor}
+            createPublishedAt={createPublishedAt}
+            setCreatePublishedAt={setCreatePublishedAt}
+            createCategoryId={createCategoryId}
+            setCreateCategoryId={setCreateCategoryId}
+            createSourceUrl={createSourceUrl}
+            setCreateSourceUrl={setCreateSourceUrl}
+            createTopImage={createTopImage}
+            setCreateTopImage={setCreateTopImage}
+            categories={categories}
+          />
+        }
         contentValue={createContent}
         onContentChange={setCreateContent}
         onContentPaste={handleCreatePaste}

@@ -203,6 +203,19 @@ function readPageSource(relativePath: string) {
   return fs.readFileSync(path.join(frontendRoot, relativePath), "utf8");
 }
 
+// list 页面按区块拆分到 components/list/ 后，源码结构断言应覆盖全部 list 源文件。
+function readListSources() {
+  const listDir = path.join(frontendRoot, "components", "list");
+  const files = [
+    path.join(frontendRoot, "pages", "list.tsx"),
+    ...fs
+      .readdirSync(listDir)
+      .filter((name) => name.endsWith(".tsx"))
+      .map((name) => path.join(listDir, name)),
+  ];
+  return files.map((file) => fs.readFileSync(file, "utf8")).join("\n");
+}
+
 test("login page keeps noindex head in the loading branch", () => {
   const source = readPageSource("pages/login.tsx");
   const loadingBranch = source.match(/if \(isLoading\) \{([\s\S]*?)\n  \}/);
@@ -287,7 +300,7 @@ test("review detail page emits breadcrumb and article structured data", () => {
 });
 
 test("list page renders category filters as crawlable links", () => {
-  const source = readPageSource("pages/list.tsx");
+  const source = readListSources();
 
   assert.match(source, /const buildCategoryHref = \(categoryId\?: string\) =>/);
   assert.match(source, /<Link\s+href=\{buildCategoryHref\(undefined\)\}/);
