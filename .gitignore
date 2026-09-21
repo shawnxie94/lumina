@@ -35,3 +35,7 @@ bridge/.bridge/
 # local docker layer bust markers
 .build-bust
 **/.build-bust
+
+# runtime tool artifacts
+.playwright-cli/
+.zcodeignore
