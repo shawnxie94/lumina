@@ -192,36 +192,6 @@ export default function ArticleCard({
 									{article.category.name}
 								</span>
 							) : null,
-							(() => {
-								const topics = [...(article.topics || [])].sort(
-									(a, b) =>
-										String(a.title || a.key || '').length -
-										String(b.title || b.key || '').length,
-								);
-								if (topics.length === 0) return null;
-								return (
-									<span className="inline-flex min-w-0 flex-wrap items-center gap-2">
-										{topics.slice(0, 2).map((topic) => (
-											<Link
-												key={topic.key}
-												href={`/topics/${encodeURIComponent(topic.key)}`}
-												target="_blank"
-												rel="noopener noreferrer"
-												onClick={(e) => e.stopPropagation()}
-												className="rounded-sm bg-muted px-2 py-1 text-xs text-text-2 transition hover:bg-primary-soft hover:text-primary-ink"
-												title={topic.summary || topic.title || topic.key}
-											>
-												{topic.title || topic.key}
-											</Link>
-										))}
-										{topics.length > 2 && (
-											<span className="rounded-sm border border-border bg-surface px-2 py-1 text-xs text-text-3">
-												+{topics.length - 2}
-											</span>
-										)}
-									</span>
-								);
-							})(),
 							article.author ? <span>{t('作者')}: {article.author}</span> : null,
 						]}
 					/>

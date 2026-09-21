@@ -7,7 +7,7 @@ from xml.sax.saxutils import escape
 from sqlalchemy import func, literal, or_
 from sqlalchemy.orm import Session, joinedload, load_only
 
-from models import AIAnalysis, Article, ArticleComment, ArticleTopic, Category, Topic
+from models import AIAnalysis, Article, ArticleComment, Category
 
 
 def _normalize_start_date_bound(value: str | None) -> str | None:
@@ -169,7 +169,6 @@ def _build_filtered_query(
     *,
     is_admin: bool,
     category_id: str | None = None,
-        topic: str | None = None,
     search: str | None = None,
     source_domain: str | None = None,
     author: str | None = None,
@@ -186,15 +185,6 @@ def _build_filtered_query(
 
     if category_id:
         query = query.filter(Article.category_id == category_id)
-    if topic:
-        topic_key = topic.strip()
-        if topic_key:
-            query = (
-                query.join(ArticleTopic, ArticleTopic.article_id == Article.id)
-                .join(Topic, Topic.id == ArticleTopic.topic_id)
-                .filter(Topic.key == topic_key)
-                .filter(Topic.status != "ignored")
-            )
     query = _apply_title_search_filter(query, search)
     if source_domain:
         query = query.filter(Article.source_domain == source_domain)
@@ -406,13 +396,6 @@ class ArticleQueryService:
         if include_relations:
             query = query.options(
                 joinedload(Article.category).load_only(Category.id, Category.name, Category.color),
-                joinedload(Article.topic_links).joinedload(ArticleTopic.topic).load_only(
-                Topic.id,
-                Topic.key,
-                Topic.title,
-                Topic.topic_type,
-                Topic.status,
-            ),
                 joinedload(Article.ai_analysis).load_only(
                     AIAnalysis.summary,
                     AIAnalysis.summary_status,
@@ -439,7 +422,6 @@ class ArticleQueryService:
         page: int = 1,
         size: int = 20,
         category_id: str | None = None,
-        topic: str | None = None,
         search: str | None = None,
         source_domain: str | None = None,
         author: str | None = None,
@@ -455,7 +437,6 @@ class ArticleQueryService:
             db.query(Article),
             is_admin=is_admin,
             category_id=category_id,
-            topic=topic,
             search=search,
             source_domain=source_domain,
             author=author,
@@ -489,13 +470,6 @@ class ArticleQueryService:
                 Article.note_recommendation_level_order,
             ),
             joinedload(Article.category).load_only(Category.id, Category.name, Category.color),
-            joinedload(Article.topic_links).joinedload(ArticleTopic.topic).load_only(
-                Topic.id,
-                Topic.key,
-                Topic.title,
-                Topic.topic_type,
-                Topic.status,
-            ),
             joinedload(Article.ai_analysis).load_only(AIAnalysis.summary),
         )
 
@@ -605,13 +579,6 @@ class ArticleQueryService:
                 Category.id,
                 Category.name,
                 Category.sort_order,
-            ),
-            joinedload(Article.topic_links).joinedload(ArticleTopic.topic).load_only(
-                Topic.id,
-                Topic.key,
-                Topic.title,
-                Topic.topic_type,
-                Topic.status,
             ),
             joinedload(Article.ai_analysis).load_only(AIAnalysis.summary),
         ).all()

@@ -71,4 +71,3 @@ class MediaIngestRequest(BaseModel):
 
 
 # Re-export for convenience if needed by settings router imports.
-from app.schemas.topic import TopicSettingsUpdate  # noqa: E402

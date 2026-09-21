@@ -20,7 +20,6 @@ import ColumnEditPanel from "@/components/columns/ColumnEditPanel";
 import ColumnDetailArticle from "@/components/columns/ColumnDetailArticle";
 import ColumnSidebar from "@/components/columns/ColumnSidebar";
 import ReviewReferenceInsertPanel from "@/components/ReviewReferenceInsertPanel";
-import TopicInsertPanel from "@/components/TopicInsertPanel";
 import SeoHead from "@/components/SeoHead";
 import { BackToTop } from "@/components/BackToTop";
 import ArticleLightbox from "@/components/article/ArticleLightbox";
@@ -88,7 +87,6 @@ import {
 	VIEW_COUNT_DEDUPE_WINDOW_MS,
 	type EditorSelectionRange,
 } from "@/lib/reviewDetail";
-import { materializeTopicPlaceholders } from "@/lib/topicPlaceholders";
 import {
 	fetchServerBasicSettings,
 	fetchServerReview,
@@ -177,7 +175,6 @@ export default function ReviewDetailPage({
 	const [mediaStorageLoading, setMediaStorageLoading] = useState(false);
 	const [mediaUploading, setMediaUploading] = useState(false);
 	const [showReferenceInsertPanel, setShowReferenceInsertPanel] = useState(false);
-	const [showTopicInsertPanel, setShowTopicInsertPanel] = useState(false);
 	const [referenceCommandRange, setReferenceCommandRange] =
 		useState<ReviewReferenceCommandMatch | null>(null);
 
@@ -535,16 +532,16 @@ export default function ReviewDetailPage({
 		[topImage, siteSettings.site_logo_url],
 	);
 	const html = useMemo(() => {
-		const materialized = materializeTopicPlaceholders(
+		return renderSafeMarkdown(
 			materializeReviewArticlePlaceholders(
 				review.rendered_markdown || review.markdown_content || "",
 				review.article_sections_markdown,
 				review.article_placeholder_blocks,
 			),
+			{
+				enableMediaEmbed: true,
+			},
 		);
-		return renderSafeMarkdown(materialized, {
-			enableMediaEmbed: true,
-		});
 	}, [
 		review.article_placeholder_blocks,
 		review.article_sections_markdown,
@@ -552,12 +549,10 @@ export default function ReviewDetailPage({
 		review.rendered_markdown,
 	]);
 	const editPreviewMarkdown = useMemo(() => {
-		return materializeTopicPlaceholders(
-			materializeReviewArticlePlaceholders(
-				markdownContent || "",
-				review.article_sections_markdown,
-				review.article_placeholder_blocks,
-			),
+		return materializeReviewArticlePlaceholders(
+			markdownContent || "",
+			review.article_sections_markdown,
+			review.article_placeholder_blocks,
 		);
 	}, [
 		markdownContent,
@@ -1269,7 +1264,6 @@ export default function ReviewDetailPage({
 						mediaStorageEnabled={mediaStorageEnabled}
 						mediaStorageLoading={mediaStorageLoading}
 						mediaUploading={mediaUploading}
-						setShowTopicInsertPanel={setShowTopicInsertPanel}
 						editContentRef={editContentRef}
 						previewRef={previewRef}
 						handleTopImagePaste={handleTopImagePaste}
@@ -1353,28 +1347,6 @@ export default function ReviewDetailPage({
 				onClose={handleCloseReferenceInsertPanel}
 				onInsert={handleInsertReference}
 				selectedArticleIds={review.selected_article_ids || []}
-			/>
-			<TopicInsertPanel
-				isOpen={showTopicInsertPanel}
-				onClose={() => setShowTopicInsertPanel(false)}
-				onInsert={(markdown) => {
-					const target = editContentRef.current;
-					if (!target) {
-						setMarkdownContent((prev) => `${prev}${prev.endsWith("\n") ? "" : "\n"}${markdown}`);
-						setShowTopicInsertPanel(false);
-						return;
-					}
-					const start = target.selectionStart ?? target.value.length;
-					const endPos = target.selectionEnd ?? start;
-					const next = `${target.value.slice(0, start)}${markdown}${target.value.slice(endPos)}`;
-					setMarkdownContent(next);
-					setShowTopicInsertPanel(false);
-					window.requestAnimationFrame(() => {
-						const cursor = start + markdown.length;
-						target.focus();
-						target.setSelectionRange(cursor, cursor);
-					});
-				}}
 			/>
 
 

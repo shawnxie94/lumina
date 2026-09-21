@@ -1,4 +1,3 @@
-from app.schemas.topic import TopicSettingsUpdate
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Response
@@ -28,7 +27,6 @@ from app.schemas import (
     StorageSettingsUpdate,
 )
 from auth import get_admin_settings, get_current_admin
-from app.domain.topic_service import topic_service
 from models import ModelAPIConfig, get_db, now_str
 
 router = APIRouter()
@@ -479,29 +477,3 @@ async def rebuild_recommendation_embeddings(
         "skipped_articles": result["skipped_articles"],
     }
 
-
-
-@router.get("/api/settings/topics")
-async def get_topic_settings(
-    _: bool = Depends(get_admin_or_internal),
-    db: Session = Depends(get_db),
-):
-    try:
-        return topic_service.get_topic_settings(db)
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail="未初始化管理员设置") from exc
-
-
-@router.put("/api/settings/topics")
-async def update_topic_settings(
-    payload: TopicSettingsUpdate,
-    db: Session = Depends(get_db),
-    _: bool = Depends(get_current_admin),
-):
-    try:
-        return topic_service.update_topic_settings(
-            db,
-            payload.model_dump(exclude_unset=True),
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail="未初始化管理员设置") from exc

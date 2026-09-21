@@ -1,7 +1,7 @@
 # PROJECT KNOWLEDGE BASE
 
 **Updated:** 2026-07-29 17:40 Asia/Shanghai
-**Commit:** local-wip (topics/bridge/cli)
+**Commit:** local-wip
 **Branch:** main
 
 ## OVERVIEW
@@ -13,11 +13,9 @@ Lumina is a content workspace with a Next.js 14 frontend (pages router), FastAPI
 ├── backend/              # FastAPI app, models, worker, migrations (+ local Node Defuddle)
 ├── frontend/             # Next.js pages router app (web UI + API routes)
 ├── extension/            # WXT browser extension (Defuddle capture)
-├── bridge/               # Local Topic Bridge package (writeback/sync HTTP service)
-├── cli/                  # Lumina CLI (install/start Bridge + knowledge providers)
 ├── docs/                 # Ops notes, API notes, screenshots（TRD 已随 DB-first 收敛）
 ├── deploy/               # Deploy helpers (e.g. nginx)
-├── scripts/              # Repo-level scripts (docker healthcheck, CLI/Bridge installers)
+├── scripts/              # Repo-level scripts (docker healthcheck, defuddle version pin)
 └── data/                 # SQLite database + media volume
 ```
 
@@ -47,11 +45,6 @@ Nested agent maps (prefer these for domain detail):
 | Backend embedding batch logic | `backend/app/domain/article_embedding_service.py` | Model/hash skip logic |
 | Backend RSS generation | `backend/app/domain/article_rss_service.py` | Public RSS feed + cache key |
 | Backend backup import/export | `backend/app/api/routers/backup_router.py` `backend/app/domain/backup_service.py` | JSON backup stream |
-| Backend topic APIs | `backend/app/api/routers/topic_router.py` `backend/app/domain/topic_service.py` | Topics + compile writeback + orphan cleanup |
-| Topic settings | `backend/app/api/routers/settings_router.py` `frontend/components/TopicSettingsPanel.tsx` | Admin “主题解析” + Bridge health/sync |
-| Topic detail page | `frontend/pages/topics/[key].tsx` | Public topic page (entity/concept) |
-| Local Topic Bridge | `bridge/topic_bridge/` `scripts/install-topic-bridge.sh` | Export sources, scan wiki, writeback |
-| Lumina CLI | `cli/lumina_cli/` `scripts/install-lumina-cli.sh` | Local install/start/doctor/sync entrypoint |
 | Backend DB migrations | `backend/alembic/` `backend/scripts/migrate_db.py` | Alembic schema path |
 | Backend unit tests | `backend/tests/unit/` | Pytest core/domain/utils |
 | Route contract baseline | `backend/scripts/route_contract_baseline.json` | Router signature regression |
@@ -104,7 +97,7 @@ Nested agent maps (prefer these for domain detail):
 - Backend startup requires `INTERNAL_API_TOKEN`; app/worker fail fast on invalid runtime settings.
 - Backend API routes are served under `/backend/api/*` only.
 - Frontend API base resolves at runtime and defaults to `/backend` in same-origin environments.
-- Public RSS feed is served from `/backend/api/articles/rss.xml` and supports category/topic filtering.
+- Public RSS feed is served from `/backend/api/articles/rss.xml` and supports category filtering.
 - Comment OAuth providers are loaded dynamically by `frontend/pages/api/auth/[...nextauth].ts` from backend comment settings.
 - Header notifications are persisted in browser localStorage via `frontend/lib/notifications.ts`.
 - Markdown rendering uses `remark-math` + `rehype-katex` with `sanitize-html` allowlists.
@@ -184,14 +177,9 @@ docker compose logs api
 ```
 
 ## NOTES
-- Topics (entity/concept) are compiled by local knowledge tools (default: llm_wiki) via Topic Bridge; Lumina web is display + article store.
-- Prefer `~/.lumina/knowledge/<name>` for knowledge projects; avoid macOS Desktop/Documents/Downloads for LaunchAgent Bridge writes.
-- Canonical Bridge installer is `scripts/install-topic-bridge.sh`; `bridge/install.sh` is a thin compatibility wrapper.
-- `~/.lumina` defaults live in TWO files that must stay in sync (`bridge/topic_bridge/config.py` + `cli/lumina_cli/config.py`, packages install independently); HTTP clients exist in THREE copies (`bridge/topic_bridge/client.py`, `cli/lumina_cli/http.py`, `cli/lumina_cli/knowledge_repair.py`) — protocol changes must update all three.
-- Topic settings store Bridge URL/token for web connectivity; knowledge provider/path are owned by Lumina CLI config.
+- Knowledge graph / topic features were removed by product decision (2026-09-21): Lumina focuses on capture + deep reading + writing; graph mining happens in external tools fed by exported articles.
 
 - `docker-compose.yml` defines a separate `worker` service with AI polling env vars; local compose file is gitignored (`docker-compose.yml.example` is the template).
-- The current Compose stack does not include Neo4j or GraphRAG services; topic knowledge uses the local Topic Bridge / knowledge provider path.
 - `data/` is a persistent SQLite volume; reset with `docker compose down -v`.
 - Extension requires manual browser testing via Chrome load unpacked from `.output/chrome-mv3`.
 - `frontend/pages/api/auth/[...nextauth].ts` depends on `BACKEND_API_URL` and `INTERNAL_API_TOKEN` to read comment OAuth settings.

@@ -12,7 +12,7 @@ from app.core.public_cache import (
 )
 from app.schemas import CategoryCreate, CategorySortRequest
 from auth import get_current_admin
-from models import Article, Category, get_db, ArticleTopic, Topic
+from models import Article, Category, get_db
 
 router = APIRouter()
 
@@ -69,7 +69,6 @@ async def get_category_stats(
     search: Optional[str] = None,
     source_domain: Optional[str] = None,
     author: Optional[str] = None,
-    topic: Optional[str] = None,
     published_at_start: Optional[str] = None,
     published_at_end: Optional[str] = None,
     created_at_start: Optional[str] = None,
@@ -87,14 +86,6 @@ async def get_category_stats(
         stats_query = stats_query.filter(Article.source_domain == source_domain)
     if author:
         stats_query = stats_query.filter(Article.author == author)
-    if topic:
-        topic_key = topic.strip()
-        if topic_key:
-            stats_query = (
-                stats_query.join(ArticleTopic, ArticleTopic.article_id == Article.id)
-                .join(Topic, Topic.id == ArticleTopic.topic_id)
-                .filter(Topic.key == topic_key)
-            )
     if published_at_start:
         stats_query = stats_query.filter(
             func.substr(Article.published_at, 1, 10) >= published_at_start

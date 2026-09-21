@@ -158,11 +158,7 @@ class Article(Base):
         uselist=False,
         cascade="all, delete-orphan",
     )
-    topic_links = relationship(
-        "ArticleTopic",
-        back_populates="article",
-        cascade="all, delete-orphan",
-    )
+
 
 class ArticleComment(Base):
     __tablename__ = "article_comments"
@@ -630,98 +626,8 @@ class AdminSettings(Base):
     home_secondary_button_text = Column(String, default="")
     home_secondary_button_url = Column(String, default="")
     header_custom_links = Column(Text, default="[]")
-    topics_enabled = Column(Boolean, default=False)
-    topics_bridge_base_url = Column(String, default="http://127.0.0.1:8787")
-    topics_bridge_token = Column(String, nullable=True)
-    topics_auto_sync_on_enable = Column(Boolean, default=True)
-    topics_knowledge_type = Column(String, default="llm_wiki")
-    topics_project_path = Column(String, nullable=True)
-    topics_last_sync_at = Column(String, nullable=True)
-    topics_last_sync_status = Column(String, default="idle")
-    topics_last_sync_error = Column(Text, nullable=True)
-    topics_last_health_json = Column(Text, nullable=True)
-    topics_last_sync_result_json = Column(Text, nullable=True)
     created_at = Column(String, default=now_str)
     updated_at = Column(String, default=now_str)
-
-
-class Topic(Base):
-    __tablename__ = "topics"
-
-    id = Column(String, primary_key=True, default=generate_uuid)
-    key = Column(String, unique=True, nullable=False, index=True)
-    title = Column(String, nullable=False)
-    content_md = Column(Text, nullable=True)
-    tags_json = Column(Text, nullable=True)  # JSON string list
-    status = Column(String, nullable=False, default="active")
-    topic_type = Column(String, nullable=True)  # concept/entity/other
-    article_count = Column(Integer, nullable=False, default=0)
-    compiler = Column(String, nullable=True)
-    compiler_ref = Column(String, nullable=True)
-    compiled_at = Column(String, nullable=True)
-    related_topic_keys = Column(Text, nullable=True)  # JSON list
-    created_at = Column(String, default=now_str)
-    updated_at = Column(String, default=now_str)
-
-    article_links = relationship(
-        "ArticleTopic",
-        back_populates="topic",
-        cascade="all, delete-orphan",
-    )
-    claims = relationship(
-        "TopicClaim",
-        back_populates="topic",
-        cascade="all, delete-orphan",
-        order_by="TopicClaim.sort_order",
-    )
-
-
-class ArticleTopic(Base):
-    __tablename__ = "article_topics"
-    __table_args__ = (
-        UniqueConstraint("article_id", "topic_id", name="uq_article_topics_article_topic"),
-    )
-
-    id = Column(String, primary_key=True, default=generate_uuid)
-    article_id = Column(
-        String,
-        ForeignKey("articles.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-    topic_id = Column(
-        String,
-        ForeignKey("topics.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-    relation_reason = Column(Text, nullable=True)
-    confidence = Column(Float, nullable=True)
-    source = Column(String, nullable=False, default="bridge_writeback")
-    created_at = Column(String, default=now_str)
-    updated_at = Column(String, default=now_str)
-
-    article = relationship("Article", back_populates="topic_links")
-    topic = relationship("Topic", back_populates="article_links")
-
-
-class TopicClaim(Base):
-    __tablename__ = "topic_claims"
-
-    id = Column(String, primary_key=True, default=generate_uuid)
-    topic_id = Column(
-        String,
-        ForeignKey("topics.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-    text = Column(Text, nullable=False)
-    sort_order = Column(Integer, nullable=False, default=0)
-    article_ids_json = Column(Text, nullable=True)  # JSON list of article ids
-    created_at = Column(String, default=now_str)
-    updated_at = Column(String, default=now_str)
-
-    topic = relationship("Topic", back_populates="claims")
 
 
 def init_db():

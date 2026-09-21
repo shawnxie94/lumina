@@ -20,7 +20,6 @@ import SeoHead from "@/components/SeoHead";
 import ConfirmModal from "@/components/ConfirmModal";
 import Button from "@/components/Button";
 import ReviewTemplateSettings from "@/components/ReviewTemplateSettings";
-import TopicSettingsPanel from "@/components/TopicSettingsPanel";
 import CommentMonitorSection from "@/components/admin/CommentMonitorSection";
 import TaskMonitorSection, {
 	buildTaskTimelineChains,
@@ -61,7 +60,6 @@ import {
 	IconList,
 	IconCopy,
 	IconMoney,
-	IconNetwork,
 	IconNote,
 	IconPlug,
 	IconRobot,
@@ -115,8 +113,7 @@ type SettingSection =
 	| "monitoring"
 	| "comments"
 	| "extraction"
-	| "storage"
-	| "topics";
+	| "storage";
 type AISubSection =
 	| "model-api"
 	| "prompt"
@@ -237,8 +234,6 @@ const parseAdminRouteState = (
 			section = "columns";
 		} else if (settingsSection === "storage") {
 			section = "storage";
-		} else if (settingsSection === "topics") {
-			section = "topics";
 		} else if (settingsSection === "extraction") {
 			section = "extraction";
 			const extractionCandidate = segments[2] || "";
@@ -306,9 +301,6 @@ const buildAdminPath = (
 	if (section === "storage") {
 		return "/admin/settings/storage";
 	}
-	if (section === "topics") {
-		return "/admin/settings/topics";
-	}
 	if (section === "extraction") {
 		return `/admin/settings/extraction/${extractionSubSection}`;
 	}
@@ -336,7 +328,6 @@ export default function AdminPage() {
 				"comments",
 				"extraction",
 				"storage",
-				"topics",
 			]),
 		[],
 	);
@@ -3064,16 +3055,6 @@ export default function AdminPage() {
 											)}
 
 											
-															<SelectableButton
-																onClick={() => setActiveSection("topics")}
-																active={activeSection === "topics"}
-																variant="menu"
-															>
-																<span className="inline-flex items-center gap-2">
-																	<IconNetwork className="h-4 w-4" />
-																	<span>{t("主题解析")}</span>
-																</span>
-															</SelectableButton>
 
 <SectionToggleButton
 												label={t("AI配置")}
@@ -3444,7 +3425,6 @@ export default function AdminPage() {
 									backupImportInputRef={backupImportInputRef}
 								/>
 							)}
-							{activeSection === "topics" && <TopicSettingsPanel />}
 
 {activeSection === "monitoring" &&
 								monitoringSubSection === "tasks" && (

@@ -29,7 +29,6 @@ from app.domain.article_embedding_service import (
 )
 from app.domain.article_query_service import ArticleQueryService
 from app.domain.article_rss_service import ArticleRssService
-from app.domain.topic_service import topic_service
 from app.domain.article_url_ingest_service import (
     ArticleUrlIngestBadGatewayError,
     ArticleUrlIngestBadRequestError,
@@ -191,7 +190,6 @@ async def get_articles(
     page: int = 1,
     size: int = 20,
     category_id: Optional[str] = None,
-    topic: Optional[str] = None,
     search: Optional[str] = None,
     source_domain: Optional[str] = None,
     author: Optional[str] = None,
@@ -211,7 +209,6 @@ async def get_articles(
         page=page,
         size=size,
         category_id=category_id,
-        topic=topic,
         search=search,
         source_domain=source_domain,
         author=author,
@@ -241,7 +238,6 @@ async def get_articles(
                 }
                 if a.category
                 else None,
-                                "topics": topic_service.serialize_article_topics(a) if topic_service.is_topics_enabled(db) or is_admin else [],
                 "compile_status": getattr(a, "compile_status", "none") or "none",
                 "compiled_at": getattr(a, "compiled_at", None),
                 "author": a.author,
@@ -363,7 +359,6 @@ async def get_article(
         "category": {"id": article.category.id, "name": article.category.name}
         if article.category
         else None,
-                "topics": topic_service.serialize_article_topics(article) if topic_service.is_topics_enabled(db) or is_admin else [],
         "compile_status": getattr(article, "compile_status", "none") or "none",
         "compiled_at": getattr(article, "compiled_at", None),
         "author": article.author,
@@ -739,12 +734,6 @@ async def update_article(
         if "category_id" in article_data.__fields_set__:
             article.category_id = article_data.category_id
 
-        topic_service.mark_article_stale_if_needed(
-            db,
-            article,
-            title_changed=title_changed,
-            body_changed=body_changed,
-        )
         article.updated_at = now_str()
 
         db.commit()
@@ -761,11 +750,6 @@ async def update_article(
             "content_md": article.content_md,
             "content_trans": article.content_trans,
             "is_visible": article.is_visible,
-            "topics": (
-                topic_service.serialize_article_topics(article)
-                if topic_service.is_topics_enabled(db)
-                else []
-            ),
             "compile_status": getattr(article, "compile_status", "none") or "none",
             "compiled_at": getattr(article, "compiled_at", None),
             "updated_at": article.updated_at,

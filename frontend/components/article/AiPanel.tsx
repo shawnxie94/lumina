@@ -20,7 +20,6 @@ import {
 	IconChevronDown,
 	IconCopy,
 	IconList,
-	IconNetwork,
 	IconRefresh,
 	IconRobot,
 	IconTag,
@@ -153,49 +152,9 @@ function AiPanel({
 		Boolean(activeTabConfig?.key) &&
 		!isPendingJobStatus(activeTabConfig?.status);
 
-	const sortedArticleTopics = [...(article?.topics || [])].sort(
-		(a, b) => {
-			const rank = (item: { topic_type?: string | null }) => {
-				const type = String(item.topic_type || "").toLowerCase();
-				if (type === "entity") return 0;
-				if (type === "concept") return 1;
-				return 2;
-			};
-			const rankDiff = rank(a) - rank(b);
-			if (rankDiff !== 0) return rankDiff;
-			return (
-				String(a.title || a.key || "").length -
-				String(b.title || b.key || "").length
-			);
-		},
-	);
-
 	return (
 		<div className="bg-surface rounded-sm shadow-sm border border-border p-4">
 			<div className="space-y-6">
-				{sortedArticleTopics.length > 0 && (
-					<div>
-						<h2 className="mb-3 text-lg font-semibold text-text-1 inline-flex items-center gap-2">
-							<IconNetwork className="h-4 w-4" />
-							<span>{t("主题")}</span>
-						</h2>
-						<div className="flex max-h-[7.5rem] flex-wrap content-start gap-2 overflow-y-auto overscroll-contain pr-1">
-							{sortedArticleTopics.map((topic) => (
-								<Link
-									key={topic.key}
-									href={`/topics/${encodeURIComponent(topic.key)}`}
-									target="_blank"
-									rel="noopener noreferrer"
-									className="inline-flex max-w-full items-center rounded-sm bg-muted px-2.5 py-1 text-xs text-text-2 transition hover:bg-primary-soft hover:text-primary-ink"
-									title={topic.summary || topic.title || topic.key}
-								>
-									<span className="truncate">{topic.title || topic.key}</span>
-								</Link>
-							))}
-						</div>
-					</div>
-				)}
-
 				{tocItems.length > 0 && (
 					<div>
 						<div className="mb-3 flex items-center justify-between gap-2">

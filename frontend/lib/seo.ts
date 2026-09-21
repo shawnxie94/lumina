@@ -20,7 +20,6 @@ export interface SitemapEntry {
 
 export interface ListSeoQuery {
 	category_id?: string;
-	topic?: string;
 	search?: string;
 	source_domain?: string;
 	author?: string;
@@ -39,7 +38,6 @@ export interface ListSeoOptions {
 	siteName?: string;
 	siteDescription?: string;
 	categoryName?: string | null;
-	topicName?: string | null;
 	authorName?: string | null;
 }
 
@@ -155,7 +153,6 @@ const hasAnyLowValueReviewFilter = (query: ReviewListSeoQuery): boolean =>
 const countPrimaryFacets = (query: ListSeoQuery): number => {
 	let count = 0;
 	if (query.category_id) count += 1;
-	if (query.topic) count += 1;
 	if (query.author) count += 1;
 	return count;
 };
@@ -167,10 +164,7 @@ export const buildCanonicalListQuery = (query: ListSeoQuery): Record<string, str
 		countPrimaryFacets(query) <= 1 &&
 		(!query.sort_by || query.sort_by === "published_at_desc");
 	if (query.category_id) nextQuery.category_id = query.category_id;
-	if (query.topic && !query.category_id && !query.author) {
-		nextQuery.topic = query.topic;
-	}
-	if (query.author && !query.category_id && !query.topic) {
+	if (query.author && !query.category_id) {
 		nextQuery.author = query.author;
 	}
 	if (shouldKeepPage && query.page && query.page !== "1") {
@@ -213,9 +207,6 @@ const buildListTitle = (
 	const siteName = options.siteName || DEFAULT_SITE_NAME;
 	const page = Number.parseInt(query.page || "1", 10);
 	const pageLabel = Number.isFinite(page) && page > 1 ? ` - 第 ${page} 页` : "";
-	if (options.topicName || query.topic) {
-		return `${siteName} - ${options.topicName || query.topic} - 主题${pageLabel}`;
-	}
 	if (options.categoryName || query.category_id) {
 		return `${siteName} - ${options.categoryName || query.category_id} - 文章列表${pageLabel}`;
 	}
@@ -233,9 +224,6 @@ const buildListDescription = (
 	if (options.categoryName || query.category_id) {
 		return `浏览 ${(options.categoryName || query.category_id) as string} 分类下的公开文章、摘要与延伸阅读。${siteDescription}`;
 	}
-	if (options.topicName || query.topic) {
-		return `浏览主题 ${(options.topicName || query.topic) as string} 下的公开文章、摘要与延伸阅读。${siteDescription}`;
-	}
 	if (options.authorName || query.author) {
 		return `浏览作者 ${(options.authorName || query.author) as string} 的公开文章、摘要与延伸阅读。${siteDescription}`;
 	}
@@ -248,7 +236,6 @@ export const getListPageSeo = (
 ): ListSeoResult => {
 	const query: ListSeoQuery = {
 		category_id: pickFirst(rawQuery.category_id),
-		topic: pickFirst(rawQuery.topic),
 		search: pickFirst(rawQuery.search),
 		source_domain: pickFirst(rawQuery.source_domain),
 		author: pickFirst(rawQuery.author),

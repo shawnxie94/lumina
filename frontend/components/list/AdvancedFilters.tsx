@@ -4,7 +4,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import DateRangePicker from '@/components/DateRangePicker';
 import FilterInput from '@/components/FilterInput';
 import FilterSelect from '@/components/FilterSelect';
-import type { Category, TopicSummary } from '@/lib/api';
+import type { Category } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import type { QuickDateOption } from '@/lib/listFilters';
 import { formatDate, toDayjsRange } from '@/lib/listQuery';
@@ -20,9 +20,6 @@ export interface AdvancedFiltersProps {
 	author: string;
 	setAuthor: Dispatch<SetStateAction<string>>;
 	authors: string[];
-	topicKey: string;
-	setTopicKey: Dispatch<SetStateAction<string>>;
-	topics: TopicSummary[];
 	visibilityFilter: string;
 	setVisibilityFilter: Dispatch<SetStateAction<string>>;
 	sortBy: string;
@@ -64,9 +61,6 @@ export default function AdvancedFilters({
 	author,
 	setAuthor,
 	authors,
-	topicKey,
-	setTopicKey,
-	topics,
 	visibilityFilter,
 	setVisibilityFilter,
 	sortBy,
@@ -149,12 +143,6 @@ export default function AdvancedFilters({
 				</div>
 			)}
 			<div className="hidden lg:grid grid-cols-3 gap-4 mb-2">
-				<FilterSelect
-					label={t('主题')}
-					value={topicKey}
-					onChange={(value) => { setTopicKey(value); setPage(1); }}
-					options={[{ value: '', label: t('全部主题') }, ...topics.map((item) => ({ value: item.key, label: item.title || item.key }))]}
-				/>
 				<div>
 					<label htmlFor="published-date-range" className="block text-sm text-text-2 mb-1.5">{t('发表时间')}</label>
 					<DateRangePicker

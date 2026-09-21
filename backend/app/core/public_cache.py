@@ -22,9 +22,6 @@ CACHE_KEY_AUTHORS_PUBLIC = "authors:public"
 CACHE_KEY_SOURCES_PUBLIC = "sources:public"
 CACHE_KEY_ARTICLES_RSS_PUBLIC_PREFIX = "articles:rss:public:"
 CACHE_KEY_REVIEWS_RSS_PUBLIC_PREFIX = "reviews:rss:public:"
-CACHE_KEY_TOPICS_LIST_PREFIX = "topics:list:"
-CACHE_KEY_TOPICS_SETTINGS = "topics:settings"
-CACHE_KEY_TOPICS_ENABLED = "topics:enabled"
 # Topic data only changes after bridge sync/writeback or admin settings updates.
 TOPICS_CACHE_TTL_SECONDS = 1800
 
@@ -147,9 +144,3 @@ def apply_public_cache_headers(
     if "Authorization" not in vary_values:
         vary_values.append("Authorization")
     response.headers["Vary"] = ", ".join(vary_values)
-
-
-def invalidate_topics_caches() -> None:
-    """Drop topic dropdown/settings caches after sync or settings changes."""
-    invalidate_public_cache(CACHE_KEY_TOPICS_SETTINGS, CACHE_KEY_TOPICS_ENABLED)
-    invalidate_public_cache_prefix(CACHE_KEY_TOPICS_LIST_PREFIX)

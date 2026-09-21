@@ -810,49 +810,7 @@
     ]
   },
   {
-    "path": "/api/settings/topics",
-    "methods": [
-      "GET"
-    ]
-  },
-  {
-    "path": "/api/settings/topics",
-    "methods": [
-      "PUT"
-    ]
-  },
-  {
     "path": "/api/sources",
-    "methods": [
-      "GET"
-    ]
-  },
-  {
-    "path": "/api/topics",
-    "methods": [
-      "GET"
-    ]
-  },
-  {
-    "path": "/api/topics/cleanup-orphans",
-    "methods": [
-      "POST"
-    ]
-  },
-  {
-    "path": "/api/topics/compile-results",
-    "methods": [
-      "POST"
-    ]
-  },
-  {
-    "path": "/api/topics/export/articles",
-    "methods": [
-      "GET"
-    ]
-  },
-  {
-    "path": "/api/topics/{topic_key}",
     "methods": [
       "GET"
     ]

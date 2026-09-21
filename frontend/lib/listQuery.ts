@@ -70,7 +70,6 @@ export const LIST_QUERY_KEYS = [
   'search',
   'source_domain',
   'author',
-  'topic',
   'visibility',
   'quick_date',
   'sort_by',

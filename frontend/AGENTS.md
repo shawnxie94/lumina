@@ -17,10 +17,6 @@ frontend/
 ```
 
 ## WHERE TO LOOK
-| Topic settings panel | `frontend/components/TopicSettingsPanel.tsx` | Admin “主题解析”: Bridge health, sync, install guidance |
-| Topic detail page | `frontend/pages/topics/[key].tsx` | Public entity/concept page |
-| Topic insert helper | `frontend/components/TopicInsertPanel.tsx` `frontend/lib/topicPlaceholders.ts` | Column/editor topic placeholders |
-| Topic API client | `frontend/lib/api.ts` (`topicApi` / `topicSettingsApi`) | Topics + settings + orphan cleanup |
 
 | Task | Location | Notes |
 |------|----------|-------|

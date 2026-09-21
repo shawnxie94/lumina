@@ -9,11 +9,9 @@ import {
   categoryApi,
   mediaApi,
   storageSettingsApi,
-  topicApi,
   type Article,
   type BasicSettings,
   type Category,
-  type TopicSummary,
   normalizeMediaHtml,
   resolveMediaUrl,
 } from '@/lib/api';
@@ -108,7 +106,6 @@ export const getServerSideProps: GetServerSideProps<ListPageProps> = async ({ re
         search: initialQuery.search,
         source_domain: initialQuery.source_domain,
         author: initialQuery.author,
-        topic: initialQuery.topic,
         published_at_start: initialQuery.published_at_start,
         published_at_end: initialQuery.published_at_end,
         created_at_start: initialQuery.created_at_start,
@@ -120,7 +117,6 @@ export const getServerSideProps: GetServerSideProps<ListPageProps> = async ({ re
         search: initialQuery.search,
         source_domain: initialQuery.source_domain,
         author: initialQuery.author,
-        topic: initialQuery.topic,
         published_at_start: initialQuery.published_at_start,
         published_at_end: initialQuery.published_at_end,
         created_at_start: initialQuery.created_at_start,
@@ -227,8 +223,6 @@ export default function Home({
   const [searchTerm, setSearchTerm] = useState<string>(initialSearchTerm);
   const [sourceDomain, setSourceDomain] = useState<string>(initialSourceDomain);
   const [author, setAuthor] = useState<string>(initialAuthor);
-  const [topicKey, setTopicKey] = useState<string>(initialQuery.topic || '');
-  const [topics, setTopics] = useState<TopicSummary[]>([]);
   const [publishedDateRange, setPublishedDateRange] = useState<[Date | null, Date | null]>([initialPublishedStart, initialPublishedEnd]);
   const [createdDateRange, setCreatedDateRange] = useState<[Date | null, Date | null]>(
     initialCreatedStart || initialCreatedEnd
@@ -339,7 +333,6 @@ export default function Home({
     if (searchTerm) nextQuery.search = searchTerm;
     if (sourceDomain) nextQuery.source_domain = sourceDomain;
     if (author) nextQuery.author = author;
-    if (topicKey) nextQuery.topic = topicKey;
     if (visibilityFilter) nextQuery.visibility = visibilityFilter;
     if (quickDateFilter) nextQuery.quick_date = quickDateFilter;
     if (publishedStartDate) nextQuery.published_at_start = formatDate(publishedStartDate);
@@ -355,7 +348,6 @@ export default function Home({
     searchTerm,
     sourceDomain,
     author,
-    topicKey,
     visibilityFilter,
     quickDateFilter,
     publishedStartDate,
@@ -459,7 +451,6 @@ export default function Home({
         search: searchTerm || undefined,
         source_domain: sourceDomain || undefined,
         author: author || undefined,
-        topic: topicKey || undefined,
         is_visible: isAdmin ? visibilityValue : undefined,
         published_at_start: formatDate(publishedStartDate) || undefined,
         published_at_end: formatDate(publishedEndDate) || undefined,
@@ -493,7 +484,6 @@ export default function Home({
     }
   }, [
     author,
-    topicKey,
     createdEndDate,
     createdStartDate,
     isAdmin,
@@ -526,7 +516,6 @@ export default function Home({
         search: searchTerm || undefined,
         source_domain: sourceDomain || undefined,
         author: author || undefined,
-        topic: topicKey || undefined,
         published_at_start: formatDate(publishedStartDate) || undefined,
         published_at_end: formatDate(publishedEndDate) || undefined,
         created_at_start: formatDate(createdStartDate) || undefined,
@@ -544,7 +533,6 @@ export default function Home({
     }
   }, [
     author,
-    topicKey,
     createdEndDate,
     createdStartDate,
     publishedEndDate,
@@ -567,15 +555,6 @@ export default function Home({
   };
 
 
-  const fetchTopics = async () => {
-    try {
-      const data = await topicApi.list({ page: 1, size: 100 });
-      setTopics(Array.isArray(data?.data) ? data.data : []);
-    } catch (error) {
-      console.error('Failed to fetch topics:', error);
-      setTopics([]);
-    }
-  };
   const fetchSources = async () => {
     if (sourcesLoadingRef.current) return;
     sourcesLoadingRef.current = true;
@@ -737,7 +716,6 @@ export default function Home({
     const searchParam = routerQueryState.search || '';
     const sourceDomainParam = routerQueryState.source_domain || '';
     const authorParam = routerQueryState.author || '';
-    const topicParam = routerQueryState.topic || '';
     const visibilityParam = routerQueryState.visibility || '';
     const quickDateRaw = routerQueryState.quick_date || '';
     const sortByRaw = routerQueryState.sort_by || '';
@@ -760,7 +738,6 @@ export default function Home({
     setSearchTerm(searchParam);
     setSourceDomain(sourceDomainParam);
     setAuthor(authorParam);
-    setTopicKey(topicParam);
     setVisibilityFilter(
       visibilityParam === 'visible' || visibilityParam === 'hidden'
         ? visibilityParam
@@ -811,7 +788,6 @@ export default function Home({
     if (searchTerm) nextQuery.search = searchTerm;
     if (sourceDomain) nextQuery.source_domain = sourceDomain;
     if (author) nextQuery.author = author;
-    if (topicKey) nextQuery.topic = topicKey;
     if (visibilityFilter) nextQuery.visibility = visibilityFilter;
     if (quickDateFilter) nextQuery.quick_date = quickDateFilter;
     if (publishedStartDate) nextQuery.published_at_start = formatDate(publishedStartDate);
@@ -852,7 +828,6 @@ export default function Home({
     searchTerm,
     sourceDomain,
     author,
-    topicKey,
     visibilityFilter,
     quickDateFilter,
     publishedStartDate,
@@ -874,11 +849,9 @@ export default function Home({
     if (!showFilters && !showMobileFilters) return;
     if (authors.length === 0) {
       fetchAuthors();
-      fetchTopics();
     }
     if (sources.length === 0) {
       fetchSources();
-      fetchTopics();
     }
   }, [showFilters, showMobileFilters, authors.length, sources.length]);
 
@@ -1027,9 +1000,6 @@ export default function Home({
       author={author}
       setAuthor={setAuthor}
       authors={authors}
-      topicKey={topicKey}
-      setTopicKey={setTopicKey}
-      topics={topics}
       visibilityFilter={visibilityFilter}
       setVisibilityFilter={setVisibilityFilter}
       sortBy={sortBy}

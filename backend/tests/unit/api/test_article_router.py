@@ -106,12 +106,6 @@ async def test_article_update_and_visibility_work_after_tag_removal(
         "invalidate_public_article_derived_cache",
         lambda: None,
     )
-    monkeypatch.setattr(
-        article_router.topic_service,
-        "is_topics_enabled",
-        lambda db: False,
-    )
-
     updated = await article_router.update_article(
         article.slug,
         article_router.ArticleUpdate(title="Updated mutation article"),

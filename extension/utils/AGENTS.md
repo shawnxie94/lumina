@@ -21,7 +21,6 @@ extension/utils/
 | Task | Location | Notes |
 |------|----------|-------|
 | API requests | `extension/utils/api.ts` | Uses chrome storage for token |
-| Content-script readiness | `extension/utils/contentScript.ts` | Inject/reuse content script bridge |
 | Defuddle extract + markdown | `extension/utils/defuddleExtract.ts` | `defuddle/full` HTML + `createMarkdownContent` |
 | Shadow DOM prep | `extension/utils/flattenShadowDom.ts` | Used before Defuddle parse |
 | Error logging | `extension/utils/errorLogger.ts` | Popup-visible error timeline |

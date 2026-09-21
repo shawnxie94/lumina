@@ -47,7 +47,6 @@ interface ColumnEditPanelProps {
 	mediaStorageEnabled: boolean;
 	mediaStorageLoading: boolean;
 	mediaUploading: boolean;
-	setShowTopicInsertPanel: Dispatch<SetStateAction<boolean>>;
 	editContentRef: RefObject<HTMLTextAreaElement>;
 	previewRef: RefObject<HTMLDivElement>;
 	handleTopImagePaste: (event: ClipboardEvent<HTMLInputElement>) => void;
@@ -83,7 +82,6 @@ function ColumnEditPanel({
 	mediaStorageEnabled,
 	mediaStorageLoading,
 	mediaUploading,
-	setShowTopicInsertPanel,
 	editContentRef,
 	previewRef,
 	handleTopImagePaste,
@@ -230,25 +228,15 @@ function ColumnEditPanel({
 									<span className="text-xs font-normal text-text-3">
 										{t("输入 /ref 可打开引用插入。")}
 									</span>
-									<span className="text-xs font-normal text-text-3">
-										{t("支持主题占位符 {{topic:key}} / {{topic_article:slug}}。")}
-									</span>
 									{!mediaStorageEnabled ? (
 										<span className="text-xs font-normal text-text-3">
 										{t("未开启本地存储，外链将保持不变")}
 									</span>
 								) : null}
 							</div>
-								<div className="flex items-center gap-2">
-									<Button
-										size="sm"
-										variant="secondary"
-										onClick={() => setShowTopicInsertPanel(true)}
-									>
-										{t("按主题取用")}
-									</Button>
-									<IconButton
-										onClick={handleBatchConvertMarkdownImages}
+							<div className="flex items-center gap-2">
+								<IconButton
+									onClick={handleBatchConvertMarkdownImages}
 										disabled={mediaUploading || !mediaStorageEnabled}
 										title={
 											mediaStorageEnabled

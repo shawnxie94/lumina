@@ -389,20 +389,6 @@ export const authApi = {
 	},
 };
 
-export interface TopicSummary {
-	id?: string;
-	key: string;
-	title: string;
-	summary?: string | null;
-	status?: string;
-	topic_type?: string | null;
-	article_count?: number;
-	compiled_at?: string | null;
-	updated_at?: string | null;
-	relation_reason?: string | null;
-	tags?: string[];
-}
-
 export interface Article {
 	id: string;
 	slug: string;  // SEO友好的URL slug
@@ -411,7 +397,6 @@ export interface Article {
 	summary: string;
 	top_image: string;
 	category: { id: string; name: string; color?: string } | null;
-	topics?: TopicSummary[];
 	author: string;
 	status: string;
 	source_domain: string | null;
@@ -1011,7 +996,6 @@ export const articleApi = {
 		page?: number;
 		size?: number;
 		category_id?: string;
-		topic?: string;
 		search?: string;
 		source_domain?: string;
 		author?: string;
@@ -1610,7 +1594,6 @@ export const categoryApi = {
 		search?: string;
 		source_domain?: string;
 		author?: string;
-		topic?: string;
 		published_at_start?: string;
 		published_at_end?: string;
 		created_at_start?: string;
@@ -2038,162 +2021,3 @@ export const commentAdminApi = {
 	},
 };
 
-
-export interface TopicSettings {
-	enabled: boolean;
-	bridge_base_url: string;
-	bridge_token_configured: boolean;
-	auto_sync_on_enable: boolean;
-	knowledge_type: string;
-	project_path: string | null;
-	last_sync_at: string | null;
-	last_sync_status: string;
-	last_sync_error: string | null;
-	last_sync_result?: {
-		status?: string;
-		at?: string;
-		summary?: string;
-		detailLines?: string[];
-		hint?: string | null;
-		error?: string | null;
-		exported?: number;
-		skipped?: number;
-		writebackTopics?: number;
-		writebackArticles?: number;
-	} | null;
-	health: {
-		bridge?: { ok?: boolean; status?: string; detail?: string | null; checked_at?: string | null; version?: string | null };
-		llm_wiki?: {
-			ok?: boolean;
-			status?: string;
-			detail?: string | null;
-			checked_at?: string | null;
-			version?: string | null;
-			install?: {
-				installed?: boolean;
-				app_paths?: string[];
-				cli_path?: string | null;
-				install_url?: string;
-				docs_url?: string;
-				platform?: string;
-			};
-		};
-		provider?: {
-			ok?: boolean;
-			status?: string;
-			detail?: string | null;
-			checked_at?: string | null;
-			version?: string | null;
-			name?: string | null;
-			install?: {
-				installed?: boolean;
-				app_paths?: string[];
-				cli_path?: string | null;
-				install_url?: string;
-				docs_url?: string;
-				platform?: string;
-			};
-		};
-		project?: { ok?: boolean; name?: string | null; path?: string | null; detail?: string | null };
-	};
-	/** Client-side doctor snapshot aligned with `lumina doctor` / Bridge `/doctor`. Not persisted. */
-	doctor?: {
-		ok?: boolean;
-		source?: string;
-		aligned_with?: string;
-		checks?: Array<{ name?: string; ok?: boolean; detail?: unknown }>;
-		summary?: Record<string, string>;
-		hints?: string[];
-		cli?: Record<string, string>;
-	} | null;
-	setup?: {
-		actions?: Array<{ id?: string; title?: string; detail?: string }>;
-		commands?: Record<string, string>;
-		notes?: string[];
-	};
-}
-
-export interface TopicDetail extends TopicSummary {
-	content_md?: string | null;
-	tags?: string[];
-	claims?: Array<{ id?: string; text: string; sort_order?: number; article_ids?: string[] }>;
-	related_topics?: TopicSummary[];
-	articles?: {
-		data: Article[];
-		pagination: {
-			page: number;
-			size: number;
-			total: number;
-			total_pages: number;
-		};
-	};
-	compiler?: string | null;
-	compiler_ref?: string | null;
-}
-
-export interface TopicOrphanCleanupResult {
-	ok: boolean;
-	dry_run: boolean;
-	deleted_count: number;
-	orphan_count: number;
-	known_count: number;
-	total_topics: number;
-	sample_keys?: string[];
-	deleted_keys?: string[];
-	orphans: Array<Pick<TopicSummary, "key" | "title" | "topic_type" | "article_count" | "status">>;
-}
-
-export const topicApi = {
-	list: async (params?: { q?: string; page?: number; size?: number }) => {
-		const response = await api.get("/api/topics", { params });
-		return response.data as {
-			data: TopicSummary[];
-			pagination: { page: number; size: number; total: number; total_pages: number };
-		};
-	},
-	get: async (key: string, params?: { page?: number; size?: number }) => {
-		const response = await api.get(`/api/topics/${encodeURIComponent(key)}`, { params });
-		return response.data as TopicDetail;
-	},
-	cleanupOrphans: async (data?: { dry_run?: boolean; known_keys?: string[] }) => {
-		const response = await api.post("/api/topics/cleanup-orphans", {
-			dry_run: data?.dry_run ?? true,
-			known_keys: data?.known_keys || [],
-		});
-		return response.data as TopicOrphanCleanupResult;
-	},
-};
-
-export const topicSettingsApi = {
-	get: async () => {
-		const response = await api.get("/api/settings/topics");
-		return response.data as TopicSettings;
-	},
-	update: async (data: {
-		enabled?: boolean;
-		bridge_base_url?: string;
-		bridge_token?: string;
-		auto_sync_on_enable?: boolean;
-		knowledge_type?: string;
-		project_path?: string | null;
-		last_sync_at?: string | null;
-		last_sync_status?: string;
-		last_sync_error?: string | null;
-		last_sync_result?: {
-			status?: string;
-			at?: string;
-			summary?: string;
-			detailLines?: string[];
-			hint?: string | null;
-			error?: string | null;
-			exported?: number;
-			skipped?: number;
-			writebackTopics?: number;
-			writebackArticles?: number;
-		} | null;
-		health?: TopicSettings["health"];
-	}) => {
-		const response = await api.put("/api/settings/topics", data);
-		return response.data as TopicSettings;
-	},
-};
