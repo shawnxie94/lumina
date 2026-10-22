@@ -221,8 +221,24 @@ class _InterpretationMixin:
         except json.JSONDecodeError:
             pass
 
-        # Extract first top-level JSON object or array from mixed text.
+        # Prose wrappers are tolerated, but a malformed JSON-looking payload
+        # must not be recovered from a nested object/array inside it.
+        if raw_text.startswith(("{", "[")):
+            raise TaskDataError(f"{label} 输出不是合法 JSON")
         decoder = json.JSONDecoder()
+        if label == "interpretation":
+            first_json_start = next(
+                (index for index, char in enumerate(raw_text) if char in "{["),
+                None,
+            )
+            if first_json_start is not None:
+                try:
+                    parsed, _end = decoder.raw_decode(raw_text[first_json_start:])
+                except json.JSONDecodeError as exc:
+                    raise TaskDataError(f"{label} 输出不是合法 JSON") from exc
+                if isinstance(parsed, (dict, list)):
+                    return parsed
+                raise TaskDataError(f"{label} 输出不是合法 JSON")
         for index, char in enumerate(raw_text):
             if char not in "{[":
                 continue
@@ -323,6 +339,8 @@ class _InterpretationMixin:
         if "classification" in enabled and not isinstance(category_id, str):
             field_errors["classification"] = "interpretation.category_id 必须是字符串"
             category_id = ""
+        elif "classification" in enabled and not category_id.strip():
+            field_errors["classification"] = "interpretation.category_id 不能为空"
 
         summary = parsed.get("summary", "")
         if summary is None:
@@ -330,17 +348,15 @@ class _InterpretationMixin:
         if "summary" in enabled and not isinstance(summary, str):
             field_errors["summary"] = "interpretation.summary 必须是字符串"
             summary = ""
+        elif "summary" in enabled and not summary.strip():
+            field_errors["summary"] = "interpretation.summary 不能为空"
 
         outline = parsed.get("outline")
-        if (
-            "outline" in enabled
-            and outline is not None
-            and not isinstance(outline, (dict, list, str))
-        ):
-            field_errors["outline"] = (
-                "interpretation.outline 必须是对象、数组、字符串或 null"
-            )
-            outline = None
+        if "outline" in enabled:
+            try:
+                self._parse_outline_task_result(outline)
+            except TaskDataError:
+                field_errors["outline"] = "interpretation.outline 不能为空或格式无效"
 
         quotes = parsed.get("quotes", [])
         if "quotes" in enabled and (
@@ -349,6 +365,8 @@ class _InterpretationMixin:
         ):
             field_errors["quotes"] = "interpretation.quotes 必须是字符串数组"
             quotes = []
+        elif "quotes" in enabled and not any(item.strip() for item in quotes):
+            field_errors["quotes"] = "interpretation.quotes 不能为空"
 
         field_to_status = {
             "category_id": "classification",
@@ -574,10 +592,16 @@ class _InterpretationMixin:
             analysis.interpretation_status = "partial_completed"
         else:
             analysis.interpretation_status = "failed"
+        failure_defaults = {
+            "classification": "分类失败：分类为空或不存在",
+            "summary": "摘要失败：摘要为空或格式无效",
+            "outline": "大纲失败：大纲为空或格式无效",
+            "quotes": "金句失败：金句为空或格式无效",
+        }
         failed_messages = [
-            field_errors.get(field)
+            field_errors.get(field) or failure_defaults.get(field, f"{field} 失败")
             for field, status in field_statuses.items()
-            if status == "failed" and field_errors.get(field)
+            if status == "failed"
         ]
         if failed_messages:
             analysis.interpretation_error = "; ".join(failed_messages)
@@ -588,6 +612,38 @@ class _InterpretationMixin:
         analysis.updated_at = now_str()
         article.updated_at = now_str()
         return field_statuses
+
+    def _record_interpretation_call(
+        self, db, result, *, pricing: dict, article_id: str, error: str | None = None
+    ):
+        succeeded = isinstance(result, dict)
+        usage_log = self._log_ai_usage(
+            db,
+            model_config_id=pricing.get("model_api_config_id"),
+            article_id=article_id,
+            task_type="process_article_interpretation",
+            content_type="interpretation",
+            usage=result.get("usage") if succeeded else None,
+            latency_ms=result.get("latency_ms") if succeeded else None,
+            status="completed" if succeeded and not error else "failed",
+            error_message=error,
+            price_input_per_1k=pricing.get("price_input_per_1k"),
+            price_output_per_1k=pricing.get("price_output_per_1k"),
+            currency=pricing.get("currency"),
+            request_payload=result.get("request_payload") if succeeded else None,
+            response_payload=result.get("response_payload") if succeeded else None,
+        )
+        if succeeded:
+            self.ai_call_session_service.create_session(
+                db,
+                usage_log_id=usage_log.id,
+                task_id=self.current_task_id,
+                article_id=article_id,
+                task_type="process_article_interpretation",
+                content_type="interpretation",
+                session_info=result.get("session_info") or {},
+            )
+        return usage_log
 
     async def process_article_interpretation(
         self,
@@ -739,36 +795,132 @@ class _InterpretationMixin:
             }
 
             try:
-                result = await self.ai_invocation_service.invoke_generation(
-                    db=db,
-                    api_type=interpretation_config.get("api_type") or "chat_completions",
-                    model_name=interpretation_config["model_name"],
-                    base_url=interpretation_config["base_url"],
-                    api_key=interpretation_config["api_key"],
-                    system_prompt=parameters.get("system_prompt"),
-                    user_prompt=prompt.replace("{content}", source_content)
+                base_user_prompt = (
+                    prompt.replace("{content}", source_content)
                     if "{content}" in prompt
-                    else f"{prompt}\n\n{source_content}",
-                    article_id=article_id,
-                    task_type="process_article_interpretation",
-                    content_type="interpretation",
-                    task_id=self.current_task_id,
-                    client=ai_client,
-                    content=source_content,
-                    prompt=prompt,
-                    parameters=parameters,
-                    max_tokens=max_tokens,
-                    request_context={
-                        "parameters": parameters,
-                        "post_process_options": options,
-                        "max_tokens": max_tokens,
-                    },
+                    else f"{prompt}\n\n{source_content}"
                 )
-                raw_content = result.get("content") if isinstance(result, dict) else result
-                parsed_result = self._parse_interpretation_result(
-                    raw_content,
-                    enabled_fields=enabled_fields,
-                )
+                attempt_logs = []
+                attempt_results = []
+                best_parsed_result = None
+                repair_failure = None
+                parse_error = None
+                for attempt in range(2):
+                    attempt_prompt = base_user_prompt
+                    if attempt:
+                        output_protocol = self._build_interpretation_output_contract(
+                            enabled_fields
+                        ).system_instruction
+                        attempt_prompt = (
+                            "仅修复以下输出的 JSON 协议错误，不添加或臆造文章内容。\n"
+                            f"协议：{output_protocol}\n"
+                            f"启用字段：{', '.join(enabled_fields)}。"
+                        )
+                    attempt_content = source_content if attempt == 0 else str(raw_content)
+                    try:
+                        result = await self.ai_invocation_service.invoke_generation(
+                            db=db,
+                            api_type=interpretation_config.get("api_type") or "chat_completions",
+                            model_name=interpretation_config["model_name"],
+                            base_url=interpretation_config["base_url"],
+                            api_key=interpretation_config["api_key"],
+                            system_prompt=parameters.get("system_prompt"),
+                            user_prompt=attempt_prompt,
+                            article_id=article_id,
+                            task_type="process_article_interpretation",
+                            content_type="interpretation",
+                            task_id=self.current_task_id,
+                            client=ai_client,
+                            content=attempt_content,
+                            prompt=attempt_prompt,
+                            parameters=parameters,
+                            max_tokens=max_tokens,
+                            request_context={
+                                "parameters": parameters,
+                                "post_process_options": options,
+                                "max_tokens": max_tokens,
+                                "format_repair_attempt": attempt,
+                            },
+                        )
+                    except Exception as exc:
+                        repair_failure = exc
+                        failed_log = self._record_interpretation_call(
+                            db, None, pricing=pricing, article_id=article_id,
+                            error=str(exc) or "AI生成超时",
+                        )
+                        attempt_logs.append(failed_log)
+                        attempt_results.append(None)
+                        if best_parsed_result is None:
+                            raise
+                        break
+                    raw_content = result.get("content") if isinstance(result, dict) else result
+                    try:
+                        parsed_result = self._parse_interpretation_result(
+                            raw_content, enabled_fields=enabled_fields
+                        )
+                        errors = dict(parsed_result.get("_field_errors") or {})
+                        log_error = "; ".join(errors.values()) or None
+                        log = self._record_interpretation_call(
+                            db, result, pricing=pricing, article_id=article_id,
+                            error=log_error,
+                        )
+                        attempt_logs.append(log)
+                        attempt_results.append(result)
+                        if best_parsed_result is None:
+                            best_parsed_result = parsed_result
+                        else:
+                            old_errors = dict(best_parsed_result.get("_field_errors") or {})
+                            previously_valid = {
+                                status_field
+                                for field, status_field in (
+                                    ("category_id", "classification"),
+                                    ("summary", "summary"),
+                                    ("outline", "outline"),
+                                    ("quotes", "quotes"),
+                                )
+                                if status_field not in old_errors
+                                and best_parsed_result.get(field) not in (None, "", [], {})
+                            }
+                            for field, status_field in (
+                                ("category_id", "classification"),
+                                ("summary", "summary"),
+                                ("outline", "outline"),
+                                ("quotes", "quotes"),
+                            ):
+                                if field in parsed_result and status_field not in errors:
+                                    candidate = parsed_result.get(field)
+                                    if candidate not in (None, "", [], {}):
+                                        best_parsed_result[field] = candidate
+                                        old_errors.pop(status_field, None)
+                            for status_field in previously_valid:
+                                errors.pop(status_field, None)
+                            old_errors.update(errors)
+                            best_parsed_result["_field_errors"] = old_errors
+                        if errors and attempt == 0:
+                            parse_error = TaskDataError("; ".join(errors.values()))
+                            continue
+                        parse_error = None
+                        break
+                    except TaskDataError as exc:
+                        parse_error = exc
+                        if attempt == 0:
+                            log = self._record_interpretation_call(
+                                db, result, pricing=pricing, article_id=article_id,
+                                error=str(exc),
+                            )
+                            attempt_logs.append(log)
+                            attempt_results.append(result)
+                            continue
+                        log = self._record_interpretation_call(
+                            db, result, pricing=pricing, article_id=article_id,
+                            error=str(exc),
+                        )
+                        attempt_logs.append(log)
+                        attempt_results.append(result)
+                        break
+                if best_parsed_result is None:
+                    raise parse_error or TaskDataError(str(repair_failure or "解读输出无效"))
+                parsed_result = best_parsed_result
                 field_statuses = self._apply_interpretation_result(
                     db,
                     article,
@@ -784,65 +936,41 @@ class _InterpretationMixin:
                         for field, prompt_config in prompt_configs.items()
                     },
                 )
-                response_payload = (
-                    result.get("response_payload") if isinstance(result, dict) else None
-                )
-                if isinstance(response_payload, dict):
-                    response_payload = {
-                        **response_payload,
-                        "field_statuses": field_statuses,
-                        "interpretation_status": analysis.interpretation_status,
-                    }
-                else:
-                    response_payload = {
-                        "raw_response_payload": response_payload,
-                        "field_statuses": field_statuses,
-                        "interpretation_status": analysis.interpretation_status,
-                    }
-                usage_log = self._log_ai_usage(
-                    db,
-                    model_config_id=pricing.get("model_api_config_id"),
-                    article_id=article_id,
-                    task_type="process_article_interpretation",
-                    content_type="interpretation",
-                    usage=result.get("usage") if isinstance(result, dict) else None,
-                    latency_ms=result.get("latency_ms") if isinstance(result, dict) else None,
-                    status="completed",
-                    error_message=None,
-                    price_input_per_1k=pricing.get("price_input_per_1k"),
-                    price_output_per_1k=pricing.get("price_output_per_1k"),
-                    currency=pricing.get("currency"),
-                    request_payload=result.get("request_payload")
-                    if isinstance(result, dict)
-                    else None,
-                    response_payload=response_payload,
-                )
-                self.ai_call_session_service.create_session(
-                    db,
-                    usage_log_id=usage_log.id,
-                    task_id=self.current_task_id,
-                    article_id=article_id,
-                    task_type="process_article_interpretation",
-                    content_type="interpretation",
-                    session_info=result.get("session_info") if isinstance(result, dict) else {},
-                )
+                for attempt_log, attempt_result in zip(attempt_logs, attempt_results):
+                    if not isinstance(attempt_result, dict):
+                        continue
+                    original_payload = attempt_result.get("response_payload")
+                    if isinstance(original_payload, dict):
+                        enriched_payload = {
+                            **original_payload,
+                            "field_statuses": field_statuses,
+                            "interpretation_status": analysis.interpretation_status,
+                        }
+                    else:
+                        enriched_payload = {
+                            "raw_response_payload": original_payload,
+                            "field_statuses": field_statuses,
+                            "interpretation_status": analysis.interpretation_status,
+                        }
+                    attempt_log.response_payload = json.dumps(
+                        enriched_payload, ensure_ascii=False
+                    )
+                for attempt_log in attempt_logs:
+                    if analysis.interpretation_status != "completed":
+                        attempt_log.status = "failed"
+                        attempt_log.error_message = analysis.interpretation_error or "解读字段未全部成功"
+                if analysis.interpretation_status == "failed":
+                    raise TaskDataError(
+                        analysis.interpretation_error or "文章解读所有启用字段均失败"
+                    )
                 if field_statuses.get("summary") == "completed":
                     self._enqueue_summary_completed_hooks(db, article_id)
             except asyncio.TimeoutError as exc:
-                self._log_ai_usage(
-                    db,
-                    model_config_id=pricing.get("model_api_config_id"),
-                    article_id=article_id,
-                    task_type="process_article_interpretation",
-                    content_type="interpretation",
-                    usage=None,
-                    latency_ms=None,
-                    status="failed",
-                    error_message="AI生成超时，请稍后重试",
-                    price_input_per_1k=pricing.get("price_input_per_1k"),
-                    price_output_per_1k=pricing.get("price_output_per_1k"),
-                    currency=pricing.get("currency"),
-                )
+                if not locals().get("attempt_logs"):
+                    self._record_interpretation_call(
+                        db, None, pricing=pricing, article_id=article_id,
+                        error="AI生成超时，请稍后重试",
+                    )
                 self._mark_interpretation_fields_failed(
                     analysis,
                     options,
@@ -851,20 +979,11 @@ class _InterpretationMixin:
                 db.commit()
                 raise TaskTimeoutError("AI生成超时，请稍后重试") from exc
             except Exception as exc:
-                self._log_ai_usage(
-                    db,
-                    model_config_id=pricing.get("model_api_config_id"),
-                    article_id=article_id,
-                    task_type="process_article_interpretation",
-                    content_type="interpretation",
-                    usage=None,
-                    latency_ms=None,
-                    status="failed",
-                    error_message=str(exc),
-                    price_input_per_1k=pricing.get("price_input_per_1k"),
-                    price_output_per_1k=pricing.get("price_output_per_1k"),
-                    currency=pricing.get("currency"),
-                )
+                if not locals().get("attempt_logs"):
+                    self._record_interpretation_call(
+                        db, None, pricing=pricing, article_id=article_id,
+                        error=str(exc),
+                    )
                 self._mark_interpretation_fields_failed(
                     analysis,
                     options,

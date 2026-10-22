@@ -8,7 +8,7 @@ import pytest
 from app.domain.ai_invocation_service import AIInvocationService
 from app.domain.article_ai_pipeline_service import ArticleAIPipelineService
 from app.domain.article_command_service import ArticleCommandService
-from task_errors import TaskDataError, TaskExternalError
+from task_errors import TaskDataError, TaskExternalError, TaskTimeoutError
 from models import (
     AICallSession,
     AIAnalysis,
@@ -1095,6 +1095,26 @@ def test_loads_json_payload_strips_think_tags_and_fences():
     }
 
 
+def test_interpretation_parser_reports_empty_enabled_values():
+    service = ArticleAIPipelineService()
+    parsed = service._parse_interpretation_result(
+        '{"category_id":"","summary":" ","outline":null}',
+        enabled_fields=["classification", "summary", "outline"],
+    )
+    assert parsed["_field_errors"] == {
+        "classification": "interpretation.category_id 不能为空",
+        "summary": "interpretation.summary 不能为空",
+        "outline": "interpretation.outline 不能为空或格式无效",
+    }
+
+
+def test_loads_json_payload_rejects_malformed_top_level_with_valid_nested_node():
+    service = ArticleAIPipelineService()
+    malformed = '{"category_id":"x","summary":"ok","outline":{"title":"inner","children":[]'
+    with pytest.raises(TaskDataError, match="合法 JSON"):
+        service._loads_json_payload(malformed, label="interpretation")
+
+
 def test_loads_json_payload_extracts_embedded_json_object():
     service = ArticleAIPipelineService()
     payload = service._loads_json_payload(
@@ -1824,20 +1844,31 @@ def _install_interpretation_test_config(
     content,
     captured=None,
 ):
+    generation_calls = []
+
     async def fake_generation(**kwargs):
+        generation_calls.append(kwargs)
         if captured is not None:
             captured["kwargs"] = kwargs
+            captured["calls"] = generation_calls
+        response_content = content(len(generation_calls), kwargs) if callable(content) else content
+        if isinstance(response_content, BaseException):
+            raise response_content
         return {
-            "content": content,
+            "content": response_content,
             "usage": {"prompt_tokens": 30, "completion_tokens": 20, "total_tokens": 50},
             "latency_ms": 12,
             "request_payload": {"messages": [{"role": "user", "content": "prompt"}]},
-            "response_payload": {"id": "resp-interpretation"},
+            "response_payload": {
+                "id": "resp-interpretation",
+                "content": response_content,
+                "finish_reason": "stop",
+            },
             "session_info": {
                 "api_type": "chat_completions",
                 "continuation_mode": "snapshot",
                 "input_snapshot": {"user_prompt": "prompt"},
-                "output_snapshot": {"content": content},
+                "output_snapshot": {"content": response_content},
             },
         }
 
@@ -1919,6 +1950,165 @@ def _install_interpretation_test_config(
         "invoke_generation",
         fake_generation,
     )
+
+
+def test_interpretation_repairs_malformed_bundle_once_and_logs_both_calls(db_session, monkeypatch):
+    article = Article(title="Repair", slug="repair", content_md="文章内容。", created_at=now_str(), updated_at=now_str())
+    db_session.add(article)
+    db_session.commit()
+    article_id = article.id
+    service = ArticleAIPipelineService(current_task_id="task-repair")
+    responses = ['{"summary":"broken"', '{"summary":"修复摘要"}']
+    _install_interpretation_test_config(service, db_session, monkeypatch, lambda n, _kwargs: responses[n - 1])
+    monkeypatch.setattr(article_ai_pipeline_module.common.ArticleEmbeddingService, "has_available_remote_config", lambda self, db: False)
+
+    asyncio.run(service.process_article_interpretation(article_id, None, post_process_options={"classification": False, "summary": True, "outline": False, "quotes": False, "translation": False}))
+
+    logs = db_session.query(AIUsageLog).filter(AIUsageLog.article_id == article_id, AIUsageLog.content_type == "interpretation").order_by(AIUsageLog.id).all()
+    analysis = db_session.query(AIAnalysis).filter(AIAnalysis.article_id == article_id).one()
+    assert len(logs) == 2
+    assert sorted(log.status for log in logs) == ["completed", "failed"]
+    assert analysis.summary == "修复摘要"
+    assert analysis.interpretation_status == "completed"
+    response_payload = json.loads(next(log for log in logs if log.status == "completed").response_payload)
+    assert response_payload["id"] == "resp-interpretation"
+    assert response_payload["content"] == '{"summary":"修复摘要"}'
+    assert response_payload["finish_reason"] == "stop"
+    assert response_payload["field_statuses"]["summary"] == "completed"
+
+
+def test_interpretation_repair_invalid_json_preserves_first_partial_result(db_session, monkeypatch):
+    article = Article(title="Partial fallback", slug="partial-fallback", content_md="UNIQUE_SOURCE_BODY_123。", created_at=now_str(), updated_at=now_str())
+    db_session.add(article)
+    db_session.commit()
+    article_id = article.id
+    service = ArticleAIPipelineService(current_task_id="task-partial-fallback")
+    captured = {}
+    responses = ['{"summary":"首答有效摘要"}', '{"summary":']
+    _install_interpretation_test_config(service, db_session, monkeypatch, lambda n, _kwargs: responses[n - 1], captured=captured)
+    monkeypatch.setattr(article_ai_pipeline_module.common.ArticleEmbeddingService, "has_available_remote_config", lambda self, db: False)
+
+    asyncio.run(service.process_article_interpretation(article_id, None, post_process_options={"classification": False, "summary": True, "outline": False, "quotes": True, "translation": False}))
+
+    analysis = db_session.query(AIAnalysis).filter(AIAnalysis.article_id == article_id).one()
+    logs = db_session.query(AIUsageLog).filter(AIUsageLog.article_id == article_id, AIUsageLog.content_type == "interpretation").all()
+    assert len(captured["calls"]) == 2
+    assert analysis.summary == "首答有效摘要"
+    assert analysis.summary_status == "completed"
+    assert analysis.quotes_status == "failed"
+    assert analysis.interpretation_status == "partial_completed"
+    assert len(logs) == 2 and all(log.status == "failed" for log in logs)
+    assert all(log.prompt_tokens == 30 for log in logs)
+    assert captured["calls"][1]["content"] == responses[0]
+    assert "UNIQUE_SOURCE_BODY_123" not in captured["calls"][1]["prompt"]
+
+
+@pytest.mark.parametrize("repair_error", [asyncio.TimeoutError("repair timed out"), RuntimeError("repair failed")])
+def test_interpretation_repair_exception_preserves_first_result_and_logs_each_call(db_session, monkeypatch, repair_error):
+    article = Article(title="Timeout fallback", slug="timeout-fallback", content_md="文章内容。", created_at=now_str(), updated_at=now_str())
+    db_session.add(article)
+    db_session.commit()
+    article_id = article.id
+    service = ArticleAIPipelineService(current_task_id="task-timeout-fallback")
+    captured = {}
+    responses = ['{"summary":"首答摘要"}', repair_error]
+    _install_interpretation_test_config(service, db_session, monkeypatch, lambda n, _kwargs: responses[n - 1], captured=captured)
+    monkeypatch.setattr(article_ai_pipeline_module.common.ArticleEmbeddingService, "has_available_remote_config", lambda self, db: False)
+
+    asyncio.run(service.process_article_interpretation(article_id, None, post_process_options={"classification": False, "summary": True, "outline": False, "quotes": True, "translation": False}))
+
+    analysis = db_session.query(AIAnalysis).filter(AIAnalysis.article_id == article_id).one()
+    logs = db_session.query(AIUsageLog).filter(AIUsageLog.article_id == article_id, AIUsageLog.content_type == "interpretation").all()
+    assert len(captured["calls"]) == 2
+    assert analysis.summary == "首答摘要"
+    assert analysis.interpretation_status == "partial_completed"
+    assert len(logs) == 2
+    assert all(log.status == "failed" for log in logs)
+    assert sorted(log.prompt_tokens or 0 for log in logs) == [0, 30]
+    first_response_log = next(log for log in logs if log.prompt_tokens == 30)
+    failed_repair_log = next(log for log in logs if log.prompt_tokens is None)
+    assert json.loads(first_response_log.response_payload)["id"] == "resp-interpretation"
+    assert json.loads(first_response_log.response_payload)["content"] == '{"summary":"首答摘要"}'
+    assert failed_repair_log.response_payload is None
+    assert db_session.query(AICallSession).filter(AICallSession.article_id == article_id).count() == 1
+
+
+def test_interpretation_repair_empty_fields_do_not_overwrite_first_valid_field(db_session, monkeypatch):
+    article = Article(title="Keep valid", slug="keep-valid", content_md="正文", created_at=now_str(), updated_at=now_str())
+    db_session.add(article)
+    db_session.commit()
+    article_id = article.id
+    service = ArticleAIPipelineService(current_task_id="task-keep-valid")
+    responses = ['{"summary":"首答摘要"}', '{"summary":" ","quotes":[]}']
+    _install_interpretation_test_config(service, db_session, monkeypatch, lambda n, _kwargs: responses[n - 1])
+    monkeypatch.setattr(article_ai_pipeline_module.common.ArticleEmbeddingService, "has_available_remote_config", lambda self, db: False)
+
+    asyncio.run(service.process_article_interpretation(article_id, None, post_process_options={"classification": False, "summary": True, "outline": False, "quotes": True, "translation": False}))
+
+    analysis = db_session.query(AIAnalysis).filter(AIAnalysis.article_id == article_id).one()
+    assert analysis.summary == "首答摘要"
+    assert analysis.summary_status == "completed"
+    assert analysis.quotes_status == "failed"
+    assert analysis.interpretation_status == "partial_completed"
+
+
+def test_interpretation_all_enabled_fields_invalid_raises_after_repair(db_session, monkeypatch):
+    article = Article(title="Invalid all", slug="invalid-all", content_md="正文", created_at=now_str(), updated_at=now_str())
+    db_session.add(article)
+    db_session.commit()
+    article_id = article.id
+    service = ArticleAIPipelineService(current_task_id="task-invalid-all")
+    captured = {}
+    _install_interpretation_test_config(service, db_session, monkeypatch, '{"summary":" ","quotes":[]}', captured=captured)
+    monkeypatch.setattr(article_ai_pipeline_module.common.ArticleEmbeddingService, "has_available_remote_config", lambda self, db: False)
+
+    with pytest.raises(TaskDataError):
+        asyncio.run(service.process_article_interpretation(article_id, None, post_process_options={"classification": False, "summary": True, "outline": False, "quotes": True, "translation": False}))
+
+    analysis = db_session.query(AIAnalysis).filter(AIAnalysis.article_id == article_id).one()
+    logs = db_session.query(AIUsageLog).filter(AIUsageLog.article_id == article_id, AIUsageLog.content_type == "interpretation").all()
+    assert len(captured["calls"]) == 2
+    assert len(logs) == 2 and all(log.status == "failed" for log in logs)
+    assert analysis.interpretation_status == "failed"
+    assert "summary 不能为空" in analysis.interpretation_error
+    assert "quotes 不能为空" in analysis.interpretation_error
+
+
+def test_interpretation_first_call_timeout_logs_once(db_session, monkeypatch):
+    article = Article(title="Initial timeout", slug="initial-timeout", content_md="文章内容。", created_at=now_str(), updated_at=now_str())
+    db_session.add(article)
+    db_session.commit()
+    article_id = article.id
+    service = ArticleAIPipelineService(current_task_id="task-initial-timeout")
+    captured = {}
+    _install_interpretation_test_config(service, db_session, monkeypatch, asyncio.TimeoutError("initial timeout"), captured=captured)
+    monkeypatch.setattr(article_ai_pipeline_module.common.ArticleEmbeddingService, "has_available_remote_config", lambda self, db: False)
+
+    with pytest.raises(TaskTimeoutError):
+        asyncio.run(service.process_article_interpretation(article_id, None, post_process_options={"classification": False, "summary": True, "outline": False, "quotes": False, "translation": False}))
+
+    assert len(captured["calls"]) == 1
+    logs = db_session.query(AIUsageLog).filter(AIUsageLog.article_id == article_id, AIUsageLog.content_type == "interpretation").all()
+    assert len(logs) == 1 and logs[0].status == "failed"
+
+
+def test_interpretation_repair_is_limited_and_all_fields_fail(db_session, monkeypatch):
+    article = Article(title="Repair fail", slug="repair-fail", content_md="文章内容。", created_at=now_str(), updated_at=now_str())
+    db_session.add(article)
+    db_session.commit()
+    article_id = article.id
+    service = ArticleAIPipelineService(current_task_id="task-repair-fail")
+    _install_interpretation_test_config(service, db_session, monkeypatch, '{"summary":')
+    monkeypatch.setattr(article_ai_pipeline_module.common.ArticleEmbeddingService, "has_available_remote_config", lambda self, db: False)
+
+    with pytest.raises(TaskDataError):
+        asyncio.run(service.process_article_interpretation(article_id, None, post_process_options={"classification": False, "summary": True, "outline": False, "quotes": False, "translation": False}))
+
+    logs = db_session.query(AIUsageLog).filter(AIUsageLog.article_id == article_id, AIUsageLog.content_type == "interpretation").all()
+    analysis = db_session.query(AIAnalysis).filter(AIAnalysis.article_id == article_id).one()
+    assert len(logs) == 2
+    assert all(log.status == "failed" for log in logs)
+    assert analysis.interpretation_status == "failed"
 
 
 def test_process_article_interpretation_falls_back_to_content_html_when_md_missing(
@@ -2135,8 +2325,11 @@ def test_process_article_interpretation_supports_partial_success(
     assert persisted_analysis.outline_status == "skipped"
     assert persisted_analysis.quotes_status == "skipped"
     assert persisted_analysis.interpretation_status == "partial_completed"
+    assert "分类失败" in persisted_analysis.interpretation_error
+    assert "missing-category" not in (persisted_analysis.summary or "")
     assert len(usage_logs) == 1
-    assert usage_logs[0].status == "completed"
+    assert usage_logs[0].status == "failed"
+    assert usage_logs[0].error_message
 
 
 def test_process_article_interpretation_builds_prompt_for_enabled_fields_only(
