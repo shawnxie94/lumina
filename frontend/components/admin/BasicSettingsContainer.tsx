@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import BasicSettingsSection from "./BasicSettingsSection";
 import { basicSettingsApi, type BasicSettings } from "@/lib/api";
 import { useBasicSettings } from "@/contexts/BasicSettingsContext";
@@ -12,6 +12,9 @@ export default function BasicSettingsContainer() {
 	const [saving, setSaving] = useState(false);
 	const { showToast } = useToast();
 	const { t } = useI18n();
+	// Locale changes update notifications, never restart the form's load lifecycle.
+	const notifications = useRef({ t, showToast });
+	notifications.current = { t, showToast };
 	useEffect(() => {
 		let active = true;
 		basicSettingsApi
@@ -26,6 +29,7 @@ export default function BasicSettingsContainer() {
 			.catch((error) => {
 				if (active) {
 					console.error(error);
+					const { t, showToast } = notifications.current;
 					showToast(t("基础配置加载失败"), "error");
 				}
 			})
@@ -35,15 +39,17 @@ export default function BasicSettingsContainer() {
 		return () => {
 			active = false;
 		};
-	}, [showToast, t]);
+	}, []);
 	const save = async () => {
 		setSaving(true);
 		try {
 			await basicSettingsApi.updateSettings(form);
 			updateBasicSettings(form);
+			const { t, showToast } = notifications.current;
 			showToast(t("基础配置已保存"));
 		} catch (error) {
 			console.error(error);
+			const { t, showToast } = notifications.current;
 			showToast(t("基础配置保存失败"), "error");
 		} finally {
 			setSaving(false);

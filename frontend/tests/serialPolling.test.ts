@@ -132,7 +132,10 @@ test("body renderer caches string inputs independently and sanitizes untrusted o
 		return `<p>${body}</p><script>bad()</script>`;
 	});
 	assert.equal(render("Original", "", "Translation", false), "<p>Original</p>");
-	assert.equal(renders, 2);
+	assert.equal(renders, 1);
+	// Invisible changes invalidate only that branch, without parsing it.
+	render("Original", "", "New translation", false);
+	assert.equal(renders, 1);
 	for (let metadataUpdate = 0; metadataUpdate < 10; metadataUpdate++)
 		render("Original", "", "Translation", false);
 	assert.equal(
@@ -141,9 +144,33 @@ test("body renderer caches string inputs independently and sanitizes untrusted o
 	);
 	assert.equal(renders, 2);
 	render("Changed", "", "Translation", true);
+	assert.equal(renders, 2);
+	assert.equal(render("Changed", "", "Translation", false), "<p>Changed</p>");
 	assert.equal(renders, 3);
 	assert.doesNotMatch(
 		render("", '<img src="x" onerror="bad()">', "", false),
 		/onerror/,
 	);
+});
+
+test("translation-first parses once; sanitized empty translation never falls back", () => {
+	let renders = 0;
+	const render = createArticleBodyRenderer((body) => {
+		renders++;
+		return body === "unsafe" ? "<script>bad()</script>" : `<p>${body}</p>`;
+	});
+	assert.equal(render("Original", "", "unsafe", true), "");
+	assert.equal(renders, 1);
+	assert.equal(render("Changed original", "", "unsafe", true), "");
+	assert.equal(renders, 1);
+	assert.equal(
+		render("Changed original", "", "unsafe", false),
+		"<p>Changed original</p>",
+	);
+	assert.equal(renders, 2);
+	assert.equal(
+		render("Changed original", "", "", true),
+		"<p>Changed original</p>",
+	);
+	assert.equal(renders, 2);
 });

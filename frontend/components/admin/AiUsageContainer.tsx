@@ -54,10 +54,9 @@ export default function AiUsageContainer({
 			active = false;
 		};
 	}, []);
-	useEffect(() => {
-		let active = true;
+	const usageParams = useMemo(() => {
 		const { taskType, contentType } = parseAITaskFilterValue(usageContentType);
-		const params = {
+		return {
 			model_api_config_id: usageModelId || undefined,
 			status: usageStatus || undefined,
 			task_type: taskType,
@@ -65,9 +64,12 @@ export default function AiUsageContainer({
 			start: usageStart || undefined,
 			end: usageEnd || undefined,
 		};
+	}, [usageModelId, usageStatus, usageContentType, usageStart, usageEnd]);
+	useEffect(() => {
+		let active = true;
 		setUsageLoading(true);
 		aiUsageApi
-			.list({ ...params, page: usagePage, size: usagePageSize })
+			.list({ ...usageParams, page: usagePage, size: usagePageSize })
 			.then((logs) => {
 				if (active) {
 					setUsageLogs(logs.items || []);
@@ -83,8 +85,14 @@ export default function AiUsageContainer({
 			.finally(() => {
 				if (active) setUsageLoading(false);
 			});
+		return () => {
+			active = false;
+		};
+	}, [usageParams, usagePage, usagePageSize, showToast, t]);
+	useEffect(() => {
+		let active = true;
 		aiUsageApi
-			.summary(params)
+			.summary(usageParams)
 			.then((summary) => {
 				if (active) {
 					setUsageSummary(summary.summary);
@@ -100,17 +108,7 @@ export default function AiUsageContainer({
 		return () => {
 			active = false;
 		};
-	}, [
-		usageModelId,
-		usageStatus,
-		usageContentType,
-		usageStart,
-		usageEnd,
-		usagePage,
-		usagePageSize,
-		showToast,
-		t,
-	]);
+	}, [usageParams, showToast, t]);
 	useEffect(() => {
 		const close = (event: KeyboardEvent) => {
 			if (event.key === "Escape") setShowUsageCostModal(false);

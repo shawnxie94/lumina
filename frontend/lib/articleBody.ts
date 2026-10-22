@@ -8,13 +8,30 @@ export function createArticleBodyRenderer(render = renderMarkdown) {
 	let previousTrans: string | null | undefined;
 	let original = "";
 	let translation = "";
+	let originalValid = false;
+	let translationValid = false;
 	return (
 		md: string | null | undefined,
 		html: string | null | undefined,
 		trans: string | null | undefined,
 		translated: boolean,
 	) => {
-		if (md !== previousMd || html !== previousHtml) {
+		if (md !== previousMd || html !== previousHtml) originalValid = false;
+		if (trans !== previousTrans) translationValid = false;
+		previousMd = md;
+		previousHtml = html;
+		previousTrans = trans;
+		// Choose using the raw translation, not the sanitized result's truthiness.
+		if (translated && trans) {
+			if (!translationValid) {
+				translation = sanitizeRichHtml(
+					normalizeMediaHtml(render(trans, { enableMediaEmbed: true })),
+				);
+				translationValid = true;
+			}
+			return translation;
+		}
+		if (!originalValid) {
 			original = sanitizeRichHtml(
 				normalizeMediaHtml(
 					md
@@ -22,17 +39,8 @@ export function createArticleBodyRenderer(render = renderMarkdown) {
 						: sanitizeRichHtml(html || ""),
 				),
 			);
-			previousMd = md;
-			previousHtml = html;
+			originalValid = true;
 		}
-		if (trans !== previousTrans) {
-			translation = trans
-				? sanitizeRichHtml(
-						normalizeMediaHtml(render(trans, { enableMediaEmbed: true })),
-					)
-				: "";
-			previousTrans = trans;
-		}
-		return translated && translation ? translation : original;
+		return original;
 	};
 }
