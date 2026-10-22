@@ -1,5 +1,5 @@
 import { useRouter } from 'next/router';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useReading } from '@/contexts/ReadingContext';
 import { IconClock, IconChevronRight, IconTrash, IconBroom } from '@/components/icons';
@@ -9,6 +9,12 @@ export function ContinueReadingBanner() {
   const router = useRouter();
   const { recentArticles, removeArticle, clearArticles, isCollapsed, setIsCollapsed, isHidden } = useReading();
   const panelRef = useRef<HTMLDivElement>(null);
+  const [mounted, setMounted] = useState(false);
+
+  // Storage-backed reading state differs on the server; reveal it only after hydration.
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   const { t } = useI18n();
 
   const isArticlePage = router.pathname === '/article/[id]';
@@ -27,7 +33,7 @@ export function ContinueReadingBanner() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isCollapsed, setIsCollapsed]);
 
-  if (recentArticles.length === 0 || isHidden) return null;
+  if (!mounted || recentArticles.length === 0 || isHidden) return null;
 
   if (isCollapsed) {
     return (
