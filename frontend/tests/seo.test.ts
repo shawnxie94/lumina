@@ -309,11 +309,11 @@ test("list page renders category filters as crawlable links", () => {
 });
 
 test("sitemap page excludes tag and author aggregation URLs", () => {
-  const source = readPageSource("pages/sitemap.xml.tsx");
+  const source = readPageSource("lib/publicSitemap.ts");
 
-  assert.match(source, /buildCategoryEntries/);
-  assert.match(source, /buildReviewEntries/);
-  assert.match(source, /fetchAllServerReviews/);
+  assert.match(source, /categories\.map/);
+  assert.match(source, /columns\.map/);
+  assert.match(source, /fetchPublicSitemapItems/);
   assert.match(source, /buildCanonicalUrl\(origin, "\/columns"\)/);
   assert.doesNotMatch(source, /buildTagEntries/);
   assert.doesNotMatch(source, /buildAuthorEntries/);

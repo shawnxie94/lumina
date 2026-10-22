@@ -14,6 +14,7 @@ from app.api.routers.model_api_router import router as model_api_router
 from app.api.routers.prompt_config_router import router as prompt_config_router
 from app.api.routers.review_router import router as review_router
 from app.api.routers.settings_router import router as settings_router
+from app.api.routers.sitemap_router import router as sitemap_router
 
 BACKEND_PREFIX = "/backend"
 
@@ -24,6 +25,7 @@ def register_routers(app: FastAPI) -> None:
     app.include_router(settings_router, prefix=prefix)
     app.include_router(media_router, prefix=prefix)
     app.include_router(article_router, prefix=prefix)
+    app.include_router(sitemap_router, prefix=prefix)
     app.include_router(comment_router, prefix=prefix)
     app.include_router(ai_tasks_router, prefix=prefix)
     app.include_router(ai_usage_router, prefix=prefix)

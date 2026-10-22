@@ -1,105 +1,23 @@
 import type { GetServerSideProps } from "next";
-
-import type { Article, Category, ReviewIssue } from "@/lib/api";
-import { buildCanonicalUrl, buildSitemapXml } from "@/lib/seo";
-import {
-	fetchAllServerArticles,
-	fetchAllServerReviews,
-	fetchServerCategories,
-	resolveRequestOrigin,
-} from "@/lib/serverApi";
+import { getPublicSitemapXml } from "@/lib/publicSitemap";
 
 const SitemapPage = () => null;
 
-const buildArticleEntries = (origin: string, articles: Article[]) =>
-	articles.map((article) => ({
-		loc: buildCanonicalUrl(origin, `/article/${article.slug}`),
-		lastmod: article.published_at || article.created_at,
-		changefreq: "weekly" as const,
-		priority: 0.8,
-	}));
-
-const buildCategoryEntries = (origin: string, categories: Category[]) =>
-	categories.map((category) => ({
-		loc: buildCanonicalUrl(origin, "/list", { category_id: category.id }),
-		changefreq: "daily" as const,
-		priority: 0.7,
-	}));
-
-const buildReviewEntries = (origin: string, reviews: ReviewIssue[]) =>
-	reviews
-		.filter((review) => review.status === "published")
-		.map((review) => ({
-			loc: buildCanonicalUrl(origin, `/columns/${review.slug}`),
-			lastmod: review.updated_at || review.published_at || review.created_at,
-			changefreq: "weekly" as const,
-			priority: 0.7,
-		}));
-
 export const getServerSideProps: GetServerSideProps = async ({ req, res }) => {
-	const origin = resolveRequestOrigin(req);
-
 	try {
-		const [articles, categories, reviews] = await Promise.all([
-			fetchAllServerArticles(req, {
-				size: 500,
-				sort_by: "published_at_desc",
-			}),
-			fetchServerCategories(req),
-			fetchAllServerReviews(req, {
-				size: 100,
-			}),
-		]);
-
-		const xml = buildSitemapXml([
-			{
-				loc: buildCanonicalUrl(origin, "/"),
-				changefreq: "daily",
-				priority: 1,
-			},
-				{
-					loc: buildCanonicalUrl(origin, "/list"),
-					changefreq: "daily",
-					priority: 0.9,
-				},
-				{
-					loc: buildCanonicalUrl(origin, "/columns"),
-					changefreq: "weekly",
-					priority: 0.8,
-				},
-				...buildArticleEntries(origin, articles),
-				...buildCategoryEntries(origin, categories),
-				...buildReviewEntries(origin, reviews),
-		]);
-
+		const xml = await getPublicSitemapXml(req);
 		res.setHeader("Content-Type", "application/xml; charset=utf-8");
+		res.setHeader("Cache-Control", "public, max-age=30, stale-while-revalidate=30");
 		res.write(xml);
-		res.end();
-		return { props: {} };
 	} catch {
+		// Do not turn an upstream failure into a cached, truncated sitemap.
+		res.statusCode = 503;
+		res.setHeader("Cache-Control", "no-store");
 		res.setHeader("Content-Type", "application/xml; charset=utf-8");
-		res.write(
-			buildSitemapXml([
-				{
-					loc: buildCanonicalUrl(origin, "/"),
-					changefreq: "daily",
-					priority: 1,
-				},
-				{
-					loc: buildCanonicalUrl(origin, "/list"),
-					changefreq: "daily",
-					priority: 0.9,
-				},
-				{
-					loc: buildCanonicalUrl(origin, "/columns"),
-					changefreq: "weekly",
-					priority: 0.8,
-				},
-			]),
-		);
-		res.end();
-		return { props: {} };
+		res.write('<?xml version="1.0" encoding="UTF-8"?><error>Sitemap temporarily unavailable</error>');
 	}
+	res.end();
+	return { props: {} };
 };
 
 export default SitemapPage;

@@ -40,9 +40,14 @@ jobs:
       - name: Lint
         run: npm run lint
         working-directory: frontend
-      - name: Unit tests
+      - name: Unit tests (including polling, rendering and public sitemap regressions)
         run: npm test
         working-directory: frontend
+      - name: Production build
+        run: npm run build
+        working-directory: frontend
+      - name: Measured bundle budgets and lazy boundaries
+        run: node scripts/check_frontend_bundle.mjs
 
   backend:
     name: backend pytest / route contract

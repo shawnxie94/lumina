@@ -20,7 +20,7 @@ def anyio_backend():
 async def test_get_similar_articles_returns_disabled_when_remote_config_unavailable(
     db_session,
 ):
-    response = await article_router.get_similar_articles(
+    response = article_router.get_similar_articles(
         article_slug="missing-article",
         db=db_session,
         is_admin=False,
@@ -206,7 +206,7 @@ async def test_get_similar_articles_includes_translated_title(db_session, monkey
         lambda left, right: 0.95,
     )
 
-    response = await article_router.get_similar_articles(
+    response = article_router.get_similar_articles(
         article_slug="current-article",
         limit=5,
         db=db_session,
@@ -520,7 +520,7 @@ async def test_search_articles_matches_translated_title(db_session):
     db_session.add(article)
     db_session.commit()
 
-    response = await article_router.search_articles(
+    response = article_router.search_articles(
         query="接口译文",
         limit=20,
         db=db_session,
@@ -569,7 +569,7 @@ async def test_search_articles_includes_hidden_articles_for_admin(db_session):
     db_session.add_all([visible_article, hidden_article])
     db_session.commit()
 
-    response = await article_router.search_articles(
+    response = article_router.search_articles(
         query="搜索文章",
         limit=20,
         db=db_session,
@@ -632,7 +632,7 @@ async def test_get_article_includes_translated_titles_for_neighbors(db_session):
     db_session.add_all([previous_article, current_article, next_article])
     db_session.commit()
 
-    response = await article_router.get_article(
+    response = article_router.get_article(
         article_slug="current-article",
         response=Response(),
         db=db_session,
@@ -700,7 +700,7 @@ async def test_get_articles_includes_view_count_and_public_comment_count(
     )
     db_session.commit()
 
-    response = await article_router.get_articles(
+    response = article_router.get_articles(
         response=Response(),
         page=1,
         size=10,
@@ -756,7 +756,7 @@ async def test_get_article_includes_view_count_and_public_comment_count(db_sessi
     )
     db_session.commit()
 
-    response = await article_router.get_article(
+    response = article_router.get_article(
         article_slug="stats-detail-article",
         response=Response(),
         db=db_session,
@@ -807,7 +807,7 @@ async def test_get_article_marks_history_available_when_current_content_cleared(
     db_session.add(version)
     db_session.commit()
 
-    response = await article_router.get_article(
+    response = article_router.get_article(
         article_slug="history-available-article",
         response=Response(),
         db=db_session,
@@ -934,7 +934,7 @@ async def test_get_articles_rss_rejects_when_disabled(monkeypatch, db_session):
     )
 
     with pytest.raises(HTTPException) as exc_info:
-        await article_router.get_articles_rss(
+        article_router.get_articles_rss(
             request=request,
             category_id=None,
             db=db_session,

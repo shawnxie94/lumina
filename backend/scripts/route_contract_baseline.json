@@ -810,6 +810,12 @@
     ]
   },
   {
+    "path": "/api/sitemap/{kind}",
+    "methods": [
+      "GET"
+    ]
+  },
+  {
     "path": "/api/sources",
     "methods": [
       "GET"

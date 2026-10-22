@@ -28,7 +28,8 @@ import TaskMonitorSection, {
 	type TaskTimelineChain,
 } from "@/components/admin/TaskMonitorSection";
 import StorageSection from "@/components/admin/StorageSection";
-import BasicSettingsSection from "@/components/admin/BasicSettingsSection";
+import dynamic from "next/dynamic";
+const BasicSettingsContainer = dynamic(() => import("@/components/admin/BasicSettingsContainer"));
 import CommentSettingsSection from "@/components/admin/CommentSettingsSection";
 import ExtractionSettingsSection, {
 	type ExtractionSubSection,
@@ -38,11 +39,8 @@ import PromptSettingsSection, {
 	supportsChunkOptionsForPromptType,
 	type PromptType,
 } from "@/components/admin/PromptSettingsSection";
-import AiUsageSection, {
-	type UsageCostBreakdown,
-} from "@/components/admin/AiUsageSection";
+const AiUsageContainer = dynamic(() => import("@/components/admin/AiUsageContainer"));
 import ModelApiSettingsSection from "@/components/admin/ModelApiSettingsSection";
-import { formatCostValue } from "@/components/admin/formatting";
 import RecommendationSettingsSection from "@/components/admin/RecommendationSettingsSection";
 import CategoriesSection, {
 	type Category,
@@ -78,14 +76,10 @@ import {
 import { useI18n } from "@/lib/i18n";
 import { useLatestBackupExportJob } from "@/lib/useLatestBackupExportJob";
 import {
-	type AIUsageLogItem,
-	type AIUsageSummaryResponse,
 	type AITaskTimelineResponse,
 	type AdminCommentItem,
-	aiUsageApi,
 	articleApi,
 	backupApi,
-	type BasicSettings,
 	basicSettingsApi,
 	categoryApi,
 	commentAdminApi,
@@ -392,30 +386,9 @@ export default function AdminPage() {
 	const [retryTaskOptionsLoading, setRetryTaskOptionsLoading] = useState(false);
 	const [retryTaskSubmitting, setRetryTaskSubmitting] = useState(false);
 
-	const [usageLogs, setUsageLogs] = useState<AIUsageLogItem[]>([]);
-	const [usageSummary, setUsageSummary] = useState<
-		AIUsageSummaryResponse["summary"] | null
-	>(null);
-	const [usageByModel, setUsageByModel] = useState<
-		AIUsageSummaryResponse["by_model"]
-	>([]);
-	const [usageLoading, setUsageLoading] = useState(false);
-	const [usagePage, setUsagePage] = useState(1);
-	const [usagePageSize, setUsagePageSize] = useState(10);
-	const [usageTotal, setUsageTotal] = useState(0);
-	const [usageModelId, setUsageModelId] = useState("");
-	const [usageStatus, setUsageStatus] = useState("");
-	const [usageContentType, setUsageContentType] = useState("");
-	const [usageStart, setUsageStart] = useState("");
-	const [usageEnd, setUsageEnd] = useState("");
 	const [showUsagePayloadModal, setShowUsagePayloadModal] = useState(false);
 	const [usagePayloadTitle, setUsagePayloadTitle] = useState("");
 	const [usagePayloadContent, setUsagePayloadContent] = useState("");
-	const [showUsageCostModal, setShowUsageCostModal] = useState(false);
-	const [usageCostTitle, setUsageCostTitle] = useState("");
-	const [usageCostDetails, setUsageCostDetails] = useState("");
-	const [usageCostBreakdown, setUsageCostBreakdown] =
-		useState<UsageCostBreakdown | null>(null);
 	const showUsageView =
 		activeSection === "monitoring" && monitoringSubSection === "ai-usage";
 	const prevActiveSectionRef = useRef<SettingSection | null>(null);
@@ -482,20 +455,6 @@ export default function AdminPage() {
 		sensitive_filter_enabled: true,
 		sensitive_words: "",
 	});
-	const [basicSettingsForm, setBasicSettingsForm] = useState<BasicSettings>({
-		default_language: "zh-CN",
-		site_name: "Lumina",
-		site_description: "信息灯塔",
-		site_logo_url: "",
-		rss_enabled: false,
-		home_badge_text: "",
-		home_tagline_text: "",
-		home_primary_button_text: "",
-		home_primary_button_url: "",
-		home_secondary_button_text: "",
-		home_secondary_button_url: "",
-		header_custom_links: [],
-	});
 	const [storageSettings, setStorageSettings] = useState<StorageSettings>({
 		media_storage_enabled: false,
 		media_compress_threshold: 1536 * 1024,
@@ -523,8 +482,6 @@ export default function AdminPage() {
 		});
 	const [commentSettingsLoading, setCommentSettingsLoading] = useState(false);
 	const [commentSettingsSaving, setCommentSettingsSaving] = useState(false);
-	const [basicSettingsLoading, setBasicSettingsLoading] = useState(false);
-	const [basicSettingsSaving, setBasicSettingsSaving] = useState(false);
 	const [storageSettingsLoading, setStorageSettingsLoading] = useState(false);
 	const [storageSettingsSaving, setStorageSettingsSaving] = useState(false);
 	const [extractionSettingsLoading, setExtractionSettingsLoading] =
@@ -794,10 +751,6 @@ export default function AdminPage() {
 				setShowUsagePayloadModal(false);
 				return;
 			}
-			if (showUsageCostModal) {
-				setShowUsageCostModal(false);
-				return;
-			}
 			if (showModelAPITestModal) {
 				setShowModelAPITestModal(false);
 				return;
@@ -828,7 +781,6 @@ export default function AdminPage() {
 	}, [
 		showCommentContentModal,
 		showUsagePayloadModal,
-		showUsageCostModal,
 		showModelAPITestModal,
 			showPromptPreview,
 			showPromptModal,
@@ -1049,49 +1001,6 @@ export default function AdminPage() {
 		}
 	};
 
-	const fetchUsageLogs = async () => {
-		setUsageLoading(true);
-		try {
-			const { taskType, contentType } = parseAITaskFilterValue(usageContentType);
-			const response = await aiUsageApi.list({
-				model_api_config_id: usageModelId || undefined,
-				status: usageStatus || undefined,
-				task_type: taskType,
-				content_type: contentType,
-				start: usageStart || undefined,
-				end: usageEnd || undefined,
-				page: usagePage,
-				size: usagePageSize,
-			});
-			setUsageLogs(response.items || []);
-			setUsageTotal(response.total || 0);
-		} catch (error) {
-			console.error("Failed to fetch AI usage logs:", error);
-			showToast(t("调用记录加载失败"), "error");
-		} finally {
-			setUsageLoading(false);
-		}
-	};
-
-	const fetchUsageSummary = async () => {
-		try {
-			const { taskType, contentType } = parseAITaskFilterValue(usageContentType);
-			const response = await aiUsageApi.summary({
-				model_api_config_id: usageModelId || undefined,
-				status: usageStatus || undefined,
-				task_type: taskType,
-				content_type: contentType,
-				start: usageStart || undefined,
-				end: usageEnd || undefined,
-			});
-			setUsageSummary(response.summary);
-			setUsageByModel(response.by_model || []);
-		} catch (error) {
-			console.error("Failed to fetch AI usage summary:", error);
-			showToast(t("计量汇总加载失败"), "error");
-		}
-	};
-
 	const fetchCommentList = async () => {
 		setCommentListLoading(true);
 		try {
@@ -1153,68 +1062,6 @@ export default function AdminPage() {
 			showToast(t("评论配置保存失败"), "error");
 		} finally {
 			setCommentSettingsSaving(false);
-		}
-	};
-
-	const fetchBasicSettings = async () => {
-		setBasicSettingsLoading(true);
-		try {
-			const data = await basicSettingsApi.getSettings();
-			setBasicSettingsForm({
-				...data,
-				header_custom_links: data.header_custom_links || [],
-			});
-		} catch (error) {
-			console.error("Failed to fetch basic settings:", error);
-			showToast(t("基础配置加载失败"), "error");
-		} finally {
-			setBasicSettingsLoading(false);
-		}
-	};
-
-	const handleAddHeaderCustomLink = () => {
-		setBasicSettingsForm((prev) => ({
-			...prev,
-			header_custom_links: [
-				...(prev.header_custom_links || []),
-				{ label: "", url: "" },
-			],
-		}));
-	};
-
-	const handleUpdateHeaderCustomLink = (
-		index: number,
-		field: "label" | "url",
-		value: string,
-	) => {
-		setBasicSettingsForm((prev) => ({
-			...prev,
-			header_custom_links: (prev.header_custom_links || []).map((item, itemIndex) =>
-				itemIndex === index ? { ...item, [field]: value } : item,
-			),
-		}));
-	};
-
-	const handleRemoveHeaderCustomLink = (index: number) => {
-		setBasicSettingsForm((prev) => ({
-			...prev,
-			header_custom_links: (prev.header_custom_links || []).filter(
-				(_, itemIndex) => itemIndex !== index,
-			),
-		}));
-	};
-
-	const handleSaveBasicSettings = async () => {
-		setBasicSettingsSaving(true);
-		try {
-			await basicSettingsApi.updateSettings(basicSettingsForm);
-			updateBasicSettingsContext(basicSettingsForm);
-			showToast(t("基础配置已保存"));
-		} catch (error) {
-			console.error("Failed to save basic settings:", error);
-			showToast(t("基础配置保存失败"), "error");
-		} finally {
-			setBasicSettingsSaving(false);
 		}
 	};
 
@@ -1499,15 +1346,6 @@ export default function AdminPage() {
 		setTaskPage(1);
 	};
 
-	const resetUsageFilters = () => {
-		setUsageModelId("");
-		setUsageStatus("");
-		setUsageContentType("");
-		setUsageStart("");
-		setUsageEnd("");
-		setUsagePage(1);
-	};
-
 	const resetCommentFilters = () => {
 		setCommentQuery("");
 		setCommentArticleTitle("");
@@ -1530,10 +1368,6 @@ export default function AdminPage() {
 			fetchCategories();
 			return;
 		}
-		if (activeSection === "basic") {
-			fetchBasicSettings();
-			return;
-		}
 		if (activeSection === "ai") {
 			if (aiSubSection === "model-api") {
 				fetchModelAPIConfigs();
@@ -1550,11 +1384,6 @@ export default function AdminPage() {
 			if (monitoringSubSection === "tasks") {
 				fetchTasks();
 			} else {
-				if (monitoringSubSection === "ai-usage") {
-					fetchModelAPIConfigs();
-					fetchUsageSummary();
-					fetchUsageLogs();
-				}
 				if (monitoringSubSection === "comments") {
 					fetchCommentList();
 				}
@@ -1601,13 +1430,10 @@ export default function AdminPage() {
 		if (prevSection && prevSection !== activeSection) {
 			if (prevSection === "monitoring") {
 				resetTaskFilters();
-				resetUsageFilters();
 			}
 			if (activeSection === "monitoring") {
 				if (monitoringSubSection === "tasks") {
 					resetTaskFilters();
-				} else {
-					resetUsageFilters();
 				}
 			}
 		}
@@ -1619,8 +1445,6 @@ export default function AdminPage() {
 		) {
 			if (monitoringSubSection === "tasks") {
 				resetTaskFilters();
-			} else if (monitoringSubSection === "ai-usage") {
-				resetUsageFilters();
 			} else if (monitoringSubSection === "comments") {
 				resetCommentFilters();
 			}
@@ -1646,28 +1470,6 @@ export default function AdminPage() {
 		taskArticleTitleFilter,
 		activeSection,
 		monitoringSubSection,
-	]);
-	/* eslint-enable react-hooks/exhaustive-deps */
-
-	/* eslint-disable react-hooks/exhaustive-deps */
-	// biome-ignore lint/correctness/useExhaustiveDependencies: usage 筛选值是刻意的重新拉取信号，fetch/routeInitialized 非稳定引用，补齐会改变触发语义
-	useEffect(() => {
-		if (!routeInitialized) return;
-		if (activeSection !== "monitoring" || monitoringSubSection !== "ai-usage") {
-			return;
-		}
-		fetchUsageSummary();
-		fetchUsageLogs();
-	}, [
-		activeSection,
-		monitoringSubSection,
-		usageModelId,
-		usageStatus,
-		usageContentType,
-		usageStart,
-		usageEnd,
-		usagePage,
-		usagePageSize,
 	]);
 	/* eslint-enable react-hooks/exhaustive-deps */
 
@@ -2394,94 +2196,11 @@ export default function AdminPage() {
 		setShowUsagePayloadModal(true);
 	};
 
-	const formatCostLine = (
-		label: string,
-		tokens: number | null,
-		price: number | null,
-		currency: string,
-	) => {
-		if (tokens == null || price == null) {
-			return `${label}: -`;
-		}
-		const cost = (tokens / 1000) * price;
-		return `${label}: (${tokens} / 1000) * ${price.toFixed(6)} = ${cost.toFixed(6)} ${currency}`;
-	};
-
 	const toDayjsRangeFromDateStrings = (start?: string, end?: string) => {
 		if (!start && !end) return null;
 		const startDate = start ? dayjs(start) : null;
 		const endDate = end ? dayjs(end) : null;
 		return [startDate, endDate] as [Dayjs | null, Dayjs | null];
-	};
-
-	const openUsageCost = (log: AIUsageLogItem) => {
-		const currency = log.currency || "USD";
-		const inputPrice =
-			log.cost_input != null &&
-			log.prompt_tokens != null &&
-			log.prompt_tokens > 0
-				? log.cost_input / (log.prompt_tokens / 1000)
-				: null;
-		const outputPrice =
-			log.cost_output != null &&
-			log.completion_tokens != null &&
-			log.completion_tokens > 0
-				? log.cost_output / (log.completion_tokens / 1000)
-				: null;
-		const inputCost =
-			log.prompt_tokens != null && inputPrice != null
-				? (log.prompt_tokens / 1000) * inputPrice
-				: null;
-		const outputCost =
-			log.completion_tokens != null && outputPrice != null
-				? (log.completion_tokens / 1000) * outputPrice
-				: null;
-		const totalCost =
-			log.cost_total != null
-				? log.cost_total
-				: inputCost != null || outputCost != null
-					? (inputCost || 0) + (outputCost || 0)
-					: null;
-
-		setUsageCostBreakdown({
-			currency,
-			promptTokens: log.prompt_tokens,
-			completionTokens: log.completion_tokens,
-			inputUnitPrice: inputPrice,
-			outputUnitPrice: outputPrice,
-			inputCost,
-			outputCost,
-			totalCost,
-		});
-
-		const inputLine = formatCostLine(
-			t("输入"),
-			log.prompt_tokens,
-			inputPrice,
-			currency,
-		);
-		const outputLine = formatCostLine(
-			t("输出"),
-			log.completion_tokens,
-			outputPrice,
-			currency,
-		);
-
-		setUsageCostTitle(t("费用计算逻辑（仅供参考）"));
-		setUsageCostDetails(
-			[
-				t("费用计算详情")
-					.replace("{inputLine}", inputLine)
-					.replace("{outputLine}", outputLine)
-					.replace(
-						"{total}",
-						totalCost != null ? `${totalCost.toFixed(6)} ${currency}` : "-",
-					),
-				`${t("输入单价（每 1K tokens）")}: ${formatCostValue(inputPrice)} ${currency}`,
-				`${t("输出单价（每 1K tokens）")}: ${formatCostValue(outputPrice)} ${currency}`,
-			].join("\n"),
-		);
-		setShowUsageCostModal(true);
 	};
 
 	const handleCopyPayload = async () => {
@@ -2533,19 +2252,6 @@ export default function AdminPage() {
 			showToast(t("复制失败"), "error");
 		}
 	};
-
-	const usageCostByCurrency = useMemo(() => {
-		const totals = new Map<string, number>();
-		usageByModel.forEach((item) => {
-			if (item.cost_total == null) return;
-			if (!item.currency) return;
-			const currency = item.currency;
-			totals.set(currency, (totals.get(currency) ?? 0) + item.cost_total);
-		});
-		return Array.from(totals.entries()).sort((a, b) =>
-			a[0].localeCompare(b[0]),
-		);
-	}, [usageByModel]);
 
 	const handleDeletePrompt = async (id: string) => {
 		setConfirmState({
@@ -2746,7 +2452,7 @@ export default function AdminPage() {
 						fetchModelAPIConfigs(),
 						fetchPromptConfigs(),
 						fetchStorageSettings(),
-						fetchBasicSettings(),
+						basicSettingsApi.getSettings().then(updateBasicSettingsContext),
 						fetchCommentSettings(),
 						fetchExtractionSettings(),
 						fetchRecommendationSettings(),
@@ -3238,38 +2944,7 @@ export default function AdminPage() {
 									)}
 
 									{showUsageView ? (
-										<AiUsageSection
-											modelAPIConfigs={modelAPIConfigs}
-											usageSummary={usageSummary}
-											usageByModel={usageByModel}
-											usageCostByCurrency={usageCostByCurrency}
-											usageTotal={usageTotal}
-											usageLoading={usageLoading}
-											usageLogs={usageLogs}
-											usagePage={usagePage}
-											usagePageSize={usagePageSize}
-											usageModelId={usageModelId}
-											usageStatus={usageStatus}
-											usageContentType={usageContentType}
-											usageStart={usageStart}
-											usageEnd={usageEnd}
-											toDayjsRangeFromDateStrings={toDayjsRangeFromDateStrings}
-											getUsageStatusLabel={getUsageStatusLabel}
-											openUsageCost={openUsageCost}
-											handleOpenUsageRelatedTask={handleOpenUsageRelatedTask}
-											setUsageModelId={setUsageModelId}
-											setUsageStatus={setUsageStatus}
-											setUsageContentType={setUsageContentType}
-											setUsageStart={setUsageStart}
-											setUsageEnd={setUsageEnd}
-											setUsagePage={setUsagePage}
-											setUsagePageSize={setUsagePageSize}
-											showUsageCostModal={showUsageCostModal}
-											setShowUsageCostModal={setShowUsageCostModal}
-											usageCostTitle={usageCostTitle}
-											usageCostDetails={usageCostDetails}
-											usageCostBreakdown={usageCostBreakdown}
-										/>
+										<AiUsageContainer onOpenTask={handleOpenUsageRelatedTask} />
 									) : (
 										<ModelApiSettingsSection
 											modelLoading={modelLoading}
@@ -3341,16 +3016,7 @@ export default function AdminPage() {
 							)}
 
 							{activeSection === "basic" && (
-								<BasicSettingsSection
-									basicSettingsForm={basicSettingsForm}
-									setBasicSettingsForm={setBasicSettingsForm}
-									basicSettingsLoading={basicSettingsLoading}
-									basicSettingsSaving={basicSettingsSaving}
-									handleSaveBasicSettings={handleSaveBasicSettings}
-									handleAddHeaderCustomLink={handleAddHeaderCustomLink}
-									handleUpdateHeaderCustomLink={handleUpdateHeaderCustomLink}
-									handleRemoveHeaderCustomLink={handleRemoveHeaderCustomLink}
-								/>
+								<BasicSettingsContainer />
 							)}
 
 							{activeSection === "categories" && (

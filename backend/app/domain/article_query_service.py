@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from email.utils import format_datetime
 import re
+from heapq import nlargest
 from urllib.parse import urlencode
 from xml.sax.saxutils import escape
 
@@ -598,11 +599,19 @@ class ArticleQueryService:
             is_admin=False,
             category_id=category_id,
         )
+        # Parse legacy mixed-format dates exactly as before, but retain only K
+        # lightweight identities instead of hydrating every summary/quote.
+        candidates = query.with_entities(Article.id, Article.created_at).yield_per(256)
+        selected = nlargest(self.RSS_ITEM_LIMIT, candidates, key=_article_created_desc_sort_key)
+        if not selected:
+            return []
+        query = query.filter(Article.id.in_([row.id for row in selected]))
         query = query.options(
             load_only(
                 Article.id,
                 Article.slug,
                 Article.title,
+                Article.title_trans,
                 Article.top_image,
                 Article.author,
                 Article.published_at,
@@ -615,8 +624,8 @@ class ArticleQueryService:
             ),
         )
         articles = query.all()
-        articles.sort(key=_article_created_desc_sort_key, reverse=True)
-        return articles[: self.RSS_ITEM_LIMIT]
+        by_id = {article.id: article for article in articles}
+        return [by_id[row.id] for row in selected if row.id in by_id]
 
     def render_articles_rss(
         self,

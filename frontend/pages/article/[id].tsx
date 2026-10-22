@@ -19,7 +19,6 @@ import {
 	getApiBaseUrl,
 	mediaApi,
 	storageSettingsApi,
-	normalizeMediaHtml,
 	resolveMediaUrl,
 	type ArticleComment,
 	type AIContentVersion,
@@ -32,7 +31,8 @@ import {
 	type SimilarArticleItem,
 	type VersionedAIContentType,
 } from "@/lib/api";
-import { shouldFetchSimilarArticlesForSlug } from "@/lib/articleDetail";
+import { startSerialPolling } from "@/lib/serialPolling";
+import { useArticleBody } from "@/hooks/useArticleBody";
 import {
 	applyPrefillToNote,
 	parseDigestPrefillPayload,
@@ -128,7 +128,6 @@ import {
 	getRangeOffsets,
 	getRangeSnippet,
 	normalizeNoteRecommendationLevel,
-	renderMarkdown,
 	type ArticleAnnotation,
 	type NoteRecommendationLevel,
 } from "@/lib/articleAnnotations";
@@ -427,10 +426,18 @@ export default function ArticleDetailPage({
 	>("ready");
 	const [similarLoading, setSimilarLoading] = useState(false);
 	const [embeddingRefreshing, setEmbeddingRefreshing] = useState(false);
+	const [similarRefreshVersion, setSimilarRefreshVersion] = useState(0);
 	const contentRef = useRef<HTMLDivElement>(null);
-	const pollingRef = useRef<NodeJS.Timeout | null>(null);
-	const similarPollingRef = useRef<NodeJS.Timeout | null>(null);
-	const lastSimilarFetchSlugRef = useRef<string | null>(null);
+	const requestIdentityRef = useRef({ id, mounted: true, generation: 0 });
+	if (requestIdentityRef.current.id !== id) {
+		requestIdentityRef.current.id = id;
+		requestIdentityRef.current.generation++;
+	}
+	useEffect(() => {
+		const identity = requestIdentityRef.current;
+		identity.mounted = true;
+		return () => { identity.mounted = false; };
+	}, []);
 	const lightboxImage = lightboxImages[lightboxIndex] || null;
 	const hasLightboxMultiple = lightboxImages.length > 1;
 
@@ -455,21 +462,12 @@ export default function ArticleDetailPage({
 	const needsPolling = useCallback((data: ArticleDetail | null): boolean => {
 		return hasPendingArticleJob(data);
 	}, []);
+	const articlePending = needsPolling(article);
 
-	const renderedHtml = useMemo(() => {
-		if (!article) return "";
-		const baseHtml =
-			showTranslation && article.content_trans
-				? renderMarkdown(article.content_trans, { enableMediaEmbed: true })
-				: article.content_md
-					? renderMarkdown(article.content_md, { enableMediaEmbed: true })
-					: sanitizeRichHtml(article.content_html || "");
-		const normalizedHtml = sanitizeRichHtml(normalizeMediaHtml(baseHtml));
-		const htmlWithAnnotations = immersiveMode
-			? normalizedHtml
-			: applyAnnotations(normalizedHtml, annotations);
-		return sanitizeRichHtml(htmlWithAnnotations);
-	}, [article, annotations, showTranslation, immersiveMode]);
+	const baseBodyHtml = useArticleBody(article?.content_md, article?.content_html, article?.content_trans, showTranslation);
+	const renderedHtml = useMemo(() => sanitizeRichHtml(
+		immersiveMode ? baseBodyHtml : applyAnnotations(baseBodyHtml, annotations),
+	), [baseBodyHtml, annotations, immersiveMode]);
 	const displayTitle = useMemo(() => {
 		if (!article) return "";
 		if (showTranslation && article.title_trans) {
@@ -831,40 +829,33 @@ export default function ArticleDetailPage({
 	/* eslint-disable react-hooks/exhaustive-deps */
 	// biome-ignore lint/correctness/useExhaustiveDependencies: 仅按 slug 拉取一次并清理轮询，补 article/fetchArticle 会在任意文章状态更新时重触发
 	useEffect(() => {
+		setEmbeddingRefreshing(false);
 		if (id && (!article || article.slug !== id)) {
 			fetchArticle();
 		}
-		return () => {
-			if (pollingRef.current) {
-				clearInterval(pollingRef.current);
-			}
-			if (similarPollingRef.current) {
-				clearInterval(similarPollingRef.current);
-			}
-		};
 	}, [id, article?.slug]);
 	/* eslint-enable react-hooks/exhaustive-deps */
 
-	/* eslint-disable react-hooks/exhaustive-deps */
-	// biome-ignore lint/correctness/useExhaustiveDependencies: 轮询由 slug+状态驱动，补 article/fetchSimilarArticles 会使轮询定时器随任意文章更新重建
+	// biome-ignore lint/correctness/useExhaustiveDependencies: explicit restart signal after a manual embedding refresh
 	useEffect(() => {
-		if (!article?.slug) return;
-		if (similarPollingRef.current) {
-			clearInterval(similarPollingRef.current);
-			similarPollingRef.current = null;
-		}
-		if (similarStatus !== "pending") return;
-		similarPollingRef.current = setInterval(() => {
-			fetchSimilarArticles(article);
-		}, 5000);
-		return () => {
-			if (similarPollingRef.current) {
-				clearInterval(similarPollingRef.current);
-				similarPollingRef.current = null;
-			}
-		};
-	}, [article?.slug, similarStatus]);
-	/* eslint-enable react-hooks/exhaustive-deps */
+		const slug = article?.slug;
+		if (!slug || slug !== id) return;
+		setSimilarLoading(true);
+		const generation = requestIdentityRef.current.generation;
+		const current = () => requestIdentityRef.current.mounted && requestIdentityRef.current.generation === generation;
+		return startSerialPolling({
+			load: () => articleApi.getSimilarArticles(slug, SIMILAR_ARTICLE_LIMIT),
+			apply: (result) => {
+				if (!current()) return;
+				setSimilarStatus(result.status);
+				setSimilarArticles(result.items || []);
+				setSimilarLoading(false);
+			},
+			terminal: (result) => result.status !== "pending",
+			delay: 5000, immediate: true,
+			onError: (error) => { if (current()) { console.error("Similar polling failed:", error); setSimilarLoading(false); } },
+		});
+	}, [article?.slug, id, similarRefreshVersion]);
 
 	useEffect(() => {
 		if (!article?.slug) return;
@@ -938,27 +929,19 @@ export default function ArticleDetailPage({
 	/* eslint-disable react-hooks/exhaustive-deps */
 	// biome-ignore lint/correctness/useExhaustiveDependencies: 轮询定时器由 article 驱动，补 fetchArticleTasks 会使定时器每渲染重建、轮询失效
 	useEffect(() => {
-		if (pollingRef.current) {
-			clearInterval(pollingRef.current);
-			pollingRef.current = null;
-		}
-
-		if (needsPolling(article)) {
-			pollingRef.current = setInterval(async () => {
-				try {
-					const data = await articleApi.getArticle(id as string);
-					setArticle(data);
-					void fetchArticleTasks(data.id);
-					if (!needsPolling(data) && pollingRef.current) {
-						clearInterval(pollingRef.current);
-						pollingRef.current = null;
-					}
-				} catch (error) {
-					console.error("Polling failed:", error);
-				}
-			}, POLLING_INTERVAL);
-		}
-	}, [article, id, needsPolling]);
+		if (!id || article?.slug !== id || !articlePending) return;
+		const generation = requestIdentityRef.current.generation;
+		return startSerialPolling({
+			load: () => articleApi.getArticle(id as string),
+			apply: (data) => {
+				if (!requestIdentityRef.current.mounted || requestIdentityRef.current.generation !== generation) return;
+				setArticle(data); void fetchArticleTasks(data.id);
+			},
+			terminal: (data) => !needsPolling(data),
+			delay: POLLING_INTERVAL,
+			onError: (error) => console.error("Polling failed:", error),
+		});
+	}, [article?.slug, articlePending, id, needsPolling]);
 	/* eslint-enable react-hooks/exhaustive-deps */
 
 
@@ -1081,6 +1064,7 @@ export default function ArticleDetailPage({
 
 	const fetchArticleTasks = useCallback(
 		async (articleId: string) => {
+			const generation = requestIdentityRef.current.generation;
 			if (!isAdmin) {
 				setArticleTasks([]);
 				return;
@@ -1094,7 +1078,7 @@ export default function ArticleDetailPage({
 				const tasks = Array.isArray(taskResponse?.data)
 					? (taskResponse.data as ArticleTaskListItem[])
 					: [];
-				setArticleTasks(tasks);
+				if (requestIdentityRef.current.mounted && requestIdentityRef.current.generation === generation) setArticleTasks(tasks);
 			} catch (error) {
 				console.error("Failed to fetch article tasks:", error);
 			}
@@ -1175,29 +1159,13 @@ export default function ArticleDetailPage({
 	}, [article]);
 
 
-		const fetchSimilarArticles = useCallback(async (detail: ArticleDetail) => {
-			if (!detail?.slug) return;
-			setSimilarLoading(true);
-			try {
-				const result = await articleApi.getSimilarArticles(
-					detail.slug,
-					SIMILAR_ARTICLE_LIMIT,
-				);
-				setSimilarStatus(result.status);
-				setSimilarArticles(result.items || []);
-			} catch (error) {
-				console.error("Failed to fetch similar articles:", error);
-				setSimilarStatus("ready");
-				setSimilarArticles([]);
-			} finally {
-				setSimilarLoading(false);
-			}
-		}, []);
-
 		const fetchArticle = useCallback(async () => {
+			const generation = requestIdentityRef.current.generation;
+			const current = () => requestIdentityRef.current.mounted && requestIdentityRef.current.generation === generation;
 			setLoading(true);
 			try {
 				const data = await articleApi.getArticle(id as string);
+				if (!current()) return;
 				setArticle(data);
 				void fetchArticleTasks(data.id);
 				if (data?.prev_article) {
@@ -1211,27 +1179,13 @@ export default function ArticleDetailPage({
 					setNextArticle(null);
 				}
 			} catch (error) {
+				if (!current()) return;
 				console.error("Failed to fetch article:", error);
 				showToast(t("加载文章失败"), "error");
 			} finally {
-				setLoading(false);
+				if (current()) setLoading(false);
 			}
 		}, [fetchArticleTasks, id, showToast, t]);
-
-	useEffect(() => {
-		const articleSlug = article?.slug || null;
-		if (
-			!article ||
-			!shouldFetchSimilarArticlesForSlug(
-				articleSlug,
-				lastSimilarFetchSlugRef.current,
-			)
-		) {
-			return;
-		}
-		lastSimilarFetchSlugRef.current = articleSlug;
-		void fetchSimilarArticles(article);
-	}, [article, fetchSimilarArticles]);
 
 	const loadVersionHistory = useCallback(
 		async (contentType: AIContentType, force = false) => {
@@ -1314,16 +1268,21 @@ export default function ArticleDetailPage({
 
 	const handleRefreshEmbedding = async () => {
 		if (!article?.slug) return;
+		const generation = requestIdentityRef.current.generation;
+		const current = () => requestIdentityRef.current.mounted && requestIdentityRef.current.generation === generation;
 		setEmbeddingRefreshing(true);
 		try {
 			await articleApi.generateArticleEmbedding(article.slug);
+			if (!current()) return;
 			setSimilarStatus("pending");
+			setSimilarRefreshVersion((version) => version + 1);
 			showToast(t("已提交向量化任务"));
 		} catch (error: any) {
+			if (!current()) return;
 			console.error("Failed to refresh embedding:", error);
 			showToast(error?.response?.data?.detail || t("提交向量化失败"), "error");
 		} finally {
-			setEmbeddingRefreshing(false);
+			if (current()) setEmbeddingRefreshing(false);
 		}
 	};
 

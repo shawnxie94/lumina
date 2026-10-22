@@ -185,7 +185,7 @@ async def report_article_by_url(
 
 
 @router.get("/api/articles")
-async def get_articles(
+def get_articles(
     response: Response,
     page: int = 1,
     size: int = 20,
@@ -265,7 +265,7 @@ async def get_articles(
 
 
 @router.get("/api/articles/rss.xml")
-async def get_articles_rss(
+def get_articles_rss(
     request: Request,
     category_id: Optional[str] = None,
     db: Session = Depends(get_db),
@@ -292,7 +292,7 @@ async def get_articles_rss(
 
 
 @router.get("/api/articles/search")
-async def search_articles(
+def search_articles(
     query: str = "",
     limit: int = 20,
     db: Session = Depends(get_db),
@@ -321,7 +321,7 @@ async def search_articles(
 
 
 @router.get("/api/articles/{article_slug}")
-async def get_article(
+def get_article(
     article_slug: str,
     response: Response,
     db: Session = Depends(get_db),
@@ -461,7 +461,7 @@ async def get_article(
 
 
 @router.get("/api/articles/{article_slug}/export.md")
-async def export_article_markdown(
+def export_article_markdown(
     article_slug: str,
     request: Request,
     db: Session = Depends(get_db),
@@ -520,7 +520,7 @@ async def record_article_view(
 
 
 @router.get("/api/articles/{article_slug}/similar")
-async def get_similar_articles(
+def get_similar_articles(
     article_slug: str,
     limit: int = 5,
     db: Session = Depends(get_db),

@@ -43,7 +43,7 @@ async def test_list_serialization_has_constant_select_budget(db_session, size):
     try:
         # No seeded ORM objects in this identity map: deferred loads cannot hide.
         with Session(engine) as fresh:
-            result = await article_router.get_articles(
+            result = article_router.get_articles(
                 response=Response(), size=size, db=fresh, is_admin=False,
             )
             payload = json.loads(json.dumps(jsonable_encoder(result)))
